@@ -33,10 +33,11 @@ through an ADR so the lint, the migrations and the pool configuration keep agree
 ## Verification evidence
 
 `backend/tests/sql/isolation.sql` is the live half, run by `backend/scripts/verify_db.sh` and by
-CI. It carries 98 checks covering every track's tables -- MOD-004's hierarchy, MOD-005's `cfg_`,
+CI. It carries 105 checks covering every track's tables -- MOD-004's hierarchy, MOD-005's `cfg_`,
 MOD-015's `bil_`, MOD-007's and MOD-008's `iam`, MOD-009's `sec_`, MOD-010's `evt_`,
 MOD-011's `ops_`, MOD-012's `int_`, MOD-013's `ntf_`, MOD-014's `ppl_`, MOD-016's `cat_`,
-MOD-017's `mem_` and `fin_`, MOD-018's `led_`, MOD-019's `sch_` and MOD-020's `bkg_` -- and **every one has been
+MOD-017's `mem_` and `fin_`, MOD-018's `led_`, MOD-019's `sch_`, MOD-020's `bkg_` and
+MOD-021's `dev_` -- and **every one has been
 run against a deliberate mutation of the protection it guards and shown to fail**:
 
 ```bash
@@ -514,3 +515,67 @@ outside a trial balance read as of the UTC date, and sixteen tests across two mo
 for a reason that had nothing to do with either. **CI never saw it, because CI runs in UTC** --
 which is the worst property a flake can have, since the green run is the one that proves
 nothing. A fixture takes its clock from the same place the code under test does.
+
+**A `NOT EXISTS` branch answers for the missing-parent branch above it, and only the message
+tells them apart.** Three of MOD-021's trigger functions open by refusing a row whose parent
+device does not exist and then ask `NOT EXISTS (SELECT ... WHERE device_id = NEW.device_id)`
+-- which is true for a device that does not exist. So with the first branch deleted the row
+is still refused, by the second, and a probe that counted any `raise_exception` was satisfied:
+all three branches were droppable with only the definition pin objecting. This is the
+"probe answered by a sibling branch in the same function" trap in its quietest form, because
+nothing about either branch reads as overlapping -- one is about existence and the other about
+capability. The probe has to assert the *message*, not the exception class, and raise its own
+`CHECK nn FAILED` naming the confusion when the wrong branch answers. **The tell: a branch
+that guards a lookup result is subsumed by any later branch whose predicate is also satisfied
+by the lookup having failed.**
+
+**And the same trap one level up, where the two branches are two different controls.**
+MOD-021's unlock path has two refusals -- no live safety profile, and fewer than seven passing
+commissioning tests -- and the probe for the first used a device that had neither, so it was
+answered by the second and the first was droppable in silence. A probe needs a row that only
+the branch under test refuses, which means the *fixture* has to carry one device per branch:
+one commissioned and tested, one tested with no profile, one profiled with no tests. When two
+controls can refuse the same row, it is not enough to assert which one answered; the row has
+to be one the others admit.
+
+**A trigger that reads a parent row to decide whether a child may be written must take
+`FOR UPDATE`, and a plain read is weaker than `FOR SHARE`.** This file already records
+MOD-019's share-lock finding; MOD-021 shipped three triggers that took no lock at all, and
+one of them is the whole of paragraph 1953's revocation guarantee. Two ordinary transactions
+at READ COMMITTED -- one bumping a device's revocation epoch, one inserting a policy snapshot
+that reads it -- both committed, leaving a snapshot valid for twelve hours at an epoch the
+device had already left. **The service was safe in all three cases**, because it locks the
+row before it acts; the trigger is the half that holds for the writer that is *not* the
+service, and that half did not hold. No isolation check can see this: it needs a test on two
+connections.
+
+**A bound measured between two columns the same writer supplies is not a bound.**
+`expires_at - issued_at <= interval '60 seconds'` reads as "deliverable for a minute" and
+means "deliverable for a minute, starting whenever the writer says" -- so an unlock parked
+three days ahead satisfied every CHECK on the table and was openable for forty-five seconds
+on the night it chose. The same shape made a policy snapshot's "bounded TTL" a seven-day
+authorization nobody could withdraw. The repair is a bound against the server's clock, and it
+has to be **one-sided**: `issued_at <= now() + interval '5 minutes'` is restore-safe, while a
+lower bound would fail every existing row the next time the constraint is validated.
+PostgreSQL does permit `now()` in a CHECK, which is the unusual part and the reason to say so
+in the migration.
+
+**A deferred constraint trigger is sometimes the only shape that lets the honest write order
+exist.** MOD-021 relates each supersession pointer to the row's own device, and an immediate
+check would have made rotation unwritable: the outgoing certificate has to point at a
+successor that does not exist yet, because inserting first violates `one_active_per_device`
+and a null pointer violates the pairing. The foreign key beside it is already
+`DEFERRABLE INITIALLY DEFERRED` for exactly that reason, so the relational check is too --
+and the probe then needs `SET CONSTRAINTS ALL IMMEDIATE`, which this file already records for
+MOD-018's balance trigger. **When a BEFORE trigger's check fights the only order the service
+can write in, the answer is usually to defer it rather than to reorder the service.**
+
+**The prefix-free sweeps need the privilege bans and a shape, not only a name list.** Check
+61b was hardened after MOD-014 and still let a reviewer create `plt01.edge_credentials` with
+ENABLE+FORCE RLS, one correct policy, a tenant foreign key, a tenant-leading key, columns
+named `key_material`, `cert_body` and `online_cached`, and `DELETE` granted to both runtime
+roles -- 105/105 passed. Three causes, each general: the DELETE ban that `CLAUDE.md` states
+absolutely lived only in per-module lists; `has_table_privilege` cannot see a column-scoped
+`GRANT ... TO PUBLIC`, so `GRANT UPDATE (state) ON ... TO PUBLIC` was invisible to every
+check in the file; and a forbidden-column-name list is whack-a-mole, so it needs patterns for
+the *shape* beside the explicit names.

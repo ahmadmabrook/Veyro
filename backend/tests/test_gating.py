@@ -30,6 +30,8 @@ _CORR = {"correlation_id": "00000000-0000-4000-8000-000000000003"}
 # A behavioural sweep of the gated product routes, with a body that would otherwise succeed. A
 # route added without a `permit` call shows up here as a 2xx -- and `GateCoverageTests` below
 # is what stops a route being added without appearing here at all.
+_SHA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
 READ_ROUTES = [
     ("get", "/organizations", None),
     ("get", "/locations", None),
@@ -98,6 +100,10 @@ READ_ROUTES = [
     # ------------------------------------------------------------- MOD-020 booking
     ("get", f"/booking/sessions/{_ID}/eligibility?person_id={_ID}&policy_key=STD", None),
     ("get", f"/booking/bookings/{_ID}", None),
+    # MOD-021's fleet reads.
+    ("get", "/fleet", None),
+    ("get", f"/fleet/{_ID}", None),
+    ("get", f"/fleet/{_ID}/commands", None),
     ("get", f"/booking/sessions/{_ID}/roster", None),
     ("get", f"/booking/members/{_ID}/bookings", None),
     ("get", "/booking/appeals", None),
@@ -485,6 +491,55 @@ WRITE_ROUTES = [
     ("post", f"/booking/sessions/{_ID}/waitlist/promote", {**_CORR}),
     ("post", f"/booking/waitlist/{_ID}/confirm",
      {"idempotency_key": "sweep", **_CORR}),
+    # MOD-021's fleet. Every route, because `/fleet` is a fully swept prefix.
+    # `_SHA` is a well-formed sha256 the shape constraints accept; the sweep never gets far
+    # enough for the value to matter, and a malformed one would be refused at validation
+    # rather than at the gate -- which is the wrong refusal for this test to observe.
+    ("post", "/fleet/types", {"type_code": "SWEEP", "vendor": "v", "model": "m",
+                              "kind": "scanner", "display_name": "Sweep",
+                              "capabilities": ["scan"], **_CORR}),
+    ("post", f"/fleet/types/{_ID}/publish", {**_CORR}),
+    ("post", f"/fleet/types/{_ID}/retire", {"reason": "sweep", **_CORR}),
+    ("post", "/fleet", {"type_id": _ID, "location_id": _ID, "serial_number": "S1",
+                         "display_name": "Sweep", **_CORR}),
+    ("post", f"/fleet/{_ID}/provision",
+     {"fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "vault_ref": "vault:sweep",
+       "not_before": "2026-11-01T00:00:00Z", "not_after": "2026-12-01T00:00:00Z",
+       **_CORR}),
+    ("post", f"/fleet/{_ID}/configure", {"expected_version": 1, **_CORR}),
+    ("post", f"/fleet/{_ID}/commission",
+     {"profile": "fail_safe", "on_egress_path": True,
+       "fire_release_is_independent": True, "local_emergency_input": True,
+       "evidence_ref": "uri:sweep", "door_description": "a door", **_CORR}),
+    ("post", f"/fleet/{_ID}/commissioning-tests",
+     {"test_name": "power_loss", "passed": True, **_CORR}),
+    ("post", f"/fleet/{_ID}/activate", {**_CORR}),
+    ("post", f"/fleet/{_ID}/state", {"target": "maintenance", **_CORR}),
+    ("post", f"/fleet/{_ID}/certificates",
+     {"fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "vault_ref": "vault:sweep",
+       "not_before": "2026-11-01T00:00:00Z", "not_after": "2026-12-01T00:00:00Z",
+       **_CORR}),
+    ("post", f"/fleet/certificates/{_ID}/revoke", {"reason": "sweep", **_CORR}),
+    ("post", "/fleet/firmware",
+     {"type_id": _ID, "version": "1.0", "image_ref": "oci:sweep",
+       "image_digest": _SHA,
+       "release_notes": "sweep", **_CORR}),
+    ("post", f"/fleet/firmware/{_ID}/status", {"target": "staged", **_CORR}),
+    ("post", f"/fleet/{_ID}/snapshots",
+     {"content_digest": _SHA, "ttl_minutes": 60, **_CORR}),
+    ("post", f"/fleet/{_ID}/commands",
+     {"action": "reboot", "idempotency_key": "sweep", **_CORR}),
+    ("post", f"/fleet/commands/{_ID}/deliver", {**_CORR}),
+    ("post", f"/fleet/commands/{_ID}/settle",
+     {"outcome": "completed", **_CORR}),
+    ("post", "/fleet/commands/expire", {**_CORR}),
+    ("post", f"/fleet/{_ID}/health",
+     {"latency_ms": 10, "error_count": 0, "storage_free_bytes": 1000,
+       "agent_version": "1.0", **_CORR}),
+    ("post", "/fleet/offline-sweep", {**_CORR}),
+    ("post", f"/fleet/{_ID}/sync-conflicts",
+     {"detail": "diverged", "local_digest": _SHA,
+       "remote_digest": _SHA, **_CORR}),
     ("post", f"/booking/policies/{_ID}/retire", {"reason": "sweep", **_CORR}),
     ("post", f"/booking/waitlist/{_ID}/leave", {"reason": "sweep", **_CORR}),
     ("post", f"/booking/waitlist/{_ID}/settle", {"reason": "sweep", **_CORR}),
@@ -843,7 +898,11 @@ class GateCoverageTests(unittest.TestCase):
                             # worse, read as one surface.
                             "/memberships", "/member-entitlements", "/finance",
                             "/notifications", "/people", "/catalog", "/ledger",
-                            "/scheduling", "/booking")
+                            "/scheduling", "/booking",
+                            # **`/fleet`, not `/devices`.** MOD-007 owns `/devices/{id}` for
+                            # a member's own handset, and sweeping the two together would
+                            # read as one surface while being two modules' authority.
+                            "/fleet")
 
     def test_every_route_of_a_fully_swept_module_is_in_the_behavioural_sweep(self):
         """The sweeps are a sample elsewhere; for these modules they are the whole surface.

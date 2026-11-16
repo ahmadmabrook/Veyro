@@ -546,6 +546,35 @@ EVENT_TYPES: dict[tuple[str, int], EventType] = dict([
     _e("appeal.decided", 1, "MOD-020", "internal",
        ("appeal_id", "subject_person_id", "against", "state", "overturned"),
        "An appeal against a booking sanction was upheld, rejected or withdrawn"),
+
+    # ---------------------------------------------------------------- MOD-021, ECO-03
+    #
+    # Paragraph 3059's six. **No payload here carries a credential, a key or a person**: a
+    # device event is about a box, and the one thing that could identify somebody -- what a
+    # reader read -- is MOD-022's and is not in this module at all. `capabilities` is a list
+    # of declared values, which is what makes a consumer able to tell a turnstile from a
+    # printer without reading the registry.
+    _e("device.enrolled", 1, "MOD-021", "internal",
+       ("device_id", "type_id", "location_id", "kind", "capabilities"),
+       "A device was enrolled against a published type and assigned to a location"),
+    _e("device.online", 1, "MOD-021", "internal",
+       ("device_id", "was", "agent_version"),
+       "A device that had gone quiet reported again"),
+    _e("device.offline", 1, "MOD-021", "internal",
+       ("device_id", "last_seen_at", "silent_for_seconds"),
+       "A device in service has stopped reporting"),
+    _e("device.command.completed", 1, "MOD-021", "internal",
+       ("command_id", "device_id", "action", "outcome"),
+       "A device reported that a remote command completed"),
+    _e("firmware.updated", 1, "MOD-021", "internal",
+       ("firmware_id", "type_id", "version", "status"),
+       "A firmware version was released, staged or withdrawn"),
+    # **Reported, not resolved.** The gateway holds the local copy, so the conflict exists
+    # there and this side only hears about it; the two digests are what tell a consumer which
+    # way the copies diverged without carrying either copy.
+    _e("edge.sync.conflict", 1, "MOD-021", "internal",
+       ("device_id", "conflict_id", "local_digest", "remote_digest"),
+       "A gateway reported that its local copy and the registry's disagree"),
 ])
 
 

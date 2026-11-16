@@ -1258,6 +1258,150 @@ SUBJECT_COLUMNS: tuple[Reachability, ...] = (
     Reachability("plt01", "evt_replay_jobs", "ran_by", "write_once",
                  "written when the job starts; `status = 'requested'` in the service is what "
                  "refuses a second run, not the grant"),
+    # ------------------------------------------------------ MOD-021, ECO-03
+    #
+    # **Every one of these is an identity, not a member**, which is the whole of this module's
+    # privacy position: MOD-021 registers boxes. There is no `person_id` anywhere in `dev_`,
+    # and what a reader read is MOD-022's. The two `superseded_by` columns are not people at
+    # all, declared by hand for the reason MOD-016 declares its own: the sweep matches a `_by`
+    # suffix and cannot tell a row reference from an actor.
+    Reachability("plt01", "dev_device_types", "created_by", "unreachable",
+                 "who drafted a model of hardware"),
+    Reachability("plt01", "dev_device_types", "published_by", "write_once",
+                 "**who settled what this model may be asked to do**, which every unit "
+                 "enrolled against it snapshots. The one-way trigger makes it final"),
+    Reachability("plt01", "dev_device_types", "retired_by", "write_once",
+                 "who stopped new units being enrolled against a model"),
+    Reachability("plt01", "dev_type_capabilities", "created_by", "unreachable",
+                 "who declared a capability on a model. No UPDATE grant at all: what a "
+                 "published type may be asked to do is what somebody reviewed"),
+    Reachability("plt01", "dev_devices", "created_by", "unreachable",
+                 "who enrolled this unit"),
+    Reachability("plt01", "dev_devices", "activated_by", "write_once",
+                 "**who brought a door into service on the strength of its commissioning "
+                 "record.** The one-way trigger refuses a change, because this is the "
+                 "attribution paragraph 4175's gate rests on"),
+    Reachability("plt01", "dev_devices", "quarantined_by", "write_once",
+                 "who took a unit out of service, which stops a club using it"),
+    Reachability("plt01", "dev_devices", "retired_by", "write_once",
+                 "who ended a unit's life and revoked what authenticated it"),
+    Reachability("plt01", "dev_device_capabilities", "created_by", "unreachable",
+                 "who copied a model's capability onto a unit. No UPDATE grant: this is what "
+                 "bounds every command the unit can be sent"),
+    Reachability("plt01", "dev_certificates", "issued_by", "unreachable",
+                 "**who gave a device the credential it authenticates with.** No UPDATE "
+                 "grant on it or on the fingerprint: widening what a device may authenticate "
+                 "with is a new certificate"),
+    Reachability("plt01", "dev_certificates", "revoked_by", "write_once",
+                 "who withdrew a device's credential, which is the act that bumps the "
+                 "revocation epoch every gateway compares against"),
+    Reachability("plt01", "dev_certificates", "superseded_by", "write_once",
+                 "**not a person.** This names the certificate that replaced this one, so a "
+                 "rotation chain stays walkable; it is here by hand because the sweep "
+                 "matches a `_by` suffix and cannot tell a reference from an actor. "
+                 "`write_once` rather than `unreachable` because the rotation grant covers "
+                 "it -- the one-way trigger is what refuses a change, and the registry's own "
+                 "check caught the stronger claim"),
+    Reachability("plt01", "dev_safety_profiles", "commissioned_by", "unreachable",
+                 "**who claimed that a building's egress wiring is what it is.** This is the "
+                 "most load-bearing attribution in the module and carries no UPDATE grant at "
+                 "all: TSD section 16.4 is a fire code, and a safety record that could be "
+                 "edited is a building whose records pass an audit it would fail"),
+    Reachability("plt01", "dev_safety_profiles", "superseded_by", "write_once",
+                 "**not a person**, for `dev_certificates.superseded_by`'s reason: it names "
+                 "the re-commissioning that replaced this one. The trigger makes it final"),
+    Reachability("plt01", "dev_commissioning_tests", "tested_by", "unreachable",
+                 "**who ran a safety test and said what happened.** Insert-only in full: a "
+                 "failure that could be edited into a pass is paragraph 4175 with its teeth "
+                 "pulled"),
+    Reachability("plt01", "dev_firmware", "released_by", "unreachable",
+                 "who published an image for a model of hardware to fetch"),
+    Reachability("plt01", "dev_firmware", "withdrawn_by", "write_once",
+                 "who pulled an image, which the trigger makes final because a fixed build "
+                 "is a new version"),
+    Reachability("plt01", "dev_commands", "issued_by", "unreachable",
+                 "**who told a device to do something**, including a door to release. MOD-008 "
+                 "audits denials rather than allowed acts and this module's role holds "
+                 "nothing in `iam`, so this row is the only record there is -- and the "
+                 "one-way trigger refuses a change to it"),
+    Reachability("plt01", "dev_policy_snapshots", "issued_by", "unreachable",
+                 "who published the authorization projection a gateway runs on offline"),
+    Reachability("plt01", "dev_health_reports", "reported_by", "unreachable",
+                 "**who said a device was fine.** An operator who does not drive to the club "
+                 "is relying on it, which is MOD-011's fabricated `passed` one module over"),
+
+    # The attribution the review added. `dev_commands` carried `issued_by` alone, so the
+    # only name on a row saying a door opened was the party that did not make the claim.
+    Reachability("plt01", "dev_commands", "delivered_by", "write_once",
+                 "**who collected this command**, which for an unlock is who the door was "
+                 "handed to. The delivering write holds the grant and the one-way trigger "
+                 "admits no second delivery; no erasure reaches it"),
+    Reachability("plt01", "dev_commands", "settled_by", "write_once",
+                 "**who reported what the device did**, which is the only record that a "
+                 "door opened. MOD-008 audits denials and this role holds nothing in `iam`"),
+    Reachability("plt01", "dev_devices", "reactivated_by", "write_once",
+                 "**who put a withdrawn access point back into production**, which is a "
+                 "passage through paragraph 4175's gate in its own right. Rewritten on each "
+                 "return to service and cleared by nothing"),
+    Reachability("plt01", "dev_sync_conflicts", "reported_by", "unreachable",
+                 "**which gateway said the two copies disagreed.** The table carries no "
+                 "UPDATE grant at all, so this is residue an erasure cannot reach"),
+
+    # **And the free text, which the sweep cannot see.** The reachability sweep matches column
+    # *names*, so a prose column and a `jsonb` object are invisible to it -- every module from
+    # MOD-013 on declares this residue by hand, and MOD-021's first version declared none: all
+    # twenty entries above are actor columns. A reviewer wrote a member's address and date of
+    # birth into a settled command's outcome and into a health report's peripherals and read
+    # both back. The device dispatcher is the likeliest writer of a contact address in this
+    # module, exactly as MOD-013's `ntf_deliveries.last_error` is in that one.
+    Reachability("plt01", "dev_commands", "outcome_detail", "write_once",
+                 "**what a gateway said happened**, free text it supplies -- the ordinary "
+                 "content of a reader rejection names the card and whoever presented it. "
+                 "The settling write holds the grant, and no erasure path reaches `plt01` "
+                 "through a device, so nothing clears it"),
+    Reachability("plt01", "dev_commands", "arguments", "unreachable",
+                 "**what a command was parameterised with.** `commands.check_arguments` "
+                 "admits only declared keys and `set_maintenance`'s reason is the one free "
+                 "string among them; the column carries no UPDATE grant"),
+    Reachability("plt01", "dev_health_reports", "peripherals", "unreachable",
+                 "**a device's own peripheral inventory**, caller-supplied and bounded in "
+                 "shape but not in meaning: a reader that names the last member it saw puts "
+                 "that name here. Insert-only with no UPDATE grant"),
+    Reachability("plt01", "dev_sync_conflicts", "detail", "unreachable",
+                 "**what a gateway said diverged**, free text it supplies -- which is the "
+                 "whole point of the column, since the two digests beside it say nothing a "
+                 "person can act on. Insert-only, with no UPDATE grant"),
+    Reachability("plt01", "dev_commissioning_tests", "detail", "unreachable",
+                 "**what a safety test found**, written by whoever ran it, on an insert-only "
+                 "table with no UPDATE grant -- a failure that names the person who was "
+                 "trapped is the realistic input"),
+    Reachability("plt01", "dev_safety_profiles", "door_description", "unreachable",
+                 "**which door this is**, in a building. Prose, and the supersede trigger "
+                 "makes it final once another commissioning replaces the row"),
+    Reachability("plt01", "dev_devices", "display_name", "write_once",
+                 "**what a unit is called**, which is where 'jane's office door' goes. "
+                 "`configure_device` holds the grant, so it is rewritable -- but no erasure "
+                 "locates a device from a subject, so nothing clears it on a request"),
+    Reachability("plt01", "dev_devices", "config", "write_once",
+                 "**a device's own settings**, a tenant-written object bounded in shape and "
+                 "not in meaning. Rewritable by `configure_device` and reached by no "
+                 "erasure"),
+    Reachability("plt01", "dev_devices", "quarantine_reason", "write_once",
+                 "**why a door was taken out of service**, which is where an incident naming "
+                 "a member gets written. Written once per quarantine and never cleared"),
+    Reachability("plt01", "dev_devices", "retire_reason", "write_once",
+                 "**why a unit was retired.** Same shape as the quarantine reason"),
+    Reachability("plt01", "dev_device_types", "retire_reason", "write_once",
+                 "**why a model was withdrawn.** Prose, written once"),
+    Reachability("plt01", "dev_certificates", "revoke_reason", "unreachable",
+                 "**why a credential was withdrawn**, which is where 'the gateway Jane took "
+                 "home' is written. The one-way trigger makes a revoked row final"),
+    Reachability("plt01", "dev_firmware", "withdraw_reason", "write_once",
+                 "**why a build was pulled.** Prose, and the one-way trigger makes a "
+                 "withdrawal final"),
+    Reachability("plt01", "dev_firmware", "release_notes", "write_once",
+                 "**what changed in a build**, prose a release manager writes. The status "
+                 "write holds the grant; no erasure reaches it"),
 )
 
 

@@ -7839,6 +7839,32 @@ BEGIN
         RAISE EXCEPTION
             'CHECK 61 FAILED: a runtime role holds TRUNCATE or REFERENCES in plt01: %', wrong;
     END IF;
+    -- **And `veyro_cp_app` holds no DELETE anywhere in `plt01`**, which `CLAUDE.md` states
+    -- absolutely and which lived only in per-module lists until a reviewer created
+    -- `plt01.edge_credentials` with DELETE granted to both runtime roles and watched every
+    -- check pass. A table nobody prefixed escaped the ban the same way it escaped the RLS
+    -- sweep, which is the whole reason this block is prefix-free.
+    SELECT string_agg(c.relname, ', ' ORDER BY c.relname) INTO wrong
+    FROM pg_class c
+    WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind IN ('r', 'p')
+      AND has_table_privilege('veyro_cp_app', c.oid, 'DELETE');
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 61 FAILED: veyro_cp_app holds DELETE in plt01: %', wrong;
+    END IF;
+    -- **PUBLIC holds nothing, at column level as well as at table level.** `has_table_
+    -- privilege` cannot see a column-scoped grant, so `GRANT UPDATE (state) ... TO PUBLIC`
+    -- was invisible to every check in this file.
+    SELECT string_agg(c.relname || '.' || a.attname || ' ' || v.priv, ', ') INTO wrong
+    FROM pg_class c
+    JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped
+    CROSS JOIN (VALUES ('SELECT'), ('INSERT'), ('UPDATE'), ('REFERENCES')) AS v(priv)
+    WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind IN ('r', 'p')
+      AND has_column_privilege('public', c.oid, a.attname, v.priv);
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 61 FAILED: PUBLIC holds a column privilege in plt01: %', wrong;
+    END IF;
     SELECT string_agg(c.relname, ', ' ORDER BY c.relname) INTO wrong
     FROM pg_class c
     WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind IN ('r', 'p')
@@ -39528,4 +39554,3762 @@ BEGIN
 END $$;
 
 
-\echo 'tenant isolation: 98/98 checks passed'
+
+-- MOD-021's own seed, committed so every check below reads the same rows.
+--
+-- **It builds on MOD-004's committed location**, because a device is assigned to one and a
+-- composite foreign key carries the tenant into that reference. The ids follow this file's
+-- convention: `77777777-N000-...` for MOD-021's own rows, so a grep finds them.
+BEGIN;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+INSERT INTO plt01.dev_device_types
+    (tenant_id, type_id, type_code, vendor, model, kind, display_name, status,
+     published_at, published_by, publish_correlation_id, created_by, correlation_id)
+-- **Declared first and published after**, which is the order the service uses and the
+-- order `dev_type_capabilities_are_frozen` exists to enforce: a published type takes no
+-- further capability, so a seed that published first could not declare any.
+VALUES ('11111111-1111-4111-8111-111111111111', '77777777-1000-4000-8000-000000000001',
+        'ACME-GATE-3000', 'Acme', 'Gate 3000', 'turnstile', 'Acme Gate 3000',
+        'draft', NULL, NULL, NULL,
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333'),
+       -- A second type, in draft, so the frozen-capability trigger has a row it admits and
+       -- the "a published type takes no more capabilities" case has one it refuses.
+       ('11111111-1111-4111-8111-111111111111', '77777777-1000-4000-8000-000000000002',
+        'ACME-SCAN-100', 'Acme', 'Scan 100', 'scanner', 'Acme Scan 100', 'draft',
+        NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333');
+INSERT INTO plt01.dev_type_capabilities
+    (tenant_id, type_id, capability, created_by, correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', '77777777-1000-4000-8000-000000000001',
+        'access.actuate', '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333'),
+       ('11111111-1111-4111-8111-111111111111', '77777777-1000-4000-8000-000000000001',
+        'credential.read', '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333'),
+       ('11111111-1111-4111-8111-111111111111', '77777777-1000-4000-8000-000000000001',
+        'telemetry', '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333'),
+       ('11111111-1111-4111-8111-111111111111', '77777777-1000-4000-8000-000000000002',
+        'scan', '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333');
+-- **A different actor publishes**, because `dev_device_types_publisher_is_not_author`
+-- refuses the author settling their own declaration -- the two-party rule MOD-016 and
+-- MOD-017 each learned, here because declaring `access.actuate` is what makes a model of
+-- hardware commandable as a barrier.
+UPDATE plt01.dev_device_types
+   SET status = 'published', published_at = now(),
+       published_by = '44444444-4444-4444-8444-444444444444',
+       publish_correlation_id = '33333333-3333-4333-8333-333333333333'
+ WHERE type_id = '77777777-1000-4000-8000-000000000001';
+INSERT INTO plt01.dev_devices
+    (tenant_id, device_id, type_id, location_id, serial_number, display_name, state,
+     activated_at, activated_by, activate_correlation_id, created_by, correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', '77777777-2000-4000-8000-000000000001',
+        '77777777-1000-4000-8000-000000000001',
+        'eeeeeeee-1000-4000-8000-000000000001', 'SN-SEED-0001', 'North turnstile',
+        'active', now(), '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333'),
+       -- A second device, registered and never commissioned, so the cases that need a
+       -- device *not* in service have one and do not have to move the first.
+       ('11111111-1111-4111-8111-111111111111', '77777777-2000-4000-8000-000000000002',
+        '77777777-1000-4000-8000-000000000001',
+        'eeeeeeee-1000-4000-8000-000000000001', 'SN-SEED-0002', 'South turnstile',
+        'registered', NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333');
+INSERT INTO plt01.dev_device_capabilities
+    (tenant_id, device_id, capability, created_by, correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', '77777777-2000-4000-8000-000000000001',
+        'access.actuate', '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333'),
+       ('11111111-1111-4111-8111-111111111111', '77777777-2000-4000-8000-000000000001',
+        'telemetry', '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333'),
+       ('11111111-1111-4111-8111-111111111111', '77777777-2000-4000-8000-000000000002',
+        'access.actuate', '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333');
+INSERT INTO plt01.dev_certificates
+    (tenant_id, certificate_id, device_id, fingerprint, vault_ref, state, not_before,
+     not_after, issued_by, correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', '77777777-3000-4000-8000-000000000001',
+        '77777777-2000-4000-8000-000000000001',
+        '74c8cd3f464b4b3091e2a5d7f0c81b6e', 'vault:acme/gate/seed', 'active',
+        now() - interval '1 day', now() + interval '90 days',
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333');
+INSERT INTO plt01.dev_safety_profiles
+    (tenant_id, profile_id, device_id, profile, on_egress_path,
+     fire_release_is_independent, local_emergency_input, evidence_ref, door_description,
+     commissioned_by, correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', '77777777-4000-4000-8000-000000000001',
+        '77777777-2000-4000-8000-000000000001', 'fail_safe', true, true, true,
+        'uri:certs/fire-officer-seed', 'north entrance, single leaf',
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333');
+-- **All seven, because the unlock trigger now reads them.** Paragraph 4175's gate is in
+-- `dev_command_is_within_capability`, so a door with six of seven takes no unlock at all --
+-- which is the point, and which means the seed's one commissioned door needs the full set
+-- before any case or probe can write a valid one.
+INSERT INTO plt01.dev_commissioning_tests
+    (tenant_id, test_id, device_id, test_name, outcome, tested_by, correlation_id)
+SELECT '11111111-1111-4111-8111-111111111111',
+       ('77777777-5000-4000-8000-00000000000' || n)::uuid,
+       '77777777-2000-4000-8000-000000000001', t, 'passed',
+       '33333333-3333-4333-8333-333333333333',
+       '33333333-3333-4333-8333-333333333333'
+FROM (VALUES (1, 'power_loss'), (2, 'edge_agent_crash'), (3, 'controller_disconnect'),
+             (4, 'fire_alarm_input'), (5, 'emergency_unlock'), (6, 'recovery'),
+             (7, 'manual_override')) AS seven(n, t);
+INSERT INTO plt01.dev_firmware
+    (tenant_id, firmware_id, type_id, version, image_ref, image_digest, release_notes,
+     released_by, correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', '77777777-6000-4000-8000-000000000001',
+        '77777777-1000-4000-8000-000000000001', '2.0.0', 'oci:acme/gate:2.0.0',
+        '9f2b4c8e1a7d63540fe8b2c19a3d7e059f2b4c8e1a7d63540fe8b2c19a3d7e05',
+        'the seed release', '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333');
+INSERT INTO plt01.dev_commands
+    (tenant_id, command_id, device_id, action, payload_digest, expires_at,
+     idempotency_key, issued_by, correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', '77777777-7000-4000-8000-000000000001',
+        '77777777-2000-4000-8000-000000000001', 'reboot',
+        '0123456789abcdeffedcba9876543210fedcba9876543210fedcba9876543210',
+        now() + interval '1 hour', 'seed-command-1',
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333');
+INSERT INTO plt01.dev_policy_snapshots
+    (tenant_id, snapshot_id, device_id, revocation_epoch, content_digest, expires_at,
+     issued_by, correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', '77777777-8000-4000-8000-000000000001',
+        '77777777-2000-4000-8000-000000000001', 0,
+        '0123456789abcdeffedcba9876543210fedcba9876543210fedcba9876543210',
+        now() + interval '1 hour', '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333');
+INSERT INTO plt01.dev_health_reports
+    (tenant_id, report_id, device_id, latency_ms, error_count, storage_free_bytes,
+     agent_version, reported_by, correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', '77777777-9000-4000-8000-000000000001',
+        '77777777-2000-4000-8000-000000000001', 12, 0, 4000000000, '1.4.2',
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333');
+-- **A third type and two more devices, each of which a trigger branch needs.** A scanner
+-- that is published and in service is the device that is *not* an access point, which two
+-- branches refuse a safety record against; and a second turnstile that is active with no
+-- commissioning at all is the one an unlock command is refused for. Neither is reachable by
+-- re-using the first two: device 2 is out of service, so the state branch answers first.
+INSERT INTO plt01.dev_device_types
+    (tenant_id, type_id, type_code, vendor, model, kind, display_name, created_by,
+     correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', '77777777-1000-4000-8000-000000000003',
+        'ACME-SCAN-200', 'Acme', 'Scan 200', 'scanner', 'Acme Scan 200',
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333');
+INSERT INTO plt01.dev_type_capabilities
+    (tenant_id, type_id, capability, created_by, correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', '77777777-1000-4000-8000-000000000003',
+        'scan', '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333');
+UPDATE plt01.dev_device_types
+   SET status = 'published', published_at = now(),
+       published_by = '44444444-4444-4444-8444-444444444444',
+       publish_correlation_id = '33333333-3333-4333-8333-333333333333'
+ WHERE type_id = '77777777-1000-4000-8000-000000000003';
+INSERT INTO plt01.dev_devices
+    (tenant_id, device_id, type_id, location_id, serial_number, display_name, state,
+     activated_at, activated_by, activate_correlation_id, created_by, correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', '77777777-2000-4000-8000-000000000003',
+        '77777777-1000-4000-8000-000000000003',
+        'eeeeeeee-1000-4000-8000-000000000001', 'SN-SEED-0003', 'Reception scanner',
+        'active', now(), '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333'),
+       ('11111111-1111-4111-8111-111111111111', '77777777-2000-4000-8000-000000000004',
+        '77777777-1000-4000-8000-000000000001',
+        'eeeeeeee-1000-4000-8000-000000000001', 'SN-SEED-0004', 'West turnstile',
+        'active', now(), '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333'),
+       ('11111111-1111-4111-8111-111111111111', '77777777-2000-4000-8000-000000000005',
+        '77777777-1000-4000-8000-000000000001',
+        'eeeeeeee-1000-4000-8000-000000000001', 'SN-SEED-0005', 'East turnstile',
+        'active', now(), '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333');
+INSERT INTO plt01.dev_device_capabilities
+    (tenant_id, device_id, capability, created_by, correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', '77777777-2000-4000-8000-000000000003',
+        'scan', '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333'),
+       ('11111111-1111-4111-8111-111111111111', '77777777-2000-4000-8000-000000000004',
+        'access.actuate', '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333'),
+       ('11111111-1111-4111-8111-111111111111', '77777777-2000-4000-8000-000000000005',
+        'access.actuate', '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333');
+-- **A fifth door, commissioned and untested.** The unlock path now has two refusals -- no
+-- live safety profile, and fewer than seven passing tests -- and a probe proves whichever
+-- answers, so each needs a device the other's branch admits. Device 4 has neither; this one
+-- has the profile and none of the tests.
+INSERT INTO plt01.dev_safety_profiles
+    (tenant_id, profile_id, device_id, profile, on_egress_path,
+     fire_release_is_independent, local_emergency_input, evidence_ref, door_description,
+     commissioned_by, correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', '77777777-4000-4000-8000-000000000005',
+        '77777777-2000-4000-8000-000000000005', 'fail_safe', true, true, true,
+        'uri:certs/fire-officer-five', 'east entrance, untested',
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333');
+-- **And device 4 gets the same seven and no safety profile**, so the two refusals on the
+-- unlock path each have a device the other admits. Without this the probe for "no live
+-- safety profile" was answered by the commissioning branch -- the sweep caught it, because
+-- deleting the profile branch left the mutation detected by the definition pin alone.
+INSERT INTO plt01.dev_commissioning_tests
+    (tenant_id, test_id, device_id, test_name, outcome, tested_by, correlation_id)
+SELECT '11111111-1111-4111-8111-111111111111',
+       ('77777777-5000-4000-8000-00000000004' || n)::uuid,
+       '77777777-2000-4000-8000-000000000004', t, 'passed',
+       '33333333-3333-4333-8333-333333333333',
+       '33333333-3333-4333-8333-333333333333'
+FROM (VALUES (1, 'power_loss'), (2, 'edge_agent_crash'), (3, 'controller_disconnect'),
+             (4, 'fire_alarm_input'), (5, 'emergency_unlock'), (6, 'recovery'),
+             (7, 'manual_override')) AS seven(n, t);
+-- Tenant B holds one device type of its own, so a leaked predicate shows as a count above the
+-- expected one rather than as the zero an empty table would give anyway.
+SET LOCAL app.tenant_id = '22222222-2222-4222-8222-222222222222';
+INSERT INTO plt01.dev_device_types
+    (tenant_id, type_code, vendor, model, kind, display_name, created_by, correlation_id)
+VALUES ('22222222-2222-4222-8222-222222222222', 'RIVAL-GATE', 'Rival', 'Gate', 'turnstile',
+        'Rival Gate', '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333');
+COMMIT;
+-- ---------------------------------------------------------------- 99. dev_ isolates
+-- MOD-021's 12 tables, swept from the catalogue rather than from a list, for the reason
+-- every module since MOD-009 has: a per-table list has to be edited whenever a module adds a
+-- table, and that edit is the moment an unprotected one slips through. Both runtime roles are
+-- seated below, because PostgreSQL ORs permissive policies and a role nobody sits as is a
+-- role nothing is proved about.
+DO $$
+DECLARE
+    wrong text;
+    seen integer;
+BEGIN
+    SELECT count(*) INTO seen FROM pg_class t
+    WHERE t.relnamespace = 'plt01'::regnamespace AND t.relkind IN ('r', 'p')
+      AND t.relname LIKE 'dev\_%';
+    IF seen <> 12 THEN
+        RAISE EXCEPTION 'CHECK 99 FAILED: expected 12 MOD-021 tables, found %', seen;
+    END IF;
+    SELECT string_agg(t.relname, ', ' ORDER BY t.relname) INTO wrong
+    FROM pg_class t
+    WHERE t.relnamespace = 'plt01'::regnamespace AND t.relkind IN ('r', 'p')
+      AND t.relname LIKE 'dev\_%' AND NOT (t.relrowsecurity AND t.relforcerowsecurity);
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 99 FAILED: a MOD-021 table is missing ENABLE or FORCE RLS: %', wrong;
+    END IF;
+    SELECT string_agg(p.tablename || ' (' || p.n || ')', ', ' ORDER BY p.tablename)
+    INTO wrong
+    FROM (SELECT tablename, count(*) AS n FROM pg_policies
+          WHERE schemaname = 'plt01' AND permissive = 'PERMISSIVE'
+            AND tablename LIKE 'dev\_%'
+          GROUP BY tablename) p
+    WHERE p.n <> 1;
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 99 FAILED: a MOD-021 table has other than one permissive policy: %', wrong;
+    END IF;
+    SELECT string_agg(p.tablename, ', ' ORDER BY p.tablename) INTO wrong
+    FROM pg_policies p
+    WHERE p.schemaname = 'plt01' AND p.tablename LIKE 'dev\_%'
+      AND (p.qual IS DISTINCT FROM '(tenant_id = (NULLIF(current_setting(''app.tenant_id''::text, true),'
+             || ' ''''::text))::uuid)'
+           OR p.with_check IS DISTINCT FROM '(tenant_id = (NULLIF(current_setting(''app.tenant_id''::text, true),'
+             || ' ''''::text))::uuid)');
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 99 FAILED: a MOD-021 policy predicate is not the approved shape: %', wrong;
+    END IF;
+    SELECT string_agg(t.relname, ', ' ORDER BY t.relname) INTO wrong
+    FROM pg_class t
+    WHERE t.relnamespace = 'plt01'::regnamespace AND t.relkind IN ('r', 'p')
+      AND t.relname LIKE 'dev\_%'
+      AND pg_get_userbyid(t.relowner) <> 'veyro_cp_migrator';
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION 'CHECK 99 FAILED: a MOD-021 table is owned by something else: %',
+            wrong;
+    END IF;
+END $$;
+
+
+-- ------------------------------------------------- 100. MOD-021's parent references
+-- **Every foreign key as a set, compared both ways.** MOD-012's review found that sweeping
+-- one kind of reference and sampling the rest left two droppable in silence; a set comparison
+-- cannot miss one, and it fails when somebody adds one without saying so here.
+DO $$
+DECLARE
+    wrong text;
+BEGIN
+    WITH expected(rule) AS (VALUES
+        ('dev_certificates: FOREIGN KEY (tenant_id) REFERENCES plt01_platform.tenants(tenant_id)'),
+        ('dev_certificates: FOREIGN KEY (tenant_id, device_id) REFERENCES plt01.dev_devices(tenant_id, device_id)'),
+        ('dev_certificates: FOREIGN KEY (tenant_id, superseded_by) REFERENCES plt01.dev_certificates(tenant_id, certificate_id) DEFERRABLE INITIALLY DEFERRED'),
+        ('dev_commands: FOREIGN KEY (tenant_id) REFERENCES plt01_platform.tenants(tenant_id)'),
+        ('dev_commands: FOREIGN KEY (tenant_id, device_id) REFERENCES plt01.dev_devices(tenant_id, device_id)'),
+        ('dev_commissioning_tests: FOREIGN KEY (tenant_id) REFERENCES plt01_platform.tenants(tenant_id)'),
+        ('dev_commissioning_tests: FOREIGN KEY (tenant_id, device_id) REFERENCES plt01.dev_devices(tenant_id, device_id)'),
+        ('dev_device_capabilities: FOREIGN KEY (tenant_id) REFERENCES plt01_platform.tenants(tenant_id)'),
+        ('dev_device_capabilities: FOREIGN KEY (tenant_id, device_id) REFERENCES plt01.dev_devices(tenant_id, device_id)'),
+        ('dev_device_types: FOREIGN KEY (tenant_id) REFERENCES plt01_platform.tenants(tenant_id)'),
+        ('dev_devices: FOREIGN KEY (tenant_id) REFERENCES plt01_platform.tenants(tenant_id)'),
+        ('dev_devices: FOREIGN KEY (tenant_id, location_id) REFERENCES plt01.locations(tenant_id, location_id)'),
+        ('dev_devices: FOREIGN KEY (tenant_id, type_id) REFERENCES plt01.dev_device_types(tenant_id, type_id)'),
+        ('dev_firmware: FOREIGN KEY (tenant_id) REFERENCES plt01_platform.tenants(tenant_id)'),
+        ('dev_firmware: FOREIGN KEY (tenant_id, type_id) REFERENCES plt01.dev_device_types(tenant_id, type_id)'),
+        ('dev_health_reports: FOREIGN KEY (tenant_id) REFERENCES plt01_platform.tenants(tenant_id)'),
+        ('dev_health_reports: FOREIGN KEY (tenant_id, device_id) REFERENCES plt01.dev_devices(tenant_id, device_id)'),
+        ('dev_policy_snapshots: FOREIGN KEY (tenant_id) REFERENCES plt01_platform.tenants(tenant_id)'),
+        ('dev_policy_snapshots: FOREIGN KEY (tenant_id, device_id) REFERENCES plt01.dev_devices(tenant_id, device_id)'),
+        ('dev_safety_profiles: FOREIGN KEY (tenant_id) REFERENCES plt01_platform.tenants(tenant_id)'),
+        ('dev_safety_profiles: FOREIGN KEY (tenant_id, device_id) REFERENCES plt01.dev_devices(tenant_id, device_id)'),
+        ('dev_safety_profiles: FOREIGN KEY (tenant_id, superseded_by) REFERENCES plt01.dev_safety_profiles(tenant_id, profile_id) DEFERRABLE INITIALLY DEFERRED'),
+        ('dev_sync_conflicts: FOREIGN KEY (tenant_id) REFERENCES plt01_platform.tenants(tenant_id)'),
+        ('dev_sync_conflicts: FOREIGN KEY (tenant_id, device_id) REFERENCES plt01.dev_devices(tenant_id, device_id)'),
+        ('dev_type_capabilities: FOREIGN KEY (tenant_id) REFERENCES plt01_platform.tenants(tenant_id)'),
+        ('dev_type_capabilities: FOREIGN KEY (tenant_id, type_id) REFERENCES plt01.dev_device_types(tenant_id, type_id)')
+    ), actual(rule) AS (
+        SELECT t.relname || ': ' || pg_get_constraintdef(c.oid)
+        FROM pg_constraint c JOIN pg_class t ON t.oid = c.conrelid
+        WHERE t.relnamespace = 'plt01'::regnamespace AND t.relname LIKE 'dev\_%'
+          AND c.contype = 'f'
+    )
+    SELECT string_agg(rule, '; ' ORDER BY rule) INTO wrong
+    FROM ((SELECT rule FROM expected EXCEPT SELECT rule FROM actual)
+          UNION ALL
+          (SELECT rule FROM actual EXCEPT SELECT rule FROM expected)) AS differing;
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 100 FAILED: MOD-021 foreign keys differ from the expected set: %', wrong;
+    END IF;
+    -- And the tenant-leading primary key, asserted with NOT EXISTS first: an inner join
+    -- means a table with no primary key contributes no row and is never flagged, which is
+    -- how thirteen of MOD-014's sixteen were droppable in silence.
+    SELECT string_agg(t.relname, ', ' ORDER BY t.relname) INTO wrong
+    FROM pg_class t
+    WHERE t.relnamespace = 'plt01'::regnamespace AND t.relkind IN ('r', 'p')
+      AND t.relname LIKE 'dev\_%'
+      AND NOT EXISTS (SELECT 1 FROM pg_index i
+                      WHERE i.indrelid = t.oid AND i.indisprimary);
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION 'CHECK 100 FAILED: a MOD-021 table has no primary key: %', wrong;
+    END IF;
+    SELECT string_agg(t.relname, ', ' ORDER BY t.relname) INTO wrong
+    FROM pg_class t JOIN pg_index i ON i.indrelid = t.oid AND i.indisprimary
+    JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = i.indkey[0]
+    WHERE t.relnamespace = 'plt01'::regnamespace AND t.relname LIKE 'dev\_%'
+      AND a.attname <> 'tenant_id';
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 100 FAILED: a MOD-021 primary key does not lead with tenant_id: %', wrong;
+    END IF;
+END $$;
+
+
+-- ----------------------------------------- 101. MOD-021's columns and their nullability
+-- **Both as sets.** A new column is how a secret gets a home, and a dropped NOT NULL is how a
+-- sibling CHECK stops biting (it evaluates to NULL and passes) and how MATCH SIMPLE switches
+-- off a tenant-carrying composite foreign key. Nothing in this suite read `attnotnull` until
+-- MOD-016's sweep found 84 of 431 mutations uncaught.
+DO $$
+DECLARE
+    wrong text;
+BEGIN
+    WITH expected(tbl) AS (VALUES
+        ('dev_certificates: certificate_id,correlation_id,device_id,fingerprint,issued_at,issued_by,not_after,not_before,revoke_correlation_id,revoke_reason,revoked_at,revoked_by,state,superseded_at,superseded_by,tenant_id,vault_ref'),
+        ('dev_commands: acknowledged_at,action,arguments,command_id,correlation_id,delivered_at,delivered_by,delivery_correlation_id,device_id,expires_at,idempotency_key,issued_at,issued_by,outcome_detail,payload_digest,settle_correlation_id,settled_at,settled_by,signature_ref,state,tenant_id'),
+        ('dev_commissioning_tests: correlation_id,detail,device_id,outcome,tenant_id,test_id,test_name,tested_at,tested_by'),
+        ('dev_device_capabilities: capability,correlation_id,created_at,created_by,device_id,tenant_id'),
+        ('dev_device_types: correlation_id,created_at,created_by,display_name,kind,model,publish_correlation_id,published_at,published_by,retire_correlation_id,retire_reason,retired_at,retired_by,status,tenant_id,type_code,type_id,vendor'),
+        ('dev_devices: activate_correlation_id,activated_at,activated_by,config,correlation_id,created_at,created_by,device_id,display_name,last_seen_at,location_id,quarantine_correlation_id,quarantine_reason,quarantined_at,quarantined_by,reactivate_correlation_id,reactivated_at,reactivated_by,retire_correlation_id,retire_reason,retired_at,retired_by,revocation_epoch,serial_number,state,tenant_id,type_id,version'),
+        ('dev_firmware: correlation_id,firmware_id,image_digest,image_ref,release_notes,released_at,released_by,status,tenant_id,type_id,version,withdraw_correlation_id,withdraw_reason,withdrawn_at,withdrawn_by'),
+        ('dev_health_reports: agent_version,correlation_id,device_id,error_count,latency_ms,peripherals,report_id,reported_at,reported_by,storage_free_bytes,tenant_id'),
+        ('dev_policy_snapshots: content_digest,correlation_id,device_id,expires_at,issued_at,issued_by,revocation_epoch,signature_ref,snapshot_id,tenant_id'),
+        ('dev_safety_profiles: commissioned_at,commissioned_by,correlation_id,device_id,door_description,evidence_ref,fire_release_is_independent,local_emergency_input,on_egress_path,profile,profile_id,supersede_correlation_id,superseded_at,superseded_by,tenant_id'),
+        ('dev_sync_conflicts: conflict_id,correlation_id,detail,device_id,local_digest,remote_digest,reported_at,reported_by,tenant_id'),
+        ('dev_type_capabilities: capability,correlation_id,created_at,created_by,tenant_id,type_id')
+    ), actual(tbl) AS (
+        SELECT t.relname || ': ' || string_agg(a.attname, ',' ORDER BY a.attname)
+        FROM pg_attribute a JOIN pg_class t ON t.oid = a.attrelid
+        WHERE t.relnamespace = 'plt01'::regnamespace AND t.relkind IN ('r', 'p')
+          AND t.relname LIKE 'dev\_%' AND a.attnum > 0 AND NOT a.attisdropped
+        GROUP BY t.relname
+    )
+    SELECT string_agg(tbl, '; ' ORDER BY tbl) INTO wrong
+    FROM ((SELECT tbl FROM expected EXCEPT SELECT tbl FROM actual)
+          UNION ALL
+          (SELECT tbl FROM actual EXCEPT SELECT tbl FROM expected)) AS differing;
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 101 FAILED: MOD-021 column lists differ from the pinned set: %', wrong;
+    END IF;
+    WITH expected(tbl) AS (VALUES
+        ('dev_certificates: certificate_id,correlation_id,device_id,fingerprint,issued_at,issued_by,not_after,not_before,state,tenant_id,vault_ref'),
+        ('dev_commands: action,arguments,command_id,correlation_id,device_id,expires_at,idempotency_key,issued_at,issued_by,payload_digest,state,tenant_id'),
+        ('dev_commissioning_tests: correlation_id,device_id,outcome,tenant_id,test_id,test_name,tested_at,tested_by'),
+        ('dev_device_capabilities: capability,correlation_id,created_at,created_by,device_id,tenant_id'),
+        ('dev_device_types: correlation_id,created_at,created_by,display_name,kind,model,status,tenant_id,type_code,type_id,vendor'),
+        ('dev_devices: config,correlation_id,created_at,created_by,device_id,display_name,location_id,revocation_epoch,serial_number,state,tenant_id,type_id,version'),
+        ('dev_firmware: correlation_id,firmware_id,image_digest,image_ref,release_notes,released_at,released_by,status,tenant_id,type_id,version'),
+        ('dev_health_reports: agent_version,correlation_id,device_id,error_count,latency_ms,peripherals,report_id,reported_at,reported_by,storage_free_bytes,tenant_id'),
+        ('dev_policy_snapshots: content_digest,correlation_id,device_id,expires_at,issued_at,issued_by,revocation_epoch,snapshot_id,tenant_id'),
+        ('dev_safety_profiles: commissioned_at,commissioned_by,correlation_id,device_id,door_description,evidence_ref,fire_release_is_independent,local_emergency_input,on_egress_path,profile,profile_id,tenant_id'),
+        ('dev_sync_conflicts: conflict_id,correlation_id,detail,device_id,local_digest,remote_digest,reported_at,reported_by,tenant_id'),
+        ('dev_type_capabilities: capability,correlation_id,created_at,created_by,tenant_id,type_id')
+    ), actual(tbl) AS (
+        SELECT t.relname || ': ' || string_agg(a.attname, ',' ORDER BY a.attname)
+        FROM pg_attribute a JOIN pg_class t ON t.oid = a.attrelid
+        WHERE t.relnamespace = 'plt01'::regnamespace AND t.relkind IN ('r', 'p')
+          AND t.relname LIKE 'dev\_%' AND a.attnum > 0 AND NOT a.attisdropped
+          AND a.attnotnull
+        GROUP BY t.relname
+    )
+    SELECT string_agg(tbl, '; ' ORDER BY tbl) INTO wrong
+    FROM ((SELECT tbl FROM expected EXCEPT SELECT tbl FROM actual)
+          UNION ALL
+          (SELECT tbl FROM actual EXCEPT SELECT tbl FROM expected)) AS differing;
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 101 FAILED: MOD-021 nullability differs from the pinned set: %', wrong;
+    END IF;
+    -- **And no column names a secret.** `vault_ref`, `signature_ref` and `image_ref` are
+    -- locators by constraint; the control they rest on is that there is no column a key, a
+    -- certificate body or a signature could go in, and an absence is exactly what a later
+    -- migration adds back. Swept over the whole of `plt01`, not over `dev_` names: a
+    -- reviewer created `plt01.class_rosters` against MOD-019 and watched every check pass.
+    SELECT string_agg(t.relname || '.' || a.attname, ', ') INTO wrong
+    FROM pg_attribute a JOIN pg_class t ON t.oid = a.attrelid
+    WHERE t.relnamespace = 'plt01'::regnamespace
+      AND a.attnum > 0 AND NOT a.attisdropped
+      AND a.attname IN ('private_key', 'privkey', 'certificate_pem', 'cert_pem',
+                        'secret_key', 'signing_key', 'signature', 'shared_secret',
+                        'firmware_image', 'image_blob', 'device_online', 'is_online',
+                        'online_status');
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 101 FAILED: a plt01 table grew a key, a signature or a cached online '
+            'flag: %', wrong;
+    END IF;
+END $$;
+
+
+-- ------------------------------------------------------- 102. MOD-021's privileges
+-- **Per table and per role, read through `has_column_privilege`.** `information_schema`
+-- views are filtered to what the current user can see, so a check running as one role proves
+-- nothing about the other -- and `pg_class.relacl` holds table-level grants only, so a
+-- column-level widening is invisible to a check that reads only it. MOD-010 lost ten
+-- grant-widenings to exactly that.
+DO $$
+DECLARE
+    wrong text;
+BEGIN
+    WITH expected(rule) AS (VALUES
+        ('veyro_cp_app SELECT dev_certificates: certificate_id,correlation_id,device_id,fingerprint,issued_at,issued_by,not_after,not_before,revoke_correlation_id,revoke_reason,revoked_at,revoked_by,state,superseded_at,superseded_by,tenant_id,vault_ref'),
+        ('veyro_cp_app SELECT dev_commands: acknowledged_at,action,arguments,command_id,correlation_id,delivered_at,delivered_by,delivery_correlation_id,device_id,expires_at,idempotency_key,issued_at,issued_by,outcome_detail,payload_digest,settle_correlation_id,settled_at,settled_by,signature_ref,state,tenant_id'),
+        ('veyro_cp_app SELECT dev_commissioning_tests: correlation_id,detail,device_id,outcome,tenant_id,test_id,test_name,tested_at,tested_by'),
+        ('veyro_cp_app SELECT dev_device_capabilities: capability,correlation_id,created_at,created_by,device_id,tenant_id'),
+        ('veyro_cp_app SELECT dev_device_types: correlation_id,created_at,created_by,display_name,kind,model,publish_correlation_id,published_at,published_by,retire_correlation_id,retire_reason,retired_at,retired_by,status,tenant_id,type_code,type_id,vendor'),
+        ('veyro_cp_app SELECT dev_devices: activate_correlation_id,activated_at,activated_by,config,correlation_id,created_at,created_by,device_id,display_name,last_seen_at,location_id,quarantine_correlation_id,quarantine_reason,quarantined_at,quarantined_by,reactivate_correlation_id,reactivated_at,reactivated_by,retire_correlation_id,retire_reason,retired_at,retired_by,revocation_epoch,serial_number,state,tenant_id,type_id,version'),
+        ('veyro_cp_app SELECT dev_firmware: correlation_id,firmware_id,image_digest,image_ref,release_notes,released_at,released_by,status,tenant_id,type_id,version,withdraw_correlation_id,withdraw_reason,withdrawn_at,withdrawn_by'),
+        ('veyro_cp_app SELECT dev_health_reports: agent_version,correlation_id,device_id,error_count,latency_ms,peripherals,report_id,reported_at,reported_by,storage_free_bytes,tenant_id'),
+        ('veyro_cp_app SELECT dev_policy_snapshots: content_digest,correlation_id,device_id,expires_at,issued_at,issued_by,revocation_epoch,signature_ref,snapshot_id,tenant_id'),
+        ('veyro_cp_app SELECT dev_safety_profiles: commissioned_at,commissioned_by,correlation_id,device_id,door_description,evidence_ref,fire_release_is_independent,local_emergency_input,on_egress_path,profile,profile_id,supersede_correlation_id,superseded_at,superseded_by,tenant_id'),
+        ('veyro_cp_app SELECT dev_sync_conflicts: conflict_id,correlation_id,detail,device_id,local_digest,remote_digest,reported_at,reported_by,tenant_id'),
+        ('veyro_cp_app SELECT dev_type_capabilities: capability,correlation_id,created_at,created_by,tenant_id,type_id'),
+        ('veyro_cp_app INSERT dev_certificates: certificate_id,correlation_id,device_id,fingerprint,issued_at,issued_by,not_after,not_before,revoke_correlation_id,revoke_reason,revoked_at,revoked_by,state,superseded_at,superseded_by,tenant_id,vault_ref'),
+        ('veyro_cp_app INSERT dev_commands: acknowledged_at,action,arguments,command_id,correlation_id,delivered_at,delivered_by,delivery_correlation_id,device_id,expires_at,idempotency_key,issued_at,issued_by,outcome_detail,payload_digest,settle_correlation_id,settled_at,settled_by,signature_ref,state,tenant_id'),
+        ('veyro_cp_app INSERT dev_commissioning_tests: correlation_id,detail,device_id,outcome,tenant_id,test_id,test_name,tested_at,tested_by'),
+        ('veyro_cp_app INSERT dev_device_capabilities: capability,correlation_id,created_at,created_by,device_id,tenant_id'),
+        ('veyro_cp_app INSERT dev_device_types: correlation_id,created_at,created_by,display_name,kind,model,publish_correlation_id,published_at,published_by,retire_correlation_id,retire_reason,retired_at,retired_by,status,tenant_id,type_code,type_id,vendor'),
+        ('veyro_cp_app INSERT dev_devices: activate_correlation_id,activated_at,activated_by,config,correlation_id,created_at,created_by,device_id,display_name,last_seen_at,location_id,quarantine_correlation_id,quarantine_reason,quarantined_at,quarantined_by,reactivate_correlation_id,reactivated_at,reactivated_by,retire_correlation_id,retire_reason,retired_at,retired_by,revocation_epoch,serial_number,state,tenant_id,type_id,version'),
+        ('veyro_cp_app INSERT dev_firmware: correlation_id,firmware_id,image_digest,image_ref,release_notes,released_at,released_by,status,tenant_id,type_id,version,withdraw_correlation_id,withdraw_reason,withdrawn_at,withdrawn_by'),
+        ('veyro_cp_app INSERT dev_health_reports: agent_version,correlation_id,device_id,error_count,latency_ms,peripherals,report_id,reported_at,reported_by,storage_free_bytes,tenant_id'),
+        ('veyro_cp_app INSERT dev_policy_snapshots: content_digest,correlation_id,device_id,expires_at,issued_at,issued_by,revocation_epoch,signature_ref,snapshot_id,tenant_id'),
+        ('veyro_cp_app INSERT dev_safety_profiles: commissioned_at,commissioned_by,correlation_id,device_id,door_description,evidence_ref,fire_release_is_independent,local_emergency_input,on_egress_path,profile,profile_id,supersede_correlation_id,superseded_at,superseded_by,tenant_id'),
+        ('veyro_cp_app INSERT dev_sync_conflicts: conflict_id,correlation_id,detail,device_id,local_digest,remote_digest,reported_at,reported_by,tenant_id'),
+        ('veyro_cp_app INSERT dev_type_capabilities: capability,correlation_id,created_at,created_by,tenant_id,type_id'),
+        ('veyro_cp_app UPDATE dev_certificates: revoke_correlation_id,revoke_reason,revoked_at,revoked_by,state,superseded_at,superseded_by'),
+        ('veyro_cp_app UPDATE dev_commands: acknowledged_at,delivered_at,delivered_by,delivery_correlation_id,outcome_detail,settle_correlation_id,settled_at,settled_by,signature_ref,state'),
+        ('veyro_cp_app UPDATE dev_device_types: display_name,model,publish_correlation_id,published_at,published_by,retire_correlation_id,retire_reason,retired_at,retired_by,status,vendor'),
+        ('veyro_cp_app UPDATE dev_devices: activate_correlation_id,activated_at,activated_by,config,display_name,last_seen_at,quarantine_correlation_id,quarantine_reason,quarantined_at,quarantined_by,reactivate_correlation_id,reactivated_at,reactivated_by,retire_correlation_id,retire_reason,retired_at,retired_by,revocation_epoch,state,version'),
+        ('veyro_cp_app UPDATE dev_firmware: release_notes,status,withdraw_correlation_id,withdraw_reason,withdrawn_at,withdrawn_by'),
+        ('veyro_cp_app UPDATE dev_safety_profiles: supersede_correlation_id,superseded_at,superseded_by'),
+        ('veyro_cp_worker SELECT dev_certificates: certificate_id,correlation_id,device_id,fingerprint,issued_at,issued_by,not_after,not_before,revoke_correlation_id,revoke_reason,revoked_at,revoked_by,state,superseded_at,superseded_by,tenant_id,vault_ref'),
+        ('veyro_cp_worker SELECT dev_commands: acknowledged_at,action,arguments,command_id,correlation_id,delivered_at,delivered_by,delivery_correlation_id,device_id,expires_at,idempotency_key,issued_at,issued_by,outcome_detail,payload_digest,settle_correlation_id,settled_at,settled_by,signature_ref,state,tenant_id'),
+        ('veyro_cp_worker SELECT dev_commissioning_tests: correlation_id,detail,device_id,outcome,tenant_id,test_id,test_name,tested_at,tested_by'),
+        ('veyro_cp_worker SELECT dev_device_capabilities: capability,correlation_id,created_at,created_by,device_id,tenant_id'),
+        ('veyro_cp_worker SELECT dev_device_types: correlation_id,created_at,created_by,display_name,kind,model,publish_correlation_id,published_at,published_by,retire_correlation_id,retire_reason,retired_at,retired_by,status,tenant_id,type_code,type_id,vendor'),
+        ('veyro_cp_worker SELECT dev_devices: activate_correlation_id,activated_at,activated_by,config,correlation_id,created_at,created_by,device_id,display_name,last_seen_at,location_id,quarantine_correlation_id,quarantine_reason,quarantined_at,quarantined_by,reactivate_correlation_id,reactivated_at,reactivated_by,retire_correlation_id,retire_reason,retired_at,retired_by,revocation_epoch,serial_number,state,tenant_id,type_id,version'),
+        ('veyro_cp_worker SELECT dev_firmware: correlation_id,firmware_id,image_digest,image_ref,release_notes,released_at,released_by,status,tenant_id,type_id,version,withdraw_correlation_id,withdraw_reason,withdrawn_at,withdrawn_by'),
+        ('veyro_cp_worker SELECT dev_health_reports: agent_version,correlation_id,device_id,error_count,latency_ms,peripherals,report_id,reported_at,reported_by,storage_free_bytes,tenant_id'),
+        ('veyro_cp_worker SELECT dev_policy_snapshots: content_digest,correlation_id,device_id,expires_at,issued_at,issued_by,revocation_epoch,signature_ref,snapshot_id,tenant_id'),
+        ('veyro_cp_worker SELECT dev_safety_profiles: commissioned_at,commissioned_by,correlation_id,device_id,door_description,evidence_ref,fire_release_is_independent,local_emergency_input,on_egress_path,profile,profile_id,supersede_correlation_id,superseded_at,superseded_by,tenant_id'),
+        ('veyro_cp_worker SELECT dev_sync_conflicts: conflict_id,correlation_id,detail,device_id,local_digest,remote_digest,reported_at,reported_by,tenant_id'),
+        ('veyro_cp_worker SELECT dev_type_capabilities: capability,correlation_id,created_at,created_by,tenant_id,type_id'),
+        ('veyro_cp_worker INSERT dev_certificates: certificate_id,correlation_id,device_id,fingerprint,issued_at,issued_by,not_after,not_before,revoke_correlation_id,revoke_reason,revoked_at,revoked_by,state,superseded_at,superseded_by,tenant_id,vault_ref'),
+        ('veyro_cp_worker INSERT dev_commands: acknowledged_at,action,arguments,command_id,correlation_id,delivered_at,delivered_by,delivery_correlation_id,device_id,expires_at,idempotency_key,issued_at,issued_by,outcome_detail,payload_digest,settle_correlation_id,settled_at,settled_by,signature_ref,state,tenant_id'),
+        ('veyro_cp_worker INSERT dev_commissioning_tests: correlation_id,detail,device_id,outcome,tenant_id,test_id,test_name,tested_at,tested_by'),
+        ('veyro_cp_worker INSERT dev_device_capabilities: capability,correlation_id,created_at,created_by,device_id,tenant_id'),
+        ('veyro_cp_worker INSERT dev_device_types: correlation_id,created_at,created_by,display_name,kind,model,publish_correlation_id,published_at,published_by,retire_correlation_id,retire_reason,retired_at,retired_by,status,tenant_id,type_code,type_id,vendor'),
+        ('veyro_cp_worker INSERT dev_devices: activate_correlation_id,activated_at,activated_by,config,correlation_id,created_at,created_by,device_id,display_name,last_seen_at,location_id,quarantine_correlation_id,quarantine_reason,quarantined_at,quarantined_by,reactivate_correlation_id,reactivated_at,reactivated_by,retire_correlation_id,retire_reason,retired_at,retired_by,revocation_epoch,serial_number,state,tenant_id,type_id,version'),
+        ('veyro_cp_worker INSERT dev_firmware: correlation_id,firmware_id,image_digest,image_ref,release_notes,released_at,released_by,status,tenant_id,type_id,version,withdraw_correlation_id,withdraw_reason,withdrawn_at,withdrawn_by'),
+        ('veyro_cp_worker INSERT dev_health_reports: agent_version,correlation_id,device_id,error_count,latency_ms,peripherals,report_id,reported_at,reported_by,storage_free_bytes,tenant_id'),
+        ('veyro_cp_worker INSERT dev_policy_snapshots: content_digest,correlation_id,device_id,expires_at,issued_at,issued_by,revocation_epoch,signature_ref,snapshot_id,tenant_id'),
+        ('veyro_cp_worker INSERT dev_safety_profiles: commissioned_at,commissioned_by,correlation_id,device_id,door_description,evidence_ref,fire_release_is_independent,local_emergency_input,on_egress_path,profile,profile_id,supersede_correlation_id,superseded_at,superseded_by,tenant_id'),
+        ('veyro_cp_worker INSERT dev_sync_conflicts: conflict_id,correlation_id,detail,device_id,local_digest,remote_digest,reported_at,reported_by,tenant_id'),
+        ('veyro_cp_worker INSERT dev_type_capabilities: capability,correlation_id,created_at,created_by,tenant_id,type_id'),
+        ('veyro_cp_worker UPDATE dev_certificates: revoke_correlation_id,revoke_reason,revoked_at,revoked_by,state,superseded_at,superseded_by'),
+        ('veyro_cp_worker UPDATE dev_commands: acknowledged_at,delivered_at,delivered_by,delivery_correlation_id,outcome_detail,settle_correlation_id,settled_at,settled_by,signature_ref,state'),
+        ('veyro_cp_worker UPDATE dev_device_types: display_name,model,publish_correlation_id,published_at,published_by,retire_correlation_id,retire_reason,retired_at,retired_by,status,vendor'),
+        ('veyro_cp_worker UPDATE dev_devices: activate_correlation_id,activated_at,activated_by,config,display_name,last_seen_at,quarantine_correlation_id,quarantine_reason,quarantined_at,quarantined_by,reactivate_correlation_id,reactivated_at,reactivated_by,retire_correlation_id,retire_reason,retired_at,retired_by,revocation_epoch,state,version'),
+        ('veyro_cp_worker UPDATE dev_firmware: release_notes,status,withdraw_correlation_id,withdraw_reason,withdrawn_at,withdrawn_by'),
+        ('veyro_cp_worker UPDATE dev_safety_profiles: supersede_correlation_id,superseded_at,superseded_by')
+    ), actual(rule) AS (
+        SELECT r.rolname || ' ' || p.priv || ' ' || t.relname || ': '
+               || string_agg(a.attname, ',' ORDER BY a.attname)
+        FROM pg_attribute a
+        JOIN pg_class t ON t.oid = a.attrelid
+        CROSS JOIN (VALUES ('veyro_cp_app'), ('veyro_cp_worker')) AS r(rolname)
+        CROSS JOIN (VALUES ('SELECT'), ('INSERT'), ('UPDATE')) AS p(priv)
+        WHERE t.relnamespace = 'plt01'::regnamespace AND t.relkind IN ('r', 'p')
+          AND t.relname LIKE 'dev\_%' AND a.attnum > 0 AND NOT a.attisdropped
+          AND has_column_privilege(r.rolname, a.attrelid, a.attnum, p.priv)
+        GROUP BY r.rolname, p.priv, t.relname
+    )
+    SELECT string_agg(rule, '; ' ORDER BY rule) INTO wrong
+    FROM ((SELECT rule FROM expected EXCEPT SELECT rule FROM actual)
+          UNION ALL
+          (SELECT rule FROM actual EXCEPT SELECT rule FROM expected)) AS differing;
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 102 FAILED: MOD-021 column grants differ from the pinned set: %', wrong;
+    END IF;
+    -- No DELETE, TRUNCATE or REFERENCES for any runtime role. A device's history is what
+    -- answers "what was driving that door in March", and a command's is the only record that
+    -- somebody told a door to open.
+    SELECT string_agg(t.relname || ' ' || r.rolname || ' ' || p.priv, ', ') INTO wrong
+    FROM pg_class t
+    CROSS JOIN (VALUES ('veyro_cp_app'), ('veyro_cp_worker')) AS r(rolname)
+    CROSS JOIN (VALUES ('DELETE'), ('TRUNCATE'), ('REFERENCES')) AS p(priv)
+    WHERE t.relnamespace = 'plt01'::regnamespace AND t.relkind IN ('r', 'p')
+      AND t.relname LIKE 'dev\_%'
+      AND has_table_privilege(r.rolname, t.oid, p.priv);
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 102 FAILED: a runtime role holds DELETE, TRUNCATE or REFERENCES: %', wrong;
+    END IF;
+    SELECT string_agg(t.relname || '.' || a.attname, ', ') INTO wrong
+    FROM pg_attribute a JOIN pg_class t ON t.oid = a.attrelid
+    WHERE t.relnamespace = 'plt01'::regnamespace AND t.relkind IN ('r', 'p')
+      AND t.relname LIKE 'dev\_%' AND a.attnum > 0 AND NOT a.attisdropped
+      AND has_column_privilege('public', a.attrelid, a.attnum, 'SELECT');
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 102 FAILED: a MOD-021 column carries a PUBLIC grant: %', wrong;
+    END IF;
+    -- **The trigger functions' own properties.** Nothing in this suite read `proconfig`,
+    -- `prosecdef` or `tgenabled` until MOD-020's review removed a pinned `search_path` and
+    -- granted PUBLIC execute with every check passing. `md5(prosrc)` cannot see `proconfig`,
+    -- and DISABLE TRIGGER leaves the catalogue row in place, so the definition pin is blind
+    -- to both.
+    SELECT string_agg(p.proname, ', ' ORDER BY p.proname) INTO wrong
+    FROM pg_proc p
+    WHERE p.pronamespace = 'plt01'::regnamespace AND p.proname LIKE 'dev\_%'
+      AND NOT ('search_path=pg_catalog, public' = ANY (coalesce(p.proconfig, '{}')));
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 102 FAILED: a MOD-021 trigger function has no pinned search_path: %',
+            wrong;
+    END IF;
+    SELECT string_agg(p.proname, ', ' ORDER BY p.proname) INTO wrong
+    FROM pg_proc p
+    WHERE p.pronamespace = 'plt01'::regnamespace AND p.proname LIKE 'dev\_%'
+      AND (p.prosecdef OR has_function_privilege('public', p.oid, 'EXECUTE'));
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 102 FAILED: a MOD-021 trigger function is SECURITY DEFINER or executable '
+            'by PUBLIC: %', wrong;
+    END IF;
+    SELECT string_agg(t.relname || '.' || g.tgname, ', ' ORDER BY g.tgname) INTO wrong
+    FROM pg_trigger g JOIN pg_class t ON t.oid = g.tgrelid
+    WHERE t.relnamespace = 'plt01'::regnamespace AND t.relname LIKE 'dev\_%'
+      AND NOT g.tgisinternal AND g.tgenabled <> 'O';
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION 'CHECK 102 FAILED: a MOD-021 trigger is disabled: %', wrong;
+    END IF;
+END $$;
+
+-- ------------------------------------------- 103. MOD-021's constraints, one at a time
+-- **108 cases, each isolating.** Every row sets every *other* column so that it violates
+-- exactly one rule: a case that passes because a sibling fired first proves nothing about the
+-- one it names, which three modules in a row shipped past a careful read and which only a
+-- mutation sweep finds.
+--
+-- **A blank case uses a tab**, not spaces: `btrim` strips only spaces, so a case made of
+-- spaces cannot tell `~ '[^[:space:]]'` from the `length(btrim(x)) > 0` this repository
+-- banned across 118 constraints.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+BEGIN
+    BEGIN
+        INSERT INTO plt01.dev_device_types
+            (correlation_id, created_by, display_name, kind, model, status, tenant_id, type_code, vendor)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Case type',
+                'scanner',
+                'M',
+                'live',
+                '11111111-1111-4111-8111-111111111111',
+                'CASE-TYPE',
+                'Acme');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a device type with an unknown status';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_device_types
+            (correlation_id, created_by, display_name, kind, model, status, tenant_id, type_code, vendor)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Case type',
+                'spaceship',
+                'M',
+                'draft',
+                '11111111-1111-4111-8111-111111111111',
+                'CASE-TYPE',
+                'Acme');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a device type that is not a kind of device';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_device_types
+            (correlation_id, created_by, display_name, kind, model, status, tenant_id, type_code, vendor)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Case type',
+                'scanner',
+                'M',
+                'draft',
+                '11111111-1111-4111-8111-111111111111',
+                E'\t',
+                'Acme');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a device type whose code is whitespace';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_device_types
+            (correlation_id, created_by, display_name, kind, model, status, tenant_id, type_code, vendor)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Case type',
+                'scanner',
+                'M',
+                'draft',
+                '11111111-1111-4111-8111-111111111111',
+                'CASE-TYPE',
+                E'\t');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a device type with no vendor';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_device_types
+            (correlation_id, created_by, display_name, kind, model, status, tenant_id, type_code, vendor)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Case type',
+                'scanner',
+                E'\t',
+                'draft',
+                '11111111-1111-4111-8111-111111111111',
+                'CASE-TYPE',
+                'Acme');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a device type with no model';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_device_types
+            (correlation_id, created_by, display_name, kind, model, status, tenant_id, type_code, vendor)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                E'\t',
+                'scanner',
+                'M',
+                'draft',
+                '11111111-1111-4111-8111-111111111111',
+                'CASE-TYPE',
+                'Acme');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a device type with no name';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_device_types
+            (correlation_id, created_by, display_name, kind, model, publish_correlation_id, published_at, status, tenant_id, type_code, vendor)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Case type',
+                'scanner',
+                'M',
+                '33333333-3333-4333-8333-333333333333',
+                now(),
+                'published',
+                '11111111-1111-4111-8111-111111111111',
+                'CASE-TYPE',
+                'Acme');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a device type published by nobody';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_device_types
+            (correlation_id, created_by, display_name, kind, model, published_at, published_by, status, tenant_id, type_code, vendor)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Case type',
+                'scanner',
+                'M',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'published',
+                '11111111-1111-4111-8111-111111111111',
+                'CASE-TYPE',
+                'Acme');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a device type publication with no correlation';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_device_types
+            (correlation_id, created_by, display_name, kind, model, status, tenant_id, type_code, vendor)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Case type',
+                'scanner',
+                'M',
+                'published',
+                '11111111-1111-4111-8111-111111111111',
+                'CASE-TYPE',
+                'Acme');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a device type published with no publication';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_device_types
+            (correlation_id, created_by, display_name, kind, model, retire_correlation_id, retire_reason, retired_at, status, tenant_id, type_code, vendor)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Case type',
+                'scanner',
+                'M',
+                '33333333-3333-4333-8333-333333333333',
+                'x',
+                now(),
+                'retired',
+                '11111111-1111-4111-8111-111111111111',
+                'CASE-TYPE',
+                'Acme');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a device type retired by nobody';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_device_types
+            (correlation_id, created_by, display_name, kind, model, retire_correlation_id, retire_reason, retired_at, retired_by, status, tenant_id, type_code, vendor)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Case type',
+                'scanner',
+                'M',
+                '33333333-3333-4333-8333-333333333333',
+                E'\t',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'retired',
+                '11111111-1111-4111-8111-111111111111',
+                'CASE-TYPE',
+                'Acme');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a device type retired for no stated reason';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_device_types
+            (correlation_id, created_by, display_name, kind, model, retire_reason, retired_at, retired_by, status, tenant_id, type_code, vendor)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Case type',
+                'scanner',
+                'M',
+                'x',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'retired',
+                '11111111-1111-4111-8111-111111111111',
+                'CASE-TYPE',
+                'Acme');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a device type retirement with no correlation';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_device_types
+            (correlation_id, created_by, display_name, kind, model, status, tenant_id, type_code, vendor)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Case type',
+                'scanner',
+                'M',
+                'retired',
+                '11111111-1111-4111-8111-111111111111',
+                'CASE-TYPE',
+                'Acme');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a device type retired with no retirement';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_device_types
+            (correlation_id, created_by, display_name, kind, model, retire_correlation_id, retire_reason, retired_at, retired_by, status, tenant_id, type_code, vendor)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Case type',
+                'scanner',
+                'M',
+                '33333333-3333-4333-8333-333333333333',
+                'x',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'draft',
+                '11111111-1111-4111-8111-111111111111',
+                'CASE-TYPE',
+                'Acme');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a retirement recorded on a type that is not retired';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_device_types
+            (correlation_id, created_by, display_name, kind, model, status, tenant_id, type_code, vendor)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Case type',
+                'scanner',
+                'M',
+                'draft',
+                '11111111-1111-4111-8111-111111111111',
+                'ACME-GATE-3000',
+                'Acme');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a second device type with one code';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_type_capabilities
+            (capability, correlation_id, created_by, tenant_id, type_id)
+        VALUES ('door.weld_shut',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                '11111111-1111-4111-8111-111111111111',
+                '77777777-1000-4000-8000-000000000002');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a capability this software cannot ask for';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_type_capabilities
+            (capability, correlation_id, created_by, tenant_id, type_id)
+        VALUES ('scan',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                '11111111-1111-4111-8111-111111111111',
+                '77777777-1000-4000-8000-000000000002');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a second declaration of one capability';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_devices
+            (config, correlation_id, created_by, display_name, location_id, revocation_epoch, serial_number, state, tenant_id, type_id, version)
+        VALUES ('{}'::jsonb,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Case device',
+                'eeeeeeee-1000-4000-8000-000000000001',
+                0,
+                'SN-CASE-1',
+                'broken',
+                '11111111-1111-4111-8111-111111111111',
+                '77777777-1000-4000-8000-000000000001',
+                1);
+        RAISE EXCEPTION 'CHECK 103 FAILED: a device in an unknown state';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_devices
+            (config, correlation_id, created_by, display_name, location_id, revocation_epoch, serial_number, state, tenant_id, type_id, version)
+        VALUES ('{}'::jsonb,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Case device',
+                'eeeeeeee-1000-4000-8000-000000000001',
+                0,
+                E'\t',
+                'registered',
+                '11111111-1111-4111-8111-111111111111',
+                '77777777-1000-4000-8000-000000000001',
+                1);
+        RAISE EXCEPTION 'CHECK 103 FAILED: a device whose serial is whitespace';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_devices
+            (config, correlation_id, created_by, display_name, location_id, revocation_epoch, serial_number, state, tenant_id, type_id, version)
+        VALUES ('{}'::jsonb,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                E'\t',
+                'eeeeeeee-1000-4000-8000-000000000001',
+                0,
+                'SN-CASE-1',
+                'registered',
+                '11111111-1111-4111-8111-111111111111',
+                '77777777-1000-4000-8000-000000000001',
+                1);
+        RAISE EXCEPTION 'CHECK 103 FAILED: a device with no name';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_devices
+            (config, correlation_id, created_by, display_name, location_id, revocation_epoch, serial_number, state, tenant_id, type_id, version)
+        VALUES ('{}'::jsonb,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Case device',
+                'eeeeeeee-1000-4000-8000-000000000001',
+                -1,
+                'SN-CASE-1',
+                'registered',
+                '11111111-1111-4111-8111-111111111111',
+                '77777777-1000-4000-8000-000000000001',
+                1);
+        RAISE EXCEPTION 'CHECK 103 FAILED: a device with a negative revocation epoch';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_devices
+            (config, correlation_id, created_by, display_name, location_id, revocation_epoch, serial_number, state, tenant_id, type_id, version)
+        VALUES ('{}'::jsonb,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Case device',
+                'eeeeeeee-1000-4000-8000-000000000001',
+                2000000001,
+                'SN-CASE-1',
+                'registered',
+                '11111111-1111-4111-8111-111111111111',
+                '77777777-1000-4000-8000-000000000001',
+                1);
+        RAISE EXCEPTION 'CHECK 103 FAILED: a device past the sane revocation epoch';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_devices
+            (config, correlation_id, created_by, display_name, location_id, revocation_epoch, serial_number, state, tenant_id, type_id, version)
+        VALUES ('{}'::jsonb,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Case device',
+                'eeeeeeee-1000-4000-8000-000000000001',
+                0,
+                'SN-CASE-1',
+                'registered',
+                '11111111-1111-4111-8111-111111111111',
+                '77777777-1000-4000-8000-000000000001',
+                0);
+        RAISE EXCEPTION 'CHECK 103 FAILED: a device at version zero';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_devices
+            (config, correlation_id, created_by, display_name, location_id, revocation_epoch, serial_number, state, tenant_id, type_id, version)
+        VALUES ('[]'::jsonb,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Case device',
+                'eeeeeeee-1000-4000-8000-000000000001',
+                0,
+                'SN-CASE-1',
+                'registered',
+                '11111111-1111-4111-8111-111111111111',
+                '77777777-1000-4000-8000-000000000001',
+                1);
+        RAISE EXCEPTION 'CHECK 103 FAILED: a device whose config is not an object';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_devices
+            (activate_correlation_id, activated_at, config, correlation_id, created_by, display_name, location_id, revocation_epoch, serial_number, state, tenant_id, type_id, version)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                now(),
+                '{}'::jsonb,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Case device',
+                'eeeeeeee-1000-4000-8000-000000000001',
+                0,
+                'SN-CASE-1',
+                'active',
+                '11111111-1111-4111-8111-111111111111',
+                '77777777-1000-4000-8000-000000000001',
+                1);
+        RAISE EXCEPTION 'CHECK 103 FAILED: a device activated by nobody';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_devices
+            (activated_at, activated_by, config, correlation_id, created_by, display_name, location_id, revocation_epoch, serial_number, state, tenant_id, type_id, version)
+        VALUES (now(),
+                '33333333-3333-4333-8333-333333333333',
+                '{}'::jsonb,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Case device',
+                'eeeeeeee-1000-4000-8000-000000000001',
+                0,
+                'SN-CASE-1',
+                'active',
+                '11111111-1111-4111-8111-111111111111',
+                '77777777-1000-4000-8000-000000000001',
+                1);
+        RAISE EXCEPTION 'CHECK 103 FAILED: a device activation with no correlation';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_devices
+            (config, correlation_id, created_by, display_name, location_id, revocation_epoch, serial_number, state, tenant_id, type_id, version)
+        VALUES ('{}'::jsonb,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Case device',
+                'eeeeeeee-1000-4000-8000-000000000001',
+                0,
+                'SN-CASE-1',
+                'active',
+                '11111111-1111-4111-8111-111111111111',
+                '77777777-1000-4000-8000-000000000001',
+                1);
+        RAISE EXCEPTION 'CHECK 103 FAILED: a device in service that was never activated';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_devices
+            (config, correlation_id, created_by, display_name, location_id, quarantine_correlation_id, quarantine_reason, quarantined_at, revocation_epoch, serial_number, state, tenant_id, type_id, version)
+        VALUES ('{}'::jsonb,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Case device',
+                'eeeeeeee-1000-4000-8000-000000000001',
+                '33333333-3333-4333-8333-333333333333',
+                'x',
+                now(),
+                0,
+                'SN-CASE-1',
+                'quarantined',
+                '11111111-1111-4111-8111-111111111111',
+                '77777777-1000-4000-8000-000000000001',
+                1);
+        RAISE EXCEPTION 'CHECK 103 FAILED: a device quarantined by nobody';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_devices
+            (config, correlation_id, created_by, display_name, location_id, quarantine_correlation_id, quarantine_reason, quarantined_at, quarantined_by, revocation_epoch, serial_number, state, tenant_id, type_id, version)
+        VALUES ('{}'::jsonb,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Case device',
+                'eeeeeeee-1000-4000-8000-000000000001',
+                '33333333-3333-4333-8333-333333333333',
+                E'\t',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                0,
+                'SN-CASE-1',
+                'quarantined',
+                '11111111-1111-4111-8111-111111111111',
+                '77777777-1000-4000-8000-000000000001',
+                1);
+        RAISE EXCEPTION 'CHECK 103 FAILED: a device quarantined for no stated reason';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_devices
+            (config, correlation_id, created_by, display_name, location_id, quarantine_reason, quarantined_at, quarantined_by, revocation_epoch, serial_number, state, tenant_id, type_id, version)
+        VALUES ('{}'::jsonb,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Case device',
+                'eeeeeeee-1000-4000-8000-000000000001',
+                'x',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                0,
+                'SN-CASE-1',
+                'quarantined',
+                '11111111-1111-4111-8111-111111111111',
+                '77777777-1000-4000-8000-000000000001',
+                1);
+        RAISE EXCEPTION 'CHECK 103 FAILED: a device quarantine with no correlation';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_devices
+            (config, correlation_id, created_by, display_name, location_id, revocation_epoch, serial_number, state, tenant_id, type_id, version)
+        VALUES ('{}'::jsonb,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Case device',
+                'eeeeeeee-1000-4000-8000-000000000001',
+                0,
+                'SN-CASE-1',
+                'quarantined',
+                '11111111-1111-4111-8111-111111111111',
+                '77777777-1000-4000-8000-000000000001',
+                1);
+        RAISE EXCEPTION 'CHECK 103 FAILED: a device quarantined with no quarantine';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_devices
+            (config, correlation_id, created_by, display_name, location_id, retire_correlation_id, retire_reason, retired_at, revocation_epoch, serial_number, state, tenant_id, type_id, version)
+        VALUES ('{}'::jsonb,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Case device',
+                'eeeeeeee-1000-4000-8000-000000000001',
+                '33333333-3333-4333-8333-333333333333',
+                'x',
+                now(),
+                0,
+                'SN-CASE-1',
+                'retired',
+                '11111111-1111-4111-8111-111111111111',
+                '77777777-1000-4000-8000-000000000001',
+                1);
+        RAISE EXCEPTION 'CHECK 103 FAILED: a device retired by nobody';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_devices
+            (config, correlation_id, created_by, display_name, location_id, retire_correlation_id, retire_reason, retired_at, retired_by, revocation_epoch, serial_number, state, tenant_id, type_id, version)
+        VALUES ('{}'::jsonb,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Case device',
+                'eeeeeeee-1000-4000-8000-000000000001',
+                '33333333-3333-4333-8333-333333333333',
+                E'\t',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                0,
+                'SN-CASE-1',
+                'retired',
+                '11111111-1111-4111-8111-111111111111',
+                '77777777-1000-4000-8000-000000000001',
+                1);
+        RAISE EXCEPTION 'CHECK 103 FAILED: a device retired for no stated reason';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_devices
+            (config, correlation_id, created_by, display_name, location_id, retire_reason, retired_at, retired_by, revocation_epoch, serial_number, state, tenant_id, type_id, version)
+        VALUES ('{}'::jsonb,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Case device',
+                'eeeeeeee-1000-4000-8000-000000000001',
+                'x',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                0,
+                'SN-CASE-1',
+                'retired',
+                '11111111-1111-4111-8111-111111111111',
+                '77777777-1000-4000-8000-000000000001',
+                1);
+        RAISE EXCEPTION 'CHECK 103 FAILED: a device retirement with no correlation';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_devices
+            (config, correlation_id, created_by, display_name, location_id, revocation_epoch, serial_number, state, tenant_id, type_id, version)
+        VALUES ('{}'::jsonb,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Case device',
+                'eeeeeeee-1000-4000-8000-000000000001',
+                0,
+                'SN-CASE-1',
+                'retired',
+                '11111111-1111-4111-8111-111111111111',
+                '77777777-1000-4000-8000-000000000001',
+                1);
+        RAISE EXCEPTION 'CHECK 103 FAILED: a device retired with no retirement';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_devices
+            (config, correlation_id, created_by, display_name, location_id, retire_correlation_id, retire_reason, retired_at, retired_by, revocation_epoch, serial_number, state, tenant_id, type_id, version)
+        VALUES ('{}'::jsonb,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Case device',
+                'eeeeeeee-1000-4000-8000-000000000001',
+                '33333333-3333-4333-8333-333333333333',
+                'x',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                0,
+                'SN-CASE-1',
+                'registered',
+                '11111111-1111-4111-8111-111111111111',
+                '77777777-1000-4000-8000-000000000001',
+                1);
+        RAISE EXCEPTION 'CHECK 103 FAILED: a retirement recorded on a device that is not retired';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_devices
+            (config, correlation_id, created_by, display_name, location_id, revocation_epoch, serial_number, state, tenant_id, type_id, version)
+        VALUES ('{}'::jsonb,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Case device',
+                'eeeeeeee-1000-4000-8000-000000000001',
+                0,
+                'SN-SEED-0001',
+                'registered',
+                '11111111-1111-4111-8111-111111111111',
+                '77777777-1000-4000-8000-000000000001',
+                1);
+        RAISE EXCEPTION 'CHECK 103 FAILED: a second device with one serial number';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_device_capabilities
+            (capability, correlation_id, created_by, device_id, tenant_id)
+        VALUES ('access.actuate',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                '77777777-2000-4000-8000-000000000002',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a second declaration of one device capability';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_certificates
+            (correlation_id, device_id, fingerprint, issued_by, not_after, not_before, state, tenant_id, vault_ref)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '77777777-2000-4000-8000-000000000002',
+                '9f2b4c8e1a7d63540fe8b2c19a3d7e05',
+                '33333333-3333-4333-8333-333333333333',
+                now() + interval '30 days',
+                now(),
+                'maybe',
+                '11111111-1111-4111-8111-111111111111',
+                'vault:case/1');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a certificate in an unknown state';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_certificates
+            (correlation_id, device_id, fingerprint, issued_by, not_after, not_before, state, tenant_id, vault_ref)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '77777777-2000-4000-8000-000000000002',
+                'abc',
+                '33333333-3333-4333-8333-333333333333',
+                now() + interval '30 days',
+                now(),
+                'pending',
+                '11111111-1111-4111-8111-111111111111',
+                'vault:case/1');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a certificate fingerprint that is not a digest';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_certificates
+            (correlation_id, device_id, fingerprint, issued_by, not_after, not_before, state, tenant_id, vault_ref)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '77777777-2000-4000-8000-000000000002',
+                'zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz',
+                '33333333-3333-4333-8333-333333333333',
+                now() + interval '30 days',
+                now(),
+                'pending',
+                '11111111-1111-4111-8111-111111111111',
+                'vault:case/1');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a certificate fingerprint that is not hexadecimal';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_certificates
+            (correlation_id, device_id, fingerprint, issued_by, not_after, not_before, state, tenant_id, vault_ref)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '77777777-2000-4000-8000-000000000002',
+                '9f2b4c8e1a7d63540fe8b2c19a3d7e05',
+                '33333333-3333-4333-8333-333333333333',
+                now() + interval '30 days',
+                now(),
+                'pending',
+                '11111111-1111-4111-8111-111111111111',
+                '4111111111111111 exp 12/29');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a vault reference that is a secret rather than a locator';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_certificates
+            (correlation_id, device_id, fingerprint, issued_by, not_after, not_before, state, tenant_id, vault_ref)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '77777777-2000-4000-8000-000000000002',
+                '9f2b4c8e1a7d63540fe8b2c19a3d7e05',
+                '33333333-3333-4333-8333-333333333333',
+                now() - interval '1 day',
+                now(),
+                'pending',
+                '11111111-1111-4111-8111-111111111111',
+                'vault:case/1');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a certificate that expires before it begins';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_certificates
+            (correlation_id, device_id, fingerprint, issued_by, not_after, not_before, state, tenant_id, vault_ref)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '77777777-2000-4000-8000-000000000002',
+                '9f2b4c8e1a7d63540fe8b2c19a3d7e05',
+                '33333333-3333-4333-8333-333333333333',
+                now() + interval '1 hour',
+                now(),
+                'pending',
+                '11111111-1111-4111-8111-111111111111',
+                'vault:case/1');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a certificate valid for less than a day';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_certificates
+            (correlation_id, device_id, fingerprint, issued_by, not_after, not_before, state, tenant_id, vault_ref)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '77777777-2000-4000-8000-000000000002',
+                '9f2b4c8e1a7d63540fe8b2c19a3d7e05',
+                '33333333-3333-4333-8333-333333333333',
+                now() + interval '400 days',
+                now(),
+                'pending',
+                '11111111-1111-4111-8111-111111111111',
+                'vault:case/1');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a certificate valid for more than a year';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_certificates
+            (correlation_id, device_id, fingerprint, issued_by, not_after, not_before, state, superseded_at, tenant_id, vault_ref)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '77777777-2000-4000-8000-000000000002',
+                '9f2b4c8e1a7d63540fe8b2c19a3d7e05',
+                '33333333-3333-4333-8333-333333333333',
+                now() + interval '30 days',
+                now(),
+                'superseded',
+                now(),
+                '11111111-1111-4111-8111-111111111111',
+                'vault:case/1');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a certificate superseded by nothing';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_certificates
+            (correlation_id, device_id, fingerprint, issued_by, not_after, not_before, state, superseded_by, tenant_id, vault_ref)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '77777777-2000-4000-8000-000000000002',
+                '9f2b4c8e1a7d63540fe8b2c19a3d7e05',
+                '33333333-3333-4333-8333-333333333333',
+                now() + interval '30 days',
+                now(),
+                'pending',
+                '77777777-3000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111',
+                'vault:case/1');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a certificate pointing at a replacement with no supersession';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_certificates
+            (correlation_id, device_id, fingerprint, issued_by, not_after, not_before, state, tenant_id, vault_ref)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '77777777-2000-4000-8000-000000000002',
+                '9f2b4c8e1a7d63540fe8b2c19a3d7e05',
+                '33333333-3333-4333-8333-333333333333',
+                now() + interval '30 days',
+                now(),
+                'superseded',
+                '11111111-1111-4111-8111-111111111111',
+                'vault:case/1');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a certificate superseded with no supersession';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_certificates
+            (correlation_id, device_id, fingerprint, issued_by, not_after, not_before, revoke_correlation_id, revoke_reason, revoked_at, state, tenant_id, vault_ref)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '77777777-2000-4000-8000-000000000002',
+                '9f2b4c8e1a7d63540fe8b2c19a3d7e05',
+                '33333333-3333-4333-8333-333333333333',
+                now() + interval '30 days',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'x',
+                now(),
+                'revoked',
+                '11111111-1111-4111-8111-111111111111',
+                'vault:case/1');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a certificate revoked by nobody';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_certificates
+            (correlation_id, device_id, fingerprint, issued_by, not_after, not_before, revoke_correlation_id, revoke_reason, revoked_at, revoked_by, state, tenant_id, vault_ref)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '77777777-2000-4000-8000-000000000002',
+                '9f2b4c8e1a7d63540fe8b2c19a3d7e05',
+                '33333333-3333-4333-8333-333333333333',
+                now() + interval '30 days',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                E'\t',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'revoked',
+                '11111111-1111-4111-8111-111111111111',
+                'vault:case/1');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a certificate revoked for no stated reason';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_certificates
+            (correlation_id, device_id, fingerprint, issued_by, not_after, not_before, revoke_reason, revoked_at, revoked_by, state, tenant_id, vault_ref)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '77777777-2000-4000-8000-000000000002',
+                '9f2b4c8e1a7d63540fe8b2c19a3d7e05',
+                '33333333-3333-4333-8333-333333333333',
+                now() + interval '30 days',
+                now(),
+                'x',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'revoked',
+                '11111111-1111-4111-8111-111111111111',
+                'vault:case/1');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a certificate revocation with no correlation';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_certificates
+            (correlation_id, device_id, fingerprint, issued_by, not_after, not_before, state, tenant_id, vault_ref)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '77777777-2000-4000-8000-000000000002',
+                '9f2b4c8e1a7d63540fe8b2c19a3d7e05',
+                '33333333-3333-4333-8333-333333333333',
+                now() + interval '30 days',
+                now(),
+                'revoked',
+                '11111111-1111-4111-8111-111111111111',
+                'vault:case/1');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a certificate revoked with no revocation';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_certificates
+            (correlation_id, device_id, fingerprint, issued_by, not_after, not_before, revoke_correlation_id, revoke_reason, revoked_at, revoked_by, state, tenant_id, vault_ref)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '77777777-2000-4000-8000-000000000002',
+                '9f2b4c8e1a7d63540fe8b2c19a3d7e05',
+                '33333333-3333-4333-8333-333333333333',
+                now() + interval '30 days',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'x',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'pending',
+                '11111111-1111-4111-8111-111111111111',
+                'vault:case/1');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a revocation recorded on a live certificate';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_certificates
+            (correlation_id, device_id, fingerprint, issued_by, not_after, not_before, state, tenant_id, vault_ref)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '77777777-2000-4000-8000-000000000002',
+                '74c8cd3f464b4b3091e2a5d7f0c81b6e',
+                '33333333-3333-4333-8333-333333333333',
+                now() + interval '30 days',
+                now(),
+                'pending',
+                '11111111-1111-4111-8111-111111111111',
+                'vault:case/1');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a second certificate with one fingerprint';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_safety_profiles
+            (commissioned_by, correlation_id, device_id, door_description, evidence_ref, fire_release_is_independent, local_emergency_input, on_egress_path, profile, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                '77777777-2000-4000-8000-000000000002',
+                'a door',
+                'uri:certs/case',
+                true,
+                true,
+                true,
+                'hope',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a safety profile that is not one of the three';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_safety_profiles
+            (commissioned_by, correlation_id, device_id, door_description, evidence_ref, fire_release_is_independent, local_emergency_input, on_egress_path, profile, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                '77777777-2000-4000-8000-000000000002',
+                'a door',
+                'uri:certs/case',
+                true,
+                true,
+                true,
+                'fail_secure',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a fail-secure barrier on an egress path';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_safety_profiles
+            (commissioned_by, correlation_id, device_id, door_description, evidence_ref, fire_release_is_independent, local_emergency_input, on_egress_path, profile, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                '77777777-2000-4000-8000-000000000002',
+                'a door',
+                'uri:certs/case',
+                false,
+                true,
+                true,
+                'fail_safe',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 103 FAILED: an egress path whose fire release is not independent';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_safety_profiles
+            (commissioned_by, correlation_id, device_id, door_description, evidence_ref, fire_release_is_independent, local_emergency_input, on_egress_path, profile, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                '77777777-2000-4000-8000-000000000002',
+                'a door',
+                'uri:certs/case',
+                true,
+                false,
+                true,
+                'fail_safe',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 103 FAILED: an egress path with no local emergency input';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_safety_profiles
+            (commissioned_by, correlation_id, device_id, door_description, evidence_ref, fire_release_is_independent, local_emergency_input, on_egress_path, profile, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                '77777777-2000-4000-8000-000000000002',
+                'a door',
+                'the fire officer said it was fine',
+                true,
+                true,
+                true,
+                'fail_safe',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a commissioning whose evidence is not a locator';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_safety_profiles
+            (commissioned_by, correlation_id, device_id, door_description, evidence_ref, fire_release_is_independent, local_emergency_input, on_egress_path, profile, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                '77777777-2000-4000-8000-000000000002',
+                E'\t',
+                'uri:certs/case',
+                true,
+                true,
+                true,
+                'fail_safe',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a commissioning that describes no door';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_safety_profiles
+            (commissioned_by, correlation_id, device_id, door_description, evidence_ref, fire_release_is_independent, local_emergency_input, on_egress_path, profile, supersede_correlation_id, superseded_at, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                '77777777-2000-4000-8000-000000000002',
+                'a door',
+                'uri:certs/case',
+                true,
+                true,
+                true,
+                'fail_safe',
+                '33333333-3333-4333-8333-333333333333',
+                now(),
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a safety profile superseded by nobody';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_safety_profiles
+            (commissioned_by, correlation_id, device_id, door_description, evidence_ref, fire_release_is_independent, local_emergency_input, on_egress_path, profile, superseded_at, superseded_by, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                '77777777-2000-4000-8000-000000000002',
+                'a door',
+                'uri:certs/case',
+                true,
+                true,
+                true,
+                'fail_safe',
+                now(),
+                '77777777-4000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a safety profile supersession with no correlation';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_commissioning_tests
+            (correlation_id, device_id, outcome, tenant_id, test_name, tested_by)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '77777777-2000-4000-8000-000000000002',
+                'passed',
+                '11111111-1111-4111-8111-111111111111',
+                'looked_at_it',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a commissioning test that is not one of the seven';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_commissioning_tests
+            (correlation_id, device_id, outcome, tenant_id, test_name, tested_by)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '77777777-2000-4000-8000-000000000002',
+                'maybe',
+                '11111111-1111-4111-8111-111111111111',
+                'recovery',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a commissioning outcome that is neither';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_commissioning_tests
+            (correlation_id, device_id, outcome, tenant_id, test_name, tested_by)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '77777777-2000-4000-8000-000000000002',
+                'failed',
+                '11111111-1111-4111-8111-111111111111',
+                'recovery',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a failed safety test that says nothing';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_firmware
+            (correlation_id, image_digest, image_ref, release_notes, released_by, status, tenant_id, type_id, version)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '0123456789abcdeffedcba9876543210fedcba9876543210fedcba9876543210',
+                'oci:acme/gate:9.9.9',
+                'case',
+                '33333333-3333-4333-8333-333333333333',
+                'rolling',
+                '11111111-1111-4111-8111-111111111111',
+                '77777777-1000-4000-8000-000000000001',
+                '9.9.9');
+        RAISE EXCEPTION 'CHECK 103 FAILED: firmware in an unknown status';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_firmware
+            (correlation_id, image_digest, image_ref, release_notes, released_by, status, tenant_id, type_id, version)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '0123456789abcdeffedcba9876543210fedcba9876543210fedcba9876543210',
+                'oci:acme/gate:9.9.9',
+                'case',
+                '33333333-3333-4333-8333-333333333333',
+                'available',
+                '11111111-1111-4111-8111-111111111111',
+                '77777777-1000-4000-8000-000000000001',
+                E'\t');
+        RAISE EXCEPTION 'CHECK 103 FAILED: firmware with no version';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_firmware
+            (correlation_id, image_digest, image_ref, release_notes, released_by, status, tenant_id, type_id, version)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '0123456789abcdeffedcba9876543210fedcba9876543210fedcba9876543210',
+                'ask Dave',
+                'case',
+                '33333333-3333-4333-8333-333333333333',
+                'available',
+                '11111111-1111-4111-8111-111111111111',
+                '77777777-1000-4000-8000-000000000001',
+                '9.9.9');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a firmware image reference that is not a locator';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_firmware
+            (correlation_id, image_digest, image_ref, release_notes, released_by, status, tenant_id, type_id, version)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                'abc',
+                'oci:acme/gate:9.9.9',
+                'case',
+                '33333333-3333-4333-8333-333333333333',
+                'available',
+                '11111111-1111-4111-8111-111111111111',
+                '77777777-1000-4000-8000-000000000001',
+                '9.9.9');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a firmware digest that is not a sha256';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_firmware
+            (correlation_id, image_digest, image_ref, release_notes, released_by, status, tenant_id, type_id, version)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '0123456789abcdeffedcba9876543210fedcba9876543210fedcba9876543210',
+                'oci:acme/gate:9.9.9',
+                E'\t',
+                '33333333-3333-4333-8333-333333333333',
+                'available',
+                '11111111-1111-4111-8111-111111111111',
+                '77777777-1000-4000-8000-000000000001',
+                '9.9.9');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a firmware release with no notes';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_firmware
+            (correlation_id, image_digest, image_ref, release_notes, released_by, status, tenant_id, type_id, version, withdraw_correlation_id, withdraw_reason, withdrawn_at)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '0123456789abcdeffedcba9876543210fedcba9876543210fedcba9876543210',
+                'oci:acme/gate:9.9.9',
+                'case',
+                '33333333-3333-4333-8333-333333333333',
+                'withdrawn',
+                '11111111-1111-4111-8111-111111111111',
+                '77777777-1000-4000-8000-000000000001',
+                '9.9.9',
+                '33333333-3333-4333-8333-333333333333',
+                'x',
+                now());
+        RAISE EXCEPTION 'CHECK 103 FAILED: firmware withdrawn by nobody';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_firmware
+            (correlation_id, image_digest, image_ref, release_notes, released_by, status, tenant_id, type_id, version, withdraw_correlation_id, withdraw_reason, withdrawn_at, withdrawn_by)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '0123456789abcdeffedcba9876543210fedcba9876543210fedcba9876543210',
+                'oci:acme/gate:9.9.9',
+                'case',
+                '33333333-3333-4333-8333-333333333333',
+                'withdrawn',
+                '11111111-1111-4111-8111-111111111111',
+                '77777777-1000-4000-8000-000000000001',
+                '9.9.9',
+                '33333333-3333-4333-8333-333333333333',
+                E'\t',
+                now(),
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 103 FAILED: firmware withdrawn for no stated reason';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_firmware
+            (correlation_id, image_digest, image_ref, release_notes, released_by, status, tenant_id, type_id, version, withdraw_reason, withdrawn_at, withdrawn_by)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '0123456789abcdeffedcba9876543210fedcba9876543210fedcba9876543210',
+                'oci:acme/gate:9.9.9',
+                'case',
+                '33333333-3333-4333-8333-333333333333',
+                'withdrawn',
+                '11111111-1111-4111-8111-111111111111',
+                '77777777-1000-4000-8000-000000000001',
+                '9.9.9',
+                'x',
+                now(),
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a firmware withdrawal with no correlation';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_firmware
+            (correlation_id, image_digest, image_ref, release_notes, released_by, status, tenant_id, type_id, version)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '0123456789abcdeffedcba9876543210fedcba9876543210fedcba9876543210',
+                'oci:acme/gate:9.9.9',
+                'case',
+                '33333333-3333-4333-8333-333333333333',
+                'withdrawn',
+                '11111111-1111-4111-8111-111111111111',
+                '77777777-1000-4000-8000-000000000001',
+                '9.9.9');
+        RAISE EXCEPTION 'CHECK 103 FAILED: firmware withdrawn with no withdrawal';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_firmware
+            (correlation_id, image_digest, image_ref, release_notes, released_by, status, tenant_id, type_id, version, withdraw_correlation_id, withdraw_reason, withdrawn_at, withdrawn_by)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '0123456789abcdeffedcba9876543210fedcba9876543210fedcba9876543210',
+                'oci:acme/gate:9.9.9',
+                'case',
+                '33333333-3333-4333-8333-333333333333',
+                'available',
+                '11111111-1111-4111-8111-111111111111',
+                '77777777-1000-4000-8000-000000000001',
+                '9.9.9',
+                '33333333-3333-4333-8333-333333333333',
+                'x',
+                now(),
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a withdrawal recorded on live firmware';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_firmware
+            (correlation_id, image_digest, image_ref, release_notes, released_by, status, tenant_id, type_id, version)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '0123456789abcdeffedcba9876543210fedcba9876543210fedcba9876543210',
+                'oci:acme/gate:9.9.9',
+                'case',
+                '33333333-3333-4333-8333-333333333333',
+                'available',
+                '11111111-1111-4111-8111-111111111111',
+                '77777777-1000-4000-8000-000000000001',
+                '2.0.0');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a second firmware release of one version for one type';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_commands
+            (action, arguments, correlation_id, device_id, expires_at, idempotency_key, issued_by, payload_digest, state, tenant_id)
+        VALUES ('lock_down',
+                '{}'::jsonb,
+                '33333333-3333-4333-8333-333333333333',
+                '77777777-2000-4000-8000-000000000001',
+                now() + interval '1 hour',
+                'case-command',
+                '33333333-3333-4333-8333-333333333333',
+                '0123456789abcdeffedcba9876543210fedcba9876543210fedcba9876543210',
+                'issued',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a command this software cannot ask for';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_commands
+            (action, arguments, correlation_id, device_id, expires_at, idempotency_key, issued_by, payload_digest, state, tenant_id)
+        VALUES ('reboot',
+                '{}'::jsonb,
+                '33333333-3333-4333-8333-333333333333',
+                '77777777-2000-4000-8000-000000000001',
+                now() + interval '1 hour',
+                'case-command',
+                '33333333-3333-4333-8333-333333333333',
+                '0123456789abcdeffedcba9876543210fedcba9876543210fedcba9876543210',
+                'sent',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a command in an unknown state';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_commands
+            (action, arguments, correlation_id, device_id, expires_at, idempotency_key, issued_by, payload_digest, state, tenant_id)
+        VALUES ('reboot',
+                '{}'::jsonb,
+                '33333333-3333-4333-8333-333333333333',
+                '77777777-2000-4000-8000-000000000001',
+                now() + interval '1 hour',
+                'case-command',
+                '33333333-3333-4333-8333-333333333333',
+                'abc',
+                'issued',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a command digest that is not a sha256';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_commands
+            (action, arguments, correlation_id, device_id, expires_at, idempotency_key, issued_by, payload_digest, signature_ref, state, tenant_id)
+        VALUES ('reboot',
+                '{}'::jsonb,
+                '33333333-3333-4333-8333-333333333333',
+                '77777777-2000-4000-8000-000000000001',
+                now() + interval '1 hour',
+                'case-command',
+                '33333333-3333-4333-8333-333333333333',
+                '0123456789abcdeffedcba9876543210fedcba9876543210fedcba9876543210',
+                'trust me',
+                'issued',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a command signature that is not a locator';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_commands
+            (action, arguments, correlation_id, device_id, expires_at, idempotency_key, issued_by, payload_digest, state, tenant_id)
+        VALUES ('reboot',
+                '[]'::jsonb,
+                '33333333-3333-4333-8333-333333333333',
+                '77777777-2000-4000-8000-000000000001',
+                now() + interval '1 hour',
+                'case-command',
+                '33333333-3333-4333-8333-333333333333',
+                '0123456789abcdeffedcba9876543210fedcba9876543210fedcba9876543210',
+                'issued',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 103 FAILED: command arguments that are not an object';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_commands
+            (action, arguments, correlation_id, device_id, expires_at, idempotency_key, issued_by, payload_digest, state, tenant_id)
+        VALUES ('reboot',
+                '{}'::jsonb,
+                '33333333-3333-4333-8333-333333333333',
+                '77777777-2000-4000-8000-000000000001',
+                now() + interval '1 hour',
+                E'\t',
+                '33333333-3333-4333-8333-333333333333',
+                '0123456789abcdeffedcba9876543210fedcba9876543210fedcba9876543210',
+                'issued',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a command whose handle is whitespace';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_commands
+            (action, arguments, correlation_id, device_id, expires_at, idempotency_key, issued_by, payload_digest, state, tenant_id)
+        VALUES ('reboot',
+                '{}'::jsonb,
+                '33333333-3333-4333-8333-333333333333',
+                '77777777-2000-4000-8000-000000000001',
+                now() - interval '1 hour',
+                'case-command',
+                '33333333-3333-4333-8333-333333333333',
+                '0123456789abcdeffedcba9876543210fedcba9876543210fedcba9876543210',
+                'issued',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a command that expires before it is issued';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_commands
+            (action, arguments, correlation_id, device_id, expires_at, idempotency_key, issued_by, payload_digest, state, tenant_id)
+        VALUES ('unlock_momentary',
+                '{}'::jsonb,
+                '33333333-3333-4333-8333-333333333333',
+                '77777777-2000-4000-8000-000000000001',
+                now() + interval '2 minutes',
+                'case-command',
+                '33333333-3333-4333-8333-333333333333',
+                '0123456789abcdeffedcba9876543210fedcba9876543210fedcba9876543210',
+                'issued',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 103 FAILED: an unlock deliverable for longer than a minute';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_commands
+            (action, arguments, correlation_id, device_id, expires_at, idempotency_key, issued_by, payload_digest, state, tenant_id)
+        VALUES ('reboot',
+                '{}'::jsonb,
+                '33333333-3333-4333-8333-333333333333',
+                '77777777-2000-4000-8000-000000000001',
+                now() + interval '2 days',
+                'case-command',
+                '33333333-3333-4333-8333-333333333333',
+                '0123456789abcdeffedcba9876543210fedcba9876543210fedcba9876543210',
+                'issued',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a command deliverable for longer than a day';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_commands
+            (action, arguments, correlation_id, delivered_at, device_id, expires_at, idempotency_key, issued_by, payload_digest, state, tenant_id)
+        VALUES ('reboot',
+                '{}'::jsonb,
+                '33333333-3333-4333-8333-333333333333',
+                now() - interval '1 hour',
+                '77777777-2000-4000-8000-000000000001',
+                now() + interval '1 hour',
+                'case-command',
+                '33333333-3333-4333-8333-333333333333',
+                '0123456789abcdeffedcba9876543210fedcba9876543210fedcba9876543210',
+                'delivered',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a command delivered before it was issued';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_commands
+            (acknowledged_at, action, arguments, correlation_id, device_id, expires_at, idempotency_key, issued_by, payload_digest, state, tenant_id)
+        VALUES (now(),
+                'reboot',
+                '{}'::jsonb,
+                '33333333-3333-4333-8333-333333333333',
+                '77777777-2000-4000-8000-000000000001',
+                now() + interval '1 hour',
+                'case-command',
+                '33333333-3333-4333-8333-333333333333',
+                '0123456789abcdeffedcba9876543210fedcba9876543210fedcba9876543210',
+                'acknowledged',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a command acknowledged but never delivered';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_commands
+            (acknowledged_at, action, arguments, correlation_id, delivered_at, device_id, expires_at, idempotency_key, issued_by, payload_digest, state, tenant_id)
+        VALUES (now() - interval '1 hour',
+                'reboot',
+                '{}'::jsonb,
+                '33333333-3333-4333-8333-333333333333',
+                now(),
+                '77777777-2000-4000-8000-000000000001',
+                now() + interval '1 hour',
+                'case-command',
+                '33333333-3333-4333-8333-333333333333',
+                '0123456789abcdeffedcba9876543210fedcba9876543210fedcba9876543210',
+                'acknowledged',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a command acknowledged before it was delivered';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_commands
+            (acknowledged_at, action, arguments, correlation_id, delivered_at, device_id, expires_at, idempotency_key, issued_by, payload_digest, state, tenant_id)
+        VALUES (now(),
+                'reboot',
+                '{}'::jsonb,
+                '33333333-3333-4333-8333-333333333333',
+                now(),
+                '77777777-2000-4000-8000-000000000001',
+                now() + interval '1 hour',
+                'case-command',
+                '33333333-3333-4333-8333-333333333333',
+                '0123456789abcdeffedcba9876543210fedcba9876543210fedcba9876543210',
+                'completed',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a settled command with no settlement time';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_commands
+            (action, arguments, correlation_id, device_id, expires_at, idempotency_key, issued_by, payload_digest, settled_at, state, tenant_id)
+        VALUES ('reboot',
+                '{}'::jsonb,
+                '33333333-3333-4333-8333-333333333333',
+                '77777777-2000-4000-8000-000000000001',
+                now() + interval '1 hour',
+                'case-command',
+                '33333333-3333-4333-8333-333333333333',
+                '0123456789abcdeffedcba9876543210fedcba9876543210fedcba9876543210',
+                now(),
+                'issued',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 103 FAILED: an unsettled command carrying a settlement time';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_commands
+            (action, arguments, correlation_id, device_id, expires_at, idempotency_key, issued_by, payload_digest, state, tenant_id)
+        VALUES ('reboot',
+                '{}'::jsonb,
+                '33333333-3333-4333-8333-333333333333',
+                '77777777-2000-4000-8000-000000000001',
+                now() + interval '1 hour',
+                'case-command',
+                '33333333-3333-4333-8333-333333333333',
+                '0123456789abcdeffedcba9876543210fedcba9876543210fedcba9876543210',
+                'delivered',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a delivered command with no delivery time';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_commands
+            (action, arguments, correlation_id, delivered_at, device_id, expires_at, idempotency_key, issued_by, payload_digest, state, tenant_id)
+        VALUES ('reboot',
+                '{}'::jsonb,
+                '33333333-3333-4333-8333-333333333333',
+                now(),
+                '77777777-2000-4000-8000-000000000001',
+                now() + interval '1 hour',
+                'case-command',
+                '33333333-3333-4333-8333-333333333333',
+                '0123456789abcdeffedcba9876543210fedcba9876543210fedcba9876543210',
+                'acknowledged',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 103 FAILED: an acknowledged command with no acknowledgement time';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_commands
+            (action, arguments, correlation_id, device_id, expires_at, idempotency_key, issued_by, payload_digest, settled_at, state, tenant_id)
+        VALUES ('reboot',
+                '{}'::jsonb,
+                '33333333-3333-4333-8333-333333333333',
+                '77777777-2000-4000-8000-000000000001',
+                now() + interval '1 hour',
+                'case-command',
+                '33333333-3333-4333-8333-333333333333',
+                '0123456789abcdeffedcba9876543210fedcba9876543210fedcba9876543210',
+                now(),
+                'failed',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a failed command that says nothing';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_commands
+            (action, arguments, correlation_id, device_id, expires_at, idempotency_key, issued_by, payload_digest, state, tenant_id)
+        VALUES ('reboot',
+                '{}'::jsonb,
+                '33333333-3333-4333-8333-333333333333',
+                '77777777-2000-4000-8000-000000000001',
+                now() + interval '1 hour',
+                'seed-command-1',
+                '33333333-3333-4333-8333-333333333333',
+                '0123456789abcdeffedcba9876543210fedcba9876543210fedcba9876543210',
+                'issued',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a second command with one handle';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_policy_snapshots
+            (content_digest, correlation_id, device_id, expires_at, issued_by, revocation_epoch, tenant_id)
+        VALUES ('abc',
+                '33333333-3333-4333-8333-333333333333',
+                '77777777-2000-4000-8000-000000000001',
+                now() + interval '1 hour',
+                '33333333-3333-4333-8333-333333333333',
+                0,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a snapshot digest that is not a sha256';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_policy_snapshots
+            (content_digest, correlation_id, device_id, expires_at, issued_by, revocation_epoch, signature_ref, tenant_id)
+        VALUES ('0123456789abcdeffedcba9876543210fedcba9876543210fedcba9876543210',
+                '33333333-3333-4333-8333-333333333333',
+                '77777777-2000-4000-8000-000000000001',
+                now() + interval '1 hour',
+                '33333333-3333-4333-8333-333333333333',
+                0,
+                'trust me',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a snapshot signature that is not a locator';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_policy_snapshots
+            (content_digest, correlation_id, device_id, expires_at, issued_by, revocation_epoch, tenant_id)
+        VALUES ('0123456789abcdeffedcba9876543210fedcba9876543210fedcba9876543210',
+                '33333333-3333-4333-8333-333333333333',
+                '77777777-2000-4000-8000-000000000001',
+                now() + interval '1 hour',
+                '33333333-3333-4333-8333-333333333333',
+                2000000001,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a snapshot above the revocation-epoch ceiling';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_policy_snapshots
+            (content_digest, correlation_id, device_id, expires_at, issued_by, revocation_epoch, tenant_id)
+        VALUES ('0123456789abcdeffedcba9876543210fedcba9876543210fedcba9876543210',
+                '33333333-3333-4333-8333-333333333333',
+                '77777777-2000-4000-8000-000000000001',
+                now() + interval '1 minute',
+                '33333333-3333-4333-8333-333333333333',
+                0,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a snapshot that lives less than five minutes';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_policy_snapshots
+            (content_digest, correlation_id, device_id, expires_at, issued_by, revocation_epoch, tenant_id)
+        VALUES ('0123456789abcdeffedcba9876543210fedcba9876543210fedcba9876543210',
+                '33333333-3333-4333-8333-333333333333',
+                '77777777-2000-4000-8000-000000000001',
+                now() + interval '13 hours',
+                '33333333-3333-4333-8333-333333333333',
+                0,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a snapshot that lives more than twelve hours';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_health_reports
+            (agent_version, correlation_id, device_id, error_count, latency_ms, peripherals, reported_by, storage_free_bytes, tenant_id)
+        VALUES ('1.0',
+                '33333333-3333-4333-8333-333333333333',
+                '77777777-2000-4000-8000-000000000001',
+                0,
+                -1,
+                '{}'::jsonb,
+                '33333333-3333-4333-8333-333333333333',
+                1000,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a health report with a negative latency';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_health_reports
+            (agent_version, correlation_id, device_id, error_count, latency_ms, peripherals, reported_by, storage_free_bytes, tenant_id)
+        VALUES ('1.0',
+                '33333333-3333-4333-8333-333333333333',
+                '77777777-2000-4000-8000-000000000001',
+                0,
+                600001,
+                '{}'::jsonb,
+                '33333333-3333-4333-8333-333333333333',
+                1000,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a health report past the sane latency';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_health_reports
+            (agent_version, correlation_id, device_id, error_count, latency_ms, peripherals, reported_by, storage_free_bytes, tenant_id)
+        VALUES ('1.0',
+                '33333333-3333-4333-8333-333333333333',
+                '77777777-2000-4000-8000-000000000001',
+                -1,
+                1,
+                '{}'::jsonb,
+                '33333333-3333-4333-8333-333333333333',
+                1000,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a health report with a negative error count';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_health_reports
+            (agent_version, correlation_id, device_id, error_count, latency_ms, peripherals, reported_by, storage_free_bytes, tenant_id)
+        VALUES ('1.0',
+                '33333333-3333-4333-8333-333333333333',
+                '77777777-2000-4000-8000-000000000001',
+                1000000001,
+                1,
+                '{}'::jsonb,
+                '33333333-3333-4333-8333-333333333333',
+                1000,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a health report past the sane error count';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_health_reports
+            (agent_version, correlation_id, device_id, error_count, latency_ms, peripherals, reported_by, storage_free_bytes, tenant_id)
+        VALUES ('1.0',
+                '33333333-3333-4333-8333-333333333333',
+                '77777777-2000-4000-8000-000000000001',
+                0,
+                1,
+                '{}'::jsonb,
+                '33333333-3333-4333-8333-333333333333',
+                -1,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a health report with negative free storage';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_health_reports
+            (agent_version, correlation_id, device_id, error_count, latency_ms, peripherals, reported_by, storage_free_bytes, tenant_id)
+        VALUES ('1.0',
+                '33333333-3333-4333-8333-333333333333',
+                '77777777-2000-4000-8000-000000000001',
+                0,
+                1,
+                '{}'::jsonb,
+                '33333333-3333-4333-8333-333333333333',
+                1125899906842625,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a health report past the sane free storage';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_health_reports
+            (agent_version, correlation_id, device_id, error_count, latency_ms, peripherals, reported_by, storage_free_bytes, tenant_id)
+        VALUES (E'\t',
+                '33333333-3333-4333-8333-333333333333',
+                '77777777-2000-4000-8000-000000000001',
+                0,
+                1,
+                '{}'::jsonb,
+                '33333333-3333-4333-8333-333333333333',
+                1000,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a health report naming no agent version';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_health_reports
+            (agent_version, correlation_id, device_id, error_count, latency_ms, peripherals, reported_by, storage_free_bytes, tenant_id)
+        VALUES (repeat('v', 65),
+                '33333333-3333-4333-8333-333333333333',
+                '77777777-2000-4000-8000-000000000001',
+                0,
+                1,
+                '{}'::jsonb,
+                '33333333-3333-4333-8333-333333333333',
+                1000,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a health report whose agent version is unbounded';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_health_reports
+            (agent_version, correlation_id, device_id, error_count, latency_ms, peripherals, reported_by, storage_free_bytes, tenant_id)
+        VALUES ('1.0',
+                '33333333-3333-4333-8333-333333333333',
+                '77777777-2000-4000-8000-000000000001',
+                0,
+                1,
+                '[]'::jsonb,
+                '33333333-3333-4333-8333-333333333333',
+                1000,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 103 FAILED: health peripherals that are not an object';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+
+-- ------------------------------- 103b. the cases the first round did not have
+-- **Each of these was added because a mutation was uncaught**, which is the only way
+-- any of them would have been found: seven constraints had no isolating case at all,
+-- eleven weakenings were admitted by every case that named the constraint, and the
+-- module's two defining partial unique indexes had nothing behind them because a
+-- sweep that generates `ALTER TABLE ... DROP CONSTRAINT` never runs against an index.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+BEGIN
+    BEGIN
+        INSERT INTO plt01.dev_certificates
+            (tenant_id, certificate_id, device_id, fingerprint, vault_ref, state,
+             not_before, not_after, issued_by, correlation_id, superseded_at,
+             superseded_by)
+        VALUES ('11111111-1111-4111-8111-111111111111', '77777777-3000-4000-8000-0000000000c1', '77777777-2000-4000-8000-000000000001',
+                'c1a2b3c4d5e6f708192a3b4c5d6e7f80', 'vault:x/y', 'superseded',
+                now() - interval '1 day', now() + interval '90 days', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333',
+                now(), '77777777-3000-4000-8000-0000000000c1');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a certificate superseded by itself';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_safety_profiles
+            (tenant_id, profile_id, device_id, profile, on_egress_path,
+             fire_release_is_independent, local_emergency_input, evidence_ref,
+             door_description, commissioned_by, correlation_id, superseded_at,
+             superseded_by, supersede_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', '77777777-4000-4000-8000-0000000000c1', '77777777-2000-4000-8000-000000000001', 'fail_safe', true,
+                true, true, 'uri:certs/c', 'a door', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', now(),
+                '77777777-4000-4000-8000-0000000000c1', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a commissioning superseded by itself';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_safety_profiles
+            (tenant_id, profile_id, device_id, profile, on_egress_path,
+             fire_release_is_independent, local_emergency_input, evidence_ref,
+             door_description, commissioned_by, correlation_id, superseded_at,
+             superseded_by, supersede_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', '77777777-4000-4000-8000-0000000000c2', '77777777-2000-4000-8000-000000000001', 'fail_open', false,
+                true, true, 'uri:certs/c', 'a door', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', now(), '77777777-4000-4000-8000-000000000001', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a safety profile outside the three the fire code names';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_commands
+            (tenant_id, device_id, action, payload_digest, expires_at, idempotency_key,
+             issued_by, correlation_id, acknowledged_at)
+        VALUES ('11111111-1111-4111-8111-111111111111', '77777777-2000-4000-8000-000000000001', 'reboot', '0123456789abcdeffedcba9876543210fedcba9876543210fedcba9876543210', now() + interval '1 hour', 'case-ack-no-del',
+                '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', now());
+        RAISE EXCEPTION 'CHECK 103 FAILED: an acknowledgement with no delivery behind it';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_device_types
+            (tenant_id, type_code, vendor, model, kind, display_name, status,
+             published_at, published_by, publish_correlation_id, created_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'CASE-STATUS', 'Acme', 'M', 'scanner', 'Case', 'archived',
+                now(), '44444444-4444-4444-8444-444444444444', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a device type in a status this software does not have';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_device_types
+            (tenant_id, type_code, vendor, model, kind, display_name, status,
+             published_at, published_by, publish_correlation_id, retired_at,
+             retire_reason, retire_correlation_id, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'CASE-RETIRE', 'Acme', 'M', 'scanner', 'Case', 'retired',
+                now(), '44444444-4444-4444-8444-444444444444', '33333333-3333-4333-8333-333333333333', now(), 'no longer sold', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a retirement with nobody''s name on it';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_device_types
+            (tenant_id, type_code, vendor, model, kind, display_name, status,
+             retired_at, retired_by, retire_reason, retire_correlation_id, created_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'CASE-RETDATE', 'Acme', 'M', 'scanner', 'Case', 'draft',
+                now(), '33333333-3333-4333-8333-333333333333', 'no longer sold', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a retirement date on a type that is not retired';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_certificates
+            (tenant_id, device_id, fingerprint, vault_ref, state, not_before, not_after,
+             issued_by, correlation_id, revoked_at, revoked_by, revoke_reason,
+             revoke_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', '77777777-2000-4000-8000-000000000001', 'd1a2b3c4d5e6f708192a3b4c5d6e7f81', 'vault:x/y', 'revoked',
+                now() - interval '1 day', now() + interval '90 days', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333',
+                now(), '33333333-3333-4333-8333-333333333333', NULL, '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a revocation whose reason is NULL rather than blank';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_devices
+            (tenant_id, device_id, type_id, location_id, serial_number, display_name,
+             created_by, correlation_id, state, activated_at, activated_by, activate_correlation_id, quarantined_at, quarantined_by, quarantine_reason, quarantine_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', '77777777-2000-4000-8000-0000000000c3', '77777777-1000-4000-8000-000000000001', 'eeeeeeee-1000-4000-8000-000000000001', 'SN-CASE-C3', 'Case device',
+                '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', 'quarantined', now(), '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', now(), '33333333-3333-4333-8333-333333333333', NULL, '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a quarantine whose reason is NULL rather than blank';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_devices
+            (tenant_id, device_id, type_id, location_id, serial_number, display_name,
+             created_by, correlation_id, state, retired_at, retired_by, retire_reason, retire_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', '77777777-2000-4000-8000-0000000000c4', '77777777-1000-4000-8000-000000000001', 'eeeeeeee-1000-4000-8000-000000000001', 'SN-CASE-C4', 'Case device',
+                '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', 'retired', now(), '33333333-3333-4333-8333-333333333333', NULL, '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a retirement whose reason is NULL rather than blank';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_firmware
+            (tenant_id, type_id, version, image_ref, image_digest, release_notes,
+             released_by, correlation_id, status, withdrawn_at, withdrawn_by,
+             withdraw_reason, withdraw_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', '77777777-1000-4000-8000-000000000001', '9.9.9', 'oci:acme/gate:9.9.9', '0123456789abcdeffedcba9876543210fedcba9876543210fedcba9876543210', 'the case release',
+                '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', 'withdrawn', now(), '33333333-3333-4333-8333-333333333333', NULL, '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a firmware withdrawal whose reason is NULL rather than blank';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_certificates
+            (tenant_id, device_id, fingerprint, vault_ref, state, not_before, not_after,
+             issued_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', '77777777-2000-4000-8000-000000000001', '74C8CD3F464B4B3091E2A5D7F0C81B6E', 'vault:x/y', 'pending',
+                now() - interval '1 day', now() + interval '90 days', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a fingerprint in the other case, which is the same fingerprint twice';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_devices
+            (tenant_id, device_id, type_id, location_id, serial_number, display_name,
+             created_by, correlation_id, state)
+        VALUES ('11111111-1111-4111-8111-111111111111', '77777777-2000-4000-8000-0000000000c5', '77777777-1000-4000-8000-000000000001', 'eeeeeeee-1000-4000-8000-000000000001', 'SN-CASE-C5', 'Case device',
+                '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', 'maintenance');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a device in maintenance that was never brought into service';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_commands
+            (tenant_id, device_id, action, payload_digest, expires_at, idempotency_key,
+             issued_by, correlation_id, state)
+        VALUES ('11111111-1111-4111-8111-111111111111', '77777777-2000-4000-8000-000000000001', 'reboot', '0123456789abcdeffedcba9876543210fedcba9876543210fedcba9876543210', now() + interval '1 hour', 'case-exp-unset',
+                '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', 'expired');
+        RAISE EXCEPTION 'CHECK 103 FAILED: an expired command that was never settled';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_commands
+            (tenant_id, device_id, action, payload_digest, expires_at, idempotency_key,
+             issued_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', '77777777-2000-4000-8000-000000000001', 'reboot', '0123456789abcdeffedcba9876543210',
+                now() + interval '1 hour', 'case-short-digest', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a command digest half the length of a sha256';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_firmware
+            (tenant_id, type_id, version, image_ref, image_digest, release_notes,
+             released_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', '77777777-1000-4000-8000-000000000001', '8.8.8', 'oci:acme/gate:8.8.8',
+                '0123456789abcdeffedcba9876543210', 'notes', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a firmware digest half the length of a sha256';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_policy_snapshots
+            (tenant_id, device_id, revocation_epoch, content_digest, expires_at,
+             issued_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', '77777777-2000-4000-8000-000000000001', 0, '0123456789abcdeffedcba9876543210',
+                now() + interval '1 hour', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a snapshot digest half the length of a sha256';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_certificates
+            (tenant_id, device_id, fingerprint, vault_ref, state, not_before, not_after,
+             issued_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', '77777777-2000-4000-8000-000000000001', 'e1a2b3c4d5e6f708192a3b4c5d6e7f82', 'vault:x/z', 'active',
+                now() - interval '1 day', now() + interval '90 days', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a second active certificate on one device';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_safety_profiles
+            (tenant_id, device_id, profile, on_egress_path,
+             fire_release_is_independent, local_emergency_input, evidence_ref,
+             door_description, commissioned_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', '77777777-2000-4000-8000-000000000001', 'fail_safe', true, true, true, 'uri:certs/second',
+                'the same door again', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a second live commissioning on one access point';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_commands
+            (tenant_id, device_id, action, payload_digest, expires_at, idempotency_key,
+             issued_by, correlation_id, state, delivered_at)
+        VALUES ('11111111-1111-4111-8111-111111111111', '77777777-2000-4000-8000-000000000001', 'reboot', '0123456789abcdeffedcba9876543210fedcba9876543210fedcba9876543210', now() + interval '1 hour', 'case-del-anon',
+                '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', 'delivered', now());
+        RAISE EXCEPTION 'CHECK 103 FAILED: a delivery with nobody''s name on it';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_commands
+            (tenant_id, device_id, action, payload_digest, expires_at, idempotency_key,
+             issued_by, correlation_id, state, delivered_at, delivered_by,
+             delivery_correlation_id, settled_at)
+        VALUES ('11111111-1111-4111-8111-111111111111', '77777777-2000-4000-8000-000000000001', 'reboot', '0123456789abcdeffedcba9876543210fedcba9876543210fedcba9876543210', now() + interval '1 hour', 'case-set-anon',
+                '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', 'expired', now(), '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', now());
+        RAISE EXCEPTION 'CHECK 103 FAILED: a settlement with nobody''s name on it';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_devices
+            (tenant_id, device_id, type_id, location_id, serial_number, display_name,
+             created_by, correlation_id, state, activated_at, activated_by, activate_correlation_id, reactivated_at)
+        VALUES ('11111111-1111-4111-8111-111111111111', '77777777-2000-4000-8000-0000000000c6', '77777777-1000-4000-8000-000000000001', 'eeeeeeee-1000-4000-8000-000000000001', 'SN-CASE-C6', 'Case device',
+                '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', 'active', now() - interval '1 day', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', now());
+        RAISE EXCEPTION 'CHECK 103 FAILED: a return to service with nobody''s name on it';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_devices
+            (tenant_id, device_id, type_id, location_id, serial_number, display_name,
+             created_by, correlation_id, state, activated_at, activated_by, activate_correlation_id, reactivated_at, reactivated_by, reactivate_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', '77777777-2000-4000-8000-0000000000c7', '77777777-1000-4000-8000-000000000001', 'eeeeeeee-1000-4000-8000-000000000001', 'SN-CASE-C7', 'Case device',
+                '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', 'active', now(), '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', now() - interval '1 day', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a return to service before the device ever entered it';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_device_types
+            (tenant_id, type_code, vendor, model, kind, display_name, status,
+             published_at, published_by, publish_correlation_id, created_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'CASE-SELFPUB', 'Acme', 'M', 'scanner', 'Case', 'published',
+                now(), '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a device type published by its own author';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_commands
+            (tenant_id, device_id, action, payload_digest, issued_at, expires_at,
+             idempotency_key, issued_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', '77777777-2000-4000-8000-000000000001', 'unlock_momentary', '0123456789abcdeffedcba9876543210fedcba9876543210fedcba9876543210', now() + interval '3 days',
+                now() + interval '3 days' + interval '45 seconds', 'case-postdated',
+                '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a command dated three days from now, which is a minute starting whenever it likes';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_policy_snapshots
+            (tenant_id, device_id, revocation_epoch, content_digest, issued_at,
+             expires_at, issued_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', '77777777-2000-4000-8000-000000000001', 0, '0123456789abcdeffedcba9876543210fedcba9876543210fedcba9876543210', now() + interval '7 days',
+                now() + interval '7 days' + interval '12 hours', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a policy snapshot dated a week from now';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_health_reports
+            (tenant_id, device_id, latency_ms, error_count, storage_free_bytes,
+             agent_version, reported_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', '77777777-2000-4000-8000-000000000001', 10, 0, 1000, 'jane@example.test dob 1984-02-03', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 103 FAILED: an agent version that is a sentence about a person';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_firmware
+            (tenant_id, type_id, version, image_ref, image_digest, release_notes,
+             released_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', '77777777-1000-4000-8000-000000000001', '1.0 built for jane.doe@example.com',
+                'oci:acme/gate:1.0', '0123456789abcdeffedcba9876543210fedcba9876543210fedcba9876543210', 'notes', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a firmware version that is a sentence about a person';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_sync_conflicts
+            (tenant_id, device_id, detail, local_digest, remote_digest, reported_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', '77777777-2000-4000-8000-000000000001', '	', '0123456789abcdeffedcba9876543210fedcba9876543210fedcba9876543210', 'fedcba98765432100123456789abcdeffedcba98765432100123456789abcdef', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a sync conflict that says nothing about what diverged';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_sync_conflicts
+            (tenant_id, device_id, detail, local_digest, remote_digest, reported_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', '77777777-2000-4000-8000-000000000001', repeat('x', 1001), '0123456789abcdeffedcba9876543210fedcba9876543210fedcba9876543210', 'fedcba98765432100123456789abcdeffedcba98765432100123456789abcdef', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a sync conflict whose statement is longer than a page';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_sync_conflicts
+            (tenant_id, device_id, detail, local_digest, remote_digest, reported_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', '77777777-2000-4000-8000-000000000001', 'the member table', 'not a digest', 'fedcba98765432100123456789abcdeffedcba98765432100123456789abcdef', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a sync conflict whose local digest is not a sha256';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_sync_conflicts
+            (tenant_id, device_id, detail, local_digest, remote_digest, reported_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', '77777777-2000-4000-8000-000000000001', 'the member table', '0123456789abcdeffedcba9876543210fedcba9876543210fedcba9876543210', 'not a digest', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a sync conflict whose remote digest is not a sha256';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_sync_conflicts
+            (tenant_id, device_id, detail, local_digest, remote_digest, reported_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', '77777777-2000-4000-8000-000000000001', 'the member table', '0123456789abcdeffedcba9876543210fedcba9876543210fedcba9876543210', '0123456789abcdeffedcba9876543210fedcba9876543210fedcba9876543210', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 103 FAILED: a sync conflict between two copies that are the same';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+
+-- -------------------------------------------- 104. MOD-021's triggers, branch by branch
+-- **A plpgsql branch is invisible to any constraint sweep**, so each one gets its own probe
+-- and the count is asserted at the end: a branch with no probe makes the block fail rather
+-- than passing silently. MOD-018 lost a mixed-currency branch to exactly that with the suite
+-- reporting 84/84, and MOD-020 lost two more.
+--
+-- **Each probe satisfies every *earlier* branch of the same function**, which is the hardest
+-- version of the "two controls refuse the same row" trap: MOD-020's appeal trigger refused
+-- any update that did not move the appeal to a decided state, so a probe for the branch below
+-- it was answered by the branch above and that branch was droppable in silence.
+--
+-- Twelve functions, thirty-five branches. Twenty-nine are reachable as `veyro_cp_app`; the six
+-- below in 104b are not, because the column they move carries no UPDATE grant for any runtime
+-- role, and they run as the owner for MOD-020's reason -- the trigger is what holds for a
+-- writer that is *not* this service.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+DECLARE
+    probe integer := 0;
+BEGIN
+    -- 1 and 2. `dev_type_capabilities_are_frozen`: the type exists, and it is still a draft.
+    BEGIN
+        INSERT INTO plt01.dev_type_capabilities
+            (tenant_id, type_id, capability, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                '77777777-1000-4000-8000-0000000000ff', 'scan',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 104 FAILED: a capability on a type that does not exist';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 104 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+        WHEN foreign_key_violation THEN
+            RAISE EXCEPTION
+                'CHECK 104 FAILED: a capability on a missing type was refused by the '
+                'foreign key, not the trigger';
+    END;
+    -- **A published type takes no further capability**, which is what every unit already
+    -- enrolled against it snapshotted.
+    BEGIN
+        INSERT INTO plt01.dev_type_capabilities
+            (tenant_id, type_id, capability, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                '77777777-1000-4000-8000-000000000001', 'print',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 104 FAILED: a capability added to a published device type';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 104 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+    -- 3 and 4. `dev_device_capability_is_declared`: the device exists, and its type declares
+    -- what is being copied onto it. Without the second, `commands.check_issue` -- which bounds
+    -- a command by the *device's* list -- would let somebody unlock a barcode reader.
+    BEGIN
+        INSERT INTO plt01.dev_device_capabilities
+            (tenant_id, device_id, capability, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                '77777777-2000-4000-8000-0000000000ff', 'telemetry',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 104 FAILED: a capability on a device that does not exist';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 104 FAILED%' THEN RAISE; END IF;
+            -- **The message, not merely a refusal.** The branch below this one asks
+            -- `NOT EXISTS` over the device's type, which is true for a device that does
+            -- not exist -- so with the missing-device branch deleted this row is still
+            -- refused, by the wrong branch, and a probe that counted any `raise_exception`
+            -- was satisfied. Found by the sweep: the mutation was caught by check 105
+            -- alone, which means the branch had no probe.
+            IF sqlerrm NOT LIKE '%does not exist%' THEN
+                RAISE EXCEPTION
+                    'CHECK 104 FAILED: a capability on a missing device was refused by the '
+                    'next branch of the same function (%), not the missing-device branch',
+                    sqlerrm;
+            END IF;
+            probe := probe + 1;
+        WHEN foreign_key_violation THEN
+            RAISE EXCEPTION
+                'CHECK 104 FAILED: a capability on a missing device was refused by the '
+                'foreign key, not the trigger';
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_device_capabilities
+            (tenant_id, device_id, capability, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                '77777777-2000-4000-8000-000000000002', 'payment',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION
+            'CHECK 104 FAILED: a device declared a capability its model does not have';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 104 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+    -- 5 to 7. `dev_device_is_one_way`: the lifecycle, the epoch and the first activation.
+    -- The fourth branch -- what a device *is* -- is in 104b, because `type_id`, `location_id`
+    -- and `serial_number` carry no UPDATE grant.
+    BEGIN
+        UPDATE plt01.dev_devices SET state = 'active'
+         WHERE device_id = '77777777-2000-4000-8000-000000000002';
+        RAISE EXCEPTION
+            'CHECK 104 FAILED: a registered device went live without being provisioned';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 104 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+        WHEN check_violation THEN
+            RAISE EXCEPTION
+                'CHECK 104 FAILED: a bad device transition was refused by %, not the '
+                'one-way trigger', sqlerrm;
+    END;
+    -- **The epoch only goes up.** Rewinding it makes every stale snapshot look current,
+    -- which is how a revoked credential starts working again.
+    BEGIN
+        UPDATE plt01.dev_devices SET revocation_epoch = 5
+         WHERE device_id = '77777777-2000-4000-8000-000000000001';
+        UPDATE plt01.dev_devices SET revocation_epoch = 2
+         WHERE device_id = '77777777-2000-4000-8000-000000000001';
+        RAISE EXCEPTION 'CHECK 104 FAILED: a revocation epoch was rewound';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 104 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+    BEGIN
+        UPDATE plt01.dev_devices
+           SET activated_by = '44444444-4444-4444-8444-444444444444'
+         WHERE device_id = '77777777-2000-4000-8000-000000000001';
+        RAISE EXCEPTION
+            'CHECK 104 FAILED: who brought a door into service was rewritten';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 104 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+        WHEN check_violation THEN
+            RAISE EXCEPTION
+                'CHECK 104 FAILED: rewriting an activation was refused by %, not the '
+                'recorded-once branch', sqlerrm;
+    END;
+    -- 8 and 9. `dev_certificate_is_one_way`: the lifecycle, and a revoked certificate that
+    -- does not change again. The identity branch is in 104b.
+    BEGIN
+        UPDATE plt01.dev_certificates SET state = 'pending'
+         WHERE certificate_id = '77777777-3000-4000-8000-000000000001';
+        RAISE EXCEPTION 'CHECK 104 FAILED: an active certificate went back to pending';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 104 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+        WHEN check_violation THEN
+            RAISE EXCEPTION
+                'CHECK 104 FAILED: a bad certificate transition was refused by %, not the '
+                'one-way trigger', sqlerrm;
+    END;
+    BEGIN
+        UPDATE plt01.dev_certificates
+           SET state = 'revoked', revoked_at = now(),
+               revoked_by = '33333333-3333-4333-8333-333333333333',
+               revoke_reason = 'the unit was stolen',
+               revoke_correlation_id = '33333333-3333-4333-8333-333333333333'
+         WHERE certificate_id = '77777777-3000-4000-8000-000000000001';
+        UPDATE plt01.dev_certificates SET revoke_reason = 'actually it was fine'
+         WHERE certificate_id = '77777777-3000-4000-8000-000000000001';
+        RAISE EXCEPTION 'CHECK 104 FAILED: a revoked certificate was rewritten';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 104 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+    -- 10 and 11. `dev_safety_profile_is_an_access_point`: the device exists, and it moves a
+    -- barrier. A fire-alarm profile recorded against a scanner satisfies `may_go_live` for
+    -- nothing.
+    BEGIN
+        INSERT INTO plt01.dev_safety_profiles
+            (tenant_id, device_id, profile, on_egress_path,
+             fire_release_is_independent, local_emergency_input, evidence_ref,
+             door_description, commissioned_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                '77777777-2000-4000-8000-0000000000ff', 'fail_safe', true, true, true,
+                'uri:certs/probe', 'a door', '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 104 FAILED: a safety profile on a device that does not exist';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 104 FAILED%' THEN RAISE; END IF;
+            IF sqlerrm NOT LIKE '%does not exist%' THEN
+                RAISE EXCEPTION
+                    'CHECK 104 FAILED: a profile on a missing device was refused by the '
+                    'next branch of the same function (%), not the missing-device branch',
+                    sqlerrm;
+            END IF;
+            probe := probe + 1;
+        WHEN foreign_key_violation THEN
+            RAISE EXCEPTION
+                'CHECK 104 FAILED: a profile on a missing device was refused by the foreign '
+                'key, not the trigger';
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_safety_profiles
+            (tenant_id, device_id, profile, on_egress_path,
+             fire_release_is_independent, local_emergency_input, evidence_ref,
+             door_description, commissioned_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                '77777777-2000-4000-8000-000000000003', 'fail_safe', true, true, true,
+                'uri:certs/probe', 'a door', '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION
+            'CHECK 104 FAILED: a hardware safety profile on a device that moves no barrier';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 104 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+    -- 12. `dev_safety_profile_supersede_is_final`: a superseded profile does not change
+    -- again. Its sibling branch -- the claims on the row -- is in 104b, because not one of
+    -- them carries an UPDATE grant.
+    BEGIN
+        UPDATE plt01.dev_safety_profiles
+           SET superseded_at = now(),
+               superseded_by = '77777777-4000-4000-8000-0000000000aa',
+               supersede_correlation_id = '33333333-3333-4333-8333-333333333333'
+         WHERE profile_id = '77777777-4000-4000-8000-000000000001';
+        UPDATE plt01.dev_safety_profiles
+           SET supersede_correlation_id = '44444444-4444-4444-8444-444444444444'
+         WHERE profile_id = '77777777-4000-4000-8000-000000000001';
+        RAISE EXCEPTION
+            'CHECK 104 FAILED: a superseded safety record was written again';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 104 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+    -- 13. `dev_command_is_one_way`: the lifecycle. Its identity branch is in 104b.
+    BEGIN
+        UPDATE plt01.dev_commands SET state = 'completed', settled_at = now()
+         WHERE command_id = '77777777-7000-4000-8000-000000000001';
+        RAISE EXCEPTION
+            'CHECK 104 FAILED: an issued command completed without ever being delivered';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 104 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+        WHEN check_violation THEN
+            RAISE EXCEPTION
+                'CHECK 104 FAILED: a bad command transition was refused by %, not the '
+                'one-way trigger', sqlerrm;
+    END;
+    -- 14 to 17. `dev_command_is_within_capability`: the device exists, it is in service, it
+    -- declares what is being asked, and an actuation needs a live commissioning.
+    BEGIN
+        INSERT INTO plt01.dev_commands
+            (tenant_id, device_id, action, payload_digest, expires_at,
+             idempotency_key, issued_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                '77777777-2000-4000-8000-0000000000ff', 'reboot',
+                '0123456789abcdeffedcba9876543210fedcba9876543210fedcba9876543210',
+                now() + interval '1 hour', 'probe-missing-device',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 104 FAILED: a command to a device that does not exist';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 104 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+        WHEN foreign_key_violation THEN
+            RAISE EXCEPTION
+                'CHECK 104 FAILED: a command to a missing device was refused by the foreign '
+                'key, not the trigger';
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_commands
+            (tenant_id, device_id, action, payload_digest, expires_at,
+             idempotency_key, issued_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                '77777777-2000-4000-8000-000000000002', 'reboot',
+                '0123456789abcdeffedcba9876543210fedcba9876543210fedcba9876543210',
+                now() + interval '1 hour', 'probe-not-in-service',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 104 FAILED: a command went to a device out of service';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 104 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+    -- The scanner is in service and declares `scan` and nothing else, so asking it for
+    -- telemetry reaches the capability branch rather than the state branch above.
+    BEGIN
+        INSERT INTO plt01.dev_commands
+            (tenant_id, device_id, action, payload_digest, expires_at,
+             idempotency_key, issued_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                '77777777-2000-4000-8000-000000000003', 'report_peripherals',
+                '0123456789abcdeffedcba9876543210fedcba9876543210fedcba9876543210',
+                now() + interval '1 hour', 'probe-capability',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION
+            'CHECK 104 FAILED: a device was asked for something it does not declare';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 104 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+    -- **And the branch this module exists for.** The west turnstile is active and declares
+    -- `access.actuate`, so the three branches above pass; it has no commissioning record and
+    -- no safety profile, which is section 16.4's refusal.
+    BEGIN
+        INSERT INTO plt01.dev_commands
+            (tenant_id, device_id, action, payload_digest, expires_at,
+             idempotency_key, issued_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                '77777777-2000-4000-8000-000000000004', 'unlock_momentary',
+                '0123456789abcdeffedcba9876543210fedcba9876543210fedcba9876543210',
+                now() + interval '30 seconds', 'probe-uncommissioned',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION
+            'CHECK 104 FAILED: an access point with no safety record was told to unlock';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 104 FAILED%' THEN RAISE; END IF;
+            IF sqlerrm NOT LIKE '%no live hardware safety profile%' THEN
+                RAISE EXCEPTION
+                    'CHECK 104 FAILED: a door with no safety record was refused by the '
+                    'commissioning branch (%), not the profile one', sqlerrm;
+            END IF;
+            probe := probe + 1;
+    END;
+    -- 18 and 19. `dev_snapshot_epoch_is_current`.
+    BEGIN
+        INSERT INTO plt01.dev_policy_snapshots
+            (tenant_id, device_id, revocation_epoch, content_digest, expires_at,
+             issued_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                '77777777-2000-4000-8000-0000000000ff', 0,
+                '0123456789abcdeffedcba9876543210fedcba9876543210fedcba9876543210',
+                now() + interval '1 hour', '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 104 FAILED: a snapshot for a device that does not exist';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 104 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+        WHEN foreign_key_violation THEN
+            RAISE EXCEPTION
+                'CHECK 104 FAILED: a snapshot for a missing device was refused by the '
+                'foreign key, not the trigger';
+    END;
+    BEGIN
+        UPDATE plt01.dev_devices SET revocation_epoch = 3
+         WHERE device_id = '77777777-2000-4000-8000-000000000001';
+        INSERT INTO plt01.dev_policy_snapshots
+            (tenant_id, device_id, revocation_epoch, content_digest, expires_at,
+             issued_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                '77777777-2000-4000-8000-000000000001', 1,
+                '0123456789abcdeffedcba9876543210fedcba9876543210fedcba9876543210',
+                now() + interval '1 hour', '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION
+            'CHECK 104 FAILED: a snapshot was issued already behind the revocation epoch';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 104 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+    -- 20 and 21. `dev_commissioning_is_an_access_point`.
+    BEGIN
+        INSERT INTO plt01.dev_commissioning_tests
+            (tenant_id, device_id, test_name, outcome, tested_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                '77777777-2000-4000-8000-0000000000ff', 'recovery', 'passed',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION
+            'CHECK 104 FAILED: a commissioning record on a device that does not exist';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 104 FAILED%' THEN RAISE; END IF;
+            IF sqlerrm NOT LIKE '%does not exist%' THEN
+                RAISE EXCEPTION
+                    'CHECK 104 FAILED: a commissioning record on a missing device was '
+                    'refused by the next branch of the same function (%), not the '
+                    'missing-device branch', sqlerrm;
+            END IF;
+            probe := probe + 1;
+        WHEN foreign_key_violation THEN
+            RAISE EXCEPTION
+                'CHECK 104 FAILED: a commissioning record on a missing device was refused by '
+                'the foreign key, not the trigger';
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_commissioning_tests
+            (tenant_id, device_id, test_name, outcome, tested_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                '77777777-2000-4000-8000-000000000003', 'fire_alarm_input', 'passed',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION
+            'CHECK 104 FAILED: a fire-alarm test recorded against a device with no barrier';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 104 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+    -- 22. `dev_firmware_is_one_way`: a withdrawal is final. Its identity branch is in 104b,
+    -- and it has no transition branch -- every move this module would refuse is a move out
+    -- of `withdrawn`, which this one already refuses.
+    BEGIN
+        UPDATE plt01.dev_firmware
+           SET status = 'withdrawn', withdrawn_at = now(),
+               withdrawn_by = '33333333-3333-4333-8333-333333333333',
+               withdraw_reason = 'it bricks units',
+               withdraw_correlation_id = '33333333-3333-4333-8333-333333333333'
+         WHERE firmware_id = '77777777-6000-4000-8000-000000000001';
+        UPDATE plt01.dev_firmware SET status = 'available', withdrawn_at = NULL,
+               withdrawn_by = NULL, withdraw_reason = NULL,
+               withdraw_correlation_id = NULL
+         WHERE firmware_id = '77777777-6000-4000-8000-000000000001';
+        RAISE EXCEPTION
+            'CHECK 104 FAILED: withdrawn firmware came back, so a gateway fetches an image '
+            'somebody pulled for a reason';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 104 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+        WHEN check_violation THEN
+            RAISE EXCEPTION
+                'CHECK 104 FAILED: un-withdrawing firmware was refused by %, not the '
+                'withdrawal-is-final branch', sqlerrm;
+    END;
+    -- 23 and 24. `dev_device_type_is_one_way`: the status machine and the publication
+    -- recorded once. The code and kind are in 104b.
+    BEGIN
+        UPDATE plt01.dev_device_types SET status = 'draft'
+         WHERE type_id = '77777777-1000-4000-8000-000000000001';
+        RAISE EXCEPTION
+            'CHECK 104 FAILED: a published device type went back to draft, which is how its '
+            'capabilities become editable again';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 104 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+        WHEN check_violation THEN
+            RAISE EXCEPTION
+                'CHECK 104 FAILED: demoting a published type was refused by %, not the '
+                'one-way trigger', sqlerrm;
+    END;
+    BEGIN
+        UPDATE plt01.dev_device_types
+           SET published_by = '55555555-5555-4555-8555-555555555555'
+         WHERE type_id = '77777777-1000-4000-8000-000000000001';
+        RAISE EXCEPTION
+            'CHECK 104 FAILED: who settled what a model may be asked to do was rewritten';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 104 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+        WHEN check_violation THEN
+            RAISE EXCEPTION
+                'CHECK 104 FAILED: rewriting a publication was refused by %, not the '
+                'recorded-once branch', sqlerrm;
+    END;
+    -- 25. The commissioning gate itself, which is what paragraph 4175 actually says. Device
+    -- 5 is commissioned -- it has a live safety profile, so the branch above admits it --
+    -- and has no passing test at all, which is the refusal the branch above was wrongly
+    -- credited with for a whole review round.
+    BEGIN
+        INSERT INTO plt01.dev_commands
+            (tenant_id, device_id, action, payload_digest, expires_at,
+             idempotency_key, issued_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                '77777777-2000-4000-8000-000000000005', 'unlock_momentary',
+                '0123456789abcdeffedcba9876543210fedcba9876543210fedcba9876543210',
+                now() + interval '30 seconds', 'probe-untested',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION
+            'CHECK 104 FAILED: a door with no passing commissioning test was told to unlock';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 104 FAILED%' THEN RAISE; END IF;
+            IF sqlerrm NOT LIKE '%commissioning tests%' THEN
+                RAISE EXCEPTION
+                    'CHECK 104 FAILED: an untested access point was refused by the '
+                    'safety-profile branch (%), not the commissioning one', sqlerrm;
+            END IF;
+            probe := probe + 1;
+    END;
+    -- 26 and 27. `dev_certificate_is_one_way`'s two supersession branches. A superseded
+    -- certificate is finished, and its replacement is one issued to the same unit.
+    BEGIN
+        INSERT INTO plt01.dev_certificates
+            (tenant_id, certificate_id, device_id, fingerprint, vault_ref, state,
+             not_before, not_after, issued_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                '77777777-3000-4000-8000-0000000000b1',
+                '77777777-2000-4000-8000-000000000001',
+                '5a1f8c02e7b4d6930fa2c85e1d7b40c9', 'vault:acme/gate/next', 'pending',
+                now(), now() + interval '90 days',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        UPDATE plt01.dev_certificates
+           SET state = 'superseded', superseded_at = now(),
+               superseded_by = '77777777-3000-4000-8000-0000000000b1'
+         WHERE certificate_id = '77777777-3000-4000-8000-000000000001';
+        UPDATE plt01.dev_certificates
+           SET superseded_at = now() - interval '30 days'
+         WHERE certificate_id = '77777777-3000-4000-8000-000000000001';
+        RAISE EXCEPTION
+            'CHECK 104 FAILED: a superseded certificate''s replacement date was backdated';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 104 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+    BEGIN
+        INSERT INTO plt01.dev_certificates
+            (tenant_id, certificate_id, device_id, fingerprint, vault_ref, state,
+             not_before, not_after, issued_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                '77777777-3000-4000-8000-0000000000b2',
+                '77777777-2000-4000-8000-000000000003',
+                '9e3d2a71c0b58f46d1ea7392c4b60a85', 'vault:acme/scan/one', 'pending',
+                now(), now() + interval '90 days',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        -- **`SET CONSTRAINTS ALL IMMEDIATE` first.** This one is a deferred constraint
+        -- trigger, like the foreign key beside it, so it fires at COMMIT -- and a probe
+        -- that rolls back never sees it at all.
+        SET CONSTRAINTS ALL IMMEDIATE;
+        UPDATE plt01.dev_certificates
+           SET state = 'superseded', superseded_at = now(),
+               superseded_by = '77777777-3000-4000-8000-0000000000b2'
+         WHERE certificate_id = '77777777-3000-4000-8000-000000000001';
+        RAISE EXCEPTION
+            'CHECK 104 FAILED: a turnstile''s certificate was replaced by a scanner''s';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 104 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+    -- 28. And the same relation on a building's safety record, which is the one that
+    -- matters: a fire door's chain reading "re-commissioned as fail_secure" through a
+    -- pointer that crossed doors.
+    BEGIN
+        SET CONSTRAINTS ALL IMMEDIATE;
+        UPDATE plt01.dev_safety_profiles
+           SET superseded_at = now(),
+               superseded_by = '77777777-4000-4000-8000-000000000005',
+               supersede_correlation_id = '33333333-3333-4333-8333-333333333333'
+         WHERE profile_id = '77777777-4000-4000-8000-000000000001';
+        RAISE EXCEPTION
+            'CHECK 104 FAILED: one door''s commissioning superseded another door''s';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 104 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+    -- 29. A command's signature locator is written once, like the digest it covers.
+    BEGIN
+        UPDATE plt01.dev_commands SET signature_ref = 'vault:sig/first'
+         WHERE command_id = '77777777-7000-4000-8000-000000000001';
+        UPDATE plt01.dev_commands SET signature_ref = 'vault:sig/second'
+         WHERE command_id = '77777777-7000-4000-8000-000000000001';
+        RAISE EXCEPTION
+            'CHECK 104 FAILED: a committed command''s signature was re-pointed';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 104 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+    IF probe <> 29 THEN
+        RAISE EXCEPTION
+            'CHECK 104 FAILED: the MOD-021 triggers fired for % of 29 probes', probe;
+    END IF;
+END $$;
+ROLLBACK;
+
+
+-- --------------------------- 104b. the identity branches the grant already refuses
+-- **Six branches a runtime role cannot reach.** Each moves a column that carries no UPDATE
+-- grant for `veyro_cp_app` or `veyro_cp_worker`, so check 102 already proves this service
+-- cannot move it and a probe as either role fails with `insufficient_privilege` before the
+-- trigger is consulted. They run as the owner instead, because the trigger is what holds for
+-- a writer that is not the service -- a migration, a repair script, a psql session -- and a
+-- branch with no probe is a branch a reviewer deletes with every check still passing.
+BEGIN;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+DECLARE
+    probe integer := 0;
+BEGIN
+    -- 1. A device moved to another door. The old row is what answers "what was driving that
+    -- door in March", and a unit that physically moved is one re-enrolled.
+    BEGIN
+        UPDATE plt01.dev_devices
+           SET location_id = 'eeeeeeee-1000-4000-8000-00000000000a'
+         WHERE device_id = '77777777-2000-4000-8000-000000000001';
+        RAISE EXCEPTION 'CHECK 104 FAILED: a device was moved to another location';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 104 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+        WHEN foreign_key_violation THEN
+            RAISE EXCEPTION
+                'CHECK 104 FAILED: moving a device was refused by the foreign key, not the '
+                'identity branch';
+    END;
+    -- 2. A certificate's window widened, which is "what could open that door on the
+    -- fourteenth" becoming unanswerable.
+    BEGIN
+        UPDATE plt01.dev_certificates
+           SET not_after = now() + interval '300 days'
+         WHERE certificate_id = '77777777-3000-4000-8000-000000000001';
+        RAISE EXCEPTION 'CHECK 104 FAILED: a certificate window was widened in place';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 104 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+        WHEN check_violation THEN
+            RAISE EXCEPTION
+                'CHECK 104 FAILED: widening a certificate was refused by %, not the identity '
+                'branch', sqlerrm;
+    END;
+    -- 3. A building's safety claim edited rather than superseded, which is a building whose
+    -- records pass an audit it would fail.
+    BEGIN
+        UPDATE plt01.dev_safety_profiles SET on_egress_path = false
+         WHERE profile_id = '77777777-4000-4000-8000-000000000001';
+        RAISE EXCEPTION
+            'CHECK 104 FAILED: a commissioned safety claim was edited in place';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 104 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+        WHEN check_violation THEN
+            RAISE EXCEPTION
+                'CHECK 104 FAILED: editing a safety claim was refused by %, not the identity '
+                'branch', sqlerrm;
+    END;
+    -- 4. A committed command re-aimed, which is forging one from the device's point of view.
+    -- MOD-010's `evt_outbox.event_type` finding where the consequence is a door opening.
+    BEGIN
+        UPDATE plt01.dev_commands SET action = 'unlock_momentary'
+         WHERE command_id = '77777777-7000-4000-8000-000000000001';
+        RAISE EXCEPTION 'CHECK 104 FAILED: a committed command was re-aimed';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 104 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+        WHEN check_violation THEN
+            RAISE EXCEPTION
+                'CHECK 104 FAILED: re-aiming a command was refused by %, not the identity '
+                'branch', sqlerrm;
+    END;
+    -- 5. A released firmware version re-pointed at another image, which is how a gateway
+    -- fetches something nobody reviewed under a version somebody approved.
+    BEGIN
+        UPDATE plt01.dev_firmware SET image_ref = 'oci:somebody/else:latest'
+         WHERE firmware_id = '77777777-6000-4000-8000-000000000001';
+        RAISE EXCEPTION
+            'CHECK 104 FAILED: a released firmware version was re-pointed at another image';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 104 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+        WHEN check_violation THEN
+            RAISE EXCEPTION
+                'CHECK 104 FAILED: re-pointing an image was refused by %, not the identity '
+                'branch', sqlerrm;
+    END;
+    -- 6. And a turnstile relabelled a scanner, which is an access point with no commissioning
+    -- gate: `kind` is what decides whether a safety profile is required at all.
+    BEGIN
+        UPDATE plt01.dev_device_types SET kind = 'scanner'
+         WHERE type_id = '77777777-1000-4000-8000-000000000001';
+        RAISE EXCEPTION
+            'CHECK 104 FAILED: a turnstile was relabelled a scanner';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 104 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+        WHEN check_violation THEN
+            RAISE EXCEPTION
+                'CHECK 104 FAILED: relabelling a type was refused by %, not the identity '
+                'branch', sqlerrm;
+    END;
+    IF probe <> 6 THEN
+        RAISE EXCEPTION
+            'CHECK 104 FAILED: the MOD-021 identity branches fired for % of 6 probes', probe;
+    END IF;
+END $$;
+ROLLBACK;
+
+
+
+
+
+
+
+-- ------------------------------------- 105. MOD-021's rules, pinned by their own text
+-- **The second line of evidence, which runs in CI rather than at the next sweep.** Every
+-- behavioural case below proves that a rule refuses the row it should; none of them notices a
+-- rule that is *gone* until somebody runs a mutation sweep, which is a thing a person does.
+-- MOD-019 added this and it has caught a regression in every module since -- including two of
+-- MOD-021's own while they were being written.
+--
+-- A drop, a weakening and a deleted plpgsql branch all change the text, so all three fail
+-- here. It does not replace the cases: a pin says the rule is still written down and only a
+-- case says it still bites. A legitimate schema change fails this until it is regenerated,
+-- which is the moment a human reads the diff.
+--
+-- 84 checks, 26 indexes, 14 triggers, 14 bodies.
+DO $$
+DECLARE
+    wrong text;
+BEGIN
+    WITH expected(rule) AS (VALUES
+        ('dev_certificates_fingerprint_shape CHECK ((fingerprint ~ ''^[0-9a-f]{32,128}$''::text))'),
+        ('dev_certificates_lifetime_sane CHECK ((((not_after - not_before) >= ''24:00:00''::interval) AND ((not_after - not_before) <= ''366 days''::interval)))'),
+        ('dev_certificates_not_self CHECK ((superseded_by IS DISTINCT FROM certificate_id))'),
+        ('dev_certificates_revocation_attributed CHECK ((((revoked_at IS NULL) AND (revoked_by IS NULL) AND (revoke_reason IS NULL) AND (revoke_correlation_id IS NULL)) OR ((revoked_at IS NOT NULL) AND (revoked_by IS NOT NULL) AND (COALESCE(revoke_reason, ''''::text) ~ ''[^[:space:]]''::text) AND (revoke_correlation_id IS NOT NULL))))'),
+        ('dev_certificates_revoked_is_revoked CHECK (((state = ''revoked''::text) = (revoked_at IS NOT NULL)))'),
+        ('dev_certificates_state CHECK ((state = ANY (ARRAY[''pending''::text, ''active''::text, ''superseded''::text, ''revoked''::text])))'),
+        ('dev_certificates_superseded_is_superseded CHECK (((state <> ''superseded''::text) OR (superseded_at IS NOT NULL)))'),
+        ('dev_certificates_supersession_paired CHECK (((superseded_by IS NULL) = (superseded_at IS NULL)))'),
+        ('dev_certificates_vault_ref_is_a_locator CHECK ((vault_ref ~ ''^[a-z][a-z0-9+.-]*:[^[:space:]]+$''::text))'),
+        ('dev_commands_acknowledged_is_acknowledged CHECK (((state <> ''acknowledged''::text) OR (acknowledged_at IS NOT NULL)))'),
+        ('dev_commands_acknowledgement_ordered CHECK (((acknowledged_at IS NULL) OR ((delivered_at IS NOT NULL) AND (acknowledged_at >= delivered_at))))'),
+        ('dev_commands_action CHECK ((action = ANY (ARRAY[''unlock_momentary''::text, ''reboot''::text, ''diagnostics''::text, ''sync_now''::text, ''update_firmware''::text, ''rotate_certificate''::text, ''set_maintenance''::text, ''clear_maintenance''::text, ''report_peripherals''::text])))'),
+        ('dev_commands_arguments_is_an_object CHECK ((jsonb_typeof(arguments) = ''object''::text))'),
+        ('dev_commands_delivered_is_delivered CHECK (((state <> ALL (ARRAY[''delivered''::text, ''acknowledged''::text])) OR (delivered_at IS NOT NULL)))'),
+        ('dev_commands_delivery_attributed CHECK ((((delivered_at IS NULL) AND (delivered_by IS NULL) AND (delivery_correlation_id IS NULL)) OR ((delivered_at IS NOT NULL) AND (delivered_by IS NOT NULL) AND (delivery_correlation_id IS NOT NULL))))'),
+        ('dev_commands_delivery_ordered CHECK (((delivered_at IS NULL) OR (delivered_at >= issued_at)))'),
+        ('dev_commands_digest_shape CHECK ((payload_digest ~ ''^[0-9a-f]{64}$''::text))'),
+        ('dev_commands_failure_explained CHECK (((state <> ''failed''::text) OR (COALESCE(outcome_detail, ''''::text) ~ ''[^[:space:]]''::text)))'),
+        ('dev_commands_key_not_blank CHECK ((idempotency_key ~ ''[^[:space:]]''::text))'),
+        ('dev_commands_not_postdated CHECK ((issued_at <= (now() + ''00:05:00''::interval)))'),
+        ('dev_commands_settled_is_settled CHECK (((state = ANY (ARRAY[''completed''::text, ''failed''::text, ''expired''::text])) = (settled_at IS NOT NULL)))'),
+        ('dev_commands_settlement_attributed CHECK ((((settled_at IS NULL) AND (settled_by IS NULL) AND (settle_correlation_id IS NULL)) OR ((settled_at IS NOT NULL) AND (settled_by IS NOT NULL) AND (settle_correlation_id IS NOT NULL))))'),
+        ('dev_commands_signature_is_a_locator CHECK (((signature_ref IS NULL) OR (signature_ref ~ ''^[a-z][a-z0-9+.-]*:[^[:space:]]+$''::text)))'),
+        ('dev_commands_state CHECK ((state = ANY (ARRAY[''issued''::text, ''delivered''::text, ''acknowledged''::text, ''completed''::text, ''failed''::text, ''expired''::text])))'),
+        ('dev_commands_unlock_window_is_a_minute CHECK (((action <> ''unlock_momentary''::text) OR ((expires_at - issued_at) <= ''00:01:00''::interval)))'),
+        ('dev_commands_window_bounded CHECK (((expires_at - issued_at) <= ''24:00:00''::interval))'),
+        ('dev_commands_window_ordered CHECK ((expires_at > issued_at))'),
+        ('dev_commissioning_tests_failure_explained CHECK (((outcome <> ''failed''::text) OR (COALESCE(detail, ''''::text) ~ ''[^[:space:]]''::text)))'),
+        ('dev_commissioning_tests_name CHECK ((test_name = ANY (ARRAY[''power_loss''::text, ''edge_agent_crash''::text, ''controller_disconnect''::text, ''fire_alarm_input''::text, ''emergency_unlock''::text, ''recovery''::text, ''manual_override''::text])))'),
+        ('dev_commissioning_tests_outcome CHECK ((outcome = ANY (ARRAY[''passed''::text, ''failed''::text])))'),
+        ('dev_device_types_code_not_blank CHECK ((type_code ~ ''[^[:space:]]''::text))'),
+        ('dev_device_types_kind CHECK ((kind = ANY (ARRAY[''turnstile''::text, ''door_controller''::text, ''biometric_terminal''::text, ''scanner''::text, ''kiosk''::text, ''pos''::text, ''equipment''::text, ''gateway''::text])))'),
+        ('dev_device_types_model_not_blank CHECK ((model ~ ''[^[:space:]]''::text))'),
+        ('dev_device_types_name_not_blank CHECK ((display_name ~ ''[^[:space:]]''::text))'),
+        ('dev_device_types_publication_attributed CHECK ((((published_at IS NULL) AND (published_by IS NULL) AND (publish_correlation_id IS NULL)) OR ((published_at IS NOT NULL) AND (published_by IS NOT NULL) AND (publish_correlation_id IS NOT NULL))))'),
+        ('dev_device_types_published_is_published CHECK (((status = ''draft''::text) OR (published_at IS NOT NULL)))'),
+        ('dev_device_types_publisher_is_not_author CHECK (((published_by IS NULL) OR (published_by <> created_by)))'),
+        ('dev_device_types_retired_is_retired CHECK (((status = ''retired''::text) = (retired_at IS NOT NULL)))'),
+        ('dev_device_types_retirement_attributed CHECK ((((retired_at IS NULL) AND (retired_by IS NULL) AND (retire_reason IS NULL) AND (retire_correlation_id IS NULL)) OR ((retired_at IS NOT NULL) AND (retired_by IS NOT NULL) AND (COALESCE(retire_reason, ''''::text) ~ ''[^[:space:]]''::text) AND (retire_correlation_id IS NOT NULL))))'),
+        ('dev_device_types_status CHECK ((status = ANY (ARRAY[''draft''::text, ''published''::text, ''retired''::text])))'),
+        ('dev_device_types_vendor_not_blank CHECK ((vendor ~ ''[^[:space:]]''::text))'),
+        ('dev_devices_activation_attributed CHECK ((((activated_at IS NULL) AND (activated_by IS NULL) AND (activate_correlation_id IS NULL)) OR ((activated_at IS NOT NULL) AND (activated_by IS NOT NULL) AND (activate_correlation_id IS NOT NULL))))'),
+        ('dev_devices_config_is_an_object CHECK ((jsonb_typeof(config) = ''object''::text))'),
+        ('dev_devices_epoch_sane CHECK (((revocation_epoch >= 0) AND (revocation_epoch <= 2000000000)))'),
+        ('dev_devices_live_was_activated CHECK (((state <> ALL (ARRAY[''active''::text, ''maintenance''::text])) OR (activated_at IS NOT NULL)))'),
+        ('dev_devices_name_not_blank CHECK ((display_name ~ ''[^[:space:]]''::text))'),
+        ('dev_devices_quarantine_attributed CHECK ((((quarantined_at IS NULL) AND (quarantined_by IS NULL) AND (quarantine_reason IS NULL) AND (quarantine_correlation_id IS NULL)) OR ((quarantined_at IS NOT NULL) AND (quarantined_by IS NOT NULL) AND (COALESCE(quarantine_reason, ''''::text) ~ ''[^[:space:]]''::text) AND (quarantine_correlation_id IS NOT NULL))))'),
+        ('dev_devices_quarantined_is_quarantined CHECK (((state <> ''quarantined''::text) OR (quarantined_at IS NOT NULL)))'),
+        ('dev_devices_reactivation_attributed CHECK ((((reactivated_at IS NULL) AND (reactivated_by IS NULL) AND (reactivate_correlation_id IS NULL)) OR ((reactivated_at IS NOT NULL) AND (reactivated_by IS NOT NULL) AND (reactivate_correlation_id IS NOT NULL))))'),
+        ('dev_devices_reactivation_ordered CHECK (((reactivated_at IS NULL) OR ((activated_at IS NOT NULL) AND (reactivated_at >= activated_at))))'),
+        ('dev_devices_retired_is_retired CHECK (((state = ''retired''::text) = (retired_at IS NOT NULL)))'),
+        ('dev_devices_retirement_attributed CHECK ((((retired_at IS NULL) AND (retired_by IS NULL) AND (retire_reason IS NULL) AND (retire_correlation_id IS NULL)) OR ((retired_at IS NOT NULL) AND (retired_by IS NOT NULL) AND (COALESCE(retire_reason, ''''::text) ~ ''[^[:space:]]''::text) AND (retire_correlation_id IS NOT NULL))))'),
+        ('dev_devices_serial_not_blank CHECK ((serial_number ~ ''[^[:space:]]''::text))'),
+        ('dev_devices_state CHECK ((state = ANY (ARRAY[''registered''::text, ''provisioned''::text, ''active''::text, ''maintenance''::text, ''quarantined''::text, ''retired''::text])))'),
+        ('dev_devices_version_positive CHECK ((version >= 1))'),
+        ('dev_firmware_digest_shape CHECK ((image_digest ~ ''^[0-9a-f]{64}$''::text))'),
+        ('dev_firmware_image_is_a_locator CHECK ((image_ref ~ ''^[a-z][a-z0-9+.-]*:[^[:space:]]+$''::text))'),
+        ('dev_firmware_notes_not_blank CHECK ((release_notes ~ ''[^[:space:]]''::text))'),
+        ('dev_firmware_status CHECK ((status = ANY (ARRAY[''available''::text, ''staged''::text, ''withdrawn''::text])))'),
+        ('dev_firmware_version_shape CHECK ((version ~ ''^[0-9A-Za-z][0-9A-Za-z._+-]{0,63}$''::text))'),
+        ('dev_firmware_withdrawal_attributed CHECK ((((withdrawn_at IS NULL) AND (withdrawn_by IS NULL) AND (withdraw_reason IS NULL) AND (withdraw_correlation_id IS NULL)) OR ((withdrawn_at IS NOT NULL) AND (withdrawn_by IS NOT NULL) AND (COALESCE(withdraw_reason, ''''::text) ~ ''[^[:space:]]''::text) AND (withdraw_correlation_id IS NOT NULL))))'),
+        ('dev_firmware_withdrawn_is_withdrawn CHECK (((status = ''withdrawn''::text) = (withdrawn_at IS NOT NULL)))'),
+        ('dev_health_reports_errors_sane CHECK (((error_count >= 0) AND (error_count <= 1000000000)))'),
+        ('dev_health_reports_latency_sane CHECK (((latency_ms >= 0) AND (latency_ms <= 600000)))'),
+        ('dev_health_reports_peripherals_is_an_object CHECK ((jsonb_typeof(peripherals) = ''object''::text))'),
+        ('dev_health_reports_storage_sane CHECK (((storage_free_bytes >= 0) AND (storage_free_bytes <= ''1125899906842624''::bigint)))'),
+        ('dev_health_reports_version_shape CHECK ((agent_version ~ ''^[0-9A-Za-z][0-9A-Za-z._+-]{0,63}$''::text))'),
+        ('dev_policy_snapshots_digest_shape CHECK ((content_digest ~ ''^[0-9a-f]{64}$''::text))'),
+        ('dev_policy_snapshots_epoch_sane CHECK ((revocation_epoch <= 2000000000))'),
+        ('dev_policy_snapshots_not_postdated CHECK ((issued_at <= (now() + ''00:05:00''::interval)))'),
+        ('dev_policy_snapshots_signature_is_a_locator CHECK (((signature_ref IS NULL) OR (signature_ref ~ ''^[a-z][a-z0-9+.-]*:[^[:space:]]+$''::text)))'),
+        ('dev_policy_snapshots_ttl_bounded CHECK ((((expires_at - issued_at) >= ''00:05:00''::interval) AND ((expires_at - issued_at) <= ''12:00:00''::interval)))'),
+        ('dev_safety_profiles_door_described CHECK ((door_description ~ ''[^[:space:]]''::text))'),
+        ('dev_safety_profiles_egress_is_never_software_gated CHECK (((on_egress_path = false) OR ((profile = ANY (ARRAY[''fail_safe''::text, ''mechanical_free_egress''::text])) AND (fire_release_is_independent = true) AND (local_emergency_input = true))))'),
+        ('dev_safety_profiles_evidence_is_a_locator CHECK ((evidence_ref ~ ''^[a-z][a-z0-9+.-]*:[^[:space:]]+$''::text))'),
+        ('dev_safety_profiles_not_self CHECK ((superseded_by IS DISTINCT FROM profile_id))'),
+        ('dev_safety_profiles_profile CHECK ((profile = ANY (ARRAY[''fail_safe''::text, ''fail_secure''::text, ''mechanical_free_egress''::text])))'),
+        ('dev_safety_profiles_supersession_attributed CHECK ((((superseded_at IS NULL) AND (superseded_by IS NULL) AND (supersede_correlation_id IS NULL)) OR ((superseded_at IS NOT NULL) AND (superseded_by IS NOT NULL) AND (supersede_correlation_id IS NOT NULL))))'),
+        ('dev_sync_conflicts_actually_differ CHECK ((local_digest <> remote_digest))'),
+        ('dev_sync_conflicts_detail_bounded CHECK ((length(detail) <= 1000))'),
+        ('dev_sync_conflicts_detail_not_blank CHECK ((detail ~ ''[^[:space:]]''::text))'),
+        ('dev_sync_conflicts_local_shape CHECK ((local_digest ~ ''^[0-9a-f]{64}$''::text))'),
+        ('dev_sync_conflicts_remote_shape CHECK ((remote_digest ~ ''^[0-9a-f]{64}$''::text))'),
+        ('dev_type_capabilities_known CHECK ((capability = ANY (ARRAY[''credential.read''::text, ''access.actuate''::text, ''biometric.match''::text, ''scan''::text, ''print''::text, ''payment''::text, ''telemetry''::text])))')
+    ), actual(rule) AS (
+        SELECT c.conname || ' ' || pg_get_constraintdef(c.oid)
+        FROM pg_constraint c JOIN pg_class t ON t.oid = c.conrelid
+        WHERE t.relnamespace = 'plt01'::regnamespace AND t.relname LIKE 'dev\_%'
+          AND c.contype = 'c'
+    )
+    SELECT string_agg(rule, '; ' ORDER BY rule) INTO wrong
+    FROM ((SELECT rule FROM expected EXCEPT SELECT rule FROM actual)
+          UNION ALL
+          (SELECT rule FROM actual EXCEPT SELECT rule FROM expected)) AS differing;
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 105 FAILED: MOD-021 CHECK constraints differ from the pinned set: %',
+            wrong;
+    END IF;
+    WITH expected(rule) AS (VALUES
+        ('dev_certificates_one_active_per_device CREATE UNIQUE INDEX dev_certificates_one_active_per_device ON plt01.dev_certificates USING btree (tenant_id, device_id) WHERE (state = ''active''::text)'),
+        ('dev_certificates_pkey CREATE UNIQUE INDEX dev_certificates_pkey ON plt01.dev_certificates USING btree (tenant_id, certificate_id)'),
+        ('dev_certificates_tenant_id_fingerprint_key CREATE UNIQUE INDEX dev_certificates_tenant_id_fingerprint_key ON plt01.dev_certificates USING btree (tenant_id, fingerprint)'),
+        ('dev_commands_pkey CREATE UNIQUE INDEX dev_commands_pkey ON plt01.dev_commands USING btree (tenant_id, command_id)'),
+        ('dev_commands_tenant_id_idempotency_key_key CREATE UNIQUE INDEX dev_commands_tenant_id_idempotency_key_key ON plt01.dev_commands USING btree (tenant_id, idempotency_key)'),
+        ('dev_commands_waiting CREATE INDEX dev_commands_waiting ON plt01.dev_commands USING btree (tenant_id, device_id, state, expires_at)'),
+        ('dev_commissioning_tests_by_device CREATE INDEX dev_commissioning_tests_by_device ON plt01.dev_commissioning_tests USING btree (tenant_id, device_id, test_name, tested_at DESC)'),
+        ('dev_commissioning_tests_pkey CREATE UNIQUE INDEX dev_commissioning_tests_pkey ON plt01.dev_commissioning_tests USING btree (tenant_id, test_id)'),
+        ('dev_device_capabilities_pkey CREATE UNIQUE INDEX dev_device_capabilities_pkey ON plt01.dev_device_capabilities USING btree (tenant_id, device_id, capability)'),
+        ('dev_device_types_pkey CREATE UNIQUE INDEX dev_device_types_pkey ON plt01.dev_device_types USING btree (tenant_id, type_id)'),
+        ('dev_device_types_tenant_id_type_code_key CREATE UNIQUE INDEX dev_device_types_tenant_id_type_code_key ON plt01.dev_device_types USING btree (tenant_id, type_code)'),
+        ('dev_devices_by_last_seen CREATE INDEX dev_devices_by_last_seen ON plt01.dev_devices USING btree (tenant_id, state, last_seen_at)'),
+        ('dev_devices_by_location CREATE INDEX dev_devices_by_location ON plt01.dev_devices USING btree (tenant_id, location_id, state)'),
+        ('dev_devices_pkey CREATE UNIQUE INDEX dev_devices_pkey ON plt01.dev_devices USING btree (tenant_id, device_id)'),
+        ('dev_devices_tenant_id_serial_number_key CREATE UNIQUE INDEX dev_devices_tenant_id_serial_number_key ON plt01.dev_devices USING btree (tenant_id, serial_number)'),
+        ('dev_firmware_pkey CREATE UNIQUE INDEX dev_firmware_pkey ON plt01.dev_firmware USING btree (tenant_id, firmware_id)'),
+        ('dev_firmware_tenant_id_type_id_version_key CREATE UNIQUE INDEX dev_firmware_tenant_id_type_id_version_key ON plt01.dev_firmware USING btree (tenant_id, type_id, version)'),
+        ('dev_health_reports_by_device CREATE INDEX dev_health_reports_by_device ON plt01.dev_health_reports USING btree (tenant_id, device_id, reported_at DESC)'),
+        ('dev_health_reports_pkey CREATE UNIQUE INDEX dev_health_reports_pkey ON plt01.dev_health_reports USING btree (tenant_id, report_id)'),
+        ('dev_policy_snapshots_by_device CREATE INDEX dev_policy_snapshots_by_device ON plt01.dev_policy_snapshots USING btree (tenant_id, device_id, issued_at DESC)'),
+        ('dev_policy_snapshots_pkey CREATE UNIQUE INDEX dev_policy_snapshots_pkey ON plt01.dev_policy_snapshots USING btree (tenant_id, snapshot_id)'),
+        ('dev_safety_profiles_one_live_per_device CREATE UNIQUE INDEX dev_safety_profiles_one_live_per_device ON plt01.dev_safety_profiles USING btree (tenant_id, device_id) WHERE (superseded_at IS NULL)'),
+        ('dev_safety_profiles_pkey CREATE UNIQUE INDEX dev_safety_profiles_pkey ON plt01.dev_safety_profiles USING btree (tenant_id, profile_id)'),
+        ('dev_sync_conflicts_by_device CREATE INDEX dev_sync_conflicts_by_device ON plt01.dev_sync_conflicts USING btree (tenant_id, device_id, reported_at DESC)'),
+        ('dev_sync_conflicts_pkey CREATE UNIQUE INDEX dev_sync_conflicts_pkey ON plt01.dev_sync_conflicts USING btree (tenant_id, conflict_id)'),
+        ('dev_type_capabilities_pkey CREATE UNIQUE INDEX dev_type_capabilities_pkey ON plt01.dev_type_capabilities USING btree (tenant_id, type_id, capability)')
+    ), actual(rule) AS (
+        SELECT indexname || ' ' || indexdef FROM pg_indexes
+        WHERE schemaname = 'plt01' AND tablename LIKE 'dev\_%'
+    )
+    SELECT string_agg(rule, '; ' ORDER BY rule) INTO wrong
+    FROM ((SELECT rule FROM expected EXCEPT SELECT rule FROM actual)
+          UNION ALL
+          (SELECT rule FROM actual EXCEPT SELECT rule FROM expected)) AS differing;
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 105 FAILED: MOD-021 indexes differ from the pinned set: %', wrong;
+    END IF;
+    WITH expected(rule) AS (VALUES
+        ('CREATE TRIGGER dev_certificates_one_way BEFORE UPDATE ON plt01.dev_certificates FOR EACH ROW EXECUTE FUNCTION plt01.dev_certificate_is_one_way()'),
+        ('CREATE TRIGGER dev_certificates_replacement_is_its_own CREATE CONSTRAINT TRIGGER dev_certificates_replacement_is_its_own AFTER UPDATE ON plt01.dev_certificates DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION plt01.dev_certificate_replaces_its_own_device()'),
+        ('CREATE TRIGGER dev_commands_one_way BEFORE UPDATE ON plt01.dev_commands FOR EACH ROW EXECUTE FUNCTION plt01.dev_command_is_one_way()'),
+        ('CREATE TRIGGER dev_commands_within_capability BEFORE INSERT ON plt01.dev_commands FOR EACH ROW EXECUTE FUNCTION plt01.dev_command_is_within_capability()'),
+        ('CREATE TRIGGER dev_commissioning_tests_access_point BEFORE INSERT ON plt01.dev_commissioning_tests FOR EACH ROW EXECUTE FUNCTION plt01.dev_commissioning_is_an_access_point()'),
+        ('CREATE TRIGGER dev_device_capabilities_declared BEFORE INSERT ON plt01.dev_device_capabilities FOR EACH ROW EXECUTE FUNCTION plt01.dev_device_capability_is_declared()'),
+        ('CREATE TRIGGER dev_device_types_one_way BEFORE UPDATE ON plt01.dev_device_types FOR EACH ROW EXECUTE FUNCTION plt01.dev_device_type_is_one_way()'),
+        ('CREATE TRIGGER dev_devices_one_way BEFORE UPDATE ON plt01.dev_devices FOR EACH ROW EXECUTE FUNCTION plt01.dev_device_is_one_way()'),
+        ('CREATE TRIGGER dev_firmware_one_way BEFORE UPDATE ON plt01.dev_firmware FOR EACH ROW EXECUTE FUNCTION plt01.dev_firmware_is_one_way()'),
+        ('CREATE TRIGGER dev_policy_snapshots_epoch_current BEFORE INSERT ON plt01.dev_policy_snapshots FOR EACH ROW EXECUTE FUNCTION plt01.dev_snapshot_epoch_is_current()'),
+        ('CREATE TRIGGER dev_safety_profiles_access_point BEFORE INSERT ON plt01.dev_safety_profiles FOR EACH ROW EXECUTE FUNCTION plt01.dev_safety_profile_is_an_access_point()'),
+        ('CREATE TRIGGER dev_safety_profiles_replacement_is_its_own CREATE CONSTRAINT TRIGGER dev_safety_profiles_replacement_is_its_own AFTER UPDATE ON plt01.dev_safety_profiles DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION plt01.dev_profile_replaces_its_own_device()'),
+        ('CREATE TRIGGER dev_safety_profiles_supersede_final BEFORE UPDATE ON plt01.dev_safety_profiles FOR EACH ROW EXECUTE FUNCTION plt01.dev_safety_profile_supersede_is_final()'),
+        ('CREATE TRIGGER dev_type_capabilities_frozen BEFORE INSERT ON plt01.dev_type_capabilities FOR EACH ROW EXECUTE FUNCTION plt01.dev_type_capabilities_are_frozen()')
+    ), actual(rule) AS (
+        SELECT 'CREATE TRIGGER ' || g.tgname || ' ' ||
+               substring(pg_get_triggerdef(g.oid) from position(' BEFORE ' in
+                   pg_get_triggerdef(g.oid)) + 1)
+        FROM pg_trigger g JOIN pg_class t ON t.oid = g.tgrelid
+        WHERE t.relnamespace = 'plt01'::regnamespace AND t.relname LIKE 'dev\_%'
+          AND NOT g.tgisinternal
+    )
+    SELECT string_agg(rule, '; ' ORDER BY rule) INTO wrong
+    FROM ((SELECT rule FROM expected EXCEPT SELECT rule FROM actual)
+          UNION ALL
+          (SELECT rule FROM actual EXCEPT SELECT rule FROM expected)) AS differing;
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 105 FAILED: MOD-021 triggers differ from the pinned set: %', wrong;
+    END IF;
+    -- **And the bodies, as digests.** A branch deleted from a trigger function changes
+    -- nothing a catalogue sweep reads, which is how MOD-018 lost a mixed-currency branch
+    -- with the suite reporting 84/84.
+    WITH expected(rule) AS (VALUES
+        ('dev_certificate_is_one_way d25f6bf74455308ecf0b2c48c7f69cc8'),
+        ('dev_certificate_replaces_its_own_device 7c55a1c6644d9a153ce5e2282d97eef4'),
+        ('dev_command_is_one_way 299058f89d291e12f132ff362ef39b3a'),
+        ('dev_command_is_within_capability e4e0fc81a8b63245eb6fae024bafe87a'),
+        ('dev_commissioning_is_an_access_point f7490904a2d186563b7c5467cc9ad083'),
+        ('dev_device_capability_is_declared af716d762393827ff5abba33f7bfde88'),
+        ('dev_device_is_one_way 8504de54fd9a895bbde457044ec4a24a'),
+        ('dev_device_type_is_one_way e08a75652d70fb1a31dc9d054188186e'),
+        ('dev_firmware_is_one_way 18706992636514d6bdfe2e101f17b09d'),
+        ('dev_profile_replaces_its_own_device 1fe1980480d5a068b4d41d71596aa604'),
+        ('dev_safety_profile_is_an_access_point 23f1e59424b6b8cb33066aa4f7752858'),
+        ('dev_safety_profile_supersede_is_final acf0ee317b2c805d227fc937e8e70686'),
+        ('dev_snapshot_epoch_is_current cf0676aa5d3419a1098beb21c6b006ba'),
+        ('dev_type_capabilities_are_frozen a9b4a25518647833e95f6663e2e3df7e')
+    ), actual(rule) AS (
+        SELECT p.proname || ' ' || md5(p.prosrc) FROM pg_proc p
+        WHERE p.pronamespace = 'plt01'::regnamespace AND p.proname LIKE 'dev\_%'
+    )
+    SELECT string_agg(rule, '; ' ORDER BY rule) INTO wrong
+    FROM ((SELECT rule FROM expected EXCEPT SELECT rule FROM actual)
+          UNION ALL
+          (SELECT rule FROM actual EXCEPT SELECT rule FROM expected)) AS differing;
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 105 FAILED: a MOD-021 trigger body differs from the pinned digest: %',
+            wrong;
+    END IF;
+END $$;
+
+
+
+\echo 'tenant isolation: 105/105 checks passed'

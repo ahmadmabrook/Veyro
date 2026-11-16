@@ -54,6 +54,7 @@ from app.catalog import service as catalog
 from app.commercial import service as commercial
 from app.config import Settings, load_settings
 from app.configuration import service as config
+from app.devices import service as devices
 from app.errors import InvalidRequest, NotFound, ServiceError, TooManyRequests
 from app.events import service as events
 from app.identity import policy as identity_policy
@@ -2297,6 +2298,174 @@ class JoinWaitlistBody(BaseModel):
 
 class RetirePolicyBody(BaseModel):
     reason: str = Field(min_length=1, max_length=500)
+    correlation_id: str
+
+
+class DeviceTypeBody(BaseModel):
+    """A model of hardware and what it can be asked to do.
+
+    **The capabilities are declared here and frozen when the type is published**, because a
+    device snapshots them at registration -- MOD-012's review found the same shape open and a
+    *required* scope could be added to a published version."""
+
+    type_code: str = Field(min_length=2, max_length=48)
+    vendor: str = Field(min_length=1, max_length=120)
+    model: str = Field(min_length=1, max_length=120)
+    kind: str
+    display_name: str = Field(min_length=1, max_length=200)
+    capabilities: list[str] = Field(min_length=1, max_length=7)
+    correlation_id: str
+
+
+class RegisterDeviceBody(BaseModel):
+    """**No capabilities field.** A device can do what its model can do: the list is copied
+    from the published type, because a caller naming its own would be a barcode reader that
+    declares `access.actuate` and then asks to open a door nobody commissioned."""
+
+    type_id: str
+    location_id: str
+    serial_number: str = Field(min_length=1, max_length=120)
+    display_name: str = Field(min_length=1, max_length=200)
+    config: dict[str, Any] = Field(default_factory=dict)
+    correlation_id: str
+
+
+class ProvisionDeviceBody(BaseModel):
+    """**`vault_ref` locates the key material and is not the key.** The pattern is checked by
+    a constraint, because MOD-012 shipped a `vault_ref` that was merely non-blank -- which
+    made a live secret a valid "reference" and the absence of a key column a convention."""
+
+    fingerprint: str = Field(min_length=32, max_length=160)
+    vault_ref: str = Field(min_length=4, max_length=400)
+    not_before: datetime
+    not_after: datetime
+    correlation_id: str
+
+
+class ConfigureDeviceBody(BaseModel):
+    display_name: str | None = Field(default=None, min_length=1, max_length=200)
+    config: dict[str, Any] | None = None
+    expected_version: int = Field(ge=1, le=1_000_000)
+    correlation_id: str
+
+
+class CommissionBody(BaseModel):
+    """TSD paragraph 4172's hardware safety profile.
+
+    The three booleans are claims a named commissioner makes about a building, which this
+    software cannot verify -- and a profile claiming software control of egress is refused
+    outright by `safety.check_profile` and by the constraint beside the table."""
+
+    profile: str
+    on_egress_path: bool
+    fire_release_is_independent: bool
+    local_emergency_input: bool
+    evidence_ref: str = Field(min_length=4, max_length=400)
+    door_description: str = Field(min_length=1, max_length=400)
+    correlation_id: str
+
+
+class CommissioningTestBody(BaseModel):
+    test_name: str
+    passed: bool
+    detail: str | None = Field(default=None, max_length=1000)
+    correlation_id: str
+
+
+class DeviceStateBody(BaseModel):
+    target: str
+    reason: str | None = Field(default=None, max_length=500)
+    correlation_id: str
+
+
+class RotateCertificateBody(BaseModel):
+    fingerprint: str = Field(min_length=32, max_length=160)
+    vault_ref: str = Field(min_length=4, max_length=400)
+    not_before: datetime
+    not_after: datetime
+    correlation_id: str
+
+
+class RevokeCertificateBody(BaseModel):
+    reason: str = Field(min_length=1, max_length=500)
+    correlation_id: str
+
+
+#: A version somebody names a build by, and nothing else. It reaches `firmware.updated` in
+#: the outbox, which no erasure can clear, and a reviewer put a member's address in it.
+_VERSION = r"^[0-9A-Za-z][0-9A-Za-z._+-]{0,63}$"
+#: A SHA-256, lowercase hex. `content_digest` and `image_digest` already had this as a CHECK
+#: because they land in a table; the sync-conflict digests land only in the outbox and so had
+#: none, which is the validation applied in exactly the wrong places.
+_SHA256 = r"^[0-9a-f]{64}$"
+
+
+class FirmwareBody(BaseModel):
+    type_id: str
+    version: str = Field(min_length=1, max_length=64, pattern=_VERSION)
+    image_ref: str = Field(min_length=4, max_length=400)
+    image_digest: str = Field(min_length=64, max_length=64)
+    release_notes: str = Field(min_length=1, max_length=2000)
+    correlation_id: str
+
+
+class FirmwareStatusBody(BaseModel):
+    target: str
+    reason: str | None = Field(default=None, max_length=500)
+    correlation_id: str
+
+
+class SnapshotBody(BaseModel):
+    """**The TTL is minutes and is bounded at both ends.** Paragraph 1949 says "bounded" and
+    names no number; five minutes to twelve hours is `snapshots.MIN_TTL` and `MAX_TTL`, read
+    against paragraph 1953's sixty-second revocation target."""
+
+    content_digest: str = Field(min_length=64, max_length=64)
+    signature_ref: str | None = Field(default=None, max_length=400)
+    ttl_minutes: int = Field(ge=5, le=720)
+    correlation_id: str
+
+
+class IssueCommandBody(BaseModel):
+    """**`expires_in_seconds` is bounded and an unlock's is bounded harder.** A door opened a
+    minute after somebody asked is a door opened for whoever is standing there now."""
+
+    action: str
+    arguments: dict[str, Any] = Field(default_factory=dict)
+    idempotency_key: str = Field(min_length=1, max_length=200)
+    expires_in_seconds: int | None = Field(default=None, ge=1, le=86_400)
+    correlation_id: str
+
+
+class DeliverCommandBody(BaseModel):
+    signature_ref: str | None = Field(default=None, max_length=400)
+    correlation_id: str
+
+
+class SettleCommandBody(BaseModel):
+    outcome: str
+    detail: str | None = Field(default=None, max_length=1000)
+    correlation_id: str
+
+
+class HealthReportBody(BaseModel):
+    latency_ms: int = Field(ge=0, le=600_000)
+    error_count: int = Field(ge=0, le=1_000_000_000)
+    storage_free_bytes: int = Field(ge=0, le=1 << 50)
+    agent_version: str = Field(min_length=1, max_length=64, pattern=_VERSION)
+    peripherals: dict[str, str] = Field(default_factory=dict)
+    correlation_id: str
+
+
+class SyncConflictBody(BaseModel):
+    detail: str = Field(min_length=1, max_length=1000)
+    local_digest: str = Field(min_length=64, max_length=64, pattern=_SHA256)
+    remote_digest: str = Field(min_length=64, max_length=64, pattern=_SHA256)
+    correlation_id: str
+
+
+class DeviceSweepBody(BaseModel):
+    limit: int = Field(default=500, ge=1, le=5000)
     correlation_id: str
 
 
@@ -6515,6 +6684,355 @@ def create_app(
             tenant_pool, tenant_id, require_uuid(hold_id, "hold_id"),
             attended=body.attended, reason=body.reason,
             actor_id=session["identity_id"], correlation_id=body.correlation_id)
+
+    # ------------------------------------------------------------- MOD-021 the device fleet
+    #
+    # **`/fleet`, not `/devices`.** MOD-007 already owns `/devices/{id}` for a *member's* own
+    # phone or tablet -- its trust and revoke routes -- and a fleet of turnstiles under the
+    # same prefix would have shadowed them: `GET /devices` for a club's hardware against
+    # `POST /devices/{id}/trust` for somebody's handset is two modules' authority on one path.
+    # Found by listing the routes rather than by reading them, which is the only way a
+    # collision like this shows up.
+    #
+    # **Every route asks the gate, and the two that touch a door ask for more.** Issuing a
+    # reboot and issuing an unlock are the same route with a different word in the body, so
+    # the route reads the word and charges `devices.command.unlock` -- financial class, a
+    # stepped-up session -- for the one that moves a barrier. That is MOD-009's
+    # `consent_subject` lesson and MOD-013's `priority: "critical"` lesson: a body field that
+    # buys an authority is a permission.
+    #
+    # **And nothing here drives any hardware.** A gateway collects its queue and reports what
+    # happened; this surface is the registry and the queue. A row saying a turnstile opened,
+    # written by nothing that drives a turnstile, is the fabricated-evidence shape this
+    # codebase has been bitten by six times.
+
+    @app.post("/fleet/types", status_code=201)
+    def declare_device_type(
+        tenant_id: TenantId, session: Session, body: DeviceTypeBody
+    ) -> dict[str, Any]:
+        """Declare a model of hardware and what it can be asked to do.
+
+        **A draft**, on the routine `devices.type.write`: nothing can be enrolled against it
+        and its capability set is still editable. What makes the model commandable as a door
+        is the publication, which is the next route and a different permission.
+        """
+        permit(session, "devices.type.write", body.correlation_id)
+        return devices.declare_device_type(
+            tenant_pool, tenant_id, type_code=body.type_code, vendor=body.vendor,
+            model=body.model, kind=body.kind, display_name=body.display_name,
+            declared=body.capabilities, actor_id=session["identity_id"],
+            correlation_id=body.correlation_id)
+
+    @app.post("/fleet/types/{type_id}/publish")
+    def publish_device_type(
+        tenant_id: TenantId, session: Session, type_id: str, body: CorrelationBody
+    ) -> dict[str, Any]:
+        """Settle what this model may be asked to do, so devices can be enrolled against it.
+
+        **A second act by a second person.** Declaring `access.actuate` is what makes a model
+        commandable as a barrier and the capability set freezes here, so the author cannot be
+        the publisher -- `dev_device_types_publisher_is_not_author` is the half the service
+        cannot weaken. MOD-017's contract version, one module later.
+        """
+        permit(session, "devices.type.publish", body.correlation_id)
+        return devices.publish_device_type(
+            tenant_pool, tenant_id, require_uuid(type_id, "type_id"),
+            actor_id=session["identity_id"], correlation_id=body.correlation_id)
+
+    @app.post("/fleet/types/{type_id}/retire")
+    def retire_device_type(
+        tenant_id: TenantId, session: Session, type_id: str, body: RevokeCertificateBody
+    ) -> dict[str, Any]:
+        """Stop new devices being enrolled against a model."""
+        permit(session, "devices.type.publish", body.correlation_id)
+        return devices.retire_device_type(
+            tenant_pool, tenant_id, require_uuid(type_id, "type_id"),
+            reason=body.reason, actor_id=session["identity_id"],
+            correlation_id=body.correlation_id)
+
+    @app.post("/fleet", status_code=201)
+    def register_device(
+        tenant_id: TenantId, session: Session, body: RegisterDeviceBody
+    ) -> dict[str, Any]:
+        """RegisterDevice. Paragraph 3077's enrollment, with the capability snapshot."""
+        permit(session, "devices.device.write", body.correlation_id)
+        return devices.register_device(
+            tenant_pool, tenant_id, type_id=require_uuid(body.type_id, "type_id"),
+            location_id=require_uuid(body.location_id, "location_id"),
+            serial_number=body.serial_number, display_name=body.display_name,
+            config=body.config, actor_id=session["identity_id"],
+            correlation_id=body.correlation_id)
+
+    @app.post("/fleet/{device_id}/provision", status_code=201)
+    def provision_device(
+        tenant_id: TenantId, session: Session, device_id: str, body: ProvisionDeviceBody
+    ) -> dict[str, Any]:
+        """ProvisionEdgeAgent: the device's first certificate."""
+        permit(session, "devices.certificate.write", body.correlation_id)
+        return devices.provision_device(
+            tenant_pool, tenant_id, require_uuid(device_id, "device_id"),
+            fingerprint=body.fingerprint, vault_ref=body.vault_ref,
+            not_before=body.not_before, not_after=body.not_after,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id)
+
+    @app.post("/fleet/{device_id}/configure")
+    def configure_device(
+        tenant_id: TenantId, session: Session, device_id: str, body: ConfigureDeviceBody
+    ) -> dict[str, Any]:
+        """ConfigureDevice, under paragraph 3092's optimistic concurrency."""
+        permit(session, "devices.device.write", body.correlation_id)
+        return devices.configure_device(
+            tenant_pool, tenant_id, require_uuid(device_id, "device_id"),
+            display_name=body.display_name, config=body.config,
+            expected_version=body.expected_version,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id)
+
+    @app.post("/fleet/{device_id}/commission", status_code=201)
+    def commission_access_point(
+        tenant_id: TenantId, session: Session, device_id: str, body: CommissionBody
+    ) -> dict[str, Any]:
+        """Record the hardware safety profile. TSD paragraph 4172.
+
+        **A profile claiming software control of egress is refused**, not stored with a
+        warning: a building whose records pass an audit it would fail is worse than one with
+        no records.
+        """
+        permit(session, "devices.commissioning.record", body.correlation_id)
+        return devices.commission_access_point(
+            tenant_pool, tenant_id, require_uuid(device_id, "device_id"),
+            profile=body.profile, on_egress_path=body.on_egress_path,
+            fire_release_is_independent=body.fire_release_is_independent,
+            local_emergency_input=body.local_emergency_input,
+            evidence_ref=body.evidence_ref, door_description=body.door_description,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id)
+
+    @app.post("/fleet/{device_id}/commissioning-tests", status_code=201)
+    def record_commissioning_test(
+        tenant_id: TenantId, session: Session, device_id: str,
+        body: CommissioningTestBody,
+    ) -> dict[str, Any]:
+        """Paragraph 4175's test record. Insert-only: a failure cannot be edited into a pass."""
+        permit(session, "devices.commissioning.record", body.correlation_id)
+        return devices.record_commissioning_test(
+            tenant_pool, tenant_id, require_uuid(device_id, "device_id"),
+            test_name=body.test_name, passed=body.passed, detail=body.detail,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id)
+
+    @app.post("/fleet/{device_id}/activate")
+    def activate_device(
+        tenant_id: TenantId, session: Session, device_id: str, body: CorrelationBody
+    ) -> dict[str, Any]:
+        """**The commissioning gate.** Paragraph 4175: a failed safety test blocks opening the
+        access point in production."""
+        permit(session, "devices.device.activate", body.correlation_id)
+        return devices.activate_device(
+            tenant_pool, tenant_id, require_uuid(device_id, "device_id"),
+            actor_id=session["identity_id"], correlation_id=body.correlation_id)
+
+    @app.post("/fleet/{device_id}/state")
+    def set_device_state(
+        tenant_id: TenantId, session: Session, device_id: str, body: DeviceStateBody
+    ) -> dict[str, Any]:
+        """Maintenance mode, quarantine or retirement.
+
+        **One permission, because all three do the same thing to a club.**
+        `enrollment.OPERABLE` is `{"active"}`, so maintenance stops commands and policy
+        snapshots exactly as quarantine does, and the way back is `devices.device.activate`.
+        The first version charged the routine write for maintenance on the argument that it
+        is "a shift decision"; a reviewer then put every door and kiosk in a tenant into
+        maintenance on that permission, could not reverse it, and the fleet view reported the
+        tenant healthy throughout. Denial of service against a working door is the same harm
+        whichever word the body carries.
+        """
+        permit(session, "devices.device.retire", body.correlation_id)
+        return devices.set_device_state(
+            tenant_pool, tenant_id, require_uuid(device_id, "device_id"),
+            target=body.target, reason=body.reason,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id)
+
+    @app.post("/fleet/{device_id}/certificates", status_code=201)
+    def rotate_certificate(
+        tenant_id: TenantId, session: Session, device_id: str, body: RotateCertificateBody
+    ) -> dict[str, Any]:
+        """RotateDeviceCertificate. The outgoing one is honoured until it expires."""
+        permit(session, "devices.certificate.write", body.correlation_id)
+        return devices.rotate_certificate(
+            tenant_pool, tenant_id, require_uuid(device_id, "device_id"),
+            fingerprint=body.fingerprint, vault_ref=body.vault_ref,
+            not_before=body.not_before, not_after=body.not_after,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id)
+
+    @app.post("/fleet/certificates/{certificate_id}/revoke")
+    def revoke_certificate(
+        tenant_id: TenantId, session: Session, certificate_id: str,
+        body: RevokeCertificateBody,
+    ) -> dict[str, Any]:
+        """Withdraw a certificate now, and bump the device's revocation epoch with it."""
+        permit(session, "devices.certificate.write", body.correlation_id)
+        return devices.revoke_certificate(
+            tenant_pool, tenant_id, require_uuid(certificate_id, "certificate_id"),
+            reason=body.reason, actor_id=session["identity_id"],
+            correlation_id=body.correlation_id)
+
+    @app.post("/fleet/firmware", status_code=201)
+    def release_firmware(
+        tenant_id: TenantId, session: Session, body: FirmwareBody
+    ) -> dict[str, Any]:
+        """UpdateEdgeAgent's first half: a version exists and where its image is."""
+        permit(session, "devices.firmware.write", body.correlation_id)
+        return devices.release_firmware(
+            tenant_pool, tenant_id, type_id=require_uuid(body.type_id, "type_id"),
+            version=body.version, image_ref=body.image_ref,
+            image_digest=body.image_digest, release_notes=body.release_notes,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id)
+
+    @app.post("/fleet/firmware/{firmware_id}/status")
+    def set_firmware_status(
+        tenant_id: TenantId, session: Session, firmware_id: str, body: FirmwareStatusBody
+    ) -> dict[str, Any]:
+        """Paragraph 3080's staged rollout. A withdrawal is final."""
+        permit(session, "devices.firmware.write", body.correlation_id)
+        return devices.set_firmware_status(
+            tenant_pool, tenant_id, require_uuid(firmware_id, "firmware_id"),
+            target=body.target, reason=body.reason,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id)
+
+    @app.post("/fleet/{device_id}/snapshots", status_code=201)
+    def publish_snapshot(
+        tenant_id: TenantId, session: Session, device_id: str, body: SnapshotBody
+    ) -> dict[str, Any]:
+        """PublishDevicePolicy: the signed authorization projection, with its bound."""
+        permit(session, "devices.policy.publish", body.correlation_id)
+        return devices.publish_snapshot(
+            tenant_pool, tenant_id, require_uuid(device_id, "device_id"),
+            content_digest=body.content_digest, signature_ref=body.signature_ref,
+            ttl_minutes=body.ttl_minutes, actor_id=session["identity_id"],
+            correlation_id=body.correlation_id)
+
+    @app.post("/fleet/{device_id}/commands", status_code=201)
+    def issue_command(
+        tenant_id: TenantId, session: Session, device_id: str, body: IssueCommandBody
+    ) -> dict[str, Any]:
+        """Paragraph 3084's command: scoped, signed, audited and bounded by device safety.
+
+        **The unlock costs a different permission**, chosen from the body: a reboot is
+        operational and constant, and telling a barrier to release is not. There is no action
+        in the vocabulary that holds one shut, and `safety.HOLD_COMMANDS` is the list of words
+        refused if somebody adds one -- paragraph 4173 is a fire code and a fire code is not
+        delegable to a permission.
+        """
+        if body.action == "unlock_momentary":
+            permit(session, "devices.command.unlock", body.correlation_id)
+        else:
+            permit(session, "devices.command.issue", body.correlation_id)
+        return devices.issue_command(
+            tenant_pool, tenant_id, require_uuid(device_id, "device_id"),
+            action=body.action, arguments=body.arguments,
+            idempotency_key=body.idempotency_key,
+            expires_in_seconds=body.expires_in_seconds,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id)
+
+    @app.post("/fleet/commands/{command_id}/deliver")
+    def deliver_command(
+        tenant_id: TenantId, session: Session, command_id: str, body: DeliverCommandBody
+    ) -> dict[str, Any]:
+        """A gateway collecting a command. An expired one is settled expired, not delivered."""
+        permit(session, "devices.agent.report", body.correlation_id)
+        return devices.deliver_command(
+            tenant_pool, tenant_id, require_uuid(command_id, "command_id"),
+            signature_ref=body.signature_ref, actor_id=session["identity_id"],
+            correlation_id=body.correlation_id)
+
+    @app.post("/fleet/commands/{command_id}/settle")
+    def settle_command(
+        tenant_id: TenantId, session: Session, command_id: str, body: SettleCommandBody
+    ) -> dict[str, Any]:
+        """What the device reported, written by whatever drove the hardware."""
+        permit(session, "devices.agent.report", body.correlation_id)
+        return devices.settle_command(
+            tenant_pool, tenant_id, require_uuid(command_id, "command_id"),
+            outcome=body.outcome, detail=body.detail,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id)
+
+    @app.post("/fleet/commands/expire")
+    def expire_commands(
+        tenant_id: TenantId, session: Session, body: DeviceSweepBody
+    ) -> dict[str, Any]:
+        """Settle commands nothing collected in time. **Nothing drives this.**"""
+        permit(session, "devices.command.issue", body.correlation_id)
+        return devices.expire_commands(
+            tenant_pool, tenant_id, actor_id=session["identity_id"],
+            correlation_id=body.correlation_id, limit=body.limit)
+
+    @app.post("/fleet/{device_id}/health", status_code=201)
+    def record_health(
+        tenant_id: TenantId, session: Session, device_id: str, body: HealthReportBody
+    ) -> dict[str, Any]:
+        """RecordDeviceHealth. Paragraph 3079's numbers, as an insert-only ledger."""
+        permit(session, "devices.agent.report", body.correlation_id)
+        return devices.record_health(
+            tenant_pool, tenant_id, require_uuid(device_id, "device_id"),
+            latency_ms=body.latency_ms, error_count=body.error_count,
+            storage_free_bytes=body.storage_free_bytes,
+            agent_version=body.agent_version, peripherals=body.peripherals,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id)
+
+    @app.post("/fleet/offline-sweep")
+    def sweep_offline(
+        tenant_id: TenantId, session: Session, body: CorrelationBody
+    ) -> dict[str, Any]:
+        """Publish `device.offline` for devices in service that have gone quiet.
+
+        **Silence has no moment of its own**, which is why this is a sweep -- and nothing
+        drives it, which is the twelfth place in this build that wants a worker runtime.
+        """
+        permit(session, "devices.agent.report", body.correlation_id)
+        return devices.sweep_offline(
+            tenant_pool, tenant_id, actor_id=session["identity_id"],
+            correlation_id=body.correlation_id)
+
+    @app.post("/fleet/{device_id}/sync-conflicts", status_code=201)
+    def record_sync_conflict(
+        tenant_id: TenantId, session: Session, device_id: str, body: SyncConflictBody
+    ) -> dict[str, Any]:
+        """A gateway reporting that its local copy and the registry's disagree."""
+        permit(session, "devices.agent.report", body.correlation_id)
+        return devices.record_sync_conflict(
+            tenant_pool, tenant_id, require_uuid(device_id, "device_id"),
+            detail=body.detail, local_digest=body.local_digest,
+            remote_digest=body.remote_digest, actor_id=session["identity_id"],
+            correlation_id=body.correlation_id)
+
+    @app.get("/fleet/{device_id}")
+    def read_device(
+        tenant_id: TenantId, session: Session, device_id: str
+    ) -> dict[str, Any]:
+        """One device, with its commissioning state, its certificates and its last report."""
+        permit(session, "devices.device.read")
+        return devices.device_detail(
+            tenant_pool, tenant_id, require_uuid(device_id, "device_id"))
+
+    @app.get("/fleet")
+    def read_fleet(
+        tenant_id: TenantId, session: Session, location_id: str | None = None,
+        limit: int = 200,
+    ) -> dict[str, Any]:
+        """Paragraph 3079's fleet dashboard. Reachability is derived, never stored."""
+        permit(session, "devices.device.read")
+        return devices.fleet_view(
+            tenant_pool, tenant_id,
+            location_id=(require_uuid(location_id, "location_id")
+                         if location_id else None),
+            limit=limit)
+
+    @app.get("/fleet/{device_id}/commands")
+    def read_command_queue(
+        tenant_id: TenantId, session: Session, device_id: str, limit: int = 50
+    ) -> dict[str, Any]:
+        """What is waiting for this device, with whether each is still deliverable."""
+        permit(session, "devices.device.read")
+        return devices.command_queue(
+            tenant_pool, tenant_id, require_uuid(device_id, "device_id"), limit=limit)
 
     # ------------------------------------------------------------- MOD-020 booking
     #

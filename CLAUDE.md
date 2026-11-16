@@ -2759,21 +2759,213 @@ Known gaps, deliberate:
   of MOD-020's seven is among them, so a member's timeline shows no class they booked.
 - **Nine free-text columns are residue an erasure cannot reach**, all declared by hand.
 
+**MOD-021 (HW-01 hardware, edge bridge and device fleet) -- implemented, gated and
+reviewed.** Twelve `dev_` tables in `plt01` under the same forced RLS, fourteen trigger
+functions, `app/devices/` beside them, and twenty-five HTTP routes under `/fleet`. Working:
+a device-type catalogue whose capability set freezes when a second person publishes it;
+devices that snapshot their type's capabilities at registration; certificates held as a
+fingerprint and a vault reference; hardware safety profiles and the seven commissioning
+tests that gate a door going into service *and* every unlock afterwards; signed policy
+snapshots with a bounded TTL and a monotonic revocation epoch; a command queue whose only
+door-touching action is a momentary unlock; firmware releases with a final withdrawal; edge
+health with a derived reachability; and sync-conflict records. Six events are produced.
+Proven: isolation checks 99-105 (including 103b's cases and 104b's identity probes),
+mutation-tested in three rounds -- 725, then 800, then 810 mutations, the last with none
+uncaught, none ill-formed and all thirty-five plpgsql branches caught by the probe that
+names them; 50 domain unit tests with no database; 48 HTTP tests; 21 named regression tests.
+
+Six decisions carry the module, and five of them are refusals:
+
+- **Section 16.4 is a fire code, so its rules are refusals with no permission that buys
+  them.** `safety.HOLD_COMMANDS` is a list of what this software will never do and
+  `COMMAND_ACTIONS` is the vocabulary; the two do not intersect, and `check_command_safety`
+  has no override parameter, no reason field and no stepped-up permission that unlocks it.
+  **And the vocabulary is not the whole control**: `arguments` was an unvalidated
+  passthrough, so a reviewer sent `{"mode": "hold_open", "hold_seconds": 86400}` on an
+  `unlock_momentary` and the row the edge agent parameterises its relay from -- and verifies
+  by digest -- carried hold-the-door semantics. `COMMAND_ARGUMENTS` declares what each
+  action takes and an unlock takes nothing at all, because a door this software can
+  parameterise is a door it can hold.
+- **A fail-secure barrier on an egress path is refused at commissioning**, not warned about,
+  and the claim is on a row whose every field carries no UPDATE grant: a building's safety
+  record is superseded by another commissioning that says who did it, never edited.
+- **Paragraph 4175 is enforced at the row, not only at the transition.** `activate_device`
+  refuses a door with a failing test, and so does the unlock trigger -- which reads the
+  latest outcome per test name and requires all seven. A failed re-test also quarantines a
+  door already in service, in the transaction that records it, because the gate is read at
+  activation and a live device never returns to it.
+- **A snapshot has a bounded TTL and an epoch that only goes up**, and both bounds are
+  measured against a clock the writer does not choose: `issued_at <= now() + 5 minutes` is
+  what makes "a minute" a minute. The trigger that compares a snapshot's epoch against the
+  device's takes `FOR UPDATE`, because a plain read let a revocation and a snapshot commit
+  side by side.
+- **There is no column a secret could live in.** `vault_ref` is a locator by constraint and
+  there is no key, certificate body or signature column anywhere -- MOD-012's shape, where
+  the control is an absence. Check 101 sweeps the whole of `plt01` for the names *and* for
+  the shape, because a name list is whack-a-mole: a reviewer called the columns
+  `key_material`, `cert_body` and `online_cached` and all thirteen names missed them.
+- **A device's capabilities are snapshotted from its type, and the type's set freezes when
+  it is published** -- by a second person, because declaring `access.actuate` is what makes
+  a model commandable as a barrier.
+
+**Three reviewers worked this module in parallel -- the schema, the decision modules and the
+request path -- and all three returned CHANGES_REQUESTED. Twenty-three blocking defects**,
+every one inside a green 116-test suite. Each is carried forward as a rule:
+
+- **A lookup that proves something exists does not authorise what you do next, with a fire
+  code as the subject.** The unlock trigger asked whether a `dev_safety_profiles` row
+  existed; its own message and this file's header called that the commissioning gate.
+  **Nothing in the schema read `dev_commissioning_tests`, ever** -- so a door that reached
+  `active` by any writer other than `activate_device` opened with six of seven fire-code
+  tests never run, and a failed fire-alarm re-test changed nothing at the row. My own
+  check-104 probe credited that branch with paragraph 4175 using a device that had neither
+  a profile nor a test, so the probe could not tell the two apart and **the control it
+  credited did not exist**.
+- **A window measured between two columns the same writer supplies is not a window.**
+  `expires_at - issued_at <= interval '60 seconds'` with `issued_at` caller-supplied is a
+  minute starting whenever the writer says: a reviewer parked an unlock three days out,
+  openable for forty-five seconds on the night it chose, with every CHECK satisfied -- the
+  attack that constraint's own comment names, performed against the writer it names. The
+  snapshot TTL was the same at seven days. The repair is a one-sided bound against `now()`,
+  one-sided because a lower bound fails every row on a restore.
+- **A trigger that reads a parent row to decide whether a child may be written has to lock
+  it** -- MOD-019's `FOR SHARE` finding one notch weaker, because all three of these took no
+  lock at all. Two ordinary transactions at READ COMMITTED wrote a snapshot at an epoch the
+  device had already left, valid for twelve hours; the same shape let a capability land on a
+  type being published, and a quarantine race an unlock.
+- **A control consulted once is a control with a window, and here it was two gates.**
+  Revoking a device's last usable certificate computed `device_can_still_authenticate`,
+  returned it to the caller and acted on nothing, so a live access point with no credential
+  went on accepting unlocks and policy snapshots. A failed commissioning test did the same.
+  Both now take the device out of service in the transaction that records the fact.
+- **A failure path inside a batch loop must not raise** -- MOD-010's rule, and the permanent
+  case is the one that triggers it. `sweep_offline` keyed its event on the silence that
+  produced it, which is *stable while a device stays offline*, so the second sweep raised
+  out of `tenant_scope`, rolled the batch back and answered 409 -- and every device that had
+  gone quiet behind it was never reported. `append_event`'s own comment says a command that
+  means to be idempotent checks before it acts; this one did not.
+- **An idempotency key compared on fewer fields than the command takes**, for the third
+  module running, and with a docstring four lines up claiming all five. A console reusing
+  its per-shift counter was told 201 `repeated` and shown a live command id while the
+  command that exists targeted a different door with different arguments.
+- **Evidence with nobody's name on it answers nothing** -- the seventh module.
+  `dev_commands` carried `issued_by` alone, so the only name on a row saying a door opened
+  was the party that did *not* make the claim, and `failed`, `acknowledged`, `delivered` and
+  `expired` named nobody anywhere. A re-activation -- which re-runs the commissioning gate
+  -- wrote no actor at all, leaving a live door's fire-code attribution naming somebody who
+  did not make that decision, uncorrectably, because the column is final by trigger.
+- **A permission's name is a claim about what it is for.** All three device-type routes were
+  gated on `devices.firmware.write` and there was no `devices.type.*` permission anywhere,
+  so a role granted "release firmware" silently chose which models of hardware may be
+  commanded as doors. And `maintenance` cost the routine write while quarantine cost a
+  stepped-up one, although `enrollment.OPERABLE` is `{"active"}` and both stop every command
+  -- so the weakest write credential in the module shut every door in a tenant, could not
+  undo it, and the fleet view reported the tenant healthy throughout.
+- **A field required of the caller, validated, and thrown away** -- MOD-012's `release_run`
+  shape. `record_sync_conflict` demanded a statement of what diverged, checked it was not
+  blank, answered "recorded, not resolved" and wrote only two hex strings to the outbox.
+  There was no table. There is now.
+- **Nothing free-text reaches `evt_outbox`**, and the validation was applied in exactly the
+  wrong places: `content_digest` and `image_digest`, which land in a table, were shape-
+  checked, while the sync-conflict digests, which land *only* in the outbox, accepted
+  anything 64 characters long. So did `agent_version` and a firmware `version`. Fourth,
+  fifth and sixth occurrence after `cfg_exposures.subject_id`, `notification.failed.reason`
+  and `bundle.fulfilled.order_reference`.
+- **A pair of caller-supplied ids that nothing relates is two halves of a control**, which
+  is this module's own stated standard, written three hundred lines above two supersession
+  pointers that related nothing. A turnstile's certificate was recorded as superseded by a
+  scanner's, and a fire door's `fail_safe` commissioning by another door's `fail_secure` one
+  -- so following that door's chain read "re-commissioned as fail_secure, no independent
+  fire release", which is the exact row `egress_is_never_software_gated` exists to make
+  unrecordable.
+- Smaller ones with shapes this file records: a superseded certificate's replacement pointer
+  and date were rewritable and backdatable while a revoked one was frozen; a committed
+  command's `signature_ref` could be re-pointed while the digest it covers was frozen; three
+  caller-supplied `jsonb` columns were unbounded on insert-only tables; and all twenty
+  privacy declarations were actor columns, with eleven caller-written free-text and `jsonb`
+  columns undeclared -- a reviewer wrote an address and a date of birth into two of them and
+  read both back.
+
+**And the evidence was weaker than the schema, which is the half only a sweep finds.** My
+first round ran 725 mutations with none uncaught; a reviewer then ran 165 of their own and
+found seven CHECK constraints with no isolating case, eleven weakenings admitted by every
+case that named the constraint, and **the module's two defining partial unique indexes
+proved by nothing at all** -- because a sweep that generates `ALTER TABLE ... DROP
+CONSTRAINT` never runs against an index. Four of the eleven were `coalesce` removals, the
+trap the rules file spells out and MOD-014 already paid for: every case sent a tab, none
+sent NULL, so a device could be taken out of service with no stated reason on a row the
+migration's own comment calls the only record there can be. Check 103b is the thirty-three
+cases that answer them, and the third sweep ran 810 with none uncaught.
+
+Things worth knowing before extending it:
+
+- **A device with no capability rows is refused every command**, which reads as a broken
+  unit rather than an unfinished enrolment -- so the snapshot is taken in the transaction
+  that registers it.
+- **`activate_device` is the only way back into service**, and it re-runs both gates on
+  every pass. That is what makes quarantine a real remedy and what makes the re-activation
+  attribution necessary.
+- **The two supersession checks are deferred constraint triggers**, like the foreign keys
+  they mirror: a rotation points the outgoing row at a successor that does not exist yet,
+  because inserting first violates `one_active_per_device` and a null pointer violates the
+  pairing. An immediate check would make the honest order unwritable -- and a probe for a
+  deferred trigger has to say `SET CONSTRAINTS ALL IMMEDIATE` or it watches a transaction
+  that never commits.
+- **`devices.certificate.write` and `devices.command.unlock` are the `access` audit
+  category**, which no MOD-021 permission used at first -- so
+  `test_money_and_access_decisions_are_not_routine`, the catalogue's one automatic guard
+  that a permission granting access needs a second factor, was structurally blind to the
+  module whose subject is physical access.
+
+Known gaps, deliberate:
+
+- **Nothing drives any hardware.** No gateway, no relay, no outbound anything: a command is
+  written for whatever collects it, and `settle_command` records what that thing reported.
+  A row saying a turnstile opened, written by nothing that drives a turnstile, is the
+  fabricated-evidence shape this codebase has been bitten by six times.
+- **No WebAuthn, no mTLS handshake and no signature verification.** A certificate is a
+  fingerprint and a vault reference; `signature_ref` locates a signature this build never
+  made. The vault is the same one MOD-007's TOTP seeds, MOD-009's crypto-shred and MOD-012's
+  webhook signatures are waiting on.
+- **Nothing drives anything on a schedule.** An offline sweep, a command expiry and a
+  certificate rotation all want the worker runtime this build does not have -- the
+  thirteenth module to want one, and here the absence is visible twice: a device nobody
+  sweeps has its silence reach no dashboard, and an unlock nobody expires reads as a door
+  waiting to open.
+- **`on_egress_path` is a caller's claim**, like `skills` in MOD-019 and `validated` in
+  MOD-012. Nothing in this build can see a building, so a commissioning record is what a
+  named person asserted at a time -- which is why the attribution and the evidence locator
+  are mandatory and why the row cannot be edited.
+- **No diagnostics bundle.** Paragraph 3080 names one; it needs an object store and a
+  residency decision, the same wall MOD-009's export and MOD-014's progress media hit.
+- **Twelve free-text and `jsonb` columns are residue an erasure cannot reach**, all declared
+  by hand because the sweep matches column names. The *actor* columns are found by the sweep
+  and were: adding `delivered_by`, `settled_by`, `reactivated_by` and a sync conflict's
+  `reported_by` turned `test_every_subject_column_in_the_database_is_declared` red until
+  each one was declared, which is the registry doing exactly what MOD-009 built it for.
+- **The timeline does not know about any of this.** MOD-014 projects nine event types and
+  none of MOD-021's six is among them.
+
 **Next.** Nothing in the Foundation wave is left except MOD-006, the Compose Multiplatform
-qualification, which is a client-side proof the server plane does not need. The eligible
-product modules are MOD-021 (Hardware & Edge Bridge, which needs MOD-010's events and
-MOD-012's adapter core, both built), MOD-022 (Check-in & Access, which needs MOD-021 and
-MOD-017) and MOD-023 (Coach Workspace, which needs MOD-014 and MOD-008). MOD-021 is the one
-unblocked by what exists: a turnstile is the thing MOD-020's check-in records a claim *from*,
-and `CHECKIN_SOURCES` already names `device` for it.
+qualification, which is a client-side proof the server plane does not need. With MOD-021
+built, the eligible product modules are MOD-022 (Check-in & Access, which needs MOD-021 and
+MOD-017, both built) and MOD-023 (Coach Workspace, which needs MOD-014 and MOD-008, both
+built). MOD-022 is the one the last two modules were pointing at: MOD-020's check-in records
+a claim and `CHECKIN_SOURCES` already names `device`, MOD-021 has the turnstile that claim
+would come *from*, and MOD-017 has the entitlement that says whether the door should open.
+Nothing joins them yet -- `dev_commands` knows nothing about a member and `bkg_bookings`
+knows nothing about a door.
 
 Three things named rather than done remain open across the build: the platform plane is
 unauthenticated -- and MOD-012 makes that worse, since the definition catalogue decides which
-scopes a tenant may hand to a third party -- no worker runtime exists for the **twelve** schedules
-that want one, which MOD-018 makes more pressing again because nothing expires lapsed wallet
-value and nothing recognises revenue until somebody asks, and there is no key vault, which is
-what MOD-009's crypto-shred, MOD-007's TOTP seeds and MOD-012's inbound webhook signatures are
-all waiting on.
+scopes a tenant may hand to a third party -- no worker runtime exists for the **thirteen**
+schedules that want one, which MOD-018 makes more pressing again because nothing expires lapsed
+wallet value and nothing recognises revenue until somebody asks, and there is no key vault,
+which is what MOD-009's crypto-shred, MOD-007's TOTP seeds, MOD-012's inbound webhook
+signatures and now MOD-021's device certificates are all waiting on. **The vault is the one
+that has moved from inconvenient to load-bearing**: MOD-021 enrols a credential it cannot
+verify a signature against, so a device's identity is a fingerprint somebody recorded rather
+than a key anything checks.
 
 `Decision.mask` is no longer on that list. MOD-014 applies it, which closes the five-module gap
 -- and note what closing it took: `permit` had to return the gate rather than the session, and

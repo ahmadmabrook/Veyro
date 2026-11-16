@@ -615,6 +615,83 @@ PERMISSIONS: dict[str, Permission] = dict([
     _p("booking.appeal.decide", "Read and decide a member's appeal against a sanction",
        "configuration", "financial"),
 
+    # ---------------------------------------------------------------- MOD-021, ECO-03
+    #
+    # **The split here is the one MOD-009's review taught**: a body field that buys an
+    # authority is a permission. Issuing a reboot and issuing an unlock are the same route
+    # with a different word in the body, and only one of them opens a door -- so they are two
+    # permissions, and the one that moves a barrier is financial class and needs a stepped-up
+    # session.
+    _p("devices.device.read",
+       "See the device fleet, a device's detail and its command history", "data_access"),
+    # Enrolling a unit and configuring it is installation work a technician does on site, so
+    # it is routine: a step-up on a tablet in a plant room is how an installer learns to
+    # share a stepped-up session.
+    _p("devices.device.write",
+       "Enrol a device or configure it", "configuration"),
+    # **Declaring a model is not releasing firmware for one.** All three type routes were
+    # gated on `devices.firmware.write` and there was no `devices.type.*` permission at all,
+    # so a role granted "release firmware" silently chose which models of hardware may be
+    # commanded as doors -- MOD-017's "a permission's name is a claim about what it is for",
+    # where `settle_refund` was gated on `finance.payment.take`. Declaring a type that
+    # carries `access.actuate` is what makes a model commandable as a barrier, which is why
+    # publishing it is financial class and is a second act by a second person.
+    _p("devices.type.write",
+       "Draft a device type and declare what a model of hardware can do", "configuration"),
+    _p("devices.type.publish",
+       "Settle what a model may be asked to do, or retire a model",
+       "configuration", "financial"),
+    # **Activation is the commissioning gate**, which is paragraph 4175's "a failed safety
+    # test blocks opening the access point in production". Financial class, because bringing a
+    # door into service on the strength of a safety record is the most consequential act in
+    # this module.
+    _p("devices.device.activate",
+       "Bring a device into service, past the commissioning gate",
+       "configuration", "financial"),
+    # And recording what was commissioned is the other half. A profile claiming a fire-alarm
+    # release is wired independently is a claim a named person makes about a building; it is
+    # not a setting.
+    _p("devices.commissioning.record",
+       "Record an access point's hardware safety profile and its commissioning tests",
+       "configuration", "financial"),
+    # **Every way out of service costs the same**, which `maintenance` did not until a
+    # reviewer shut every door in a tenant on the routine write permission and could not undo
+    # it: `enrollment.OPERABLE` is `{"active"}`, so maintenance stops commands and policy
+    # snapshots exactly as quarantine does, and the way back is the financial
+    # `devices.device.activate` the holder does not have. Denial of service against a working
+    # door is the same harm whichever word the body carries.
+    _p("devices.device.retire",
+       "Take a device out of service: quarantine, maintenance or retirement",
+       "configuration", "financial"),
+    # **`access`, not `configuration`.** IAM-03-R06 audits access decisions separately and
+    # `test_money_and_access_decisions_are_not_routine` is the catalogue's one automatic
+    # guard that a permission granting access needs a second factor -- which was structurally
+    # blind to the module whose subject is physical access, because not one MOD-021
+    # permission used the category. A certificate is what a device authenticates with and an
+    # unlock is the act itself; `integrations.credential.rotate` is the precedent.
+    _p("devices.certificate.write",
+       "Rotate or revoke a device certificate", "access", "financial"),
+    _p("devices.firmware.write",
+       "Release, stage or withdraw a firmware version", "configuration", "financial"),
+    # A policy snapshot is an authorization projection with a bounded life; publishing one is
+    # what lets a gateway keep working offline, and its TTL is what bounds the damage.
+    _p("devices.policy.publish",
+       "Publish a signed policy snapshot to a device", "configuration", "financial"),
+    # **Routine commands, and the unlock is not one of them.** Rebooting a kiosk and asking a
+    # gateway to sync are operational and constant; opening a door remotely is not.
+    _p("devices.command.issue",
+       "Send a device a routine command: reboot, sync, diagnostics or firmware",
+       "data_access"),
+    _p("devices.command.unlock",
+       "Tell an access point to release momentarily",
+       "access", "financial"),
+    # What a gateway does all day: collect its queue, report what happened, report its health
+    # and report a sync conflict. Routine because a device reports every few minutes, and the
+    # thing that bounds it is that a report is insert-only and names who made it.
+    _p("devices.agent.report",
+       "Collect a device's commands and report its outcomes, health and sync conflicts",
+       "data_access"),
+
     # Support and AI, named separately because IAM-03-R06 audits them separately.
     _p("support.session.start", "Start a supported session as another user",
        "support", "privileged"),
