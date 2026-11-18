@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "description": "Veyro web surfaces: Admin, Member, Coach, Front Desk & POS, Internal Console.",
   "engines": {
-    "node": ">=22"
+    "node": ">=24"
   },
   "scripts": {
     "dev": "next dev -p 3000",
@@ -14,7 +14,7 @@
     "typecheck": "tsc --noEmit",
     "tokens": "node src/design/generate.mjs",
     "tokens:check": "node src/design/generate.mjs --check",
-    "test:foundation": "node --test tests/unit/",
+    "test:foundation": "node --test tests/unit/*.test.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "e2e": "playwright test",
