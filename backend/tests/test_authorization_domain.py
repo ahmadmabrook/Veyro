@@ -50,7 +50,9 @@ class CatalogTests(unittest.TestCase):
     # Reading is routine; recording a measurement is machine telemetry. Everything else under
     # finance or access is a decision somebody makes, and must cost a second factor. A new
     # permission added at `routine` under either category fails this.
-    ROUTINE_BY_DESIGN = {"billing.usage.record", "privacy.incident.record"}
+    ROUTINE_BY_DESIGN = {"billing.usage.record", "privacy.incident.record",
+                         "access.credential.revoke", "access.decision.evaluate",
+                         "access.event.record", "access.emergency.unlock"}
 
     def test_money_and_access_decisions_are_not_routine(self):
         """A permission that moves money or grants access must need a second factor."""
@@ -61,11 +63,12 @@ class CatalogTests(unittest.TestCase):
                 continue
             self.assertNotEqual(permission.action_class, "routine", name)
 
-    def test_the_two_routine_exceptions_are_deliberate(self):
+    def test_the_routine_exceptions_are_deliberate(self):
         """Stated as its own test so the exception set cannot be widened by accident.
 
-        Both are writes under a category whose other members all demand a second factor, and
-        both are exceptions for the same reason: the thing doing them cannot step up.
+        Every one is a write under a category whose other members all demand a second factor,
+        and every one is an exception for the same reason: **the thing doing it cannot step
+        up**, and refusing it has a worse failure mode than allowing it.
 
         `billing.usage.record` is a device emitting measurements continuously, and its reach is
         bounded -- defining what is measured and moving the quota are separate, financial-class
@@ -76,11 +79,32 @@ class CatalogTests(unittest.TestCase):
         something may be that authentication is unavailable. A step-up requirement there means
         the worst incidents are the ones with no record. The row is insert-only either way, so
         the cost of a false one is noise rather than destruction.
+
+        The four MOD-022 entries are all a reader or an emergency:
+
+          * `access.decision.evaluate` and `access.event.record` are what a turnstile does
+            every time somebody walks up to it. There is nobody at a reader to answer a
+            challenge, and a door that refuses every member until a kiosk authenticates is a
+            club that does not open. Evaluating decides nothing by itself -- the policy
+            does, from facts the reader never sends -- and every call leaves an
+            insert-only row.
+          * `access.credential.revoke` only ever closes a door. A card reported stolen at
+            seven in the morning has to be killable by whoever is on the desk; re-issuing one
+            is `access.credential.issue`, which is financial class. MOD-013's suppression list
+            is the same asymmetry.
+          * `access.emergency.unlock` is paragraph 4178's "where time permits", and a fire is
+            the case where it does not. A step-up that fails during an evacuation is a door
+            that stays shut. The dual approval moves to the review afterwards, which
+            `acc_emergency_unlocks_reviewer_is_not_orderer` makes a second person and which
+            the row stays unreviewed without.
         """
-        self.assertEqual(action_class("billing.usage.record"), "routine")
-        self.assertEqual(action_class("privacy.incident.record"), "routine")
-        self.assertEqual(self.ROUTINE_BY_DESIGN,
-                         {"billing.usage.record", "privacy.incident.record"})
+        for name in sorted(self.ROUTINE_BY_DESIGN):
+            self.assertEqual(action_class(name), "routine", name)
+        self.assertEqual(
+            self.ROUTINE_BY_DESIGN,
+            {"billing.usage.record", "privacy.incident.record",
+             "access.credential.revoke", "access.decision.evaluate", "access.event.record",
+             "access.emergency.unlock"})
 
     def test_configuration_changes_need_a_second_factor(self):
         """TSD paragraph 1020 requires change control for financial and security flag changes."""
@@ -607,7 +631,8 @@ class ReviewRegressionTests(unittest.TestCase):
                                          required_permissions=frozenset({"billing.refund.approve"}),
                                          required_approvals=2, separation_of_duties=True)
         lenient = approval.ApprovalPolicy("billing.refund.issue", threshold_minor=1,
-                                          required_permissions=frozenset({"billing.refund.approve"}),
+                                          required_permissions=frozenset(
+                                              {"billing.refund.approve"}),
                                           required_approvals=1, separation_of_duties=False)
         for order in ([strict, lenient], [lenient, strict]):
             combined = approval.policy_for(order, "billing.refund.issue", 1_000_000)

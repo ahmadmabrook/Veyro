@@ -1402,6 +1402,119 @@ SUBJECT_COLUMNS: tuple[Reachability, ...] = (
     Reachability("plt01", "dev_firmware", "release_notes", "write_once",
                  "**what changed in a build**, prose a release manager writes. The status "
                  "write holds the grant; no erasure reaches it"),
+
+    # ------------------------------------------------------------------ MOD-022 access control
+    #
+    # **This is the module where the residue is a movement history.** Every other module's
+    # residue is a figure or a sentence; `acc_decisions` and `acc_events` are a record of which
+    # person stood at which door at which minute, for as long as the tenant keeps the rows --
+    # and both tables are insert-only for both runtime roles, so an erasure reaches neither.
+    # Article 17 is not satisfied here and the registry is where that is said out loud, the
+    # same way MOD-009's does it for the ledger and the audit chain.
+    #
+    # The one mitigation that is real: **no credential value is stored anywhere.**
+    # `acc_credentials.credential_digest` is a SHA-256 and there is no column a card number
+    # could sit in, which is MOD-013's digest decision applied to a badge. It is pseudonymous
+    # rather than anonymous -- somebody holding a candidate card can test it -- so it is
+    # declared rather than claimed to be nothing.
+    Reachability("plt01", "acc_credentials", "person_id", "unreachable",
+                 "**whose card this is.** The column carries no UPDATE grant, because "
+                 "re-pointing a credential at a different person is how a card walks from "
+                 "one member to another with the history following it. So an erasure cannot "
+                 "clear it: that a person once held a credential survives their deletion"),
+    Reachability("plt01", "acc_credentials", "credential_digest", "unreachable",
+                 "**a SHA-256 of the value presented**, never the value. Pseudonymous, not "
+                 "anonymous -- somebody holding a candidate card can test it -- and there is "
+                 "no UPDATE grant, so the digest outlives the person it identified"),
+    Reachability("plt01", "acc_credentials", "issued_by", "unreachable",
+                 "who enrolled a credential against a person. Insert-only: an issuer that "
+                 "could be rewritten is an enrolment nobody is accountable for"),
+    Reachability("plt01", "acc_credentials", "revoked_by", "write_once",
+                 "**who killed a card.** The revoking write holds the grant and the one-way "
+                 "state trigger admits no second revocation, so it is written once and "
+                 "cleared by nothing"),
+    Reachability("plt01", "acc_credentials", "revoke_reason", "write_once",
+                 "**why a card was withdrawn**, which is where 'lost it at the hospital' "
+                 "gets typed. Written with the revocation and reached by no erasure"),
+
+    Reachability("plt01", "acc_decisions", "person_id", "unreachable",
+                 "**who was at which door, and whether they got in.** The whole table is "
+                 "insert-only for both runtime roles -- which is what makes a refusal "
+                 "something nobody can quietly delete, and what makes this residue an "
+                 "erasure cannot reach. The most sensitive thing this module keeps"),
+    Reachability("plt01", "acc_decisions", "decided_by", "unreachable",
+                 "the identity the reader called under. Insert-only for the table's reason"),
+    Reachability("plt01", "acc_decisions", "overridden_by", "unreachable",
+                 "**who let somebody through against the policy.** The point of the row, and "
+                 "insert-only so the override cannot be reattributed afterwards"),
+    Reachability("plt01", "acc_decisions", "public_reason", "unreachable",
+                 "the refusal a turnstile may display. A closed set of codes rendered to "
+                 "text, so it names nothing by itself -- declared because it sits beside the "
+                 "private half and a reader of this registry should see both"),
+    Reachability("plt01", "acc_decisions", "private_reason", "unreachable",
+                 "**the half a turnstile never shows**: that this member is overdue, or is a "
+                 "minor with no guardian on file, or was refused by an anti-passback window "
+                 "two minutes after somebody else used their card. Health-adjacent facts "
+                 "about a named person, insert-only, reached by no erasure. "
+                 "`access.decision.read_reason` is the permission that gates reading it"),
+    Reachability("plt01", "acc_decisions", "override_reason", "unreachable",
+                 "**why a member was admitted against the policy**, written by whoever did "
+                 "it -- 'her card is in the car, I know her' is the realistic input, and so "
+                 "is a medical one. Insert-only"),
+
+    Reachability("plt01", "acc_events", "person_id", "unreachable",
+                 "**who actually walked through.** A decision is what the server said; an "
+                 "event is what the reader saw, and the two are kept apart on purpose. "
+                 "Insert-only, so the movement history outlives an erasure"),
+    Reachability("plt01", "acc_events", "recorded_by", "unreachable",
+                 "the identity the reader reported under. Insert-only"),
+    Reachability("plt01", "acc_events", "reconciled_by", "write_once",
+                 "**who settled what an offline reader had queued**, which is the only name "
+                 "on a judgement that somebody was admitted who should not have been. "
+                 "Written once by the reconciliation and cleared by nothing"),
+
+    Reachability("plt01", "acc_emergency_unlocks", "ordered_by", "unreachable",
+                 "**who released every door in a zone.** Insert-only, because paragraph "
+                 "4178's dual approval rests on this name being the one that was there"),
+    Reachability("plt01", "acc_emergency_unlocks", "reviewed_by", "write_once",
+                 "**the second person**, after the fact. The review write holds the grant "
+                 "and the constraint refuses the orderer's own id; nothing clears it"),
+    Reachability("plt01", "acc_emergency_unlocks", "reason", "unreachable",
+                 "**why every door in a zone was released**, prose written during an "
+                 "emergency -- which is exactly when somebody types a member's name and what "
+                 "happened to them. Insert-only"),
+    Reachability("plt01", "acc_emergency_unlocks", "review_note", "write_once",
+                 "**what the reviewer concluded**, same shape as the reason above"),
+
+    # The configuration tables. A zone and a point are places rather than people, so the
+    # actor columns are the subject-bearing ones -- but a retirement reason is prose, and
+    # MOD-021 already records that 'jane's office door' is what goes in a display name.
+    Reachability("plt01", "acc_zones", "created_by", "unreachable",
+                 "who declared an area this software decides about. Insert-only"),
+    Reachability("plt01", "acc_zones", "retired_by", "write_once",
+                 "who stopped a zone deciding anything. Written once with the retirement"),
+    Reachability("plt01", "acc_zones", "retire_reason", "write_once",
+                 "**why an area stopped being controlled.** Prose, written once"),
+    Reachability("plt01", "acc_points", "created_by", "unreachable",
+                 "**who put a device at a door, facing one way.** Insert-only: the direction "
+                 "decides whether this point may decide at all, so its commissioning is not "
+                 "something to reattribute"),
+    Reachability("plt01", "acc_points", "retired_by", "write_once",
+                 "who took a door out of service. Written once with the retirement"),
+    Reachability("plt01", "acc_points", "retire_reason", "write_once",
+                 "**why a door stopped being controlled**, which is where an incident "
+                 "naming a member gets written"),
+    Reachability("plt01", "acc_policies", "created_by", "unreachable",
+                 "who drafted the terms a door decides by. Insert-only, because the "
+                 "separation of duties rests on this not being the publisher"),
+    Reachability("plt01", "acc_policies", "published_by", "write_once",
+                 "**who settled the terms.** The publishing write holds the grant and the "
+                 "constraint refuses the author's own id; the status trigger admits no "
+                 "second publication"),
+    Reachability("plt01", "acc_policies", "retired_by", "write_once",
+                 "who withdrew a live policy. Written once"),
+    Reachability("plt01", "acc_policies", "retire_reason", "write_once",
+                 "**why terms were withdrawn.** Prose, written once"),
 )
 
 

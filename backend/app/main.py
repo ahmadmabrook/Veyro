@@ -45,6 +45,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from app import db
+from app.access import service as access
 from app.authorization import catalog as authz_catalog
 from app.authorization import gate as authz_gate
 from app.authorization import service as authz
@@ -2530,6 +2531,152 @@ class SweepBody(BaseModel):
     """A sweep nothing drives. The limit is the caller's, bounded here."""
 
     limit: int = Field(default=200, ge=1, le=1000)
+    correlation_id: str
+
+
+# ------------------------------------------------------------------ MOD-022 access control
+#
+# **Nothing here takes a `person_id` for a decision, and nothing takes a policy.** A reader
+# presents a credential value; the service resolves whose it is, reads the zone's live policy,
+# and decides. A body that could name the subject would let a kiosk open a door as whoever it
+# liked, and a body that could name the terms would let it choose the rules it is judged by --
+# which is MOD-017's `reserve_entitlement` finding and MOD-013's `bypass_policy_ref` finding in
+# a building. The one place a person is named is the staff override, where somebody is being
+# admitted *against* the policy and the point of the row is that a named actor let a named
+# person through.
+
+
+class ZoneBody(BaseModel):
+    location_id: str
+    zone_key: str = Field(min_length=1, max_length=80)
+    display_name: str = Field(min_length=1, max_length=200)
+    risk_class: str = Field(min_length=1, max_length=40)
+    correlation_id: str
+
+
+class ReclassifyZoneBody(BaseModel):
+    """Tightening only. Loosening is refused by a trigger, not by this shape."""
+
+    risk_class: str = Field(min_length=1, max_length=40)
+    correlation_id: str
+
+
+class AccessPointBody(BaseModel):
+    zone_id: str
+    device_id: str
+    direction: str = Field(min_length=1, max_length=20)
+    display_name: str = Field(min_length=1, max_length=200)
+    correlation_id: str
+
+
+class AccessPolicyBody(BaseModel):
+    """The terms a decision cites.
+
+    Every bound is checked here as well as in the schema, because an unbounded integer reaches
+    psycopg as a `DataError` rather than the `CheckViolation` the handlers catch -- MOD-011's,
+    MOD-012's and MOD-013's finding, three times over.
+    """
+
+    zone_id: str
+    opens_minute: int | None = Field(default=None, ge=0, le=1439)
+    closes_minute: int | None = Field(default=None, ge=0, le=1439)
+    requires_entitlement: bool = True
+    max_balance_minor: int | None = Field(default=None, ge=0, le=10**12)
+    min_age_years: int | None = Field(default=None, ge=0, le=120)
+    anti_passback_seconds: int = Field(default=0, ge=0, le=86400)
+    capacity: int | None = Field(default=None, ge=0, le=10**6)
+    correlation_id: str
+
+
+class IssueCredentialBody(BaseModel):
+    """`credential_value` is the thing presented. **Nothing stores it**: the service keeps a
+    digest, which is why there is no column it could sit in."""
+
+    person_id: str
+    kind: str = Field(min_length=1, max_length=40)
+    credential_value: str = Field(min_length=1, max_length=512)
+    expires_at: datetime | None = None
+    correlation_id: str
+
+
+class EvaluateAccessBody(BaseModel):
+    """What a reader saw. **Nothing in here decides anything.**
+
+    `signature_verified` is the reader's claim and it is treated as one: the service refuses
+    a kind whose own rules need a signature this build cannot check, rather than believing the
+    flag. `reader_clock_skew_seconds` is bounded because a reader that says its clock is a
+    year out would otherwise make a rotating credential valid for a year.
+    """
+
+    point_id: str
+    credential_value: str = Field(min_length=1, max_length=512)
+    idempotency_key: str = Field(min_length=1, max_length=200)
+    kind: str | None = Field(default=None, max_length=40)
+    rotation_counter: int | None = Field(default=None, ge=0, le=2**31 - 1)
+    nonce: str | None = Field(default=None, max_length=200)
+    token_issued_at: datetime | None = None
+    token_expires_at: datetime | None = None
+    signature_verified: bool = False
+    reader_clock_skew_seconds: int = Field(default=0, ge=-300, le=300)
+    correlation_id: str
+
+
+class OverrideAccessBody(BaseModel):
+    """The one body in the module that names a person, because admitting somebody against the
+    policy is exactly what it records."""
+
+    point_id: str
+    person_id: str
+    reason: str = Field(min_length=1, max_length=500)
+    idempotency_key: str = Field(min_length=1, max_length=200)
+    correlation_id: str
+
+
+class EntryExitBody(BaseModel):
+    """What a reader *saw*, which is not what was decided.
+
+    `occurred_at` is the reader's clock and it is required, because an event the server times
+    cannot be reconciled against an offline queue. `decision_id` is optional for the same
+    reason: an offline reader decided from a snapshot and has no server decision to cite.
+    """
+
+    point_id: str
+    direction: str = Field(min_length=1, max_length=20)
+    occurred_at: datetime
+    source: str = Field(min_length=1, max_length=20)
+    credential_value: str | None = Field(default=None, max_length=512)
+    decision_id: str | None = None
+    local_sequence: int | None = Field(default=None, ge=0, le=2**31 - 1)
+    idempotency_key: str = Field(min_length=1, max_length=200)
+    correlation_id: str
+
+
+class EmergencyUnlockBody(BaseModel):
+    zone_id: str
+    reason: str = Field(min_length=1, max_length=500)
+    idempotency_key: str = Field(min_length=1, max_length=200)
+    correlation_id: str
+
+
+class ReviewUnlockBody(BaseModel):
+    note: str = Field(min_length=1, max_length=1000)
+    correlation_id: str
+
+
+class ReconcileAccessBody(BaseModel):
+    point_id: str
+    limit: int = Field(default=500, ge=1, le=5000)
+    correlation_id: str
+
+
+class AccessSnapshotBody(BaseModel):
+    """`ttl_minutes` is a request, not the answer: the zone's risk class narrows it, and a
+    high-risk zone's ceiling is two hours whatever is asked for here."""
+
+    point_id: str
+    content_digest: str = Field(min_length=64, max_length=64, pattern=_SHA256)
+    ttl_minutes: int = Field(ge=1, le=720)
+    signature_ref: str | None = Field(default=None, max_length=500)
     correlation_id: str
 
 
@@ -6788,7 +6935,7 @@ def create_app(
             actor_id=session["identity_id"], correlation_id=body.correlation_id)
 
     @app.post("/fleet/{device_id}/commission", status_code=201)
-    def commission_access_point(
+    def commission_device_safety(
         tenant_id: TenantId, session: Session, device_id: str, body: CommissionBody
     ) -> dict[str, Any]:
         """Record the hardware safety profile. TSD paragraph 4172.
@@ -7395,6 +7542,324 @@ def create_app(
             uphold=body.uphold, note=body.note, actor_id=session["identity_id"],
             decider_person_id=actor_person_id(tenant_id, session),
             correlation_id=body.correlation_id)
+
+    # ------------------------------------------------------------------ MOD-022 access control
+    #
+    # OPS-03: who may go through which door, right now, and what was recorded about it.
+    #
+    # **The read permission and the reason permission are different**, and the split is the
+    # module's one disclosure decision. A refusal's *public* half is a closed set of codes a
+    # turnstile may display; its private half can say "this member's balance is overdue" or
+    # "this is a minor without a guardian", which is a health-adjacent fact about a named
+    # person standing in a lobby. `access.decision.read` returns the public half to anybody
+    # who can see the door; `access.decision.read_reason` is financial class and returns the
+    # rest. MOD-013's `privacy.consent.read` disclosure, decided the other way.
+    #
+    # **Four of the thirteen permissions are routine on purpose**, and
+    # `test_the_routine_exceptions_are_deliberate` is where the reasoning lives: a turnstile
+    # cannot answer a step-up challenge, a stolen card has to be killable by whoever is on the
+    # desk, and a step-up that fails during an evacuation is a door that stays shut.
+
+    @app.post("/access/zones", status_code=201)
+    def declare_access_zone(
+        tenant_id: TenantId, session: Session, body: ZoneBody
+    ) -> dict[str, Any]:
+        """An area a policy applies to, and the risk class that bounds its offline authority."""
+        permit(session, "access.zone.write", body.correlation_id)
+        return access.declare_zone(
+            tenant_pool, tenant_id,
+            location_id=require_uuid(body.location_id, "location_id"),
+            zone_key=body.zone_key, display_name=body.display_name,
+            risk_class=body.risk_class, actor_id=session["identity_id"],
+            correlation_id=body.correlation_id)
+
+    @app.post("/access/zones/{zone_id}/retire")
+    def retire_access_zone(
+        tenant_id: TenantId, session: Session, zone_id: str, body: RetireBody
+    ) -> dict[str, Any]:
+        """Stop a zone deciding anything. Its points go with it, in the same transaction."""
+        permit(session, "access.zone.write", body.correlation_id)
+        return access.retire_zone(
+            tenant_pool, tenant_id, require_uuid(zone_id, "zone_id"), reason=body.reason,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id)
+
+    @app.post("/access/zones/{zone_id}/reclassify")
+    def reclassify_access_zone(
+        tenant_id: TenantId, session: Session, zone_id: str, body: ReclassifyZoneBody
+    ) -> dict[str, Any]:
+        """Tighten a zone's risk class.
+
+        **Loosening is refused by a trigger**, not here: the risk class is what bounds how long
+        an offline snapshot may authorise at this zone, so relaxing it retroactively extends
+        authority somebody has already been given. A looser zone is a new zone.
+        """
+        permit(session, "access.zone.write", body.correlation_id)
+        return access.reclassify_zone(
+            tenant_pool, tenant_id, require_uuid(zone_id, "zone_id"),
+            risk_class=body.risk_class, actor_id=session["identity_id"],
+            correlation_id=body.correlation_id)
+
+    @app.post("/access/points", status_code=201)
+    def commission_access_point(
+        tenant_id: TenantId, session: Session, body: AccessPointBody
+    ) -> dict[str, Any]:
+        """Put a MOD-021 device at a zone, facing one way.
+
+        The direction is the point's, not the request's: an exit-facing point decides nothing,
+        which `acc_decision_is_coherent` enforces at the row rather than trusting this service.
+        """
+        permit(session, "access.zone.write", body.correlation_id)
+        return access.commission_point(
+            tenant_pool, tenant_id, zone_id=require_uuid(body.zone_id, "zone_id"),
+            device_id=require_uuid(body.device_id, "device_id"), direction=body.direction,
+            display_name=body.display_name, actor_id=session["identity_id"],
+            correlation_id=body.correlation_id)
+
+    @app.post("/access/points/{point_id}/retire")
+    def retire_access_point(
+        tenant_id: TenantId, session: Session, point_id: str, body: RetireBody
+    ) -> dict[str, Any]:
+        permit(session, "access.zone.write", body.correlation_id)
+        return access.retire_point(
+            tenant_pool, tenant_id, require_uuid(point_id, "point_id"), reason=body.reason,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id)
+
+    @app.post("/access/policies", status_code=201)
+    def draft_access_policy(
+        tenant_id: TenantId, session: Session, body: AccessPolicyBody
+    ) -> dict[str, Any]:
+        """A draft of the terms. Nothing decides against it until it is published."""
+        permit(session, "access.policy.write", body.correlation_id)
+        return access.draft_policy(
+            tenant_pool, tenant_id, zone_id=require_uuid(body.zone_id, "zone_id"),
+            opens_minute=body.opens_minute, closes_minute=body.closes_minute,
+            requires_entitlement=body.requires_entitlement,
+            max_balance_minor=body.max_balance_minor, min_age_years=body.min_age_years,
+            anti_passback_seconds=body.anti_passback_seconds, capacity=body.capacity,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id)
+
+    @app.post("/access/policies/{policy_id}/publish")
+    def publish_access_policy(
+        tenant_id: TenantId, session: Session, policy_id: str, body: CorrelationBody
+    ) -> dict[str, Any]:
+        """Settle the terms, and retire whatever was live for this zone in the same transaction.
+
+        **A second act by a second person**, which the constraint enforces rather than this
+        route: these terms decide who gets through a door, and MOD-017's contract version is
+        the same argument about a document somebody is held to.
+        """
+        permit(session, "access.policy.publish", body.correlation_id)
+        return access.publish_policy(
+            tenant_pool, tenant_id, require_uuid(policy_id, "policy_id"),
+            actor_id=session["identity_id"], correlation_id=body.correlation_id)
+
+    @app.post("/access/credentials", status_code=201)
+    def issue_access_credential(
+        tenant_id: TenantId, session: Session, body: IssueCredentialBody
+    ) -> dict[str, Any]:
+        """Bind a credential to a person. **It identifies them and authorizes nothing.**
+
+        Financial class, because issuing one is how somebody gets a card at all. Revoking is
+        routine for the opposite reason: killing a stolen card must not wait for a step-up.
+        """
+        permit(session, "access.credential.issue", body.correlation_id)
+        return access.issue_credential(
+            tenant_pool, tenant_id, person_id=require_uuid(body.person_id, "person_id"),
+            kind=body.kind, credential_value=body.credential_value,
+            expires_at=body.expires_at, actor_id=session["identity_id"],
+            correlation_id=body.correlation_id)
+
+    @app.post("/access/credentials/{credential_id}/revoke")
+    def revoke_access_credential(
+        tenant_id: TenantId, session: Session, credential_id: str, body: RetireBody
+    ) -> dict[str, Any]:
+        """Withdraw a credential and bump its epoch, so every offline snapshot is behind."""
+        permit(session, "access.credential.revoke", body.correlation_id)
+        return access.revoke_credential(
+            tenant_pool, tenant_id, require_uuid(credential_id, "credential_id"),
+            reason=body.reason, actor_id=session["identity_id"],
+            correlation_id=body.correlation_id)
+
+    @app.get("/access/credentials/{credential_id}")
+    def read_credential_status(
+        tenant_id: TenantId, session: Session, credential_id: str
+    ) -> dict[str, Any]:
+        """CredentialStatus. **What it is, never what it opens.**
+
+        A route answering "which doors would this card open" is a reconnaissance tool: it
+        turns one found card into a map of a building. The zones are not in the answer.
+        """
+        permit(session, "access.zone.read")
+        return access.credential_status(
+            tenant_pool, tenant_id, require_uuid(credential_id, "credential_id"))
+
+    @app.post("/access/decisions", status_code=201)
+    def evaluate_access(
+        tenant_id: TenantId, session: Session, body: EvaluateAccessBody
+    ) -> dict[str, Any]:
+        """EvaluateAccess. Paragraph 1935's pipeline, in the order paragraph 4183 requires.
+
+        Rate-limited on the point rather than the credential: a reader stuck in a loop is the
+        realistic failure, and limiting by credential would let somebody lock a member out of
+        their own gym by presenting a copy of their card at speed.
+        """
+        rate_limit(limit_key="access.evaluate", tenant_id=tenant_id, subject=body.point_id)
+        permit(session, "access.decision.evaluate", body.correlation_id)
+        return access.evaluate_access(
+            tenant_pool, tenant_id, point_id=require_uuid(body.point_id, "point_id"),
+            credential_value=body.credential_value, idempotency_key=body.idempotency_key,
+            kind=body.kind, rotation_counter=body.rotation_counter, nonce=body.nonce,
+            token_issued_at=body.token_issued_at, token_expires_at=body.token_expires_at,
+            signature_verified=body.signature_verified,
+            reader_clock_skew_seconds=body.reader_clock_skew_seconds,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id)
+
+    @app.post("/access/decisions/override", status_code=201)
+    def override_access(
+        tenant_id: TenantId, session: Session, body: OverrideAccessBody
+    ) -> dict[str, Any]:
+        """OverrideAccess. Paragraph 1938's staff override, as its own decision.
+
+        Financial class and a written reason, because this is the one path that admits
+        somebody the policy refused. It is recorded as a decision of its own rather than as a
+        re-run of the refused one, so the refusal stays in the history beside it.
+        """
+        permit(session, "access.decision.override", body.correlation_id)
+        return access.override_access(
+            tenant_pool, tenant_id, point_id=require_uuid(body.point_id, "point_id"),
+            person_id=require_uuid(body.person_id, "person_id"), reason=body.reason,
+            idempotency_key=body.idempotency_key, actor_id=session["identity_id"],
+            correlation_id=body.correlation_id)
+
+    @app.post("/access/events", status_code=201)
+    def record_entry_exit(
+        tenant_id: TenantId, session: Session, body: EntryExitBody
+    ) -> dict[str, Any]:
+        """RecordEntryExit. What a reader saw, which is not what was decided.
+
+        An entry citing a refusal is refused by `acc_event_is_coherent`: a door that opened
+        after a denial is either a defect or a tailgate, and a row recording both as ordinary
+        would hide whichever it was.
+        """
+        permit(session, "access.event.record", body.correlation_id)
+        return access.record_entry_exit(
+            tenant_pool, tenant_id, point_id=require_uuid(body.point_id, "point_id"),
+            direction=body.direction, credential_value=body.credential_value,
+            decision_id=optional_uuid(body.decision_id, "decision_id"),
+            occurred_at=body.occurred_at, source=body.source,
+            local_sequence=body.local_sequence, idempotency_key=body.idempotency_key,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id)
+
+    @app.post("/access/events/reconcile")
+    def reconcile_offline_access(
+        tenant_id: TenantId, session: Session, body: ReconcileAccessBody
+    ) -> dict[str, Any]:
+        """ReconcileOfflineAccess. Paragraph 4168: deduplicate and flag, never rewrite.
+
+        A reader that was offline decided from a snapshot and queued what it did. Reconciling
+        says which of those the server would have refused -- it does not undo them, because
+        the person already walked through the door and a row claiming otherwise is a lie.
+        """
+        permit(session, "access.event.reconcile", body.correlation_id)
+        return access.reconcile_offline_access(
+            tenant_pool, tenant_id, point_id=require_uuid(body.point_id, "point_id"),
+            limit=body.limit, actor_id=session["identity_id"],
+            correlation_id=body.correlation_id)
+
+    @app.post("/access/snapshots", status_code=201)
+    def publish_access_snapshot(
+        tenant_id: TenantId, session: Session, body: AccessSnapshotBody
+    ) -> dict[str, Any]:
+        """MOD-021's policy snapshot, narrowed by this zone's risk class.
+
+        The TTL asked for here is a request: `zones.SNAPSHOT_CEILING` is the answer, and a
+        high-risk zone's ceiling is two hours however long a caller asks for.
+        """
+        permit(session, "access.policy.publish", body.correlation_id)
+        return access.publish_access_snapshot(
+            tenant_pool, tenant_id, point_id=require_uuid(body.point_id, "point_id"),
+            content_digest=body.content_digest, ttl_minutes=body.ttl_minutes,
+            signature_ref=body.signature_ref, actor_id=session["identity_id"],
+            correlation_id=body.correlation_id)
+
+    @app.post("/access/emergency", status_code=201)
+    def emergency_unlock(
+        tenant_id: TenantId, session: Session, body: EmergencyUnlockBody
+    ) -> dict[str, Any]:
+        """EmergencyUnlock. Paragraph 4178's release of every point in a zone.
+
+        **Routine class, deliberately**: paragraph 4178 says dual approval "where time
+        permits", and a fire is the case where it does not. A step-up that fails during an
+        evacuation is a door that stays shut. The second person moves to the review
+        afterwards, which the row stays unreviewed without.
+        """
+        permit(session, "access.emergency.unlock", body.correlation_id)
+        return access.emergency_unlock(
+            tenant_pool, tenant_id, zone_id=require_uuid(body.zone_id, "zone_id"),
+            reason=body.reason, idempotency_key=body.idempotency_key,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id)
+
+    @app.post("/access/emergency/{unlock_id}/review")
+    def review_emergency_unlock(
+        tenant_id: TenantId, session: Session, unlock_id: str, body: ReviewUnlockBody
+    ) -> dict[str, Any]:
+        """The second half of paragraph 4178's dual approval, after the fact.
+
+        The reviewer may not be whoever ordered it -- a constraint, not a convention, because
+        an unlock nobody independent looked at is an unlock with one person's word behind it.
+        """
+        permit(session, "access.emergency.unlock", body.correlation_id)
+        return access.review_emergency_unlock(
+            tenant_pool, tenant_id, require_uuid(unlock_id, "unlock_id"), note=body.note,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id)
+
+    @app.get("/access/zones/{zone_id}")
+    def read_access_zone(
+        tenant_id: TenantId, session: Session, zone_id: str
+    ) -> dict[str, Any]:
+        """A zone, its live policy and its points."""
+        permit(session, "access.zone.read")
+        return access.zone_detail(tenant_pool, tenant_id, require_uuid(zone_id, "zone_id"))
+
+    @app.get("/access/zones/{zone_id}/occupancy")
+    def read_zone_occupancy(
+        tenant_id: TenantId, session: Session, zone_id: str
+    ) -> dict[str, Any]:
+        """How many are inside, and whether the number may be relied on.
+
+        **There is no occupancy table.** The count is derived from the event ledger, and the
+        answer carries whether it is trustworthy -- an unreconciled offline queue or an
+        emergency unlock means people went through doors nothing counted. `NEVER_A_MUSTER` is
+        the name of the rule that this must never be used as a fire-roll: a number that is
+        usually right is worse than no number when somebody is deciding whether a building is
+        empty.
+        """
+        permit(session, "access.zone.read")
+        return access.zone_occupancy(tenant_pool, tenant_id, require_uuid(zone_id, "zone_id"))
+
+    @app.get("/access/decisions")
+    def read_access_decisions(
+        tenant_id: TenantId, session: Session, zone_id: str | None = None,
+        credential_id: str | None = None, limit: int = 100,
+    ) -> dict[str, Any]:
+        """The decisions recorded at a zone or against a credential.
+
+        **The private reason is behind a second permission**, and the gate decides which the
+        caller gets rather than the caller asking for it: `access.decision.read` returns the
+        public code a turnstile may display, and only `access.decision.read_reason` -- which
+        is financial class -- returns the rest. A refusal's full reason can say that a named
+        person standing in a lobby is overdue, or a minor with no guardian on file.
+        """
+        permit(session, "access.decision.read")
+        # `held_permissions` rather than a second `permit`: it is assurance-filtered, which is
+        # the half MOD-014's review found missing. `access.decision.read_reason` is financial
+        # class, so a password-only session does not hold it however its roles are written --
+        # and asking `permit` would refuse the whole request rather than narrowing the answer.
+        may_read_private = "access.decision.read_reason" in held_permissions(session)
+        return access.decision_history(
+            tenant_pool, tenant_id, zone_id=optional_uuid(zone_id, "zone_id"),
+            credential_id=optional_uuid(credential_id, "credential_id"),
+            may_read_private=may_read_private, limit=max(1, min(limit, 500)))
 
     return app
 

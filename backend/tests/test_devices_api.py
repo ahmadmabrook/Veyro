@@ -391,7 +391,10 @@ class CommandTests(DeviceApiTestCase):
                   "expires_in_seconds": 3600, **self.correlation()},
             headers=self.headers(tenant_id))
         self.assertEqual(refused.status_code, 409, refused.text)
-        self.assertIn("at most a minute", refused.text)
+        # The message names the action and its own window now that there is more than one
+        # door-touching command: `unlock_momentary` is a minute and `emergency_unlock` is
+        # five, and a message that said "a minute" for both would be wrong half the time.
+        self.assertIn("unlock_momentary is deliverable for at most 60 seconds", refused.text)
 
     def test_a_command_a_device_cannot_perform_is_refused(self):
         tenant_id = self.tenant()

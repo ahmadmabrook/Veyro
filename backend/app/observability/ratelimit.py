@@ -52,6 +52,17 @@ BUDGETS: dict[str, int] = {
     # protection, not a product limit, and a limit that trips during ordinary use is a limit
     # somebody will raise to infinity rather than investigate.
     "api.request": 600,
+    # MOD-022, keyed by the access point rather than by the credential. A reader stuck in a
+    # loop is the realistic failure and 600 a minute is ten a second, which no turnstile
+    # reaches honestly; keying it by credential instead would let somebody lock a member out
+    # of their own gym by presenting a copy of their card at speed.
+    #
+    # **It is here rather than at the call site**, which is the whole point of this table: the
+    # route named a key that did not exist, and `decide` raises `RateLimitError` for an unknown
+    # one -- so every call to `/access/decisions` answered 500 until an HTTP test ran it. A
+    # budget invented at a call site is a budget nobody reviews; one that does not exist is a
+    # route that does not work.
+    "access.evaluate": 600,
 }
 
 #: How many distinct subjects one process tracks before it evicts. Each entry is a key, an

@@ -278,13 +278,37 @@ class CommandTests(unittest.TestCase):
     """Paragraph 3084, a Critical Control with four named properties."""
 
     def test_the_vocabulary_contains_nothing_that_holds_a_barrier(self):
-        """Paragraph 4173 as an absence from a vocabulary rather than a rule somebody
-        enforces. The only action that touches a door is momentary by name."""
+        """Paragraph 4173 as an absence from a vocabulary rather than a rule somebody enforces.
+
+        **Three properties of every actuating action, not a list of one name.** The first
+        version asserted `touching == {"unlock_momentary"}`, which was true of MOD-021 and
+        was a per-name list of exactly the kind this repository keeps finding too narrow:
+        MOD-022 adds `emergency_unlock` for paragraph 4178, and the assertion failed for a
+        reason that had nothing to do with a barrier being held.
+
+        What actually has to hold is that *every* door-touching word is momentary, and
+        "momentary" is three things rather than a naming convention:
+
+          * no word in the vocabulary is one that secures a barrier (`HOLD_COMMANDS` is
+            about locking down and disabling egress, which is the fire-code direction);
+          * every actuating action has a bounded `ISSUE_WINDOW`, so a command cannot be
+            parked and delivered on some later night;
+          * **no actuating action takes any argument at all.** This is the one the review
+            found: `arguments` was an unvalidated passthrough and a reviewer sent
+            `{"mode": "hold_open", "hold_seconds": 86400}` on an unlock, so the row an edge
+            agent parameterises its relay from carried hold-the-door semantics. A door this
+            software can parameterise is a door it can hold.
+        """
         touching = {a for a, needs in commands.COMMAND_ACTIONS.items()
                     if needs == capabilities.ACTUATING}
-        self.assertEqual(touching, {"unlock_momentary"})
+        self.assertTrue(touching, "the vocabulary must have something that opens a door")
         self.assertFalse(
             set(commands.COMMAND_ACTIONS) & safety.HOLD_COMMANDS)
+        for action in sorted(touching):
+            self.assertIn(action, commands.ISSUE_WINDOW, action)
+            self.assertLessEqual(
+                commands.ISSUE_WINDOW[action], timedelta(minutes=5), action)
+            self.assertEqual(commands.COMMAND_ARGUMENTS[action], frozenset(), action)
 
     def test_a_command_the_device_cannot_perform_is_refused(self):
         with self.assertRaises(DeviceError):

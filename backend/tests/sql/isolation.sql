@@ -4128,7 +4128,7 @@ INSERT INTO plt01.int_installs
     (tenant_id, install_id, definition_key, definition_version, definition_snapshot,
      criticality, config, state, fallback_plan, reconciliation_plan, exit_plan, installed_by,
      correlation_id)
-VALUES (:'tenant_a', '99999999-1000-4000-8000-000000000001', 'acme.payments', 1,
+VALUES (:'tenant_a', 'bbbbbbbb-1000-4000-8000-000000000001', 'acme.payments', 1,
         '{"definition_key": "acme.payments", "version": 1}'::jsonb, 'critical',
         '{"merchant_id": "m-1"}'::jsonb, 'active', 'manual terminal', 'daily settlement file',
         'export and switch provider', :'actor', :'actor');
@@ -4136,24 +4136,24 @@ INSERT INTO plt01.int_connections
     (tenant_id, connection_id, install_id, external_account_ref, region, granted_scopes,
      state, authorized_at, authorized_by, validated_at, validated_by, validation_evidence,
      correlation_id)
-VALUES (:'tenant_a', '99999999-1000-4000-8000-000000000002',
-        '99999999-1000-4000-8000-000000000001', 'acct_live_1', 'eu-west',
+VALUES (:'tenant_a', 'bbbbbbbb-1000-4000-8000-000000000002',
+        'bbbbbbbb-1000-4000-8000-000000000001', 'acct_live_1', 'eu-west',
         ARRAY['payments.charge'], 'validated', now(), :'actor', now(), :'actor',
         'test charge accepted', :'actor');
 INSERT INTO plt01.int_credential_refs
     (tenant_id, credential_ref_id, connection_id, vault_ref, scopes, issued_at, expires_at,
      recorded_by, correlation_id)
 VALUES (:'tenant_a', '99999999-1000-4000-8000-000000000003',
-        '99999999-1000-4000-8000-000000000002', 'vault://acme/live-1',
+        'bbbbbbbb-1000-4000-8000-000000000002', 'vault://acme/live-1',
         ARRAY['payments.charge'], now(), now() + INTERVAL '90 days', :'actor', :'actor');
 INSERT INTO plt01.int_sync_cursors
     (tenant_id, cursor_id, connection_id, resource, position, observed_at)
 VALUES (:'tenant_a', '99999999-1000-4000-8000-000000000004',
-        '99999999-1000-4000-8000-000000000002', 'settlements', 'cur-1', now());
+        'bbbbbbbb-1000-4000-8000-000000000002', 'settlements', 'cur-1', now());
 INSERT INTO plt01.int_connector_runs
     (tenant_id, run_id, connection_id, resource, status, started_by, correlation_id)
 VALUES (:'tenant_a', '99999999-1000-4000-8000-000000000005',
-        '99999999-1000-4000-8000-000000000002', 'settlements', 'running', :'actor', :'actor');
+        'bbbbbbbb-1000-4000-8000-000000000002', 'settlements', 'running', :'actor', :'actor');
 COMMIT;
 
 -- Tenant B holds one install of its own, so a leaked predicate shows up as a count above the
@@ -4366,7 +4366,7 @@ BEGIN
             (tenant_id, install_id, external_account_ref, region, granted_scopes,
              correlation_id)
         VALUES ('11111111-1111-4111-8111-111111111111',
-                '99999999-1000-4000-8000-000000000001', 'acct_x', 'eu-west',
+                'bbbbbbbb-1000-4000-8000-000000000001', 'acct_x', 'eu-west',
                 ARRAY['payments.charge'], '33333333-3333-4333-8333-333333333333');
         RAISE EXCEPTION 'CHECK 50 FAILED: a connection was authorized with no tenant context';
     EXCEPTION
@@ -4377,7 +4377,7 @@ BEGIN
             (tenant_id, connection_id, vault_ref, scopes, issued_at, recorded_by,
              correlation_id)
         VALUES ('11111111-1111-4111-8111-111111111111',
-                '99999999-1000-4000-8000-000000000002', 'vault://x',
+                'bbbbbbbb-1000-4000-8000-000000000002', 'vault://x',
                 ARRAY['payments.charge'], now(), '33333333-3333-4333-8333-333333333333',
                 '33333333-3333-4333-8333-333333333333');
         RAISE EXCEPTION 'CHECK 50 FAILED: a credential reference was written with no context';
@@ -4418,7 +4418,7 @@ BEGIN
             (tenant_id, install_id, external_account_ref, region, granted_scopes,
              correlation_id)
         VALUES ('22222222-2222-4222-8222-222222222222',
-                '99999999-1000-4000-8000-000000000001', 'acct_borrowed', 'eu-west',
+                'bbbbbbbb-1000-4000-8000-000000000001', 'acct_borrowed', 'eu-west',
                 ARRAY['payments.charge'], '33333333-3333-4333-8333-333333333333');
         RAISE EXCEPTION 'CHECK 51 FAILED: a connection was hung off another tenant''s install';
     EXCEPTION
@@ -4429,7 +4429,7 @@ BEGIN
             (tenant_id, connection_id, vault_ref, scopes, issued_at, recorded_by,
              correlation_id)
         VALUES ('22222222-2222-4222-8222-222222222222',
-                '99999999-1000-4000-8000-000000000002', 'vault://borrowed',
+                'bbbbbbbb-1000-4000-8000-000000000002', 'vault://borrowed',
                 ARRAY['payments.charge'], now(), '33333333-3333-4333-8333-333333333333',
                 '33333333-3333-4333-8333-333333333333');
         RAISE EXCEPTION 'CHECK 51 FAILED: a credential was attached to another tenant''s '
@@ -4441,7 +4441,7 @@ BEGIN
         INSERT INTO plt01.int_connector_runs
             (tenant_id, connection_id, resource, started_by, correlation_id)
         VALUES ('22222222-2222-4222-8222-222222222222',
-                '99999999-1000-4000-8000-000000000002', 'settlements',
+                'bbbbbbbb-1000-4000-8000-000000000002', 'settlements',
                 '33333333-3333-4333-8333-333333333333',
                 '33333333-3333-4333-8333-333333333333');
         RAISE EXCEPTION 'CHECK 51 FAILED: a run was started on another tenant''s connection';
@@ -4452,7 +4452,7 @@ BEGIN
         INSERT INTO plt01.int_sync_cursors
             (tenant_id, connection_id, resource, position, observed_at)
         VALUES ('22222222-2222-4222-8222-222222222222',
-                '99999999-1000-4000-8000-000000000002', 'settlements', 'cur-x', now());
+                'bbbbbbbb-1000-4000-8000-000000000002', 'settlements', 'cur-x', now());
         RAISE EXCEPTION 'CHECK 51 FAILED: a cursor was set on another tenant''s connection';
     EXCEPTION
         WHEN foreign_key_violation THEN NULL;
@@ -4545,7 +4545,7 @@ BEGIN
             (tenant_id, connection_id, vault_ref, scopes, issued_at,
              supersedes_credential_ref_id, recorded_by, correlation_id)
         VALUES ('22222222-2222-4222-8222-222222222222',
-                '99999999-1000-4000-8000-000000000002', 'vault://x',
+                'bbbbbbbb-1000-4000-8000-000000000002', 'vault://x',
                 ARRAY['payments.charge'], now(), '99999999-1000-4000-8000-000000000003',
                 '33333333-3333-4333-8333-333333333333',
                 '33333333-3333-4333-8333-333333333333');
@@ -5071,7 +5071,7 @@ BEGIN
              granted_scopes, state, authorized_at, authorized_by, validated_at,
              validated_by, validation_evidence, revoked_at, revoked_by,
              revoke_reason, correlation_id)
-        VALUES ('11111111-1111-4111-8111-111111111111', '99999999-1000-4000-8000-000000000001', 'acct_new', 'eu-west', ARRAY['payments.charge'], 'half_open', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333');
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000001', 'acct_new', 'eu-west', ARRAY['payments.charge'], 'half_open', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333');
         RAISE EXCEPTION 'CHECK 54 FAILED: a connection took an unknown state';
     EXCEPTION
         WHEN check_violation THEN NULL;
@@ -5084,7 +5084,7 @@ BEGIN
              granted_scopes, state, authorized_at, authorized_by, validated_at,
              validated_by, validation_evidence, revoked_at, revoked_by,
              revoke_reason, correlation_id)
-        VALUES ('11111111-1111-4111-8111-111111111111', '99999999-1000-4000-8000-000000000001', '  ', 'eu-west', ARRAY['payments.charge'], 'pending', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333');
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000001', '  ', 'eu-west', ARRAY['payments.charge'], 'pending', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333');
         RAISE EXCEPTION 'CHECK 54 FAILED: a connection named a blank provider account';
     EXCEPTION
         WHEN check_violation THEN NULL;
@@ -5097,7 +5097,7 @@ BEGIN
              granted_scopes, state, authorized_at, authorized_by, validated_at,
              validated_by, validation_evidence, revoked_at, revoked_by,
              revoke_reason, correlation_id)
-        VALUES ('11111111-1111-4111-8111-111111111111', '99999999-1000-4000-8000-000000000001', 'acct_new', 'EU West', ARRAY['payments.charge'], 'pending', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333');
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000001', 'acct_new', 'EU West', ARRAY['payments.charge'], 'pending', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333');
         RAISE EXCEPTION 'CHECK 54 FAILED: a connection took a malformed region';
     EXCEPTION
         WHEN check_violation THEN NULL;
@@ -5110,7 +5110,7 @@ BEGIN
              granted_scopes, state, authorized_at, authorized_by, validated_at,
              validated_by, validation_evidence, revoked_at, revoked_by,
              revoke_reason, correlation_id)
-        VALUES ('11111111-1111-4111-8111-111111111111', '99999999-1000-4000-8000-000000000001', 'acct_new', 'eu-west', ARRAY['payments.*'], 'pending', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333');
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000001', 'acct_new', 'eu-west', ARRAY['payments.*'], 'pending', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333');
         RAISE EXCEPTION 'CHECK 54 FAILED: a wildcard scope was granted';
     EXCEPTION
         WHEN check_violation THEN NULL;
@@ -5123,7 +5123,7 @@ BEGIN
              granted_scopes, state, authorized_at, authorized_by, validated_at,
              validated_by, validation_evidence, revoked_at, revoked_by,
              revoke_reason, correlation_id)
-        VALUES ('11111111-1111-4111-8111-111111111111', '99999999-1000-4000-8000-000000000001', 'acct_new', 'eu-west', ARRAY['payments.charge'], 'authorized', now(), NULL, NULL, NULL, NULL, NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333');
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000001', 'acct_new', 'eu-west', ARRAY['payments.charge'], 'authorized', now(), NULL, NULL, NULL, NULL, NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333');
         RAISE EXCEPTION 'CHECK 54 FAILED: a connection was authorized by nobody';
     EXCEPTION
         WHEN check_violation THEN NULL;
@@ -5136,7 +5136,7 @@ BEGIN
              granted_scopes, state, authorized_at, authorized_by, validated_at,
              validated_by, validation_evidence, revoked_at, revoked_by,
              revoke_reason, correlation_id)
-        VALUES ('11111111-1111-4111-8111-111111111111', '99999999-1000-4000-8000-000000000001', 'acct_new', 'eu-west', ARRAY['payments.charge'], 'validated', now(), '33333333-3333-4333-8333-333333333333', now(), '33333333-3333-4333-8333-333333333333', NULL, NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333');
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000001', 'acct_new', 'eu-west', ARRAY['payments.charge'], 'validated', now(), '33333333-3333-4333-8333-333333333333', now(), '33333333-3333-4333-8333-333333333333', NULL, NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333');
         RAISE EXCEPTION 'CHECK 54 FAILED: a connection was validated with no evidence';
     EXCEPTION
         WHEN check_violation THEN NULL;
@@ -5149,7 +5149,7 @@ BEGIN
              granted_scopes, state, authorized_at, authorized_by, validated_at,
              validated_by, validation_evidence, revoked_at, revoked_by,
              revoke_reason, correlation_id)
-        VALUES ('11111111-1111-4111-8111-111111111111', '99999999-1000-4000-8000-000000000001', 'acct_new', 'eu-west', ARRAY['payments.charge'], 'revoked', NULL, NULL, NULL, NULL, NULL, now(), '33333333-3333-4333-8333-333333333333', NULL, '33333333-3333-4333-8333-333333333333');
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000001', 'acct_new', 'eu-west', ARRAY['payments.charge'], 'revoked', NULL, NULL, NULL, NULL, NULL, now(), '33333333-3333-4333-8333-333333333333', NULL, '33333333-3333-4333-8333-333333333333');
         RAISE EXCEPTION 'CHECK 54 FAILED: a connection was revoked for no stated reason';
     EXCEPTION
         WHEN check_violation THEN NULL;
@@ -5162,7 +5162,7 @@ BEGIN
              granted_scopes, state, authorized_at, authorized_by, validated_at,
              validated_by, validation_evidence, revoked_at, revoked_by,
              revoke_reason, correlation_id)
-        VALUES ('11111111-1111-4111-8111-111111111111', '99999999-1000-4000-8000-000000000001', 'acct_new', 'eu-west', ARRAY['payments.charge'], 'revoked', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333');
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000001', 'acct_new', 'eu-west', ARRAY['payments.charge'], 'revoked', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333');
         RAISE EXCEPTION 'CHECK 54 FAILED: a connection reads revoked with no revocation';
     EXCEPTION
         WHEN check_violation THEN NULL;
@@ -5175,7 +5175,7 @@ BEGIN
              granted_scopes, state, authorized_at, authorized_by, validated_at,
              validated_by, validation_evidence, revoked_at, revoked_by,
              revoke_reason, correlation_id)
-        VALUES ('11111111-1111-4111-8111-111111111111', '99999999-1000-4000-8000-000000000001', 'acct_live_1', 'eu-west', ARRAY['payments.charge'], 'pending', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333');
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000001', 'acct_live_1', 'eu-west', ARRAY['payments.charge'], 'pending', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333');
         RAISE EXCEPTION 'CHECK 54 FAILED: a second live connection took the same account';
     EXCEPTION
         WHEN unique_violation THEN NULL;
@@ -5198,7 +5198,7 @@ BEGIN
              expires_at, supersedes_credential_ref_id, retired_at, recorded_by,
              correlation_id)
         VALUES ('11111111-1111-4111-8111-111111111111', gen_random_uuid(),
-                '99999999-1000-4000-8000-000000000002',
+                'bbbbbbbb-1000-4000-8000-000000000002',
                 'raw-credential-material-not-a-locator', ARRAY['payments.charge'], now(), NULL,
                 NULL, now(), '33333333-3333-4333-8333-333333333333',
                 '33333333-3333-4333-8333-333333333333');
@@ -5212,7 +5212,7 @@ BEGIN
             (tenant_id, credential_ref_id, connection_id, vault_ref, scopes,
              issued_at, expires_at, supersedes_credential_ref_id, retired_at,
              recorded_by, correlation_id)
-        VALUES ('11111111-1111-4111-8111-111111111111', gen_random_uuid(), '99999999-1000-4000-8000-000000000002', '  ', ARRAY['payments.charge'], now(), NULL, NULL, now(), '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        VALUES ('11111111-1111-4111-8111-111111111111', gen_random_uuid(), 'bbbbbbbb-1000-4000-8000-000000000002', '  ', ARRAY['payments.charge'], now(), NULL, NULL, now(), '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
         RAISE EXCEPTION 'CHECK 54 FAILED: a credential reference named no vault location';
     EXCEPTION
         WHEN check_violation THEN NULL;
@@ -5224,7 +5224,7 @@ BEGIN
             (tenant_id, credential_ref_id, connection_id, vault_ref, scopes,
              issued_at, expires_at, supersedes_credential_ref_id, retired_at,
              recorded_by, correlation_id)
-        VALUES ('11111111-1111-4111-8111-111111111111', gen_random_uuid(), '99999999-1000-4000-8000-000000000002', 'vault://new', ARRAY['payments.charge'], now(), now() - INTERVAL '1 day', NULL, now(), '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        VALUES ('11111111-1111-4111-8111-111111111111', gen_random_uuid(), 'bbbbbbbb-1000-4000-8000-000000000002', 'vault://new', ARRAY['payments.charge'], now(), now() - INTERVAL '1 day', NULL, now(), '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
         RAISE EXCEPTION 'CHECK 54 FAILED: a credential expired before it was issued';
     EXCEPTION
         WHEN check_violation THEN NULL;
@@ -5236,7 +5236,7 @@ BEGIN
             (tenant_id, credential_ref_id, connection_id, vault_ref, scopes,
              issued_at, expires_at, supersedes_credential_ref_id, retired_at,
              recorded_by, correlation_id)
-        VALUES ('11111111-1111-4111-8111-111111111111', '99999999-1000-4000-8000-0000000000aa', '99999999-1000-4000-8000-000000000002', 'vault://new', ARRAY['payments.charge'], now(), NULL, '99999999-1000-4000-8000-0000000000aa', now(), '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        VALUES ('11111111-1111-4111-8111-111111111111', '99999999-1000-4000-8000-0000000000aa', 'bbbbbbbb-1000-4000-8000-000000000002', 'vault://new', ARRAY['payments.charge'], now(), NULL, '99999999-1000-4000-8000-0000000000aa', now(), '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
         RAISE EXCEPTION 'CHECK 54 FAILED: a credential reference superseded itself';
     EXCEPTION
         WHEN check_violation THEN NULL;
@@ -5248,7 +5248,7 @@ BEGIN
             (tenant_id, credential_ref_id, connection_id, vault_ref, scopes,
              issued_at, expires_at, supersedes_credential_ref_id, retired_at,
              recorded_by, correlation_id)
-        VALUES ('11111111-1111-4111-8111-111111111111', gen_random_uuid(), '99999999-1000-4000-8000-000000000002', 'vault://new', ARRAY['payments.*'], now(), NULL, NULL, now(), '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        VALUES ('11111111-1111-4111-8111-111111111111', gen_random_uuid(), 'bbbbbbbb-1000-4000-8000-000000000002', 'vault://new', ARRAY['payments.*'], now(), NULL, NULL, now(), '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
         RAISE EXCEPTION 'CHECK 54 FAILED: a wildcard scope was recorded on a credential reference';
     EXCEPTION
         WHEN check_violation THEN NULL;
@@ -5260,7 +5260,7 @@ BEGIN
             (tenant_id, credential_ref_id, connection_id, vault_ref, scopes,
              issued_at, expires_at, supersedes_credential_ref_id, retired_at,
              recorded_by, correlation_id)
-        VALUES ('11111111-1111-4111-8111-111111111111', gen_random_uuid(), '99999999-1000-4000-8000-000000000002', 'vault://new', ARRAY['payments.charge'], now(), NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        VALUES ('11111111-1111-4111-8111-111111111111', gen_random_uuid(), 'bbbbbbbb-1000-4000-8000-000000000002', 'vault://new', ARRAY['payments.charge'], now(), NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
         RAISE EXCEPTION 'CHECK 54 FAILED: a second live credential reference was written';
     EXCEPTION
         WHEN unique_violation THEN NULL;
@@ -5271,7 +5271,7 @@ BEGIN
         INSERT INTO plt01.int_sync_cursors
             (tenant_id, connection_id, resource, position, observed_at,
              conflict_policy, reset_at, reset_by, reset_reason)
-        VALUES ('11111111-1111-4111-8111-111111111111', '99999999-1000-4000-8000-000000000002', 'Invoices!', 'c-1', now(), 'manual', NULL, NULL, NULL);
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000002', 'Invoices!', 'c-1', now(), 'manual', NULL, NULL, NULL);
         RAISE EXCEPTION 'CHECK 54 FAILED: a cursor took a malformed resource';
     EXCEPTION
         WHEN check_violation THEN NULL;
@@ -5282,7 +5282,7 @@ BEGIN
         INSERT INTO plt01.int_sync_cursors
             (tenant_id, connection_id, resource, position, observed_at,
              conflict_policy, reset_at, reset_by, reset_reason)
-        VALUES ('11111111-1111-4111-8111-111111111111', '99999999-1000-4000-8000-000000000002', 'invoices', '  ', now(), 'manual', NULL, NULL, NULL);
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000002', 'invoices', '  ', now(), 'manual', NULL, NULL, NULL);
         RAISE EXCEPTION 'CHECK 54 FAILED: a cursor was written with a blank position';
     EXCEPTION
         WHEN check_violation THEN NULL;
@@ -5293,7 +5293,7 @@ BEGIN
         INSERT INTO plt01.int_sync_cursors
             (tenant_id, connection_id, resource, position, observed_at,
              conflict_policy, reset_at, reset_by, reset_reason)
-        VALUES ('11111111-1111-4111-8111-111111111111', '99999999-1000-4000-8000-000000000002', 'invoices', 'c-1', now(), 'newest_wins', NULL, NULL, NULL);
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000002', 'invoices', 'c-1', now(), 'newest_wins', NULL, NULL, NULL);
         RAISE EXCEPTION 'CHECK 54 FAILED: a cursor took an unknown conflict policy';
     EXCEPTION
         WHEN check_violation THEN NULL;
@@ -5304,7 +5304,7 @@ BEGIN
         INSERT INTO plt01.int_sync_cursors
             (tenant_id, connection_id, resource, position, observed_at,
              conflict_policy, reset_at, reset_by, reset_reason)
-        VALUES ('11111111-1111-4111-8111-111111111111', '99999999-1000-4000-8000-000000000002', 'invoices', 'c-1', now(), 'manual', now(), NULL, NULL);
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000002', 'invoices', 'c-1', now(), 'manual', now(), NULL, NULL);
         RAISE EXCEPTION 'CHECK 54 FAILED: a cursor was reset by nobody';
     EXCEPTION
         WHEN check_violation THEN NULL;
@@ -5315,7 +5315,7 @@ BEGIN
         INSERT INTO plt01.int_sync_cursors
             (tenant_id, connection_id, resource, position, observed_at,
              conflict_policy, reset_at, reset_by, reset_reason)
-        VALUES ('11111111-1111-4111-8111-111111111111', '99999999-1000-4000-8000-000000000002', 'settlements', 'c-1', now(), 'manual', NULL, NULL, NULL);
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000002', 'settlements', 'c-1', now(), 'manual', NULL, NULL, NULL);
         RAISE EXCEPTION 'CHECK 54 FAILED: a second cursor took the same resource';
     EXCEPTION
         WHEN unique_violation THEN NULL;
@@ -5330,7 +5330,7 @@ BEGIN
             (tenant_id, connection_id, resource, status, attempts, max_attempts,
              records_read, records_written, conflicts, last_error, finished_at,
              settled_by, settle_correlation_id, started_by, correlation_id)
-        VALUES ('11111111-1111-4111-8111-111111111111', '99999999-1000-4000-8000-000000000002', 'invoices', 'wedged', 1, 5, 0, 0, 0, 'boom', now(), '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000002', 'invoices', 'wedged', 1, 5, 0, 0, 0, 'boom', now(), '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
         RAISE EXCEPTION 'CHECK 54 FAILED: a run took an unknown status';
     EXCEPTION
         WHEN check_violation THEN NULL;
@@ -5342,7 +5342,7 @@ BEGIN
             (tenant_id, connection_id, resource, status, attempts, max_attempts,
              records_read, records_written, conflicts, last_error, finished_at,
              settled_by, settle_correlation_id, started_by, correlation_id)
-        VALUES ('11111111-1111-4111-8111-111111111111', '99999999-1000-4000-8000-000000000002', 'Settlements!', 'running', 1, 5, 0, 0, 0, NULL, NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000002', 'Settlements!', 'running', 1, 5, 0, 0, 0, NULL, NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
         RAISE EXCEPTION 'CHECK 54 FAILED: a run named a malformed resource';
     EXCEPTION
         WHEN check_violation THEN NULL;
@@ -5354,7 +5354,7 @@ BEGIN
             (tenant_id, connection_id, resource, status, attempts, max_attempts,
              records_read, records_written, conflicts, last_error, finished_at,
              settled_by, settle_correlation_id, started_by, correlation_id)
-        VALUES ('11111111-1111-4111-8111-111111111111', '99999999-1000-4000-8000-000000000002', 'invoices', 'failed', 6, 5, 0, 0, 0, 'boom', now(), '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000002', 'invoices', 'failed', 6, 5, 0, 0, 0, 'boom', now(), '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
         RAISE EXCEPTION 'CHECK 54 FAILED: a run exceeded its own attempt budget';
     EXCEPTION
         WHEN check_violation THEN NULL;
@@ -5366,7 +5366,7 @@ BEGIN
             (tenant_id, connection_id, resource, status, attempts, max_attempts,
              records_read, records_written, conflicts, last_error, finished_at,
              settled_by, settle_correlation_id, started_by, correlation_id)
-        VALUES ('11111111-1111-4111-8111-111111111111', '99999999-1000-4000-8000-000000000002', 'invoices', 'running', 1, 5, -1, 0, 0, NULL, NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000002', 'invoices', 'running', 1, 5, -1, 0, 0, NULL, NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
         RAISE EXCEPTION 'CHECK 54 FAILED: a run recorded a negative record count';
     EXCEPTION
         WHEN check_violation THEN NULL;
@@ -5378,7 +5378,7 @@ BEGIN
             (tenant_id, connection_id, resource, status, attempts, max_attempts,
              records_read, records_written, conflicts, last_error, finished_at,
              settled_by, settle_correlation_id, started_by, correlation_id)
-        VALUES ('11111111-1111-4111-8111-111111111111', '99999999-1000-4000-8000-000000000002', 'invoices', 'failed', 1, 5, 0, 0, 0, NULL, now(), '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000002', 'invoices', 'failed', 1, 5, 0, 0, 0, NULL, now(), '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
         RAISE EXCEPTION 'CHECK 54 FAILED: a run failed with nothing recorded about why';
     EXCEPTION
         WHEN check_violation THEN NULL;
@@ -5392,7 +5392,7 @@ BEGIN
         INSERT INTO plt01.int_connector_runs
             (tenant_id, connection_id, resource, status, started_by, correlation_id)
         VALUES ('11111111-1111-4111-8111-111111111111',
-                '99999999-1000-4000-8000-000000000002', 'settlements', 'running',
+                'bbbbbbbb-1000-4000-8000-000000000002', 'settlements', 'running',
                 '33333333-3333-4333-8333-333333333333',
                 '33333333-3333-4333-8333-333333333333');
         RAISE EXCEPTION 'CHECK 54 FAILED: a second run started on a resource already syncing';
@@ -5406,7 +5406,7 @@ BEGIN
             (tenant_id, connection_id, resource, status, last_error, finished_at,
              started_by, correlation_id)
         VALUES ('11111111-1111-4111-8111-111111111111',
-                '99999999-1000-4000-8000-000000000002', 'invoices', 'succeeded', NULL, now(),
+                'bbbbbbbb-1000-4000-8000-000000000002', 'invoices', 'succeeded', NULL, now(),
                 '33333333-3333-4333-8333-333333333333',
                 '33333333-3333-4333-8333-333333333333');
         RAISE EXCEPTION 'CHECK 54 FAILED: a run was settled by nobody';
@@ -5419,7 +5419,7 @@ BEGIN
             (tenant_id, connection_id, resource, status, finished_at, settled_by,
              started_by, correlation_id)
         VALUES ('11111111-1111-4111-8111-111111111111',
-                '99999999-1000-4000-8000-000000000002', 'invoices', 'succeeded', now(),
+                'bbbbbbbb-1000-4000-8000-000000000002', 'invoices', 'succeeded', now(),
                 '33333333-3333-4333-8333-333333333333',
                 '33333333-3333-4333-8333-333333333333',
                 '33333333-3333-4333-8333-333333333333');
@@ -5462,7 +5462,7 @@ BEGIN
             (tenant_id, connection_id, resource, status, attempts, max_attempts,
              records_read, records_written, conflicts, last_error, finished_at,
              settled_by, settle_correlation_id, started_by, correlation_id)
-        VALUES ('11111111-1111-4111-8111-111111111111', '99999999-1000-4000-8000-000000000002', 'invoices', 'running', 1, 5, 0, 0, 0, NULL, now(), NULL, NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000002', 'invoices', 'running', 1, 5, 0, 0, 0, NULL, now(), NULL, NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
         RAISE EXCEPTION 'CHECK 54 FAILED: a run reads running and finished at once';
     EXCEPTION
         WHEN check_violation THEN NULL;
@@ -43090,6 +43090,8 @@ ROLLBACK;
 
 
 
+
+
 -- ------------------------------------- 105. MOD-021's rules, pinned by their own text
 -- **The second line of evidence, which runs in CI rather than at the next sweep.** Every
 -- behavioural case below proves that a rule refuses the row it should; none of them notices a
@@ -43102,7 +43104,7 @@ ROLLBACK;
 -- case says it still bites. A legitimate schema change fails this until it is regenerated,
 -- which is the moment a human reads the diff.
 --
--- 84 checks, 26 indexes, 14 triggers, 14 bodies.
+-- 85 checks, 26 indexes, 14 triggers, 14 bodies.
 DO $$
 DECLARE
     wrong text;
@@ -43119,12 +43121,13 @@ BEGIN
         ('dev_certificates_vault_ref_is_a_locator CHECK ((vault_ref ~ ''^[a-z][a-z0-9+.-]*:[^[:space:]]+$''::text))'),
         ('dev_commands_acknowledged_is_acknowledged CHECK (((state <> ''acknowledged''::text) OR (acknowledged_at IS NOT NULL)))'),
         ('dev_commands_acknowledgement_ordered CHECK (((acknowledged_at IS NULL) OR ((delivered_at IS NOT NULL) AND (acknowledged_at >= delivered_at))))'),
-        ('dev_commands_action CHECK ((action = ANY (ARRAY[''unlock_momentary''::text, ''reboot''::text, ''diagnostics''::text, ''sync_now''::text, ''update_firmware''::text, ''rotate_certificate''::text, ''set_maintenance''::text, ''clear_maintenance''::text, ''report_peripherals''::text])))'),
+        ('dev_commands_action CHECK ((action = ANY (ARRAY[''unlock_momentary''::text, ''emergency_unlock''::text, ''reboot''::text, ''diagnostics''::text, ''sync_now''::text, ''update_firmware''::text, ''rotate_certificate''::text, ''set_maintenance''::text, ''clear_maintenance''::text, ''report_peripherals''::text])))'),
         ('dev_commands_arguments_is_an_object CHECK ((jsonb_typeof(arguments) = ''object''::text))'),
         ('dev_commands_delivered_is_delivered CHECK (((state <> ALL (ARRAY[''delivered''::text, ''acknowledged''::text])) OR (delivered_at IS NOT NULL)))'),
         ('dev_commands_delivery_attributed CHECK ((((delivered_at IS NULL) AND (delivered_by IS NULL) AND (delivery_correlation_id IS NULL)) OR ((delivered_at IS NOT NULL) AND (delivered_by IS NOT NULL) AND (delivery_correlation_id IS NOT NULL))))'),
         ('dev_commands_delivery_ordered CHECK (((delivered_at IS NULL) OR (delivered_at >= issued_at)))'),
         ('dev_commands_digest_shape CHECK ((payload_digest ~ ''^[0-9a-f]{64}$''::text))'),
+        ('dev_commands_emergency_window_is_five_minutes CHECK (((action <> ''emergency_unlock''::text) OR ((expires_at - issued_at) <= ''00:05:00''::interval)))'),
         ('dev_commands_failure_explained CHECK (((state <> ''failed''::text) OR (COALESCE(outcome_detail, ''''::text) ~ ''[^[:space:]]''::text)))'),
         ('dev_commands_key_not_blank CHECK ((idempotency_key ~ ''[^[:space:]]''::text))'),
         ('dev_commands_not_postdated CHECK ((issued_at <= (now() + ''00:05:00''::interval)))'),
@@ -43284,7 +43287,7 @@ BEGIN
         ('dev_certificate_is_one_way d25f6bf74455308ecf0b2c48c7f69cc8'),
         ('dev_certificate_replaces_its_own_device 7c55a1c6644d9a153ce5e2282d97eef4'),
         ('dev_command_is_one_way 299058f89d291e12f132ff362ef39b3a'),
-        ('dev_command_is_within_capability e4e0fc81a8b63245eb6fae024bafe87a'),
+        ('dev_command_is_within_capability 3950669fb5e08ca4d8fc389421913134'),
         ('dev_commissioning_is_an_access_point f7490904a2d186563b7c5467cc9ad083'),
         ('dev_device_capability_is_declared af716d762393827ff5abba33f7bfde88'),
         ('dev_device_is_one_way 8504de54fd9a895bbde457044ec4a24a'),
@@ -43312,4 +43315,1213 @@ END $$;
 
 
 
-\echo 'tenant isolation: 105/105 checks passed'
+
+-- ------------------------------------------- 106. MOD-022's shape, pinned from the catalogue
+-- **The structural floor is check 61b's and is not repeated here.** That sweep is prefix-free
+-- over the whole of `plt01`, so every `acc_` table already has ENABLE and FORCE row level
+-- security, exactly one permissive policy whose predicate is the approved text, a
+-- tenant-leading primary key, a tenant-registry foreign key, no DELETE for `veyro_cp_app`, no
+-- TRUNCATE or REFERENCES for either runtime role, and no PUBLIC grant at table or column
+-- level. A per-module copy of all that would be a second list to edit.
+--
+-- What is left is what 61b cannot know: **which columns exist, which are NOT NULL, and which
+-- carry an UPDATE grant for which role.** Each is compared as a set in both directions, which
+-- is the only form that catches an addition as well as a removal:
+--
+--   * the column list, because the controls in this module are absences -- there is no column
+--     a credential value could sit in, and a later migration adding one is exactly what this
+--     notices;
+--   * every NOT NULL, because nothing in this file read `attnotnull` until MOD-016 and 84 of
+--     its 120 columns turned out to be droppable in silence. A NOT NULL is what makes a
+--     sibling CHECK bite -- a `coalesce`-free predicate evaluates to NULL and therefore
+--     passes -- and under MATCH SIMPLE a NULL in any column of a composite foreign key skips
+--     the whole reference, so dropping one switches off a tenant-carrying parent in a way the
+--     foreign-key set comparison cannot see;
+--   * every column-level UPDATE grant per role, read through `has_column_privilege` rather
+--     than `information_schema`, whose views are filtered to what the current user can see --
+--     so a check running as one role proves nothing about the other and passes vacuously for
+--     half the roles it claims to cover.
+--
+-- 8 tables, 127 columns, 82 NOT NULLs, 72 column grants,
+-- 27 foreign keys.
+DO $$
+DECLARE
+    wrong text;
+    seen int;
+BEGIN
+    SELECT count(*) INTO seen FROM pg_class c
+    WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind IN ('r', 'p')
+      AND c.relname LIKE 'acc\_%';
+    IF seen <> 8 THEN
+        RAISE EXCEPTION 'CHECK 106 FAILED: expected 8 MOD-022 tables, found %', seen;
+    END IF;
+
+    WITH expected(col) AS (VALUES
+        ('acc_credentials.correlation_id'),
+        ('acc_credentials.credential_digest'),
+        ('acc_credentials.credential_id'),
+        ('acc_credentials.expires_at'),
+        ('acc_credentials.issued_at'),
+        ('acc_credentials.issued_by'),
+        ('acc_credentials.kind'),
+        ('acc_credentials.person_id'),
+        ('acc_credentials.revocation_epoch'),
+        ('acc_credentials.revoke_correlation_id'),
+        ('acc_credentials.revoke_reason'),
+        ('acc_credentials.revoked_at'),
+        ('acc_credentials.revoked_by'),
+        ('acc_credentials.state'),
+        ('acc_credentials.tenant_id'),
+        ('acc_decisions.code'),
+        ('acc_decisions.correlation_id'),
+        ('acc_decisions.credential_id'),
+        ('acc_decisions.decided_at'),
+        ('acc_decisions.decided_by'),
+        ('acc_decisions.decision_id'),
+        ('acc_decisions.device_mode'),
+        ('acc_decisions.granted'),
+        ('acc_decisions.idempotency_key'),
+        ('acc_decisions.masked'),
+        ('acc_decisions.occupancy_seen'),
+        ('acc_decisions.overridden_by'),
+        ('acc_decisions.override_reason'),
+        ('acc_decisions.passback_scope'),
+        ('acc_decisions.person_id'),
+        ('acc_decisions.point_id'),
+        ('acc_decisions.policy_id'),
+        ('acc_decisions.policy_version'),
+        ('acc_decisions.private_reason'),
+        ('acc_decisions.public_reason'),
+        ('acc_decisions.snapshot_id'),
+        ('acc_decisions.tenant_id'),
+        ('acc_decisions.zone_id'),
+        ('acc_emergency_unlocks.correlation_id'),
+        ('acc_emergency_unlocks.idempotency_key'),
+        ('acc_emergency_unlocks.ordered_at'),
+        ('acc_emergency_unlocks.ordered_by'),
+        ('acc_emergency_unlocks.points_released'),
+        ('acc_emergency_unlocks.reason'),
+        ('acc_emergency_unlocks.review_correlation_id'),
+        ('acc_emergency_unlocks.review_note'),
+        ('acc_emergency_unlocks.reviewed_at'),
+        ('acc_emergency_unlocks.reviewed_by'),
+        ('acc_emergency_unlocks.tenant_id'),
+        ('acc_emergency_unlocks.unlock_id'),
+        ('acc_emergency_unlocks.zone_id'),
+        ('acc_events.correlation_id'),
+        ('acc_events.credential_id'),
+        ('acc_events.decision_id'),
+        ('acc_events.direction'),
+        ('acc_events.event_id'),
+        ('acc_events.idempotency_key'),
+        ('acc_events.local_sequence'),
+        ('acc_events.occurred_at'),
+        ('acc_events.person_id'),
+        ('acc_events.point_id'),
+        ('acc_events.reconcile_correlation_id'),
+        ('acc_events.reconciled_at'),
+        ('acc_events.reconciled_by'),
+        ('acc_events.reconciled_outcome'),
+        ('acc_events.recorded_at'),
+        ('acc_events.recorded_by'),
+        ('acc_events.source'),
+        ('acc_events.tenant_id'),
+        ('acc_events.zone_id'),
+        ('acc_points.correlation_id'),
+        ('acc_points.created_at'),
+        ('acc_points.created_by'),
+        ('acc_points.device_id'),
+        ('acc_points.direction'),
+        ('acc_points.display_name'),
+        ('acc_points.point_id'),
+        ('acc_points.retire_correlation_id'),
+        ('acc_points.retire_reason'),
+        ('acc_points.retired_at'),
+        ('acc_points.retired_by'),
+        ('acc_points.status'),
+        ('acc_points.tenant_id'),
+        ('acc_points.zone_id'),
+        ('acc_policies.anti_passback_seconds'),
+        ('acc_policies.capacity'),
+        ('acc_policies.closes_minute'),
+        ('acc_policies.correlation_id'),
+        ('acc_policies.created_at'),
+        ('acc_policies.created_by'),
+        ('acc_policies.max_balance_minor'),
+        ('acc_policies.min_age_years'),
+        ('acc_policies.opens_minute'),
+        ('acc_policies.policy_id'),
+        ('acc_policies.publish_correlation_id'),
+        ('acc_policies.published_at'),
+        ('acc_policies.published_by'),
+        ('acc_policies.requires_entitlement'),
+        ('acc_policies.retire_correlation_id'),
+        ('acc_policies.retire_reason'),
+        ('acc_policies.retired_at'),
+        ('acc_policies.retired_by'),
+        ('acc_policies.status'),
+        ('acc_policies.tenant_id'),
+        ('acc_policies.version'),
+        ('acc_policies.zone_id'),
+        ('acc_replay_tokens.correlation_id'),
+        ('acc_replay_tokens.credential_id'),
+        ('acc_replay_tokens.expires_at'),
+        ('acc_replay_tokens.point_id'),
+        ('acc_replay_tokens.seen_at'),
+        ('acc_replay_tokens.tenant_id'),
+        ('acc_replay_tokens.token_key'),
+        ('acc_zones.correlation_id'),
+        ('acc_zones.created_at'),
+        ('acc_zones.created_by'),
+        ('acc_zones.display_name'),
+        ('acc_zones.location_id'),
+        ('acc_zones.retire_correlation_id'),
+        ('acc_zones.retire_reason'),
+        ('acc_zones.retired_at'),
+        ('acc_zones.retired_by'),
+        ('acc_zones.risk_class'),
+        ('acc_zones.status'),
+        ('acc_zones.tenant_id'),
+        ('acc_zones.zone_id'),
+        ('acc_zones.zone_key')
+    ), actual(col) AS (
+        SELECT table_name || '.' || column_name FROM information_schema.columns
+        WHERE table_schema = 'plt01' AND table_name LIKE 'acc\_%'
+    )
+    SELECT string_agg(col, ', ' ORDER BY col) INTO wrong
+    FROM ((SELECT col FROM expected EXCEPT SELECT col FROM actual)
+          UNION ALL (SELECT col FROM actual EXCEPT SELECT col FROM expected)) AS d;
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 106 FAILED: MOD-022 columns differ from the pinned set: %', wrong;
+    END IF;
+
+    WITH expected(col) AS (VALUES
+        ('acc_credentials.correlation_id'),
+        ('acc_credentials.credential_digest'),
+        ('acc_credentials.credential_id'),
+        ('acc_credentials.issued_at'),
+        ('acc_credentials.issued_by'),
+        ('acc_credentials.kind'),
+        ('acc_credentials.person_id'),
+        ('acc_credentials.revocation_epoch'),
+        ('acc_credentials.state'),
+        ('acc_credentials.tenant_id'),
+        ('acc_decisions.code'),
+        ('acc_decisions.correlation_id'),
+        ('acc_decisions.decided_at'),
+        ('acc_decisions.decided_by'),
+        ('acc_decisions.decision_id'),
+        ('acc_decisions.device_mode'),
+        ('acc_decisions.granted'),
+        ('acc_decisions.idempotency_key'),
+        ('acc_decisions.masked'),
+        ('acc_decisions.passback_scope'),
+        ('acc_decisions.point_id'),
+        ('acc_decisions.private_reason'),
+        ('acc_decisions.public_reason'),
+        ('acc_decisions.tenant_id'),
+        ('acc_decisions.zone_id'),
+        ('acc_emergency_unlocks.correlation_id'),
+        ('acc_emergency_unlocks.idempotency_key'),
+        ('acc_emergency_unlocks.ordered_at'),
+        ('acc_emergency_unlocks.ordered_by'),
+        ('acc_emergency_unlocks.points_released'),
+        ('acc_emergency_unlocks.reason'),
+        ('acc_emergency_unlocks.tenant_id'),
+        ('acc_emergency_unlocks.unlock_id'),
+        ('acc_emergency_unlocks.zone_id'),
+        ('acc_events.correlation_id'),
+        ('acc_events.direction'),
+        ('acc_events.event_id'),
+        ('acc_events.idempotency_key'),
+        ('acc_events.occurred_at'),
+        ('acc_events.point_id'),
+        ('acc_events.recorded_at'),
+        ('acc_events.recorded_by'),
+        ('acc_events.source'),
+        ('acc_events.tenant_id'),
+        ('acc_events.zone_id'),
+        ('acc_points.correlation_id'),
+        ('acc_points.created_at'),
+        ('acc_points.created_by'),
+        ('acc_points.device_id'),
+        ('acc_points.direction'),
+        ('acc_points.display_name'),
+        ('acc_points.point_id'),
+        ('acc_points.status'),
+        ('acc_points.tenant_id'),
+        ('acc_points.zone_id'),
+        ('acc_policies.anti_passback_seconds'),
+        ('acc_policies.correlation_id'),
+        ('acc_policies.created_at'),
+        ('acc_policies.created_by'),
+        ('acc_policies.policy_id'),
+        ('acc_policies.requires_entitlement'),
+        ('acc_policies.status'),
+        ('acc_policies.tenant_id'),
+        ('acc_policies.version'),
+        ('acc_policies.zone_id'),
+        ('acc_replay_tokens.correlation_id'),
+        ('acc_replay_tokens.credential_id'),
+        ('acc_replay_tokens.expires_at'),
+        ('acc_replay_tokens.point_id'),
+        ('acc_replay_tokens.seen_at'),
+        ('acc_replay_tokens.tenant_id'),
+        ('acc_replay_tokens.token_key'),
+        ('acc_zones.correlation_id'),
+        ('acc_zones.created_at'),
+        ('acc_zones.created_by'),
+        ('acc_zones.display_name'),
+        ('acc_zones.location_id'),
+        ('acc_zones.risk_class'),
+        ('acc_zones.status'),
+        ('acc_zones.tenant_id'),
+        ('acc_zones.zone_id'),
+        ('acc_zones.zone_key')
+    ), actual(col) AS (
+        SELECT c.relname || '.' || a.attname FROM pg_attribute a
+        JOIN pg_class c ON c.oid = a.attrelid
+        WHERE c.relnamespace = 'plt01'::regnamespace AND c.relname LIKE 'acc\_%'
+          AND a.attnum > 0 AND NOT a.attisdropped AND a.attnotnull
+    )
+    SELECT string_agg(col, ', ' ORDER BY col) INTO wrong
+    FROM ((SELECT col FROM expected EXCEPT SELECT col FROM actual)
+          UNION ALL (SELECT col FROM actual EXCEPT SELECT col FROM expected)) AS d;
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 106 FAILED: MOD-022 NOT NULL columns differ from the pinned set: %', wrong;
+    END IF;
+
+    WITH expected(g) AS (VALUES
+        ('veyro_cp_app acc_credentials.expires_at'),
+        ('veyro_cp_app acc_credentials.revocation_epoch'),
+        ('veyro_cp_app acc_credentials.revoke_correlation_id'),
+        ('veyro_cp_app acc_credentials.revoke_reason'),
+        ('veyro_cp_app acc_credentials.revoked_at'),
+        ('veyro_cp_app acc_credentials.revoked_by'),
+        ('veyro_cp_app acc_credentials.state'),
+        ('veyro_cp_app acc_emergency_unlocks.review_correlation_id'),
+        ('veyro_cp_app acc_emergency_unlocks.review_note'),
+        ('veyro_cp_app acc_emergency_unlocks.reviewed_at'),
+        ('veyro_cp_app acc_emergency_unlocks.reviewed_by'),
+        ('veyro_cp_app acc_events.reconcile_correlation_id'),
+        ('veyro_cp_app acc_events.reconciled_at'),
+        ('veyro_cp_app acc_events.reconciled_by'),
+        ('veyro_cp_app acc_events.reconciled_outcome'),
+        ('veyro_cp_app acc_points.display_name'),
+        ('veyro_cp_app acc_points.retire_correlation_id'),
+        ('veyro_cp_app acc_points.retire_reason'),
+        ('veyro_cp_app acc_points.retired_at'),
+        ('veyro_cp_app acc_points.retired_by'),
+        ('veyro_cp_app acc_points.status'),
+        ('veyro_cp_app acc_policies.publish_correlation_id'),
+        ('veyro_cp_app acc_policies.published_at'),
+        ('veyro_cp_app acc_policies.published_by'),
+        ('veyro_cp_app acc_policies.retire_correlation_id'),
+        ('veyro_cp_app acc_policies.retire_reason'),
+        ('veyro_cp_app acc_policies.retired_at'),
+        ('veyro_cp_app acc_policies.retired_by'),
+        ('veyro_cp_app acc_policies.status'),
+        ('veyro_cp_app acc_zones.display_name'),
+        ('veyro_cp_app acc_zones.retire_correlation_id'),
+        ('veyro_cp_app acc_zones.retire_reason'),
+        ('veyro_cp_app acc_zones.retired_at'),
+        ('veyro_cp_app acc_zones.retired_by'),
+        ('veyro_cp_app acc_zones.risk_class'),
+        ('veyro_cp_app acc_zones.status'),
+        ('veyro_cp_worker acc_credentials.expires_at'),
+        ('veyro_cp_worker acc_credentials.revocation_epoch'),
+        ('veyro_cp_worker acc_credentials.revoke_correlation_id'),
+        ('veyro_cp_worker acc_credentials.revoke_reason'),
+        ('veyro_cp_worker acc_credentials.revoked_at'),
+        ('veyro_cp_worker acc_credentials.revoked_by'),
+        ('veyro_cp_worker acc_credentials.state'),
+        ('veyro_cp_worker acc_emergency_unlocks.review_correlation_id'),
+        ('veyro_cp_worker acc_emergency_unlocks.review_note'),
+        ('veyro_cp_worker acc_emergency_unlocks.reviewed_at'),
+        ('veyro_cp_worker acc_emergency_unlocks.reviewed_by'),
+        ('veyro_cp_worker acc_events.reconcile_correlation_id'),
+        ('veyro_cp_worker acc_events.reconciled_at'),
+        ('veyro_cp_worker acc_events.reconciled_by'),
+        ('veyro_cp_worker acc_events.reconciled_outcome'),
+        ('veyro_cp_worker acc_points.display_name'),
+        ('veyro_cp_worker acc_points.retire_correlation_id'),
+        ('veyro_cp_worker acc_points.retire_reason'),
+        ('veyro_cp_worker acc_points.retired_at'),
+        ('veyro_cp_worker acc_points.retired_by'),
+        ('veyro_cp_worker acc_points.status'),
+        ('veyro_cp_worker acc_policies.publish_correlation_id'),
+        ('veyro_cp_worker acc_policies.published_at'),
+        ('veyro_cp_worker acc_policies.published_by'),
+        ('veyro_cp_worker acc_policies.retire_correlation_id'),
+        ('veyro_cp_worker acc_policies.retire_reason'),
+        ('veyro_cp_worker acc_policies.retired_at'),
+        ('veyro_cp_worker acc_policies.retired_by'),
+        ('veyro_cp_worker acc_policies.status'),
+        ('veyro_cp_worker acc_zones.display_name'),
+        ('veyro_cp_worker acc_zones.retire_correlation_id'),
+        ('veyro_cp_worker acc_zones.retire_reason'),
+        ('veyro_cp_worker acc_zones.retired_at'),
+        ('veyro_cp_worker acc_zones.retired_by'),
+        ('veyro_cp_worker acc_zones.risk_class'),
+        ('veyro_cp_worker acc_zones.status')
+    ), actual(g) AS (
+        SELECT r.rolname || ' ' || c.relname || '.' || a.attname
+        FROM pg_class c
+        JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped
+        CROSS JOIN (VALUES ('veyro_cp_app'), ('veyro_cp_worker')) AS r(rolname)
+        WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind IN ('r', 'p')
+          AND c.relname LIKE 'acc\_%'
+          AND has_column_privilege(r.rolname, c.oid, a.attname, 'UPDATE')
+    )
+    SELECT string_agg(g, ', ' ORDER BY g) INTO wrong
+    FROM ((SELECT g FROM expected EXCEPT SELECT g FROM actual)
+          UNION ALL (SELECT g FROM actual EXCEPT SELECT g FROM expected)) AS d;
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 106 FAILED: MOD-022 column UPDATE grants differ from the pinned set: %',
+            wrong;
+    END IF;
+
+    -- Every parent reference compared as a set, not sampled. MOD-012's review found two
+    -- droppable in silence because one table's case had been written and the rest asserted.
+    WITH expected(k) AS (VALUES
+        ('acc_credentials_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES plt01_platform.tenants(tenant_id)'),
+        ('acc_credentials_tenant_id_person_id_fkey FOREIGN KEY (tenant_id, person_id) REFERENCES plt01.ppl_persons(tenant_id, person_id)'),
+        ('acc_decisions_tenant_id_credential_id_fkey FOREIGN KEY (tenant_id, credential_id) REFERENCES plt01.acc_credentials(tenant_id, credential_id)'),
+        ('acc_decisions_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES plt01_platform.tenants(tenant_id)'),
+        ('acc_decisions_tenant_id_person_id_fkey FOREIGN KEY (tenant_id, person_id) REFERENCES plt01.ppl_persons(tenant_id, person_id)'),
+        ('acc_decisions_tenant_id_point_id_fkey FOREIGN KEY (tenant_id, point_id) REFERENCES plt01.acc_points(tenant_id, point_id)'),
+        ('acc_decisions_tenant_id_policy_id_fkey FOREIGN KEY (tenant_id, policy_id) REFERENCES plt01.acc_policies(tenant_id, policy_id)'),
+        ('acc_decisions_tenant_id_snapshot_id_fkey FOREIGN KEY (tenant_id, snapshot_id) REFERENCES plt01.dev_policy_snapshots(tenant_id, snapshot_id)'),
+        ('acc_decisions_tenant_id_zone_id_fkey FOREIGN KEY (tenant_id, zone_id) REFERENCES plt01.acc_zones(tenant_id, zone_id)'),
+        ('acc_emergency_unlocks_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES plt01_platform.tenants(tenant_id)'),
+        ('acc_emergency_unlocks_tenant_id_zone_id_fkey FOREIGN KEY (tenant_id, zone_id) REFERENCES plt01.acc_zones(tenant_id, zone_id)'),
+        ('acc_events_tenant_id_credential_id_fkey FOREIGN KEY (tenant_id, credential_id) REFERENCES plt01.acc_credentials(tenant_id, credential_id)'),
+        ('acc_events_tenant_id_decision_id_fkey FOREIGN KEY (tenant_id, decision_id) REFERENCES plt01.acc_decisions(tenant_id, decision_id)'),
+        ('acc_events_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES plt01_platform.tenants(tenant_id)'),
+        ('acc_events_tenant_id_person_id_fkey FOREIGN KEY (tenant_id, person_id) REFERENCES plt01.ppl_persons(tenant_id, person_id)'),
+        ('acc_events_tenant_id_point_id_fkey FOREIGN KEY (tenant_id, point_id) REFERENCES plt01.acc_points(tenant_id, point_id)'),
+        ('acc_events_tenant_id_zone_id_fkey FOREIGN KEY (tenant_id, zone_id) REFERENCES plt01.acc_zones(tenant_id, zone_id)'),
+        ('acc_points_tenant_id_device_id_fkey FOREIGN KEY (tenant_id, device_id) REFERENCES plt01.dev_devices(tenant_id, device_id)'),
+        ('acc_points_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES plt01_platform.tenants(tenant_id)'),
+        ('acc_points_tenant_id_zone_id_fkey FOREIGN KEY (tenant_id, zone_id) REFERENCES plt01.acc_zones(tenant_id, zone_id)'),
+        ('acc_policies_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES plt01_platform.tenants(tenant_id)'),
+        ('acc_policies_tenant_id_zone_id_fkey FOREIGN KEY (tenant_id, zone_id) REFERENCES plt01.acc_zones(tenant_id, zone_id)'),
+        ('acc_replay_tokens_tenant_id_credential_id_fkey FOREIGN KEY (tenant_id, credential_id) REFERENCES plt01.acc_credentials(tenant_id, credential_id)'),
+        ('acc_replay_tokens_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES plt01_platform.tenants(tenant_id)'),
+        ('acc_replay_tokens_tenant_id_point_id_fkey FOREIGN KEY (tenant_id, point_id) REFERENCES plt01.acc_points(tenant_id, point_id)'),
+        ('acc_zones_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES plt01_platform.tenants(tenant_id)'),
+        ('acc_zones_tenant_id_location_id_fkey FOREIGN KEY (tenant_id, location_id) REFERENCES plt01.locations(tenant_id, location_id)')
+    ), actual(k) AS (
+        SELECT con.conname || ' ' || pg_get_constraintdef(con.oid)
+        FROM pg_constraint con JOIN pg_class c ON c.oid = con.conrelid
+        WHERE c.relnamespace = 'plt01'::regnamespace AND c.relname LIKE 'acc\_%'
+          AND con.contype = 'f'
+    )
+    SELECT string_agg(k, '; ' ORDER BY k) INTO wrong
+    FROM ((SELECT k FROM expected EXCEPT SELECT k FROM actual)
+          UNION ALL (SELECT k FROM actual EXCEPT SELECT k FROM expected)) AS d;
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 106 FAILED: MOD-022 foreign keys differ from the pinned set: %', wrong;
+    END IF;
+END $$;
+
+
+-- ------------------------------------------- 107. MOD-022's rules, pinned by their own text
+-- **The second line of evidence, which runs in CI rather than at the next sweep.** A
+-- behavioural case proves that a rule refuses the row it should; none of them notices a rule
+-- being *weakened* into one that still refuses that particular row, and none of them sees a
+-- plpgsql branch deleted. The text and an `md5` of each trigger body do.
+--
+-- It does not replace the cases: a pin says the rule is still written down and only a case
+-- says it still bites, and one without the other is how vacuous evidence happens. A legitimate
+-- schema change fails this until it is regenerated, which is the moment a human reads the diff.
+--
+-- 73 checks, 25 indexes, 10 triggers, 10 bodies.
+DO $$
+DECLARE
+    wrong text;
+BEGIN
+    WITH expected(rule) AS (VALUES
+        ('acc_credentials_digest_shape CHECK ((credential_digest ~ ''^[0-9a-f]{64}$''::text))'),
+        ('acc_credentials_epoch_sane CHECK (((revocation_epoch >= 0) AND (revocation_epoch <= 2000000000)))'),
+        ('acc_credentials_expiry_after_issue CHECK (((expires_at IS NULL) OR (expires_at > issued_at)))'),
+        ('acc_credentials_kind CHECK ((kind = ANY (ARRAY[''qr_rotating''::text, ''nfc_card''::text, ''wallet_pass''::text, ''physical_card''::text, ''pin''::text, ''staff_assisted''::text, ''biometric''::text])))'),
+        ('acc_credentials_not_postdated CHECK ((issued_at <= (now() + ''00:05:00''::interval)))'),
+        ('acc_credentials_revocation_attributed CHECK ((((revoked_at IS NULL) AND (revoked_by IS NULL) AND (revoke_reason IS NULL) AND (revoke_correlation_id IS NULL)) OR ((revoked_at IS NOT NULL) AND (revoked_by IS NOT NULL) AND (COALESCE(revoke_reason, ''''::text) ~ ''[^[:space:]]''::text) AND (revoke_correlation_id IS NOT NULL))))'),
+        ('acc_credentials_revoked_is_revoked CHECK (((state = ''revoked''::text) = (revoked_at IS NOT NULL)))'),
+        ('acc_credentials_state CHECK ((state = ANY (ARRAY[''active''::text, ''revoked''::text, ''expired''::text])))'),
+        ('acc_decisions_code CHECK ((code = ANY (ARRAY[''granted''::text, ''granted_by_override''::text, ''credential_unknown''::text, ''credential_revoked''::text, ''credential_expired''::text, ''credential_replayed''::text, ''credential_window''::text, ''reader_clock_unreliable''::text, ''wrong_zone''::text, ''outside_opening_hours''::text, ''zone_closed''::text, ''membership_inactive''::text, ''no_entitlement''::text, ''outstanding_balance''::text, ''age_restricted''::text, ''safety_hold''::text, ''anti_passback''::text, ''zone_at_capacity''::text, ''device_untrusted''::text, ''snapshot_stale''::text, ''point_not_an_entry''::text])))'),
+        ('acc_decisions_grant_names_a_person CHECK (((NOT granted) OR (person_id IS NOT NULL)))'),
+        ('acc_decisions_granted_matches_code CHECK ((granted = (code = ANY (ARRAY[''granted''::text, ''granted_by_override''::text]))))'),
+        ('acc_decisions_key_bounded CHECK ((length(idempotency_key) <= 200))'),
+        ('acc_decisions_key_not_blank CHECK ((idempotency_key ~ ''[^[:space:]]''::text))'),
+        ('acc_decisions_masked_is_the_discreet_line CHECK ((masked = (public_reason = ''please see the front desk''::text)))'),
+        ('acc_decisions_mode CHECK ((device_mode = ANY (ARRAY[''online''::text, ''offline''::text, ''supervised''::text])))'),
+        ('acc_decisions_not_postdated CHECK ((decided_at <= (now() + ''00:05:00''::interval)))'),
+        ('acc_decisions_occupancy_sane CHECK (((occupancy_seen IS NULL) OR ((occupancy_seen >= 0) AND (occupancy_seen <= 1000000))))'),
+        ('acc_decisions_override_attributed CHECK ((((code <> ''granted_by_override''::text) AND (override_reason IS NULL) AND (overridden_by IS NULL)) OR ((code = ''granted_by_override''::text) AND (COALESCE(override_reason, ''''::text) ~ ''[^[:space:]]''::text) AND (overridden_by IS NOT NULL))))'),
+        ('acc_decisions_override_reason_bounded CHECK (((override_reason IS NULL) OR (length(override_reason) <= 500)))'),
+        ('acc_decisions_passback_scope CHECK ((passback_scope = ANY (ARRAY[''global''::text, ''controller_group''::text])))'),
+        ('acc_decisions_policy_cited_whole CHECK (((policy_id IS NULL) = (policy_version IS NULL)))'),
+        ('acc_decisions_policy_version_sane CHECK (((policy_version IS NULL) OR ((policy_version >= 1) AND (policy_version <= 100000))))'),
+        ('acc_decisions_reasons_bounded CHECK (((length(public_reason) <= 200) AND (length(private_reason) <= 500)))'),
+        ('acc_decisions_reasons_not_blank CHECK (((public_reason ~ ''[^[:space:]]''::text) AND (private_reason ~ ''[^[:space:]]''::text)))'),
+        ('acc_emergency_unlocks_key_bounded CHECK ((length(idempotency_key) <= 200))'),
+        ('acc_emergency_unlocks_key_not_blank CHECK ((idempotency_key ~ ''[^[:space:]]''::text))'),
+        ('acc_emergency_unlocks_not_postdated CHECK ((ordered_at <= (now() + ''00:05:00''::interval)))'),
+        ('acc_emergency_unlocks_reason_bounded CHECK ((length(reason) <= 500))'),
+        ('acc_emergency_unlocks_reason_not_blank CHECK ((reason ~ ''[^[:space:]]''::text))'),
+        ('acc_emergency_unlocks_released_sane CHECK (((points_released >= 0) AND (points_released <= 10000)))'),
+        ('acc_emergency_unlocks_review_after_order CHECK (((reviewed_at IS NULL) OR (reviewed_at >= ordered_at)))'),
+        ('acc_emergency_unlocks_review_attributed CHECK ((((reviewed_at IS NULL) AND (reviewed_by IS NULL) AND (review_note IS NULL) AND (review_correlation_id IS NULL)) OR ((reviewed_at IS NOT NULL) AND (reviewed_by IS NOT NULL) AND (COALESCE(review_note, ''''::text) ~ ''[^[:space:]]''::text) AND (review_correlation_id IS NOT NULL))))'),
+        ('acc_emergency_unlocks_reviewer_is_not_orderer CHECK (((reviewed_by IS NULL) OR (reviewed_by <> ordered_by)))'),
+        ('acc_events_direction CHECK ((direction = ANY (ARRAY[''entry''::text, ''exit''::text])))'),
+        ('acc_events_key_bounded CHECK ((length(idempotency_key) <= 200))'),
+        ('acc_events_key_not_blank CHECK ((idempotency_key ~ ''[^[:space:]]''::text))'),
+        ('acc_events_not_postdated CHECK ((occurred_at <= (now() + ''00:05:00''::interval)))'),
+        ('acc_events_reconciled_outcome CHECK (((reconciled_outcome IS NULL) OR (reconciled_outcome = ANY (ARRAY[''accepted''::text, ''duplicate''::text, ''policy_conflict''::text, ''stale_snapshot''::text]))))'),
+        ('acc_events_reconciliation_attributed CHECK ((((reconciled_outcome IS NULL) AND (reconciled_at IS NULL) AND (reconciled_by IS NULL) AND (reconcile_correlation_id IS NULL)) OR ((reconciled_outcome IS NOT NULL) AND (reconciled_at IS NOT NULL) AND (reconciled_by IS NOT NULL) AND (reconcile_correlation_id IS NOT NULL))))'),
+        ('acc_events_sequence_matches_source CHECK (((source = ''offline''::text) = (local_sequence IS NOT NULL)))'),
+        ('acc_events_sequence_sane CHECK (((local_sequence IS NULL) OR ((local_sequence >= 0) AND (local_sequence <= ''9000000000000000''::bigint))))'),
+        ('acc_events_source CHECK ((source = ANY (ARRAY[''online''::text, ''offline''::text])))'),
+        ('acc_points_direction CHECK ((direction = ANY (ARRAY[''entry''::text, ''exit''::text, ''both''::text])))'),
+        ('acc_points_name_bounded CHECK ((length(display_name) <= 120))'),
+        ('acc_points_name_not_blank CHECK ((display_name ~ ''[^[:space:]]''::text))'),
+        ('acc_points_retired_is_retired CHECK (((status = ''retired''::text) = (retired_at IS NOT NULL)))'),
+        ('acc_points_retirement_attributed CHECK ((((retired_at IS NULL) AND (retired_by IS NULL) AND (retire_reason IS NULL) AND (retire_correlation_id IS NULL)) OR ((retired_at IS NOT NULL) AND (retired_by IS NOT NULL) AND (COALESCE(retire_reason, ''''::text) ~ ''[^[:space:]]''::text) AND (retire_correlation_id IS NOT NULL))))'),
+        ('acc_points_status CHECK ((status = ANY (ARRAY[''active''::text, ''retired''::text])))'),
+        ('acc_policies_age_sane CHECK (((min_age_years IS NULL) OR ((min_age_years >= 0) AND (min_age_years <= 120))))'),
+        ('acc_policies_balance_sane CHECK (((max_balance_minor IS NULL) OR ((max_balance_minor >= 0) AND (max_balance_minor <= ''1000000000000''::bigint))))'),
+        ('acc_policies_capacity_sane CHECK (((capacity IS NULL) OR ((capacity >= 0) AND (capacity <= 1000000))))'),
+        ('acc_policies_closes_in_a_day CHECK (((closes_minute IS NULL) OR ((closes_minute >= 0) AND (closes_minute < 1440))))'),
+        ('acc_policies_hours_differ CHECK (((opens_minute IS NULL) OR (opens_minute <> closes_minute)))'),
+        ('acc_policies_hours_paired CHECK (((opens_minute IS NULL) = (closes_minute IS NULL)))'),
+        ('acc_policies_opens_in_a_day CHECK (((opens_minute IS NULL) OR ((opens_minute >= 0) AND (opens_minute < 1440))))'),
+        ('acc_policies_passback_sane CHECK (((anti_passback_seconds >= 0) AND (anti_passback_seconds <= 43200)))'),
+        ('acc_policies_publication_attributed CHECK ((((published_at IS NULL) AND (published_by IS NULL) AND (publish_correlation_id IS NULL)) OR ((published_at IS NOT NULL) AND (published_by IS NOT NULL) AND (publish_correlation_id IS NOT NULL))))'),
+        ('acc_policies_published_is_published CHECK (((status = ''draft''::text) OR (published_at IS NOT NULL)))'),
+        ('acc_policies_publisher_is_not_author CHECK (((published_by IS NULL) OR (published_by <> created_by)))'),
+        ('acc_policies_retired_is_retired CHECK (((status = ''retired''::text) = (retired_at IS NOT NULL)))'),
+        ('acc_policies_retirement_attributed CHECK ((((retired_at IS NULL) AND (retired_by IS NULL) AND (retire_reason IS NULL) AND (retire_correlation_id IS NULL)) OR ((retired_at IS NOT NULL) AND (retired_by IS NOT NULL) AND (COALESCE(retire_reason, ''''::text) ~ ''[^[:space:]]''::text) AND (retire_correlation_id IS NOT NULL))))'),
+        ('acc_policies_status CHECK ((status = ANY (ARRAY[''draft''::text, ''published''::text, ''retired''::text])))'),
+        ('acc_policies_version_positive CHECK (((version >= 1) AND (version <= 100000)))'),
+        ('acc_replay_tokens_key_shape CHECK ((token_key ~ ''^[0-9a-f]{64}$''::text))'),
+        ('acc_replay_tokens_window CHECK ((expires_at > seen_at))'),
+        ('acc_replay_tokens_window_bounded CHECK (((expires_at - seen_at) <= ''00:01:30''::interval))'),
+        ('acc_zones_key_shape CHECK ((zone_key ~ ''^[a-z][a-z0-9._-]{1,47}$''::text))'),
+        ('acc_zones_name_bounded CHECK ((length(display_name) <= 120))'),
+        ('acc_zones_name_not_blank CHECK ((display_name ~ ''[^[:space:]]''::text))'),
+        ('acc_zones_retired_is_retired CHECK (((status = ''retired''::text) = (retired_at IS NOT NULL)))'),
+        ('acc_zones_retirement_attributed CHECK ((((retired_at IS NULL) AND (retired_by IS NULL) AND (retire_reason IS NULL) AND (retire_correlation_id IS NULL)) OR ((retired_at IS NOT NULL) AND (retired_by IS NOT NULL) AND (COALESCE(retire_reason, ''''::text) ~ ''[^[:space:]]''::text) AND (retire_correlation_id IS NOT NULL))))'),
+        ('acc_zones_risk_class CHECK ((risk_class = ANY (ARRAY[''standard''::text, ''high_risk''::text])))'),
+        ('acc_zones_status CHECK ((status = ANY (ARRAY[''active''::text, ''retired''::text])))')
+    ), actual(rule) AS (
+        SELECT con.conname || ' ' || pg_get_constraintdef(con.oid)
+        FROM pg_constraint con JOIN pg_class c ON c.oid = con.conrelid
+        WHERE c.relnamespace = 'plt01'::regnamespace AND c.relname LIKE 'acc\_%'
+          AND con.contype = 'c'
+    )
+    SELECT string_agg(rule, '; ' ORDER BY rule) INTO wrong
+    FROM ((SELECT rule FROM expected EXCEPT SELECT rule FROM actual)
+          UNION ALL (SELECT rule FROM actual EXCEPT SELECT rule FROM expected)) AS d;
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 107 FAILED: MOD-022 CHECK constraints differ from the pinned set: %', wrong;
+    END IF;
+
+    WITH expected(rule) AS (VALUES
+        ('acc_credentials_by_person CREATE INDEX acc_credentials_by_person ON plt01.acc_credentials USING btree (tenant_id, person_id, issued_at DESC)'),
+        ('acc_credentials_pkey CREATE UNIQUE INDEX acc_credentials_pkey ON plt01.acc_credentials USING btree (tenant_id, credential_id)'),
+        ('acc_credentials_tenant_id_credential_digest_key CREATE UNIQUE INDEX acc_credentials_tenant_id_credential_digest_key ON plt01.acc_credentials USING btree (tenant_id, credential_digest)'),
+        ('acc_decisions_by_credential CREATE INDEX acc_decisions_by_credential ON plt01.acc_decisions USING btree (tenant_id, credential_id, decided_at DESC)'),
+        ('acc_decisions_by_zone CREATE INDEX acc_decisions_by_zone ON plt01.acc_decisions USING btree (tenant_id, zone_id, decided_at DESC)'),
+        ('acc_decisions_pkey CREATE UNIQUE INDEX acc_decisions_pkey ON plt01.acc_decisions USING btree (tenant_id, decision_id)'),
+        ('acc_decisions_tenant_id_idempotency_key_key CREATE UNIQUE INDEX acc_decisions_tenant_id_idempotency_key_key ON plt01.acc_decisions USING btree (tenant_id, idempotency_key)'),
+        ('acc_emergency_unlocks_pkey CREATE UNIQUE INDEX acc_emergency_unlocks_pkey ON plt01.acc_emergency_unlocks USING btree (tenant_id, unlock_id)'),
+        ('acc_emergency_unlocks_tenant_id_idempotency_key_key CREATE UNIQUE INDEX acc_emergency_unlocks_tenant_id_idempotency_key_key ON plt01.acc_emergency_unlocks USING btree (tenant_id, idempotency_key)'),
+        ('acc_emergency_unlocks_unreviewed CREATE INDEX acc_emergency_unlocks_unreviewed ON plt01.acc_emergency_unlocks USING btree (tenant_id, ordered_at DESC) WHERE (reviewed_at IS NULL)'),
+        ('acc_events_by_credential CREATE INDEX acc_events_by_credential ON plt01.acc_events USING btree (tenant_id, credential_id, occurred_at DESC)'),
+        ('acc_events_by_zone CREATE INDEX acc_events_by_zone ON plt01.acc_events USING btree (tenant_id, zone_id, occurred_at DESC)'),
+        ('acc_events_pkey CREATE UNIQUE INDEX acc_events_pkey ON plt01.acc_events USING btree (tenant_id, event_id)'),
+        ('acc_events_tenant_id_idempotency_key_key CREATE UNIQUE INDEX acc_events_tenant_id_idempotency_key_key ON plt01.acc_events USING btree (tenant_id, idempotency_key)'),
+        ('acc_points_by_zone CREATE INDEX acc_points_by_zone ON plt01.acc_points USING btree (tenant_id, zone_id)'),
+        ('acc_points_pkey CREATE UNIQUE INDEX acc_points_pkey ON plt01.acc_points USING btree (tenant_id, point_id)'),
+        ('acc_points_tenant_id_device_id_key CREATE UNIQUE INDEX acc_points_tenant_id_device_id_key ON plt01.acc_points USING btree (tenant_id, device_id)'),
+        ('acc_policies_one_live_per_zone CREATE UNIQUE INDEX acc_policies_one_live_per_zone ON plt01.acc_policies USING btree (tenant_id, zone_id) WHERE (status = ''published''::text)'),
+        ('acc_policies_pkey CREATE UNIQUE INDEX acc_policies_pkey ON plt01.acc_policies USING btree (tenant_id, policy_id)'),
+        ('acc_policies_tenant_id_zone_id_version_key CREATE UNIQUE INDEX acc_policies_tenant_id_zone_id_version_key ON plt01.acc_policies USING btree (tenant_id, zone_id, version)'),
+        ('acc_replay_tokens_by_expiry CREATE INDEX acc_replay_tokens_by_expiry ON plt01.acc_replay_tokens USING btree (tenant_id, expires_at)'),
+        ('acc_replay_tokens_pkey CREATE UNIQUE INDEX acc_replay_tokens_pkey ON plt01.acc_replay_tokens USING btree (tenant_id, token_key)'),
+        ('acc_zones_by_location CREATE INDEX acc_zones_by_location ON plt01.acc_zones USING btree (tenant_id, location_id)'),
+        ('acc_zones_pkey CREATE UNIQUE INDEX acc_zones_pkey ON plt01.acc_zones USING btree (tenant_id, zone_id)'),
+        ('acc_zones_tenant_id_zone_key_key CREATE UNIQUE INDEX acc_zones_tenant_id_zone_key_key ON plt01.acc_zones USING btree (tenant_id, zone_key)')
+    ), actual(rule) AS (
+        SELECT i.relname || ' ' || pg_get_indexdef(i.oid)
+        FROM pg_index x JOIN pg_class i ON i.oid = x.indexrelid
+        JOIN pg_class c ON c.oid = x.indrelid
+        WHERE c.relnamespace = 'plt01'::regnamespace AND c.relname LIKE 'acc\_%'
+    )
+    SELECT string_agg(rule, '; ' ORDER BY rule) INTO wrong
+    FROM ((SELECT rule FROM expected EXCEPT SELECT rule FROM actual)
+          UNION ALL (SELECT rule FROM actual EXCEPT SELECT rule FROM expected)) AS d;
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 107 FAILED: MOD-022 indexes differ from the pinned set: %', wrong;
+    END IF;
+
+    WITH expected(rule) AS (VALUES
+        ('acc_credentials_one_way on acc_credentials'),
+        ('acc_decisions_coherent on acc_decisions'),
+        ('acc_decisions_final on acc_decisions'),
+        ('acc_emergency_unlocks_one_way on acc_emergency_unlocks'),
+        ('acc_events_coherent on acc_events'),
+        ('acc_events_one_way on acc_events'),
+        ('acc_points_actuator on acc_points'),
+        ('acc_points_one_way on acc_points'),
+        ('acc_policies_one_way on acc_policies'),
+        ('acc_zones_one_way on acc_zones')
+    ), actual(rule) AS (
+        SELECT t.tgname || ' on ' || c.relname FROM pg_trigger t
+        JOIN pg_class c ON c.oid = t.tgrelid
+        WHERE c.relnamespace = 'plt01'::regnamespace AND c.relname LIKE 'acc\_%'
+          AND NOT t.tgisinternal
+    )
+    SELECT string_agg(rule, '; ' ORDER BY rule) INTO wrong
+    FROM ((SELECT rule FROM expected EXCEPT SELECT rule FROM actual)
+          UNION ALL (SELECT rule FROM actual EXCEPT SELECT rule FROM expected)) AS d;
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 107 FAILED: MOD-022 triggers differ from the pinned set: %', wrong;
+    END IF;
+
+    -- `md5(prosrc)` catches a deleted branch, which `pg_trigger` cannot see at all: MOD-018's
+    -- balance trigger had five branches and four probes, and a reviewer deleted the
+    -- mixed-currency one with the suite reporting 84/84.
+    WITH expected(rule) AS (VALUES
+        ('acc_credential_is_one_way 850b5062bf8091bd173112f8fd22548e'),
+        ('acc_decision_is_coherent 045e951ae3fcb4a5c22c121fdba2a096'),
+        ('acc_decision_is_final 5b94b834081a8790af09516291cf85e0'),
+        ('acc_emergency_is_one_way a28339df3a38d99a3c39a8d69809c658'),
+        ('acc_event_is_coherent a9fc6d6d5098515324f8ae8c1eb76bcc'),
+        ('acc_event_is_one_way a2ee4d4d917c97ba7806342e4575f325'),
+        ('acc_point_is_an_actuator fe15574d89d4d9dfcc36757ca14a85a1'),
+        ('acc_point_is_one_way a7d4fa9518aa8053032ef395a5c11b84'),
+        ('acc_policy_is_one_way 47d3d008f61ee2558c08c8601a5ac925'),
+        ('acc_zone_is_one_way cfdc409463d279530d2ae5e5063b1fef')
+    ), actual(rule) AS (
+        SELECT p.proname || ' ' || md5(p.prosrc) FROM pg_proc p
+        WHERE p.pronamespace = 'plt01'::regnamespace AND p.proname LIKE 'acc\_%'
+    )
+    SELECT string_agg(rule, '; ' ORDER BY rule) INTO wrong
+    FROM ((SELECT rule FROM expected EXCEPT SELECT rule FROM actual)
+          UNION ALL (SELECT rule FROM actual EXCEPT SELECT rule FROM expected)) AS d;
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 107 FAILED: a MOD-022 trigger body differs from the pinned digest: %',
+            wrong;
+    END IF;
+
+    -- Nothing in this file read `proconfig`, `prosecdef` or `tgenabled` until MOD-020, so two
+    -- properties the migration asserts in as many words were verified by nothing: a reviewer
+    -- ran `ALTER FUNCTION ... RESET search_path` against "their search_path is pinned" and
+    -- `GRANT EXECUTE ... TO PUBLIC` against the closing `REVOKE ALL ... FROM PUBLIC`, and the
+    -- suite reported every check passing both times. `md5(prosrc)` cannot see either, and
+    -- `ALTER TABLE ... DISABLE TRIGGER` leaves the catalogue row in place.
+    SELECT string_agg(p.proname, ', ' ORDER BY p.proname) INTO wrong FROM pg_proc p
+    WHERE p.pronamespace = 'plt01'::regnamespace AND p.proname LIKE 'acc\_%'
+      AND (p.proconfig IS NULL
+           OR NOT ('search_path=pg_catalog, public' = ANY (p.proconfig))
+           OR p.prosecdef
+           OR has_function_privilege('public', p.oid, 'EXECUTE'));
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 107 FAILED: a MOD-022 function has an unpinned search_path, is SECURITY '
+            'DEFINER, or is executable by PUBLIC: %', wrong;
+    END IF;
+
+    SELECT string_agg(t.tgname, ', ' ORDER BY t.tgname) INTO wrong FROM pg_trigger t
+    JOIN pg_class c ON c.oid = t.tgrelid
+    WHERE c.relnamespace = 'plt01'::regnamespace AND c.relname LIKE 'acc\_%'
+      AND NOT t.tgisinternal AND t.tgenabled <> 'O';
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION 'CHECK 107 FAILED: a MOD-022 trigger is disabled: %', wrong;
+    END IF;
+END $$;
+
+
+
+-- MOD-022's own seed, committed so the checks below read the same rows.
+--
+-- **It builds on MOD-021's committed devices**, because an access point stands on one and a
+-- composite foreign key carries the tenant into that reference. Device 1 is the active
+-- turnstile, device 2 is registered and never commissioned (which the actuator trigger now
+-- refuses), device 3 is the scanner that moves no barrier, device 4 is the exit. The ids
+-- follow this file's convention: `88888888-N000-...` for MOD-022's own rows.
+BEGIN;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+INSERT INTO plt01.acc_zones
+    (tenant_id, zone_id, location_id, zone_key, display_name, risk_class, status,
+     created_by, correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', '88888888-1000-4000-8000-000000000001',
+        'eeeeeeee-1000-4000-8000-000000000001', 'main-floor', 'Main floor', 'standard',
+        'active', '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333'),
+       -- A high-risk zone, so the snapshot-ceiling and reclassification cases have one and
+       -- do not have to move the first.
+       ('11111111-1111-4111-8111-111111111111', '88888888-1000-4000-8000-000000000002',
+        'eeeeeeee-1000-4000-8000-000000000001', 'plant-room', 'Plant room', 'high_risk',
+        'active', '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333');
+INSERT INTO plt01.acc_points
+    (tenant_id, point_id, zone_id, device_id, direction, display_name, status,
+     created_by, correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', '88888888-2000-4000-8000-000000000001',
+        '88888888-1000-4000-8000-000000000001', '77777777-2000-4000-8000-000000000001',
+        'entry', 'North turnstile', 'active',
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333'),
+       -- An exit, which decides nothing: paragraph 4177 puts egress outside the Veyro
+       -- application path, and `acc_decision_is_coherent` is what makes that a refusal.
+       ('11111111-1111-4111-8111-111111111111', '88888888-2000-4000-8000-000000000002',
+        '88888888-1000-4000-8000-000000000001', '77777777-2000-4000-8000-000000000004',
+        'exit', 'North exit', 'active',
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333');
+-- **Drafted by one actor and published by another**, which `acc_policies_publisher_is_not_author`
+-- refuses otherwise -- MOD-017's contract version, in a building.
+INSERT INTO plt01.acc_policies
+    (tenant_id, policy_id, zone_id, version, status, requires_entitlement,
+     anti_passback_seconds, created_by, correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', '88888888-3000-4000-8000-000000000001',
+        '88888888-1000-4000-8000-000000000001', 1, 'draft', true, 60,
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333'),
+       -- A second, left in draft, so the "a draft decides nothing" and publication cases
+       -- have a row they can move without disturbing the live one.
+       ('11111111-1111-4111-8111-111111111111', '88888888-3000-4000-8000-000000000002',
+        '88888888-1000-4000-8000-000000000002', 1, 'draft', true, 0,
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333');
+UPDATE plt01.acc_policies
+   SET status = 'published', published_at = now(),
+       published_by = '44444444-4444-4444-8444-444444444444',
+       publish_correlation_id = '33333333-3333-4333-8333-333333333333'
+ WHERE policy_id = '88888888-3000-4000-8000-000000000001';
+INSERT INTO plt01.acc_credentials
+    (tenant_id, credential_id, person_id, kind, credential_digest, state,
+     revocation_epoch, issued_by, correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', '88888888-4000-4000-8000-000000000001',
+        'bbbbbbbb-1000-4000-8000-000000000001', 'nfc_card',
+        'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'active', 0,
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333'),
+       ('11111111-1111-4111-8111-111111111111', '88888888-4000-4000-8000-000000000002',
+        'bbbbbbbb-1000-4000-8000-000000000002', 'qr_rotating',
+        'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'active', 0,
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333');
+-- One grant and one masked refusal, so the reason cases have a row of each shape.
+INSERT INTO plt01.acc_decisions
+    (tenant_id, decision_id, point_id, zone_id, credential_id, person_id, granted, code,
+     public_reason, private_reason, masked, policy_id, policy_version, device_mode,
+     passback_scope, decided_by, correlation_id, idempotency_key)
+VALUES ('11111111-1111-4111-8111-111111111111', '88888888-5000-4000-8000-000000000001',
+        '88888888-2000-4000-8000-000000000001', '88888888-1000-4000-8000-000000000001',
+        '88888888-4000-4000-8000-000000000001', 'bbbbbbbb-1000-4000-8000-000000000001',
+        true, 'granted', 'welcome', 'every check passed', false,
+        '88888888-3000-4000-8000-000000000001', 1, 'online', 'global',
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333', 'seed-decision-1'),
+       ('11111111-1111-4111-8111-111111111111', '88888888-5000-4000-8000-000000000002',
+        '88888888-2000-4000-8000-000000000001', '88888888-1000-4000-8000-000000000001',
+        '88888888-4000-4000-8000-000000000001', 'bbbbbbbb-1000-4000-8000-000000000001',
+        false, 'outstanding_balance', 'please see the front desk',
+        'this member owes 4500 in minor units', true,
+        '88888888-3000-4000-8000-000000000001', 1, 'online', 'global',
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333', 'seed-decision-2');
+INSERT INTO plt01.acc_events
+    (tenant_id, event_id, point_id, zone_id, direction, credential_id, person_id,
+     decision_id, occurred_at, recorded_by, correlation_id, source, idempotency_key)
+VALUES ('11111111-1111-4111-8111-111111111111', '88888888-6000-4000-8000-000000000001',
+        '88888888-2000-4000-8000-000000000001', '88888888-1000-4000-8000-000000000001',
+        'entry', '88888888-4000-4000-8000-000000000001',
+        'bbbbbbbb-1000-4000-8000-000000000001',
+        '88888888-5000-4000-8000-000000000001', now(),
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333', 'online', 'seed-event-1');
+INSERT INTO plt01.acc_emergency_unlocks
+    (tenant_id, unlock_id, zone_id, reason, points_released, ordered_by, correlation_id,
+     idempotency_key)
+VALUES ('11111111-1111-4111-8111-111111111111', '88888888-7000-4000-8000-000000000001',
+        '88888888-1000-4000-8000-000000000001', 'fire alarm, north stair', 2,
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333', 'seed-unlock-1');
+INSERT INTO plt01.acc_replay_tokens
+    (tenant_id, token_key, credential_id, point_id, seen_at, expires_at, correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111',
+        'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
+        '88888888-4000-4000-8000-000000000002', '88888888-2000-4000-8000-000000000001',
+        now(), now() + interval '90 seconds',
+        '33333333-3333-4333-8333-333333333333');
+COMMIT;
+
+
+-- ------------------------------------------- 108. MOD-022 is invisible from another tenant
+-- **Every role that holds a grant gets a seat.** A role nobody sits as is a role nothing is
+-- proved about: PostgreSQL combines permissive policies with OR, so a second policy naming an
+-- unexercised role leaves the module's own policy intact and every predicate comparison true
+-- while that role reads every tenant. MOD-010's review found exactly that for
+-- `veyro_cp_worker` on `evt_` tables; the fix was scoped to `evt_`, and MOD-011 granted the
+-- worker identical access to eight more and inherited it.
+--
+-- Each role is seated twice -- under another tenant's context and under none -- because the
+-- two failures are different. Under a wrong tenant the predicate is false and the read is
+-- empty; under no context `current_setting` is empty, `NULLIF` makes it NULL, and the
+-- predicate is NULL, which a policy treats as false. **Isolation fails closed, and that is
+-- the property.**
+--
+-- **Every mutation this check was run against was caught by 61b first**, and that is worth
+-- saying rather than leaving to be discovered: dropping FORCE, adding a second permissive
+-- policy, widening the predicate with `OR current_user = 'veyro_cp_worker'` and granting
+-- PUBLIC an insert were each refused by the structural sweep before this block executed. So
+-- this check has no isolating mutation available through the schema, which by the rule in
+-- `.claude/rules/backend/mod004-rls.md` would ordinarily mean deleting it.
+--
+-- It stays, for the reason that file gives for keeping a pin beside a case: "a pin says the
+-- rule is still written down and only a case says it still bites, and one without the other
+-- is how vacuous evidence happens." 61b reads the catalogue; this reads rows as the roles
+-- that hold the grants. What it is the only thing positioned to catch is a break that is
+-- behavioural rather than structural -- a role attribute, a rule, a SECURITY DEFINER view --
+-- where every catalogue comparison still agrees. `ALTER ROLE veyro_cp_worker BYPASSRLS` is
+-- the obvious one and could not be applied: the migrator holds neither CREATEROLE nor ADMIN
+-- on it, which is itself a property worth having found out by trying.
+DO $$
+DECLARE
+    role_name text;
+    tbl text;
+    seen bigint;
+    probe int := 0;
+BEGIN
+    FOREACH role_name IN ARRAY ARRAY['veyro_cp_app', 'veyro_cp_worker'] LOOP
+        FOREACH tbl IN ARRAY ARRAY['acc_zones', 'acc_points', 'acc_policies',
+                                   'acc_credentials', 'acc_decisions', 'acc_events',
+                                   'acc_emergency_unlocks', 'acc_replay_tokens'] LOOP
+            -- Another tenant's context.
+            EXECUTE format('SET LOCAL ROLE %I', role_name);
+            PERFORM set_config('app.tenant_id',
+                               '22222222-2222-4222-8222-222222222222', true);
+            EXECUTE format('SELECT count(*) FROM plt01.%I', tbl) INTO seen;
+            probe := probe + 1;
+            IF seen <> 0 THEN
+                RESET ROLE;
+                RAISE EXCEPTION
+                    'CHECK 108 FAILED: % read % row(s) of plt01.% from another tenant',
+                    role_name, seen, tbl;
+            END IF;
+            -- No context at all.
+            PERFORM set_config('app.tenant_id', '', true);
+            EXECUTE format('SELECT count(*) FROM plt01.%I', tbl) INTO seen;
+            probe := probe + 1;
+            IF seen <> 0 THEN
+                RESET ROLE;
+                RAISE EXCEPTION
+                    'CHECK 108 FAILED: % read % row(s) of plt01.% with no tenant context',
+                    role_name, seen, tbl;
+            END IF;
+            RESET ROLE;
+        END LOOP;
+    END LOOP;
+    -- The count assertion: a loop that silently iterated over nothing would pass.
+    IF probe <> 32 THEN
+        RAISE EXCEPTION 'CHECK 108 FAILED: ran % of 32 isolation probes', probe;
+    END IF;
+    PERFORM set_config('app.tenant_id', '11111111-1111-4111-8111-111111111111', true);
+END $$;
+
+-- And the write half, which is the one that matters more: a read returning nothing is a
+-- tenant seeing nothing, and a write landing is a tenant *writing into* somebody else.
+DO $$
+DECLARE
+    probe int := 0;
+BEGIN
+    SET LOCAL ROLE veyro_cp_app;
+    PERFORM set_config('app.tenant_id', '22222222-2222-4222-8222-222222222222', true);
+    BEGIN
+        INSERT INTO plt01.acc_zones
+            (tenant_id, zone_id, location_id, zone_key, display_name, risk_class, status,
+             created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                '88888888-1000-4000-8000-00000000000f',
+                'eeeeeeee-1000-4000-8000-000000000001', 'smuggled', 'Smuggled', 'standard',
+                'active', '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RESET ROLE;
+        RAISE EXCEPTION
+            'CHECK 108 FAILED: a zone was written into another tenant from its context';
+    EXCEPTION WHEN insufficient_privilege OR check_violation OR foreign_key_violation THEN
+        probe := probe + 1;
+    END;
+    -- **The second probe is a zone again, and that is not laziness.** A decision row cannot
+    -- isolate row level security here: `acc_decision_is_coherent` is a BEFORE trigger that
+    -- reads `acc_points`, which is itself under RLS, so from another tenant's context the
+    -- lookup finds nothing and the *trigger* refuses -- with `raise_exception`, before the
+    -- policy's WITH CHECK is ever evaluated. A probe written that way proves the coherence
+    -- trigger and reports it as proof of isolation, which is the "two controls refuse the
+    -- same row" trap this file records for MOD-019 and MOD-021. `acc_zones` carries no such
+    -- trigger, so the policy is the only thing left to answer.
+    PERFORM set_config('app.tenant_id', '', true);
+    BEGIN
+        INSERT INTO plt01.acc_zones
+            (tenant_id, zone_id, location_id, zone_key, display_name, risk_class, status,
+             created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                '88888888-1000-4000-8000-00000000000e',
+                'eeeeeeee-1000-4000-8000-000000000001', 'contextless', 'Contextless',
+                'standard', 'active', '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RESET ROLE;
+        RAISE EXCEPTION
+            'CHECK 108 FAILED: a zone was written with no tenant context at all';
+    EXCEPTION WHEN insufficient_privilege OR check_violation OR foreign_key_violation THEN
+        probe := probe + 1;
+    END;
+    RESET ROLE;
+    IF probe <> 2 THEN
+        RAISE EXCEPTION 'CHECK 108 FAILED: ran % of 2 cross-tenant write probes', probe;
+    END IF;
+    PERFORM set_config('app.tenant_id', '11111111-1111-4111-8111-111111111111', true);
+END $$;
+
+
+BEGIN;
+
+-- ------------------------------------------- 109. MOD-022's rules, each shown to refuse
+-- **The cases behind the pin.** Check 107 says every rule is still written down; these say
+-- each one still bites. Every case sets every *other* column so the row violates exactly one
+-- rule -- the trap this file records three times, where a case passes because a sibling fired
+-- first and keeps passing with its own constraint dropped.
+--
+-- Two shapes of case are deliberate:
+--
+--   * a blank case uses a **tab**, never spaces. `btrim` strips spaces and nothing else, so a
+--     case made of spaces cannot tell `length(btrim(x)) > 0` from the `x ~ '[^[:space:]]'`
+--     form this build standardised on across 122 constraints;
+--   * an attribution case uses **NULL**, never a blank. `length(btrim(NULL)) > 0` is NULL,
+--     the AND-branch is NULL, `false OR NULL` is NULL, and a CHECK passes on NULL -- so only
+--     a NULL case proves the `coalesce` the comments call load-bearing.
+DO $$
+DECLARE
+    probe int := 0;
+BEGIN
+    PERFORM set_config('app.tenant_id', '11111111-1111-4111-8111-111111111111', true);
+
+    -- ---------------------------------------------------------------- the decision's reasons
+    -- `masked` means the public half is the discreet line. The first version read
+    -- `masked = (public_reason <> private_reason)`, which made every *grant* a masked one --
+    -- "welcome" and "every check passed" are two strings carrying the same nothing -- so the
+    -- module could not admit anybody. The case that bites is a grant.
+    BEGIN
+        INSERT INTO plt01.acc_decisions
+            (tenant_id, decision_id, point_id, zone_id, credential_id, person_id, granted,
+             code, public_reason, private_reason, masked, policy_id, policy_version,
+             device_mode, passback_scope, decided_by, correlation_id, idempotency_key)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                '88888888-5000-4000-8000-0000000000a1',
+                '88888888-2000-4000-8000-000000000001',
+                '88888888-1000-4000-8000-000000000001',
+                '88888888-4000-4000-8000-000000000001',
+                'bbbbbbbb-1000-4000-8000-000000000001', false, 'outstanding_balance',
+                'this member owes 4500', 'this member owes 4500', true,
+                '88888888-3000-4000-8000-000000000001', 1, 'online', 'global',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333', 'case-masked-1');
+        RAISE EXCEPTION
+            'CHECK 109 FAILED: a decision claimed `masked` while the member was shown the '
+            'private reason verbatim';
+    EXCEPTION WHEN check_violation THEN probe := probe + 1;
+    END;
+    -- And the other side: the discreet line with `masked = false`, which is a row reading as
+    -- "the member was told the whole truth" when they were told nothing.
+    BEGIN
+        INSERT INTO plt01.acc_decisions
+            (tenant_id, decision_id, point_id, zone_id, credential_id, person_id, granted,
+             code, public_reason, private_reason, masked, policy_id, policy_version,
+             device_mode, passback_scope, decided_by, correlation_id, idempotency_key)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                '88888888-5000-4000-8000-0000000000a2',
+                '88888888-2000-4000-8000-000000000001',
+                '88888888-1000-4000-8000-000000000001',
+                '88888888-4000-4000-8000-000000000001',
+                'bbbbbbbb-1000-4000-8000-000000000001', false, 'outstanding_balance',
+                'please see the front desk', 'this member owes 4500', false,
+                '88888888-3000-4000-8000-000000000001', 1, 'online', 'global',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333', 'case-masked-2');
+        RAISE EXCEPTION
+            'CHECK 109 FAILED: a decision showed the discreet line and recorded that it had '
+            'not masked anything';
+    EXCEPTION WHEN check_violation THEN probe := probe + 1;
+    END;
+
+    -- ---------------------------------------------------------------- paragraph 4177, egress
+    -- An exit reader decides nothing. Not a policy that happens to allow it: a refusal.
+    BEGIN
+        INSERT INTO plt01.acc_decisions
+            (tenant_id, decision_id, point_id, zone_id, credential_id, person_id, granted,
+             code, public_reason, private_reason, masked, policy_id, policy_version,
+             device_mode, passback_scope, decided_by, correlation_id, idempotency_key)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                '88888888-5000-4000-8000-0000000000a3',
+                '88888888-2000-4000-8000-000000000002',
+                '88888888-1000-4000-8000-000000000001',
+                '88888888-4000-4000-8000-000000000001',
+                'bbbbbbbb-1000-4000-8000-000000000001', true, 'granted', 'welcome',
+                'every check passed', false, '88888888-3000-4000-8000-000000000001', 1,
+                'online', 'global', '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333', 'case-exit-1');
+        RAISE EXCEPTION
+            'CHECK 109 FAILED: a decision was recorded at an exit-facing access point';
+    EXCEPTION WHEN raise_exception THEN
+        IF SQLERRM LIKE 'CHECK 109 FAILED%' THEN RAISE; END IF;
+        IF SQLERRM NOT LIKE '%faces out%' THEN
+            RAISE EXCEPTION
+                'CHECK 109 FAILED: the exit case was refused by something else: %', SQLERRM;
+        END IF;
+        probe := probe + 1;
+    END;
+
+    -- -------------------------------------------------- the decision cites its own holder
+    -- A decision naming one member's credential and another's person is a grant recorded
+    -- against somebody who was not there.
+    BEGIN
+        INSERT INTO plt01.acc_decisions
+            (tenant_id, decision_id, point_id, zone_id, credential_id, person_id, granted,
+             code, public_reason, private_reason, masked, policy_id, policy_version,
+             device_mode, passback_scope, decided_by, correlation_id, idempotency_key)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                '88888888-5000-4000-8000-0000000000a4',
+                '88888888-2000-4000-8000-000000000001',
+                '88888888-1000-4000-8000-000000000001',
+                '88888888-4000-4000-8000-000000000001',
+                'bbbbbbbb-1000-4000-8000-000000000002', true, 'granted', 'welcome',
+                'every check passed', false, '88888888-3000-4000-8000-000000000001', 1,
+                'online', 'global', '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333', 'case-holder-1');
+        RAISE EXCEPTION
+            'CHECK 109 FAILED: a decision named one member''s credential and another''s person';
+    EXCEPTION WHEN raise_exception THEN
+        IF SQLERRM LIKE 'CHECK 109 FAILED%' THEN RAISE; END IF;
+        probe := probe + 1;
+    END;
+
+    -- ------------------------------------------------- an access point stands on a live door
+    -- Found by the first HTTP test that commissioned a point: the device had been registered
+    -- and nothing else -- no safety profile, no commissioning tests, never activated -- and
+    -- the point was created. MOD-021 still refused the unlock, so what existed was a point
+    -- that read as commissioned and could never work.
+    BEGIN
+        INSERT INTO plt01.acc_points
+            (tenant_id, point_id, zone_id, device_id, direction, display_name, status,
+             created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                '88888888-2000-4000-8000-0000000000a1',
+                '88888888-1000-4000-8000-000000000001',
+                '77777777-2000-4000-8000-000000000002', 'entry', 'South turnstile',
+                'active', '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION
+            'CHECK 109 FAILED: an access point was declared over a device not in service';
+    EXCEPTION WHEN raise_exception THEN
+        IF SQLERRM LIKE 'CHECK 109 FAILED%' THEN RAISE; END IF;
+        IF SQLERRM NOT LIKE '%not in service%' THEN
+            RAISE EXCEPTION
+                'CHECK 109 FAILED: the out-of-service case was refused by something else: %',
+                SQLERRM;
+        END IF;
+        probe := probe + 1;
+    END;
+    -- The sibling branch: a device that is live and moves no barrier. A separate device so
+    -- the two branches cannot answer for each other -- the trap this file records for
+    -- MOD-021, where one probe used a device that failed both branches and the first was
+    -- droppable in silence.
+    BEGIN
+        INSERT INTO plt01.acc_points
+            (tenant_id, point_id, zone_id, device_id, direction, display_name, status,
+             created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                '88888888-2000-4000-8000-0000000000a2',
+                '88888888-1000-4000-8000-000000000001',
+                '77777777-2000-4000-8000-000000000003', 'entry', 'Reception scanner',
+                'active', '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION
+            'CHECK 109 FAILED: an access point was declared over a device that moves no '
+            'barrier';
+    EXCEPTION WHEN raise_exception THEN
+        IF SQLERRM LIKE 'CHECK 109 FAILED%' THEN RAISE; END IF;
+        IF SQLERRM NOT LIKE '%moves no barrier%' THEN
+            RAISE EXCEPTION
+                'CHECK 109 FAILED: the no-barrier case was refused by something else: %',
+                SQLERRM;
+        END IF;
+        probe := probe + 1;
+    END;
+
+    -- --------------------------------------------------- a point keeps the way it faces
+    -- A reader re-labelled turns a building's occupancy inside out, retroactively, with
+    -- nothing in the history saying so.
+    BEGIN
+        UPDATE plt01.acc_points SET direction = 'exit'
+         WHERE point_id = '88888888-2000-4000-8000-000000000001';
+        RAISE EXCEPTION 'CHECK 109 FAILED: an access point changed the way it faces';
+    EXCEPTION WHEN raise_exception THEN
+        IF SQLERRM LIKE 'CHECK 109 FAILED%' THEN RAISE; END IF;
+        probe := probe + 1;
+    END;
+
+    -- ------------------------------------------------- a zone's risk only ever tightens
+    -- Loosening retroactively extends an authorization somebody already holds: a snapshot
+    -- issued under the old ceiling keeps running at the new, looser zone.
+    BEGIN
+        UPDATE plt01.acc_zones SET risk_class = 'standard'
+         WHERE zone_id = '88888888-1000-4000-8000-000000000002';
+        RAISE EXCEPTION 'CHECK 109 FAILED: a zone''s risk class was loosened';
+    EXCEPTION WHEN raise_exception THEN
+        IF SQLERRM LIKE 'CHECK 109 FAILED%' THEN RAISE; END IF;
+        probe := probe + 1;
+    END;
+
+    -- --------------------------------------------- the policy's two acts are two people
+    BEGIN
+        UPDATE plt01.acc_policies
+           SET status = 'published', published_at = now(),
+               published_by = '33333333-3333-4333-8333-333333333333',
+               publish_correlation_id = '33333333-3333-4333-8333-333333333333'
+         WHERE policy_id = '88888888-3000-4000-8000-000000000002';
+        RAISE EXCEPTION
+            'CHECK 109 FAILED: the author of an access policy published their own draft';
+    EXCEPTION WHEN check_violation THEN probe := probe + 1;
+    END;
+
+    -- ------------------------------------- an emergency unlock is reviewed by somebody else
+    BEGIN
+        UPDATE plt01.acc_emergency_unlocks
+           SET reviewed_at = now(),
+               reviewed_by = '33333333-3333-4333-8333-333333333333',
+               review_note = 'all clear',
+               review_correlation_id = '33333333-3333-4333-8333-333333333333'
+         WHERE unlock_id = '88888888-7000-4000-8000-000000000001';
+        RAISE EXCEPTION
+            'CHECK 109 FAILED: whoever ordered an emergency unlock reviewed it themselves';
+    EXCEPTION WHEN check_violation THEN probe := probe + 1;
+    END;
+    -- The `coalesce` case: NULL, not a blank. A review with no note at all.
+    BEGIN
+        UPDATE plt01.acc_emergency_unlocks
+           SET reviewed_at = now(),
+               reviewed_by = '44444444-4444-4444-8444-444444444444',
+               review_note = NULL,
+               review_correlation_id = '33333333-3333-4333-8333-333333333333'
+         WHERE unlock_id = '88888888-7000-4000-8000-000000000001';
+        RAISE EXCEPTION
+            'CHECK 109 FAILED: an emergency unlock was reviewed with no note at all';
+    EXCEPTION WHEN check_violation THEN probe := probe + 1;
+    END;
+    -- And the blank case: a tab, which `btrim` does not strip.
+    BEGIN
+        UPDATE plt01.acc_emergency_unlocks
+           SET reviewed_at = now(),
+               reviewed_by = '44444444-4444-4444-8444-444444444444',
+               review_note = E'\t',
+               review_correlation_id = '33333333-3333-4333-8333-333333333333'
+         WHERE unlock_id = '88888888-7000-4000-8000-000000000001';
+        RAISE EXCEPTION
+            'CHECK 109 FAILED: an emergency unlock was reviewed with a whitespace note';
+    EXCEPTION WHEN check_violation THEN probe := probe + 1;
+    END;
+
+    -- -------------------------------------------- an entry cannot cite a refusal
+    -- A door that opened after a denial is either a defect or a tailgate, and a row recording
+    -- both as ordinary would hide whichever it was.
+    BEGIN
+        INSERT INTO plt01.acc_events
+            (tenant_id, event_id, point_id, zone_id, direction, credential_id, person_id,
+             decision_id, occurred_at, recorded_by, correlation_id, source, idempotency_key)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                '88888888-6000-4000-8000-0000000000a1',
+                '88888888-2000-4000-8000-000000000001',
+                '88888888-1000-4000-8000-000000000001', 'entry',
+                '88888888-4000-4000-8000-000000000001',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                '88888888-5000-4000-8000-000000000002', now(),
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333', 'online', 'case-event-1');
+        RAISE EXCEPTION
+            'CHECK 109 FAILED: an entry event cited a decision that refused entry';
+    EXCEPTION WHEN raise_exception THEN
+        IF SQLERRM LIKE 'CHECK 109 FAILED%' THEN RAISE; END IF;
+        probe := probe + 1;
+    END;
+
+    -- ------------------------------------- an offline event carries its local sequence
+    BEGIN
+        INSERT INTO plt01.acc_events
+            (tenant_id, event_id, point_id, zone_id, direction, credential_id, person_id,
+             decision_id, occurred_at, recorded_by, correlation_id, source, local_sequence,
+             idempotency_key)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                '88888888-6000-4000-8000-0000000000a2',
+                '88888888-2000-4000-8000-000000000001',
+                '88888888-1000-4000-8000-000000000001', 'entry', NULL, NULL, NULL, now(),
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333', 'offline', NULL, 'case-event-2');
+        RAISE EXCEPTION
+            'CHECK 109 FAILED: an offline event was recorded with no local sequence, so two '
+            'queued events cannot be ordered';
+    EXCEPTION WHEN check_violation THEN probe := probe + 1;
+    END;
+
+    -- ----------------------------------------------- a credential digest is a digest
+    -- The control is an absence: there is no column a card number could sit in, and the
+    -- digest column is what a later migration would widen into one.
+    BEGIN
+        INSERT INTO plt01.acc_credentials
+            (tenant_id, credential_id, person_id, kind, credential_digest, state,
+             revocation_epoch, issued_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                '88888888-4000-4000-8000-0000000000a1',
+                'bbbbbbbb-1000-4000-8000-000000000001', 'nfc_card', '4111111111111111',
+                'active', 0, '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION
+            'CHECK 109 FAILED: a card number was stored in the credential digest column';
+    EXCEPTION WHEN check_violation THEN probe := probe + 1;
+    END;
+
+    -- ---------------------------------------- a revocation is attributed and reasoned
+    -- NULL, not a blank: `coalesce` is what this proves.
+    BEGIN
+        UPDATE plt01.acc_credentials
+           SET state = 'revoked', revoked_at = now(),
+               revoked_by = '33333333-3333-4333-8333-333333333333',
+               revoke_reason = NULL,
+               revoke_correlation_id = '33333333-3333-4333-8333-333333333333'
+         WHERE credential_id = '88888888-4000-4000-8000-000000000001';
+        RAISE EXCEPTION
+            'CHECK 109 FAILED: a credential was withdrawn with no stated reason';
+    EXCEPTION WHEN check_violation THEN probe := probe + 1;
+    END;
+
+    IF probe <> 16 THEN
+        RAISE EXCEPTION 'CHECK 109 FAILED: ran % of 16 MOD-022 rule cases', probe;
+    END IF;
+END $$;
+
+ROLLBACK;
+
+\echo 'tenant isolation: 109/109 checks passed'

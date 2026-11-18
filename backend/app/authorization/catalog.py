@@ -692,6 +692,77 @@ PERMISSIONS: dict[str, Permission] = dict([
        "Collect a device's commands and report its outcomes, health and sync conflicts",
        "data_access"),
 
+    # MOD-022, OPS-03: check-in, access control and entitlement decisions.
+    #
+    # **The category is `access` for everything that decides whether a door opens**, which
+    # MOD-021 had to learn: no permission in that module used the category, so
+    # `test_money_and_access_decisions_are_not_routine` -- the catalogue's one automatic
+    # guard that a permission granting access needs a second factor -- was structurally
+    # blind to the module whose subject is physical access.
+    _p("access.zone.read",
+       "See access zones, their points, their live policy and a zone's occupancy",
+       "data_access"),
+    # Declaring a zone and commissioning a point decide which doors this software can open
+    # and which policy applies at each. A point at the wrong zone is a door running somebody
+    # else's rules.
+    _p("access.zone.write",
+       "Declare or retire an access zone, and commission or retire an access point",
+       "configuration", "financial"),
+    _p("access.policy.write",
+       "Draft the terms a zone's access decisions will cite", "configuration", "financial"),
+    # **A second act by a second person.** The terms decide who gets through a door, which is
+    # MOD-017's contract-version argument in a building.
+    _p("access.policy.publish",
+       "Settle a zone's access policy, or retire one", "configuration", "financial"),
+    # Binding a credential to a person is handing somebody a key to a building.
+    _p("access.credential.issue",
+       "Enrol a credential against a person", "access", "financial"),
+    # **Revocation is routine, and the asymmetry is the point.** A card reported stolen at
+    # seven in the morning has to be killable by whoever is on the desk; a step-up there is a
+    # credential that keeps working while somebody finds a manager. The harm is bounded in
+    # the direction that matters: revoking only ever closes a door, and re-issuing is the
+    # financial-class permission above. MOD-013's suppression list is the same shape --
+    # anybody may stop a message, and only an unsubscribe may be lifted.
+    _p("access.credential.revoke",
+       "Withdraw a credential and bump its revocation epoch", "access"),
+    # **The turnstile's own permission, and it cannot be anything but routine.** A reader
+    # steps up against nothing: there is no human at it to answer a challenge, and a door
+    # that refuses every member until somebody authenticates a kiosk is a club that does not
+    # open. What bounds it is that evaluating decides nothing by itself -- the policy does,
+    # from facts the reader never sends -- and that every call leaves an insert-only row.
+    _p("access.decision.evaluate",
+       "Present a credential at an access point and get a decision", "access"),
+    _p("access.event.record",
+       "Record that somebody entered or left through an access point", "access"),
+    # Overriding the policy is a human deciding against the terms, which is why it is a
+    # different code on the decision and a different permission here.
+    _p("access.decision.override",
+       "Admit somebody against the zone's policy, with a reason", "access", "financial"),
+    # **Routine, deliberately, and this is the third entry ever added to
+    # `ROUTINE_BY_DESIGN`.** Paragraph 4178 asks for "step-up/dual approval where time
+    # permits", and a fire is the case where it does not: a step-up that fails during an
+    # evacuation is a door that stays shut, which is the opposite of what section 16.4 is
+    # for. So the release happens on one authority and the dual approval moves to the only
+    # moment it can happen -- `acc_emergency_unlocks_reviewer_is_not_orderer` makes the
+    # review a second person, and the row is unreviewed until they look. The cost is real and
+    # stated: a routine credential can release every point in a zone. The precedent is
+    # `privacy.incident.record`, where the incident may be that authentication is
+    # unavailable.
+    _p("access.emergency.unlock",
+       "Release every access point in a zone, for a stated emergency", "access"),
+    _p("access.decision.read",
+       "See the access decisions recorded at a zone or against a credential",
+       "data_access"),
+    # **The private reason names a member's membership state, their arrears or a safety
+    # hold.** Paragraph 1944 forbids a *denial* revealing those publicly, and a history read
+    # is the other place they would leak, so the full reason is a second permission and a
+    # stepped-up one. A caller without it sees exactly what the door showed.
+    _p("access.decision.read_reason",
+       "See the full reason an access decision was made, including restricted facts",
+       "data_access", "financial"),
+    _p("access.event.reconcile",
+       "Reconcile a reader's offline events after it reconnects", "configuration"),
+
     # Support and AI, named separately because IAM-03-R06 audits them separately.
     _p("support.session.start", "Start a supported session as another user",
        "support", "privileged"),

@@ -2312,6 +2312,51 @@ def _apply_to_invoice(
     return target
 
 
+def outstanding_minor_on(
+    conn: Connection[Any], person_id: str,
+) -> int:
+    """What this person owes, in minor units, on the caller's connection.
+
+    **It lives here because this module owns the definition.** MOD-022 needs a figure to
+    compare a zone's arrears threshold against, and re-deriving it there would be two
+    definitions of one balance that can disagree -- MOD-018's `_expected_in_drawer` finding,
+    where one function bounded the date and its neighbour did not, and today's till close
+    balanced on a journal dated next year.
+
+    The expression is `_apply_to_invoice`'s, read across every invoice on every billing
+    account the person pays for: gross, less what arrived, plus what went back out, plus what
+    was credited. A refund in `unknown` counts as gone, for `request_refund`'s reason -- the
+    provider has not said, and reading it as money still held is the direction that refunds
+    twice.
+
+    **`written_off` is excluded and `credited` is not.** A write-off is a decision that the
+    money will not arrive, so holding a member out of the building over it would be charging
+    them twice for the same forgiveness; a credit note has already reduced the gross through
+    `credits_invoice_id`, so excluding it as well would double-count the reduction.
+    """
+    row = conn.execute(
+        """
+        SELECT coalesce(sum(
+            i.gross_minor
+            - coalesce((SELECT sum(p.amount_minor) FROM plt01.fin_payments p
+                         WHERE p.invoice_id = i.invoice_id), 0)
+            + coalesce((SELECT sum(r.amount_minor) FROM plt01.fin_refunds r
+                         JOIN plt01.fin_payments p2 ON p2.payment_id = r.payment_id
+                        WHERE p2.invoice_id = i.invoice_id
+                          AND r.status IN ('succeeded', 'unknown')), 0)
+            - coalesce((SELECT sum(c.gross_minor) FROM plt01.fin_invoices c
+                         WHERE c.credits_invoice_id = i.invoice_id), 0)
+        ), 0)
+        FROM plt01.fin_invoices i
+        JOIN plt01.fin_billing_accounts a
+          ON a.billing_account_id = i.billing_account_id AND a.tenant_id = i.tenant_id
+        WHERE a.payer_person_id = %s AND i.document_kind = 'invoice'
+          AND i.payment_status IN ('unpaid', 'part_paid', 'overdue')
+        """,
+        (person_id,)).fetchone()
+    return max(0, int(row[0])) if row else 0
+
+
 # ------------------------------------------------------------------ refunds and recovery
 
 def request_refund(

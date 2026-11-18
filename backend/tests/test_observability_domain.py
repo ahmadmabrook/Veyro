@@ -6,6 +6,7 @@ evaluated as, how a budget burns, and what the rate limiter admits.
 
 from __future__ import annotations
 
+import pathlib
 import unittest
 from datetime import date
 
@@ -187,6 +188,36 @@ class ObjectiveTests(unittest.TestCase):
 
 
 class RateLimitTests(unittest.TestCase):
+    def test_every_rate_limited_route_names_a_budget_that_exists(self):
+        """A key nobody declared is a route that answers 500 on every call.
+
+        `decide` raises `RateLimitError` for an unknown key, and nothing in the request path
+        catches it -- so MOD-022's `/access/decisions` was a 500 until an HTTP test ran it.
+        The fix is this sweep rather than the one key: a per-key list in a reviewer's head is
+        how the next route repeats it, and the whole argument for `BUDGETS` living in one
+        table is that the numbers are reviewable together.
+        """
+        import ast
+
+        source = (pathlib.Path(__file__).resolve().parents[1] / "app" / "main.py").read_text()
+        named: set[str] = set()
+        for node in ast.walk(ast.parse(source)):
+            if not isinstance(node, ast.Call):
+                continue
+            callee = node.func
+            if not (isinstance(callee, ast.Name) and callee.id == "rate_limit"):
+                continue
+            for keyword in node.keywords:
+                if keyword.arg == "limit_key":
+                    self.assertIsInstance(
+                        keyword.value, ast.Constant,
+                        "a rate limit key is a literal, so this sweep can read it")
+                    named.add(str(keyword.value.value))
+        self.assertTrue(named, "no rate-limited route found; the sweep is reading nothing")
+        self.assertEqual(
+            sorted(named - set(ratelimit.BUDGETS)), [],
+            "these routes name a budget that does not exist in ratelimit.BUDGETS")
+
     def test_a_budget_of_n_admits_the_nth_and_refuses_the_next(self) -> None:
         limit = ratelimit.BUDGETS["auth.recover"]
         self.assertTrue(ratelimit.decide(limit_key="auth.recover", used=limit,

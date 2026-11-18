@@ -40,6 +40,13 @@ COMMAND_ACTIONS: dict[str, str | None] = {
     #: momentary by name: there is no `hold`, and `safety.HOLD_COMMANDS` is the list of words
     #: that are refused if somebody adds one.
     "unlock_momentary": ACTUATING,
+    #: **A release, not an unlock, and MOD-022 is what issues it.** Paragraph 4177 puts
+    #: egress outside the Veyro application path, so this one is *not* gated on a complete
+    #: commissioning record: refusing to release a door because its fire-alarm test failed
+    #: is exactly backwards, since a failed safety test is the strongest reason to want it
+    #: open. It is still a release -- `safety.HOLD_COMMANDS` has no intersection with this
+    #: vocabulary and a release is the opposite of a hold.
+    "emergency_unlock": ACTUATING,
     "reboot": None,
     "diagnostics": None,
     "sync_now": None,
@@ -65,6 +72,7 @@ COMMAND_ACTIONS: dict[str, str | None] = {
 #: `sync_now` and `report_peripherals` take none: each is a whole instruction already.
 COMMAND_ARGUMENTS: dict[str, frozenset[str]] = {
     "unlock_momentary": frozenset(),
+    "emergency_unlock": frozenset(),
     "reboot": frozenset(),
     "diagnostics": frozenset(),
     "sync_now": frozenset(),
@@ -127,6 +135,9 @@ EDGES: dict[str, tuple[str, ...]] = {
 #: instruction and short enough that a stale one does not fire after a shift change.
 ISSUE_WINDOW: dict[str, timedelta] = {
     "unlock_momentary": timedelta(seconds=60),
+    #: Five minutes rather than one: the member at the turnstile is gone in a minute, and an
+    #: evacuation is not.
+    "emergency_unlock": timedelta(seconds=300),
 }
 DEFAULT_ISSUE_WINDOW = timedelta(hours=1)
 
@@ -201,7 +212,12 @@ def check_issue(
     if state != "active":
         raise DeviceError(
             f"this device is {state}; a command goes to a device in service")
-    if needs == ACTUATING and profile is None:
+    # **The commissioning gate is for admitting somebody, not for releasing.** Paragraph
+    # 4175 blocks *opening the access point in production* on a failed safety test; an
+    # emergency unlock is egress, which paragraph 4177 puts outside the Veyro application
+    # path, so refusing to release a door because its fire-alarm input failed its test would
+    # be the fire code read backwards.
+    if action == "unlock_momentary" and profile is None:
         raise DeviceError(
             "an access point is commissioned with a hardware safety profile before anything "
             "tells it to open")
@@ -214,10 +230,11 @@ def check_issue(
         raise DeviceError("a command is deliverable for some length of time")
     if window > MAX_ISSUE_WINDOW:
         raise DeviceError("a command is deliverable for at most a day")
-    if action == "unlock_momentary" and window > ISSUE_WINDOW[action]:
+    if action in ISSUE_WINDOW and window > ISSUE_WINDOW[action]:
         raise DeviceError(
-            "an unlock is deliverable for at most a minute; longer is a door opened for "
-            "whoever is standing there when it arrives")
+            f"a {action} is deliverable for at most "
+            f"{int(ISSUE_WINDOW[action].total_seconds())} seconds; longer is a door opened "
+            f"for whoever is standing there when it arrives")
     return window
 
 

@@ -572,6 +572,44 @@ EVENT_TYPES: dict[tuple[str, int], EventType] = dict([
     # **Reported, not resolved.** The gateway holds the local copy, so the conflict exists
     # there and this side only hears about it; the two digests are what tell a consumer which
     # way the copies diverged without carrying either copy.
+    # MOD-022, OPS-03. Paragraph 1954's list.
+    #
+    # **Not one of these carries a reason.** `acc_decisions.private_reason` names a member's
+    # membership state, their arrears or a safety hold, and `evt_outbox` is the one store no
+    # erasure reaches -- so the events carry the stable *code* and a consumer that needs the
+    # words reads them from the module that holds them, behind
+    # `access.decision.read_reason`. MOD-013's `notification.failed` finding, in the module
+    # whose Critical Control is that a denial reveals none of those publicly.
+    _e("access.requested", 1, "MOD-022", "internal",
+       ("point_id", "zone_id", "decision_id", "credential_id"),
+       "A credential was presented at an access point"),
+    _e("access.granted", 1, "MOD-022", "internal",
+       ("point_id", "zone_id", "decision_id", "person_id", "code"),
+       "An access point was told to release for somebody"),
+    _e("access.denied", 1, "MOD-022", "internal",
+       ("point_id", "zone_id", "decision_id", "person_id", "code"),
+       "An access request was refused, by stable reason code"),
+    _e("access.overridden", 1, "MOD-022", "internal",
+       ("point_id", "zone_id", "decision_id", "person_id", "code"),
+       "Somebody was admitted against the zone's policy"),
+    # **A zone release is not a per-person override**, so it is its own type rather than
+    # `access.overridden` with its person and decision fields null-filled. The catalogue
+    # refuses an undeclared key at the producer, which is what surfaced the mismatch: the
+    # release was publishing `unlock_id` and `points_released` into a shape that declares
+    # neither. Paragraph 1954's list is shorter than what this module emits, and naming the
+    # difference is better than labelling one act as another.
+    _e("access.emergency_unlocked", 1, "MOD-022", "internal",
+       ("zone_id", "unlock_id", "points_released"),
+       "Every access point in a zone was released for a stated emergency"),
+    _e("access.revoked", 1, "MOD-022", "internal",
+       ("credential_id", "person_id", "revocation_epoch"),
+       "A credential was withdrawn and every stale snapshot is now behind it"),
+    _e("occupancy.changed", 1, "MOD-022", "internal",
+       ("zone_id", "inside", "direction"),
+       "A zone's derived occupancy moved; advisory unless both directions are read"),
+    _e("access_credential.issued", 1, "MOD-022", "internal",
+       ("credential_id", "person_id", "kind"),
+       "A credential was enrolled against a person"),
     _e("edge.sync.conflict", 1, "MOD-021", "internal",
        ("device_id", "conflict_id", "local_digest", "remote_digest"),
        "A gateway reported that its local copy and the registry's disagree"),

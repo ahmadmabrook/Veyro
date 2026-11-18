@@ -1067,7 +1067,31 @@ def issue_command(
     arguments: dict[str, Any] | None, idempotency_key: str, expires_in_seconds: int | None,
     actor_id: str, correlation_id: str, at: datetime | None = None,
 ) -> dict[str, Any]:
+    """The pool-taking wrapper. Correct where there is no state change to be atomic with.
+
+    MOD-010's rule about `append_event`, applied to a door: where a caller *is* writing state
+    that must commit with the command -- MOD-022's access decision -- it calls
+    `issue_command_on` with its own connection instead. A route that only queues a command has
+    no such state, so this is the honest shape for it.
+    """
+    with tenant_scope(pool, tenant_id) as conn:
+        return issue_command_on(
+            conn, tenant_id, device_id=device_id, action=action, arguments=arguments,
+            idempotency_key=idempotency_key, expires_in_seconds=expires_in_seconds,
+            actor_id=actor_id, correlation_id=correlation_id, at=at)
+
+
+def issue_command_on(
+    conn: Connection[Any], tenant_id: str, *, device_id: str, action: str,
+    arguments: dict[str, Any] | None, idempotency_key: str, expires_in_seconds: int | None,
+    actor_id: str, correlation_id: str, at: datetime | None = None,
+) -> dict[str, Any]:
     """Paragraph 3084's command: scoped, signed, audited and bounded by device safety.
+
+    **Takes the connection**, so a caller writing the state that justifies the command commits
+    both or neither. MOD-022's `_record` is the first such caller: a door that opened with no
+    decision row is an entry nobody can account for, and a decision row with no command is a
+    member told they were admitted while standing at a locked door.
 
     **The safety refusal is first and has no override.** `commands.check_issue` calls
     `safety.check_command_safety` before it looks at the capability or the state, because the
@@ -1089,53 +1113,52 @@ def issue_command(
     moment = at or _now()
     key = capabilities.require_name(idempotency_key, "idempotency_key")
     args = arguments or {}
-    with tenant_scope(pool, tenant_id) as conn:
+    prior = _prior_command(conn, key)
+    if prior is not None:
+        return _repeat_of(prior, device_id=device_id, action=action, args=args,
+                          expires_in_seconds=expires_in_seconds, at=moment)
+    device = _device(conn, device_id, for_update=True)
+    declared = _device_capabilities(conn, device_id)
+    profile = _live_profile(conn, device_id)
+    try:
+        window = commands.check_issue(
+            action, declared=declared, state=device["state"], profile=profile,
+            arguments=args,
+            expires_in=(timedelta(seconds=expires_in_seconds)
+                        if expires_in_seconds is not None else None))
+    except ValueError as e:
+        raise Conflict(str(e)) from None
+    expires = moment + window
+    digest = commands.digest(
+        device_id=device_id, action=action, arguments=args, issued_at=moment,
+        expires_at=expires)
+    try:
+        # **The conflict target is named.** `ON CONFLICT DO NOTHING` with no target stays
+        # valid SQL when the unique rule is dropped and silently stops deduplicating,
+        # which is MOD-010's finding about `evt_deliveries`.
+        row = conn.execute(
+            """
+            INSERT INTO plt01.dev_commands
+                (tenant_id, device_id, action, arguments, payload_digest,
+                 expires_at, idempotency_key, issued_at, issued_by, correlation_id)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (tenant_id, idempotency_key) DO NOTHING
+            RETURNING command_id
+            """,
+            (tenant_id, device_id, action, json.dumps(args), digest, expires, key,
+             moment, actor_id, correlation_id),
+        ).fetchone()
+    except errors.CheckViolation as e:
+        raise InvalidRequest(_check_name(e)) from None
+    except errors.RaiseException as e:
+        raise Conflict(str(e).strip().splitlines()[0]) from None
+    if row is None:
+        # A genuine retry that lost the race. The first version raised
+        # "used for a different request" here, which is the opposite of what happened.
         prior = _prior_command(conn, key)
-        if prior is not None:
-            return _repeat_of(prior, device_id=device_id, action=action, args=args,
-                              expires_in_seconds=expires_in_seconds, at=moment)
-        device = _device(conn, device_id, for_update=True)
-        declared = _device_capabilities(conn, device_id)
-        profile = _live_profile(conn, device_id)
-        try:
-            window = commands.check_issue(
-                action, declared=declared, state=device["state"], profile=profile,
-                arguments=args,
-                expires_in=(timedelta(seconds=expires_in_seconds)
-                            if expires_in_seconds is not None else None))
-        except ValueError as e:
-            raise Conflict(str(e)) from None
-        expires = moment + window
-        digest = commands.digest(
-            device_id=device_id, action=action, arguments=args, issued_at=moment,
-            expires_at=expires)
-        try:
-            # **The conflict target is named.** `ON CONFLICT DO NOTHING` with no target stays
-            # valid SQL when the unique rule is dropped and silently stops deduplicating,
-            # which is MOD-010's finding about `evt_deliveries`.
-            row = conn.execute(
-                """
-                INSERT INTO plt01.dev_commands
-                    (tenant_id, device_id, action, arguments, payload_digest,
-                     expires_at, idempotency_key, issued_at, issued_by, correlation_id)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (tenant_id, idempotency_key) DO NOTHING
-                RETURNING command_id
-                """,
-                (tenant_id, device_id, action, json.dumps(args), digest, expires, key,
-                 moment, actor_id, correlation_id),
-            ).fetchone()
-        except errors.CheckViolation as e:
-            raise InvalidRequest(_check_name(e)) from None
-        except errors.RaiseException as e:
-            raise Conflict(str(e).strip().splitlines()[0]) from None
-        if row is None:
-            # A genuine retry that lost the race. The first version raised
-            # "used for a different request" here, which is the opposite of what happened.
-            prior = _prior_command(conn, key)
-            assert prior is not None
-            return _repeat_of(prior, device_id=device_id, action=action, args=args,
-                              expires_in_seconds=expires_in_seconds, at=moment)
+        assert prior is not None
+        return _repeat_of(prior, device_id=device_id, action=action, args=args,
+                          expires_in_seconds=expires_in_seconds, at=moment)
     return {"command_id": str(row[0]), "device_id": device_id, "action": action,
             "state": "issued", "payload_digest": digest,
             "expires_at": expires.isoformat(), "repeated": False,

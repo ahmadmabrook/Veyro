@@ -197,12 +197,26 @@ class RateLimitRegressionTests(GatedApiTestCase):
         head = {"X-Veyro-Tenant": tenant_id}
         spellings = ["+3545551234", "+354 5551234", "+354-555-1234", "+354(555)1234",
                      "+3 545551234", "+35 45551234", "+354555 1234", "+354555-1234"]
-        statuses = []
-        for i in range(ratelimit.BUDGETS["auth.login"] + 4):
-            statuses.append(self.client.post(
+        # **The burst stops at the first refusal and is long enough to survive a window
+        # boundary**, which is the fix its sibling below already carries and this one did not.
+        # Each attempt costs a scrypt, so in a full suite run `budget + 4` requests sometimes
+        # straddle a minute: the count resets halfway and neither half spends the budget, so
+        # no 429 appears and the test fails for a reason that has nothing to do with phone
+        # spellings. Twice the budget plus two means *some* window inside the loop is over it
+        # whatever the split, and the loop stops as soon as one is -- so the slow case is paid
+        # for only when it happens. Found when a longer suite made the flake reproducible.
+        budget = ratelimit.BUDGETS["auth.login"]
+        refused = None
+        for i in range(budget * 2 + 2):
+            status = self.client.post(
                 "/auth/login", headers=head,
-                json=self.body(spellings[i % len(spellings)])).status_code)
-        self.assertIn(429, statuses)
+                json=self.body(spellings[i % len(spellings)])).status_code
+            if status == 429:
+                refused = i
+                break
+        self.assertIsNotNone(
+            refused,
+            "eight spellings of one number must share one budget, not hold eight")
 
     def test_the_refusal_says_how_long_to_wait(self):
         """Computing a backoff and not sending it makes choosing 429 over 403 decorative."""
