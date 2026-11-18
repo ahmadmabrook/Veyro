@@ -1,0 +1,169 @@
+/**
+ * Base styles over the generated tokens.
+ *
+ * The direction this follows is the design system's own "1a LEDGER": hairline rules instead of
+ * shadows, near-zero radius on data, warm paper neutrals, mono numerals, one superfamily
+ * across Latin / Arabic / mono -- chosen because it is "the only direction whose legibility
+ * improves as row count rises", which is the actual condition of Admin, Front Desk and
+ * Console.
+ *
+ * Nothing here invents a value. Every colour is a layer-2 token and every length is on the
+ * spacing scale, because "no value outside this scale ships".
+ */
+
+@import "../design/tokens.generated.css";
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  /* Respect the reader's own text size: never a px font-size on the root. */
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-surface-canvas);
+  color: var(--color-text-primary);
+  font-family: "IBM Plex Sans", system-ui, sans-serif;
+  font-size: var(--type-body-size);
+  line-height: var(--type-body-line);
+  font-weight: var(--type-body-weight);
+}
+
+/**
+ * Arabic gets its own family and its own line-height at every size.
+ *
+ * "At any given size, Arabic gets 0.15 more line-height than Latin ... Diacritics and
+ * descenders need the room, and dense Arabic without it is the single most common failure in
+ * localised SaaS." The 13px floor and the weight step are applied per token in
+ * `src/design/type.mjs`; this is the body default.
+ */
+:root[lang="ar"] body {
+  font-family: "IBM Plex Sans Arabic", system-ui, sans-serif;
+  line-height: calc(var(--type-body-line) + 0.15);
+}
+
+/* Never apply tracking to Arabic -- it breaks the joins. */
+:root[lang="ar"] * {
+  letter-spacing: 0 !important;
+}
+
+/* No italics in Arabic: there is no italic convention, so emphasis is weight or colour. */
+:root[lang="ar"] em,
+:root[lang="ar"] i {
+  font-style: normal;
+  font-weight: 600;
+}
+
+h1 {
+  font-size: var(--type-h1-size);
+  line-height: var(--type-h1-line);
+  font-weight: var(--type-h1-weight);
+  letter-spacing: var(--type-h1-tracking);
+  margin: 0 0 var(--space-4);
+}
+
+h2 {
+  font-size: var(--type-h2-size);
+  line-height: var(--type-h2-line);
+  font-weight: var(--type-h2-weight);
+  letter-spacing: var(--type-h2-tracking);
+  margin: 0 0 var(--space-3);
+}
+
+/**
+ * The data token. Mono tabular, "the reason columns align".
+ *
+ * In Arabic the family switches -- Plex Mono has no Arabic -- and the tabular figures are what
+ * keep the column aligned and the same width.
+ */
+.data {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: var(--type-data-size);
+  line-height: var(--type-data-line);
+  font-weight: var(--type-data-weight);
+  font-variant-numeric: tabular-nums;
+}
+
+:root[lang="ar"] .data {
+  font-family: "IBM Plex Sans Arabic", system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+
+/**
+ * The focus ring is system-owned in both themes.
+ *
+ * Guardrail G4, and it is "not configurable. A tenant cannot ship an unnavigable product." So
+ * it is defined once here and no component overrides it.
+ */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 2px;
+}
+
+/* A visible focus ring is the control; removing the outline entirely is not an option. */
+:where(a, button, input, select, textarea, [tabindex]):focus:not(:focus-visible) {
+  outline: none;
+}
+
+a {
+  color: var(--color-text-link);
+}
+
+/** The skip link: present for every keyboard user, visible only when focused. */
+.skip-link {
+  position: absolute;
+  inset-inline-start: var(--space-2);
+  inset-block-start: calc(var(--space-10) * -1);
+  z-index: 10;
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-surface-default);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-button);
+  transition: inset-block-start 120ms ease;
+}
+
+.skip-link:focus {
+  inset-block-start: var(--space-2);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Hairline rules rather than shadows. The DS's base direction, applied to every container. */
+.panel {
+  background: var(--color-surface-default);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-card);
+  padding: var(--space-5);
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.muted {
+  color: var(--color-text-secondary);
+}
+
+/**
+ * `color.text.tertiary` is only legal for small text on warm.0 and warm.100.
+ *
+ * On warm.150 it measures 4.48:1, which is under AA by 0.02 -- the foundations exclude that
+ * pairing from the CI allow-list. It is not offered as a utility class for that reason: a
+ * class named `.tertiary` would get used on a sunken surface eventually.
+ */

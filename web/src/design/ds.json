@@ -1,0 +1,723 @@
+{
+ "SEMANTIC": [
+  [
+   "color.surface.canvas",
+   "warm.100",
+   "dark.900 #1a1917",
+   "App background. The field everything sits on."
+  ],
+  [
+   "color.surface.default",
+   "warm.0",
+   "dark.800 #211f1c",
+   "Cards, panels, table bodies, sheets."
+  ],
+  [
+   "color.surface.raised",
+   "warm.0 + e1",
+   "dark.700 #2a2724",
+   "Overlays, popovers, dropdowns, command palette."
+  ],
+  [
+   "color.surface.sunken",
+   "warm.50",
+   "dark.950 #141311",
+   "Table headers, inset wells, code and log areas."
+  ],
+  [
+   "color.surface.hover",
+   "warm.50",
+   "rgba(255,255,255,.04)",
+   "Row and interactive-surface hover only. Never a resting state."
+  ],
+  [
+   "color.surface.selected",
+   "ink.50",
+   "rgba(126,166,232,.16)",
+   "Selected row, active nav item, chosen segment."
+  ],
+  [
+   "color.surface.input",
+   "warm.0",
+   "dark.950",
+   "Field backgrounds across all form controls."
+  ],
+  [
+   "color.surface.overlay",
+   "rgba(23,23,26,.44)",
+   "rgba(0,0,0,.6)",
+   "Scrim behind modals and sheets."
+  ],
+  [
+   "color.text.primary",
+   "warm.900",
+   "warm.50 #f5f2ec",
+   "Headings, values, member names, primary content."
+  ],
+  [
+   "color.text.secondary",
+   "warm.700",
+   "dark.text.2 #b8b3aa",
+   "Supporting copy, descriptions, explanatory lines."
+  ],
+  [
+   "color.text.tertiary",
+   "warm.600",
+   "dark.text.3 #928d84",
+   "Metadata, timestamps, IDs, eyebrow labels. Contrast floor for small text."
+  ],
+  [
+   "color.text.disabled",
+   "warm.500",
+   "rgba(245,242,236,.38)",
+   "Inactive controls only. Always paired with a stated reason."
+  ],
+  [
+   "color.text.inverse",
+   "warm.0",
+   "dark.900",
+   "On filled action and semantic surfaces."
+  ],
+  [
+   "color.text.link",
+   "ink.600",
+   "accent.light #7ea6e8",
+   "Inline links and evidence references."
+  ],
+  [
+   "color.text.critical",
+   "error.600",
+   "error.light #e0836a",
+   "Overdue amounts, failed states, destructive labels."
+  ],
+  [
+   "color.border.subtle",
+   "rgba(23,23,26,.08)",
+   "rgba(255,255,255,.08)",
+   "Row dividers inside a bounded container."
+  ],
+  [
+   "color.border.default",
+   "rgba(23,23,26,.14)",
+   "rgba(255,255,255,.13)",
+   "Container edges, inputs, table outlines. The workhorse."
+  ],
+  [
+   "color.border.strong",
+   "rgba(23,23,26,.28)",
+   "rgba(255,255,255,.26)",
+   "Secondary button outline, emphasised separation."
+  ],
+  [
+   "color.border.focus",
+   "ink.600",
+   "accent.light",
+   "Focus ring. Never brand-configurable."
+  ],
+  [
+   "color.border.error",
+   "error.600",
+   "error.light",
+   "Invalid field outline, paired with a message."
+  ],
+  [
+   "color.action.primary",
+   "ink.600",
+   "accent.light",
+   "Primary button fill, active selection, links."
+  ],
+  [
+   "color.action.pressed",
+   "ink.700",
+   "accent.pressed",
+   "Pressed state on primary."
+  ],
+  [
+   "color.semantic.success",
+   "success.600",
+   "#6fae7f",
+   "Paid, confirmed, resolved, on-plan."
+  ],
+  [
+   "color.semantic.warning",
+   "warning.600",
+   "#d9a256",
+   "Expiring, approaching a limit, needs review."
+  ],
+  [
+   "color.semantic.error",
+   "error.600",
+   "#e0836a",
+   "Failed, denied, overdue, blocking."
+  ],
+  [
+   "color.semantic.info",
+   "info.600",
+   "#8aa9b5",
+   "Neutral system information. Deliberately not the action hue."
+  ],
+  [
+   "color.semantic.ai",
+   "ai.600 #4a3d7a",
+   "ai.light #a397dd",
+   "AI interpretation, recommendation, evidence and executed-action states. SYSTEM-OWNED — never inherits brand.accent. 9.31:1 on warm.0."
+  ],
+  [
+   "color.semantic.ai.wash",
+   "ai.50 #edebf6",
+   "rgba(163,151,221,.16)",
+   "AI panel header and evidence-link background. The only wash that signals machine reasoning."
+  ],
+  [
+   "color.semantic.ai.border",
+   "ai.600 at 1px",
+   "ai.light at 1px",
+   "AI container edge. Distinguishes an interpretation panel from an action panel at a glance."
+  ]
+ ],
+ "TYPE_SCALE": [
+  [
+   "type.display",
+   "34 / 1.10",
+   "500",
+   "-0.02em",
+   "Member milestones, first-run, progress reviews. The editorial register from 1c. Never on Admin."
+  ],
+  [
+   "type.h1",
+   "26 / 1.15",
+   "500",
+   "-0.018em",
+   "Page title. One per screen."
+  ],
+  [
+   "type.h2",
+   "20 / 1.20",
+   "500",
+   "-0.014em",
+   "Section heading, modal title, member name in a 360 header."
+  ],
+  [
+   "type.h3",
+   "16 / 1.30",
+   "500",
+   "-0.01em",
+   "Card title, subsection, exception headline."
+  ],
+  [
+   "type.h4",
+   "14 / 1.35",
+   "500",
+   "0",
+   "Dense group heading inside a panel."
+  ],
+  [
+   "type.bodyLg",
+   "15 / 1.60",
+   "400",
+   "0",
+   "Member app body, coach prose, explanatory paragraphs."
+  ],
+  [
+   "type.body",
+   "14 / 1.60",
+   "400",
+   "0",
+   "Default. Admin content, descriptions, table text."
+  ],
+  [
+   "type.bodySm",
+   "12.5 / 1.55",
+   "400",
+   "0",
+   "Secondary explanation, helper text under a field."
+  ],
+  [
+   "type.label",
+   "12 / 1.35",
+   "500",
+   "0.005em",
+   "Field labels, button text, chips, nav items."
+  ],
+  [
+   "type.caption",
+   "11 / 1.40",
+   "400",
+   "0",
+   "Legal, footnotes, timestamps. Latin only — Arabic floor is 13."
+  ],
+  [
+   "type.data",
+   "13 / 1.20",
+   "500",
+   "0",
+   "Mono tabular. Money, counts, sets, reps, macros, IDs. The reason columns align."
+  ],
+  [
+   "type.eyebrow",
+   "10 / 1.40",
+   "500",
+   "0.09em",
+   "Mono uppercase section markers. Latin only."
+  ]
+ ],
+ "DENSITY": [
+  [
+   "Compact",
+   "34 / 40px",
+   "−1 step",
+   "13px",
+   "32px",
+   "Admin data grids, Console tenant lists, financial ledgers. Maximum rows per screen where scanning is the job."
+  ],
+  [
+   "Default",
+   "40 / 48px",
+   "base",
+   "14px",
+   "36px",
+   "Admin detail views, Member 360 inspector, CRM, settings, forms."
+  ],
+  [
+   "Touch",
+   "48 / 52px",
+   "+1 step",
+   "15px",
+   "44px",
+   "Coach app, Front Desk, Kiosk, POS register. Never user-selectable on Front Desk or Kiosk."
+  ],
+  [
+   "Spacious",
+   "56 / 64px",
+   "+2 steps",
+   "16px",
+   "44px",
+   "Member app. Plus type.display and space.16 for first-run, milestones and progress moments."
+  ]
+ ],
+ "BREAKPOINTS": [
+  [
+   "bp.xs",
+   "0–599",
+   "Single column. Bottom nav of five. Sheets replace modals. Tables become drill-down lists, never shrunken grids."
+  ],
+  [
+   "bp.sm",
+   "600–899",
+   "Tablet portrait. Coach gains a two-pane client list. Front Desk minimum. Rail collapses to icons."
+  ],
+  [
+   "bp.md",
+   "900–1199",
+   "Tablet landscape and small laptop. Admin usable: rail collapsed, inspector becomes an overlay rather than a column."
+  ],
+  [
+   "bp.lg",
+   "1200–1599",
+   "Admin target. Rail expanded at 240, content and inspector side by side."
+  ],
+  [
+   "bp.xl",
+   "1600+",
+   "Wide desktop. Content caps at 1440 and centres; the inspector widens to 480 rather than the table stretching indefinitely."
+  ]
+ ],
+ "ARABIC_RULES": [
+  [
+   "Line height +0.15",
+   "At any given size, Arabic gets 0.15 more line-height than Latin — type.body is 1.60 in Latin and 1.75 in Arabic. Diacritics and descenders need the room, and dense Arabic without it is the single most common failure in localised SaaS."
+  ],
+  [
+   "Size floor 13px",
+   "Arabic never renders below 13px. type.caption (11) and type.eyebrow (10) are Latin-only tokens; their Arabic counterparts resolve to 13px. A caption that cannot be read is not a caption."
+  ],
+  [
+   "Weight up one step",
+   "Plex Sans Arabic reads optically lighter than Plex Sans at the same weight. Where Latin uses 400, Arabic uses 400; where Latin uses 450 or 500, Arabic uses 500; where Latin uses 500 for emphasis, Arabic uses 600."
+  ],
+  [
+   "Zero letter-spacing",
+   "Never apply tracking to Arabic — it breaks the joins. Any token carrying a track value drops it in Arabic, which is why type.eyebrow has no Arabic form and uses type.label instead."
+  ],
+  [
+   "No italics",
+   "Arabic has no italic convention. Emphasis is weight or colour. Any component using italics for meaning must have a non-italic Arabic path."
+  ],
+  [
+   "Containers sized for Arabic",
+   "Arabic runs 15–30% longer than English here. Every label container, button and column is dimensioned against the Arabic string, not the English one. Design reviews use the Arabic build for width decisions."
+  ],
+  [
+   "Mono is Latin-only",
+   "IBM Plex Mono has no Arabic. Tabular Arabic numerals use Plex Sans Arabic with tabular figures; a mono column in an Arabic table switches family but keeps its alignment and width."
+  ],
+  [
+   "Numerals are a tenant setting",
+   "Latin or Arabic-Indic, chosen once per tenant and applied identically on screen, receipt, export and PDF. Never mixed within a tenant, and never decided per component."
+  ],
+  [
+   "Bidi isolation is mandatory",
+   "Money, phone numbers, member IDs, card last-four, times and Latin lift names are each wrapped in an isolated run. Without it JOD jumps to the wrong side of its amount — a money-ambiguity defect, not a typographic one."
+  ]
+ ],
+ "CONTRAST": [
+  [
+   "color.text.primary · warm.900",
+   "#17171a",
+   "17.74:1",
+   "16.00:1",
+   "14.76:1",
+   "Pass everywhere, all sizes. AAA on all three."
+  ],
+  [
+   "color.text.secondary · warm.700",
+   "#57544d",
+   "7.49:1",
+   "6.75:1",
+   "6.23:1",
+   "Pass everywhere, all sizes."
+  ],
+  [
+   "color.text.tertiary · warm.600",
+   "#6b6a63",
+   "5.38:1",
+   "4.86:1",
+   "4.48:1",
+   "Pass on warm.0 and warm.100 — the small-text floor. FAILS on warm.150 by 0.02: large-text-only there, and the pairing is excluded from the CI allow-list."
+  ],
+  [
+   "warm.500",
+   "#85807a",
+   "3.88:1",
+   "3.50:1",
+   "3.23:1",
+   "FAIL under 18.66px on every surface. Large text, disabled controls and decoration only."
+  ],
+  [
+   "color.text.link · ink.600",
+   "#1b4079",
+   "10.13:1",
+   "9.14:1",
+   "8.43:1",
+   "Pass. Also passes inverse — white on ink.600 is 10.21:1."
+  ],
+  [
+   "color.text.critical · error.600",
+   "#8a3b1f",
+   "7.64:1",
+   "6.89:1",
+   "6.36:1",
+   "Pass. White on error.600 is 7.70:1 for filled badges."
+  ],
+  [
+   "color.semantic.warning",
+   "#8a5a1f",
+   "5.84:1",
+   "5.27:1",
+   "4.86:1",
+   "Pass. The tightest semantic — do not lighten. White on fill is 5.89:1."
+  ],
+  [
+   "color.semantic.success",
+   "#2f5d3a",
+   "7.58:1",
+   "6.84:1",
+   "6.31:1",
+   "Pass as text and as a filled surface — white on fill is 7.64:1."
+  ],
+  [
+   "color.semantic.ai · ai.600",
+   "#4a3d7a",
+   "9.31:1",
+   "8.40:1",
+   "7.75:1",
+   "Pass all sizes. White on ai.600 is 9.38:1. Distinct from ink.600 (10.13:1) by hue, not lightness — the two never share a role."
+  ]
+ ],
+ "GUARDRAILS": [
+  [
+   "G1",
+   "brand.accent must reach 4.5:1 against surface.default and surface.canvas, and its computed on-accent label colour must reach 4.5:1 against the accent itself.",
+   "Rejected at upload with the nearest passing shade of their own colour offered, shown side by side. They are never left without a route to a brand they recognise."
+  ],
+  [
+   "G2",
+   "brand.accent must sit a minimum perceptual distance from success, warning and error. A brand green close to success.600 fails.",
+   "“This green is too close to the colour Veyro uses for confirmed payments.” Alternative offered, with the reason stated in operational terms rather than colour theory."
+  ],
+  [
+   "G3",
+   "brand.accent may never resolve into a status, money-state, safety or consent token. Enforced by the token boundary — the accent is simply not in scope for those components.",
+   "Not surfaced, because it cannot be attempted. This is the difference between a guardrail and a guideline."
+  ],
+  [
+   "G4",
+   "The focus ring is system-owned in both themes.",
+   "Not configurable. A tenant cannot ship an unnavigable product."
+  ],
+  [
+   "G5",
+   "Dark-mode accent is derived from brand.accent, not configured separately.",
+   "Not surfaced. Prevents a tenant passing light mode and failing dark, which is the most common white-label accessibility regression."
+  ],
+  [
+   "G6",
+   "Logo requires a monochrome fallback before a brand can publish.",
+   "“Add a single-colour version — it is used on receipts, invoices and exports.” Blocks publish rather than degrading silently at the printer."
+  ],
+  [
+   "G7",
+   "color.semantic.ai is system-owned in both themes and is not in scope for brand.accent. AI interpretation, recommendation, evidence and executed-action states resolve to ai.* regardless of tenant.",
+   "Not surfaced, because it cannot be attempted. Rationale: a tenant brand on an AI panel makes machine inference look like a first-party assertion. Veyro carries the accountability for what its AI says, so Veyro carries the colour."
+  ]
+ ],
+ "THEMES": [
+  [
+   "Veyro Admin",
+   "LIGHT FIRST · DARK OPT-IN",
+   "Eight hours of tabular reading. Hairline rules and mono columns separate best on a light field, and warm paper is easier at length than a bright white. Dark ships as an opt-in for late shifts, not as a default, and is validated on the data grid before release."
+  ],
+  [
+   "Veyro Front Desk",
+   "LIGHT ONLY",
+   "Lobbies are bright, the screen is read at 1.5m, and staff do not choose their lighting. Dark would cost contrast headroom at exactly the moment resolution speed matters. A deliberate omission, not a gap."
+  ],
+  [
+   "Veyro Coach",
+   "FOLLOWS SYSTEM",
+   "Gym-floor lighting swings from window glare to dim free-weight corners. This is the surface where user control genuinely earns its keep — and the set logger is validated in both."
+  ],
+  [
+   "Veyro Member",
+   "FOLLOWS SYSTEM",
+   "Consumer expectation, plus evening and pre-dawn training sessions. Dark is a first-class member experience here, not a courtesy."
+  ],
+  [
+   "Internal SaaS Console",
+   "LIGHT FIRST · DARK OPT-IN",
+   "Same reasoning as Admin, with incident work often happening at night — which is precisely when the opt-in gets used."
+  ]
+ ],
+ "BRANDABLE": [
+  [
+   "brand.accent",
+   "One hue, replacing ink.600 for action and selection. The derived pressed, selected-wash and dark-mode variants are computed by the system, not configured — six tokens from one input."
+  ],
+  [
+   "brand.logo",
+   "Wordmark and mark, each with a required monochrome fallback for receipts, exports and single-colour contexts. Clear-space and minimum size enforced."
+  ],
+  [
+   "brand.appIcon",
+   "Member app icon per brand, validated against store requirements at upload."
+  ],
+  [
+   "brand.imagery",
+   "Photography for member home, class listings and store. Aspect ratios fixed by the system; content is the tenant’s."
+  ],
+  [
+   "brand.radiusScale",
+   "Optional, one step softer or sharper across the whole scale. Proportional — a tenant cannot round only the cards. Off by default."
+  ]
+ ],
+ "CHARACTER": [
+  [
+   "Intelligent",
+   "The system shows its reasoning. Evidence links, confidence, and “here is why” live in the type hierarchy rather than in badges announcing cleverness."
+  ],
+  [
+   "Confident",
+   "Few colours, generous type scale contrast, no decoration compensating for weak hierarchy. Nothing on screen is hedging."
+  ],
+  [
+   "Efficient",
+   "Hairlines over shadows, 34px rows where the work is, mono numerals that align without effort. Speed is a visual property here, not just a performance one."
+  ],
+  [
+   "Calm",
+   "Warm paper neutrals, semantic colour held in reserve, one accent. A busy Tuesday at Khalda should not look like an emergency."
+  ],
+  [
+   "Premium",
+   "Earned through restraint, alignment and consistency — the same way a well-set financial statement reads expensive without ornament."
+  ],
+  [
+   "Human, not playful",
+   "Editorial scale and plain-language copy for member moments; no mascots, no exclamation marks, no emoji in the product."
+  ],
+  [
+   "Technical, not cold",
+   "Mono for data, sans for speech. Warm greys rather than clinical blue-white — this is a business about bodies, not a laboratory."
+  ],
+  [
+   "Fit, not aggressive",
+   "No black-and-neon, no shouting weights, no motivational bombast. Strength shown through precision."
+  ]
+ ],
+ "LAYOUTS": [
+  [
+   "Veyro Admin",
+   "12-column, 24px gutter. Rail 240 expanded / 56 collapsed. Content max 1440. Inspector 380 at bp.lg, 480 at bp.xl. Split view is list + inspector, never three columns — the Member 360 decision from Phase 6 generalised."
+  ],
+  [
+   "Front Desk",
+   "Two zones, no rail: a fixed capture strip at the top holding scan and search, and a resolution area below. Touch density, one modal depth maximum, keyboard focus returning to the scan field after every action."
+  ],
+  [
+   "Veyro Coach",
+   "Single column, bottom nav of four plus a create action. Sheets capped at two levels. Primary actions in the lower third for one-handed reach. Two-pane only from bp.sm on tablet."
+  ],
+  [
+   "Veyro Member",
+   "Single column, Spacious. Bottom nav of five. One “now” card owning the top of the viewport; everything else below the fold. Sheets for swap, filter and quick choices."
+  ],
+  [
+   "SaaS Console",
+   "Same shell as Admin at Compact density, with an incident banner slot above the rail that no other surface has."
+  ]
+ ],
+ "PRIMITIVES": [
+  [
+   "warm.0",
+   "#fffefb"
+  ],
+  [
+   "warm.50",
+   "#faf8f4"
+  ],
+  [
+   "warm.100",
+   "#f4f2ee"
+  ],
+  [
+   "warm.150",
+   "#ece9e3"
+  ],
+  [
+   "warm.200",
+   "#e0dcd4"
+  ],
+  [
+   "warm.300",
+   "#cbc6bc"
+  ],
+  [
+   "warm.400",
+   "#a8a29a"
+  ],
+  [
+   "warm.500",
+   "#85807a"
+  ],
+  [
+   "warm.600",
+   "#6b6a63"
+  ],
+  [
+   "warm.700",
+   "#57544d"
+  ],
+  [
+   "warm.800",
+   "#3d3b36"
+  ],
+  [
+   "warm.900",
+   "#17171a"
+  ],
+  [
+   "ink.600",
+   "#1b4079"
+  ],
+  [
+   "ink.700",
+   "#14315e"
+  ],
+  [
+   "ink.50",
+   "#e8edf6"
+  ],
+  [
+   "success.600",
+   "#2f5d3a"
+  ],
+  [
+   "warning.600",
+   "#8a5a1f"
+  ],
+  [
+   "error.600",
+   "#8a3b1f"
+  ],
+  [
+   "info.600",
+   "#3f5560"
+  ],
+  [
+   "ai.600",
+   "#4a3d7a"
+  ],
+  [
+   "ai.50",
+   "#edebf6"
+  ],
+  [
+   "error.50",
+   "#f4ece5"
+  ]
+ ],
+ "DARK_RAMP": [
+  [
+   "dark.950",
+   "#141311",
+   "stated on color.surface.sunken"
+  ],
+  [
+   "dark.900",
+   "#1a1917",
+   "stated on color.surface.canvas"
+  ],
+  [
+   "dark.800",
+   "#211f1c",
+   "stated on color.surface.default"
+  ],
+  [
+   "dark.700",
+   "#2a2724",
+   "stated on color.surface.raised"
+  ],
+  [
+   "dark.text.2",
+   "#b8b3aa",
+   "stated on color.text.secondary"
+  ],
+  [
+   "dark.text.3",
+   "#928d84",
+   "stated on color.text.tertiary"
+  ],
+  [
+   "accent.light",
+   "#7ea6e8",
+   "stated on color.text.link, and in prose: 'ink.600 becomes #7ea6e8'"
+  ],
+  [
+   "error.light",
+   "#e0836a",
+   "stated on color.text.critical"
+  ],
+  [
+   "ai.light",
+   "#a397dd",
+   "stated on color.semantic.ai"
+  ]
+ ],
+ "DARK_GAPS": [
+  [
+   "color.action.pressed",
+   "accent.pressed",
+   "The source names `accent.pressed` on this token and gives it no value anywhere -- not in the ramps, not in the semantic table, not in the dark-mode note. Inventing a hex would be inventing design. The consequence, stated rather than hidden: a primary button's pressed state in dark mode falls back to the light mapping (ink.700), which is too dark against a dark field. Nothing in the build renders a pressed state yet, so the defect is latent; the day a component implements one, this is the value to ask for."
+  ]
+ ]
+}

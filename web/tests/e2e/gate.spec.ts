@@ -1,0 +1,86 @@
+import { expect, test, type Page } from "@playwright/test";
+
+import { fixture } from "./fixture-env";
+
+/**
+ * What the interface renders is what the gate answered.
+ *
+ * MOD-008 returns four distinguishable facts and the page must render them as four different
+ * things. The one that is easy to get wrong is `reachable: false`: the gate sets
+ * `step_up_required` *and* `reachable: false` for an AAL-3 action, so reading them in the wrong
+ * order offers a step-up to a level this build cannot reach, and sends somebody looking for a
+ * hardware key MOD-007 cannot verify.
+ *
+ * These assertions are against the **live** evaluator with the fixture's `tenant_admin` role, so
+ * they would change if the catalogue's action classes changed -- which is the intent. A test
+ * that stubbed the gate would keep passing while the product stopped agreeing with it.
+ */
+
+const creds = fixture();
+
+async function signIn(page: Page) {
+  await page.goto("/login");
+  await page.getByLabel("Tenant ID").fill(creds.tenantId);
+  await page.getByLabel("Email or phone").fill(creds.email);
+  await page.getByLabel("Password").fill(creds.password);
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await page.waitForURL("/");
+}
+
+/** The gate cell for one action, read out of the permissions table. */
+function verdictFor(page: Page, action: string) {
+  return page.getByRole("row").filter({ hasText: action }).getByRole("cell").nth(1);
+}
+
+test.describe("gate-driven rendering", () => {
+  test.beforeEach(async ({ page }) => {
+    await signIn(page);
+  });
+
+  test("an allowed action reads as allowed", async ({ page }) => {
+    await expect(verdictFor(page, "people.person.read")).toHaveText("Allowed");
+    await expect(verdictFor(page, "finance.ledger.read")).toHaveText("Allowed");
+  });
+
+  test("a financial action on a password-only session asks for a stronger sign-in", async ({
+    page,
+  }) => {
+    // The fixture holds `tenant_admin`, which holds everything -- so this cell is not about the
+    // permission at all. `catalog.action_class` marks an unlock `financial`, which needs AAL 2,
+    // and the session opened with a password alone. "A grant is not a session", MOD-014's rule.
+    await expect(verdictFor(page, "devices.command.unlock")).toHaveText(
+      "Needs a stronger sign-in",
+    );
+  });
+
+  test("an AAL-3 action says it is unavailable rather than offering an impossible step-up", async ({
+    page,
+  }) => {
+    await expect(verdictFor(page, "support.session.start")).toHaveText(
+      "Not available in this build",
+    );
+  });
+
+  test("the permissions table has an accessible name and is not captioned twice", async ({
+    page,
+  }) => {
+    const table = page.getByRole("table");
+    await expect(table).toHaveAccessibleName("What this session may do");
+    // The heading said it and the caption repeated it, so a screen-reader user heard the
+    // sentence twice. `aria-labelledby` gives the table a name without the duplication.
+    await expect(page.getByText("What this session may do")).toHaveCount(1);
+  });
+
+  test("a permission name renders left-to-right even inside an Arabic document", async ({
+    page,
+  }) => {
+    await page.getByRole("button", { name: "العربية" }).click();
+    await expect(page.locator("html")).toHaveAttribute("dir", "rtl");
+
+    const action = page.getByText("people.person.read");
+    await expect(action).toBeVisible();
+    // Without an explicit direction the bidi algorithm reorders a dotted identifier inside RTL
+    // text, which is how `people.person.read` arrives on screen as something else.
+    await expect(action).toHaveAttribute("dir", "ltr");
+  });
+});
