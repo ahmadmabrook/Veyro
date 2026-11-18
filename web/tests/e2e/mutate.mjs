@@ -36,7 +36,7 @@ const MUTATIONS = [
     file: "src/app/login/login-form.tsx",
     from: "<form action={formAction} noValidate",
     to: '<form action="/login" method="get" noValidate',
-    grep: "the form is a POST",
+    grep: "the form is a POST|the served form is a POST",
   },
   {
     id: "session-httponly",

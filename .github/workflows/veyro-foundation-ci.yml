@@ -278,17 +278,20 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       # The EIP names a "localization/RTL resource + accessibility gate exercised in staging
-      # E2E". This is it: 30 tests including 8 axe runs over both locales and both themes on
-      # both pages, plus the no-JavaScript sign-in replay, which is the regression test for a
-      # form that once put a password in the address bar.
+      # E2E". This is it: axe over both locales and both themes on both pages, the gate's four
+      # answers, and the no-JavaScript sign-in replay -- the regression test for a form that
+      # once put a password in the address bar.
+      #
+      # **One command, because Playwright owns the web server's lifetime.** The replay was a
+      # separate `node` script at first; it passed locally against a dev server somebody had
+      # already started and failed here with ECONNREFUSED, since `webServer` shuts down when
+      # the run ends. It is a spec now, driving Playwright's request context, which is an HTTP
+      # client with no browser and no JavaScript -- the same thing the script did.
       - name: End-to-end, localization/RTL and accessibility gate
         working-directory: web
         env:
           VEYRO_API_ORIGIN: http://127.0.0.1:8000
-        run: |
-          set -eu
-          npm run e2e
-          npm run e2e:nojs
+        run: npm run e2e
 
       - name: Upload the trace on failure
         if: failure()

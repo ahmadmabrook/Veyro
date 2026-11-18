@@ -17,8 +17,7 @@ four layers of tests that have each been shown to fail when the thing they guard
 |---|---|---|---|
 | Foundation (`tests/unit/`) | Tokens, contrast, type, theme coverage, backend parity. No dependencies, no DOM. | 57 | `npm run test:foundation` |
 | Component (`tests/component/`) | Control semantics and the message catalogue, in jsdom. | 21 | `npm test` |
-| End-to-end (`tests/e2e/*.spec.ts`) | A real browser against a real backend, including 8 axe runs across both locales and both themes. | 30 | `npm run e2e` |
-| No-JavaScript (`tests/e2e/no-js-signin.mjs`) | Sign-in works with the client bundle absent, and no credential reaches a URL. | 8 checks | `npm run e2e:nojs` |
+| End-to-end (`tests/e2e/*.spec.ts`) | A real browser against a real backend, including 8 axe runs across both locales and both themes, and the no-JavaScript sign-in replay. | 32 | `npm run e2e` |
 | Mutation sweep (`tests/e2e/mutate.mjs`) | Each protection above, broken on purpose, is caught by the test that names it. | 12/12 | `npm run e2e:mutate` |
 
 ### Running it
@@ -59,7 +58,8 @@ between the two.** The dev-origin cause is fixed in `next.config.mjs`; the *shap
 else has happened is a control with a window, and here the window was every millisecond before
 hydration on every page load. A server action closes it structurally: without JavaScript the
 browser POSTs and the sign-in genuinely works, and there is no arrangement of failures that puts
-a credential anywhere but a request body. `npm run e2e:nojs` is what says so.
+a credential anywhere but a request body. `tests/e2e/no-js.spec.ts` is what says so: it drives Playwright's request context, which
+is an HTTP client with no browser and no JavaScript at all.
 
 **A `"use server"` module may export async functions and nothing else.** `SIGN_IN_IDLE` was a
 constant beside the action. It compiled, type-checked, built, and arrived at the client as
