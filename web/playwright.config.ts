@@ -38,7 +38,11 @@ export default defineConfig({
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: {
-    command: "npm run dev",
+    // In CI the suite drives the **production** build, which is what gets deployed: a dev
+    // server differs in bundling, error handling and caching, and a gate that only ever saw
+    // `next dev` is a gate that has not seen the artefact. Locally it reuses whatever dev
+    // server is already running, because that is the loop a developer is in.
+    command: process.env.CI ? "npm run start" : "npm run dev",
     url: "http://localhost:3000/login",
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,

@@ -14,10 +14,17 @@
  */
 
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 const repo = fileURLToPath(new URL("../../..", import.meta.url));
-const python = `${repo}/.venv/bin/python3`;
+
+// The repository's own virtualenv when it exists (a developer's machine), otherwise whatever
+// `python3` resolves to -- which is what a CI runner has after `setup-python`. Hard-coding the
+// venv path made this script work locally and fail on the runner with ENOENT, which reads as
+// "the backend did not start" rather than "the interpreter is somewhere else".
+const venv = `${repo}/.venv/bin/python3`;
+const python = existsSync(venv) ? venv : "python3";
 const dsn =
   process.env.VEYRO_DATABASE_URL ??
   "postgresql://postgres:veyro_dev@127.0.0.1:55432/veyro";
