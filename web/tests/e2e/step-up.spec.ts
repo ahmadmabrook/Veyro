@@ -2,7 +2,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 
 import { fixture } from "./fixture-env";
-import { signIn, useOwnerSession } from "./sign-in";
+import { signIn, useOwnerSession, useReaderSession } from "./sign-in";
 
 /**
  * Raising a session's assurance, in a real browser against the real MOD-007.
@@ -79,6 +79,15 @@ test.describe("the step-up surface", () => {
 
 
   test("a wrong code is refused without saying which thing was wrong", async ({ page }) => {
+    // **As the reader, not the owner, and the reason is a budget rather than a permission.**
+    // MOD-007 keeps a separate recovery lockout -- five failures and the identity's recovery
+    // path is shut -- and nothing resets it between runs. Spending one of the owner's slots
+    // per run means the suite breaks on the fifth run against one fixture, which is the same
+    // "green depends on how many times it has been run" shape the single-use recovery code
+    // had. The reader never completes a step-up, so its budget is nobody else's, and a locked
+    // identity answers the *same* refusal as a wrong code -- MOD-007 made every refusal here
+    // identical on purpose -- so the assertion stays true even once this one is spent.
+    await useReaderSession(page);
     await page.goto("/step-up?for=financial&next=/");
     await page.getByLabel("Recovery code").fill("not-one-of-the-ten");
     await page.getByRole("button", { name: "Confirm" }).click();

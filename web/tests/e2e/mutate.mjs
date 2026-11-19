@@ -295,6 +295,42 @@ const MUTATIONS = [
     grep: "is offered where the refusal is",
   },
   {
+    id: "perms-chain-caveat",
+    why: "a hash chain that reports verified with no caveat is the more misleading of its two "
+      + "answers: it detects editing, not truncation by somebody who moves the head",
+    file: "src/app/permissions/page.tsx",
+    from: "                {text(\"perms.chainCaveat\")}",
+    to: "                {\"\"}",
+    grep: "never without its caveat",
+  },
+  {
+    id: "perms-audit-gate",
+    why: "an empty audit table reads as 'nothing has been refused', which is a different fact "
+      + "from 'you may not see what has been'",
+    file: "src/app/permissions/page.tsx",
+    from: "        {!mayAudit.allowed ? (",
+    to: "        {false ? (",
+    grep: "refused each block",
+  },
+  {
+    id: "perms-permission-dir",
+    why: "a permission name is an identifier, and the bidi algorithm reorders it inside an "
+      + "Arabic page into a different string",
+    file: "src/app/permissions/page.tsx",
+    from: "                        <span className=\"data\" dir=\"ltr\">\n                          {entry.action}",
+    to: "                        <span className=\"data\">\n                          {entry.action}",
+    grep: "left-to-right inside an Arabic document",
+  },
+  {
+    id: "perms-grant-is-not-a-session",
+    why: "a permission listed is still refused when the action needs a stronger sign-in, which "
+      + "is MOD-014's 'a grant is not a session' finding on a page that lists grants",
+    file: "src/app/permissions/page.tsx",
+    from: "          {text(\"perms.mineLead\")}",
+    to: "          {\"\"}",
+    grep: "at the scope the server derived",
+  },
+  {
     id: "device-label-parity",
     why: "the fixture's device label must equal the app's, or every sign-in is challenged and "
       + "the suite spends a single-use recovery code per run",

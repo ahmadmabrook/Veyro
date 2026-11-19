@@ -12,17 +12,17 @@ Console (15).
 A running Next.js application: sign-in against MOD-007 including the device challenge it
 raises and a step-up that actually raises a session's assurance, an admin landing page whose
 every control's visibility comes from MOD-008's gate, a section navigation filtered by that
-same gate, MOD-004's organization hierarchy, MOD-014's duplicate queue and Member 360 with
-every masked field marked, MOD-022's door board and zone detail, Arabic/English with full RTL,
-a dark theme, and four layers of tests that have each been shown to fail when the thing they
-guard is removed.
+same gate, MOD-004's organization hierarchy, MOD-008's roles and audit chain, MOD-014's
+duplicate queue and Member 360 with every masked field marked, MOD-022's door board and zone
+detail, Arabic/English with full RTL, a dark theme, and four layers of tests that have each
+been shown to fail when the thing they guard is removed.
 
 | Layer | What it proves | Count | Command |
 |---|---|---|---|
 | Foundation (`tests/unit/`) | Tokens, contrast, type, theme coverage, backend parity. No dependencies, no DOM. | 57 | `npm run test:foundation` |
 | Component (`tests/component/`) | Control semantics, the message catalogue, the sign-in form's four states, the device-label parity, the hierarchy composer, the mask marker and the redirect guard, in jsdom. | 38 | `npm test` |
-| End-to-end (`tests/e2e/*.spec.ts`) | A real browser against a real backend, including 15 axe runs across both locales and both themes, the no-JavaScript sign-in replay, two surfaces driven as a session that may not read them, and a session raised from level 1 to level 2 for real. | 77 + 2 setup | `npm run e2e` |
-| Mutation sweep (`tests/e2e/mutate.mjs`) | Each protection above, broken on purpose, is caught by the test that names it. | 32/32 | `npm run e2e:mutate` |
+| End-to-end (`tests/e2e/*.spec.ts`) | A real browser against a real backend, including 17 axe runs across both locales and both themes, the no-JavaScript sign-in replay, three surfaces driven as a session that may not read them, and a session raised from level 1 to level 2 for real. | 86 + 2 setup | `npm run e2e` |
+| Mutation sweep (`tests/e2e/mutate.mjs`) | Each protection above, broken on purpose, is caught by the test that names it. | 36/36 | `npm run e2e:mutate` |
 
 ### Running it
 
@@ -215,6 +215,28 @@ client component reading `usePathname()`. The second is 15 lines and costs only 
 JavaScript is off; the links are anchors and work regardless, and the sign-in path, the one
 with credentials in it, has no client runtime at all.
 
+**Three times now a test has had a green that depends on how many times it has been run, and
+the shape is one rule.** MOD-007 and MOD-011 keep budgets per identity, and a test that spends
+one spends it for every later run against the same fixture:
+
+- a **single-use recovery code**, spent answering the device challenge -- green on the first run
+  against a fresh fixture and red on the second, fixed by having the fixture confirm the
+  device;
+- **thirty logins a minute**, spent by a `beforeEach` that signs in -- which put a cap on how
+  many tests the suite could contain, fixed by signing in twice per run and adopting the cookie;
+- **five recovery failures and the identity's recovery path is shut**, spent one per run by the
+  test that submits a wrong recovery code. Nothing resets it, so the fifth run locked the owner
+  and every step-up failed with "that was not accepted" -- for a code minted seconds earlier.
+
+The rule: **a test that consumes a product budget must consume one nobody else depends on, or
+provision its own.** The wrong-code test now spends the *reader's* recovery budget, which no
+other test needs, and it stays correct once that budget is gone because MOD-007 makes a locked
+refusal and a wrong code answer identically -- which is the same property the test is asserting.
+
+None of the three is visible in a single run. `npm run e2e` **twice in a row** is what finds
+them, and it is worth doing after any change to the fixture or to a test that presents a
+credential.
+
 **The step-up replaces the session cookie, and that is the whole flow in one sentence.**
 MOD-007 does not elevate a session in place: `_step_up_in_tx` revokes the one it came from with
 `revoke_reason = 'stepped_up'` and opens a new one, because a session's lifetime follows what it
@@ -292,6 +314,20 @@ only ever see the well-formed case. `composeTree` keeps an orphan and marks it r
 dropping it, because a site that vanishes from the only page listing sites is the worse
 failure, and `tests/component/organization-tree.test.ts` is what holds that.
 
+**A hash chain's green answer carries its caveat, or it is the more misleading of the two.**
+MOD-008's audit chain detects editing and not truncation by somebody who also moves the head,
+because every value the verifier compares lives in the database that actor already controls --
+found by tamper-testing rather than reasoned about afterwards. So the permissions page prints
+the caveat beside "the chain verifies" rather than under "it does not", and the mutation sweep
+deletes the caveat to prove the assertion bites.
+
+**And the log is described by what is in it.** The first version of that page said allowed
+actions are never recorded. They mostly are not -- there is no row saying somebody read a
+member's profile -- but MOD-008 records the acts that *hand out* access: a role created, a role
+granted, an approval decided. The fixture's own log shows `role.assigned` with outcome
+`recorded`, which is how the claim was caught. A surface that describes a log wrongly is worse
+than one that does not describe it.
+
 ## Findings raised against the sources
 
 **`ai.600`'s published contrast ratios do not match its published hex.** `ds.json`'s CONTRAST
@@ -307,10 +343,10 @@ other 8 of 9 tokens recompute to the printed hundredth on all three surfaces.
 
 ## What this does not yet cover
 
-- **Nine screens of a hundred and seventy.** `contracts/ui/screen-contracts.yaml` lists 170 V1
+- **Ten screens of a hundred and seventy.** `contracts/ui/screen-contracts.yaml` lists 170 V1
   screens across five surfaces; what exists is sign-in, an admin landing page, MOD-004's
   organization hierarchy, MOD-014's duplicate queue and Member 360, MOD-022's door board and
-  zone detail, and the step-up flow. The foundation, the controls, the gate wiring and the four test
+  zone detail, MOD-008's permissions page, and the step-up flow. The foundation, the controls, the gate wiring and the four test
   layers are built to carry the rest, and the per-module work is wiring each one's gate, its
   masked fields and its failure states the way MOD-022's are.
 - **`color.action.pressed` has no dark value**, declared in `ds.json`'s `DARK_GAPS`. The source

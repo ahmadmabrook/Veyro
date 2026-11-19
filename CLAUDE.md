@@ -3175,7 +3175,8 @@ identity-class fields on a member's record readable; English and Arabic
 with real RTL, switched by a form rather than an `onChange`; a light and dark theme; a section
 navigation whose every entry is present exactly when the gate allows the page behind it;
 MOD-004's hierarchy -- the organization, its brands, its sites with the timezone MOD-019 reads
-every rota window in, and the legal entity MOD-017 numbers invoices per; MOD-014's duplicate
+every rota window in, and the legal entity MOD-017 numbers invoices per; MOD-008's roles, the
+permissions this session actually holds and the hash-chained audit log; MOD-014's duplicate
 queue and Member 360; and MOD-022's door board and zone detail, which read the real routes and
 render the public code, the policy terms, the advisory occupancy with paragraph 4180's
 disclaimer, the access points, the gaps the module discloses about itself and the decision log
@@ -3193,6 +3194,15 @@ Offering a step-up for the second would send somebody looking for a hardware key
 cannot verify. The fixture's browser session is assurance level 1, which is the useful level to
 test at: `contact` opens on a routine permission and `identity` needs a financial one, so one
 record shows a masked legal name beside an unmasked email address.
+
+**The permissions page is where a surface had to be stopped from making a true-sounding
+claim.** MOD-008's chain detects editing and not truncation by somebody who also moves the
+head, so the page prints that caveat beside the *green* answer rather than under the red one --
+a tick with no caveat is the more misleading of the two. And the first version of the page said
+allowed actions are never recorded; they mostly are not, but MOD-008 records the acts that hand
+out access, and the fixture's own log shows `role.assigned` with outcome `recorded`. A surface
+that describes a log wrongly is worse than one that does not describe it, and the data is what
+caught it.
 
 **The step-up is where the web app meets MOD-007's own shape most directly.** MOD-007 does not
 elevate a session in place: it revokes the one it came from with `revoke_reason = 'stepped_up'`
@@ -3241,14 +3251,23 @@ How it is proved, in four layers that answer different questions:
   goes red. A green browser suite proves nothing about a page nobody asserted, and this is
   what found a test that passed with the recovery-code field deleted.
 
-**Two things about the suite itself are worth carrying forward.** It signs in twice per run
-rather than once per test, because MOD-011's limiter allows 30 logins a minute per subject --
-so a `beforeEach` that signs in caps how many tests the suite may contain, and it hit that cap
-at 53 with a failure that read as a timeout rather than as a refusal. And `tsconfig.json`
-excluded `tests/e2e`, so the only TypeScript in the repository nobody typechecked was the
-suite that drives the product: a spec calling a helper it had not imported passed
-`npm run typecheck`. Both are the same shape as a vacuous test -- a check that cannot run, or
-cannot grow.
+**Three things about the suite itself are worth carrying forward, and two of them are one
+rule.** `tsconfig.json` excluded `tests/e2e`, so the only TypeScript in the repository nobody
+typechecked was the suite that drives the product: a spec calling a helper it had not imported
+passed `npm run typecheck`. That is a check that cannot run, which is the same shape as a
+vacuous test.
+
+The other two are the same mistake twice, and a third instance made the pattern clear: **a
+test that spends a budget the product keeps per identity has a green that depends on how many
+times it has been run.** A single-use recovery code, spent answering the device challenge, was
+green on the first run against a fresh fixture and red on the second. Thirty logins a minute,
+spent by a `beforeEach`, put a cap on how many tests the suite could contain and it hit that
+cap at 53. And five recovery failures lock an identity's recovery path with nothing to reset
+it, so the test that submits a wrong recovery code spent one of the owner's five per run --
+and on the fifth run every step-up failed with "that was not accepted", for a code minted
+seconds earlier. **The rule: a test that consumes a product budget must consume one nobody
+else depends on, or provision its own.** None of the three is visible in a single run; running
+the browser suite twice in a row is what finds them.
 
 Both jobs run in CI (`.github/workflows/veyro-foundation-ci.yml`), and the web job builds the
 database, starts the backend, installs Chromium and runs the browser suite rather than
@@ -3262,8 +3281,8 @@ has, which is the same shape as a test that passes vacuously. The flat config in
 `web/eslint.config.mjs` is the migration; its first run found four unused imports and
 variables, and it is in `npm run verify` and in the CI job now.
 
-Known gaps: the surface covers the sign-in, the step-up, MOD-004, MOD-014 and MOD-022. The
-other fifteen implemented modules have no screens yet, which is the bulk of the remaining work;
+Known gaps: the surface covers the sign-in, the step-up, MOD-004, MOD-008, MOD-014 and
+MOD-022. The other fourteen implemented modules have no screens yet, which is the bulk of the remaining work;
 a step-up spends a recovery code and there is no screen for reissuing a batch, because TOTP and
 passkeys are implemented and unverifiable here so a recovery code is the only second factor;
 every `tenancy.*.write` is a stepped-up
@@ -3279,7 +3298,7 @@ is part of it. So "implemented" above is accurate about the server plane and inc
 the product for every module except MOD-022, and the backlog has two halves.
 
 The first is the screens the eighteen built modules do not have. `web/` covers the sign-in, the
-step-up, MOD-004, MOD-014 and MOD-022; `contracts/ui/screen-contracts.yaml` names the rest, and
+step-up, MOD-004, MOD-008, MOD-014 and MOD-022; `contracts/ui/screen-contracts.yaml` names the rest, and
 the work is per module rather than per screen because each one needs its gate, its masked
 fields and its failure states wired the way those are. The second is the modules themselves: MOD-023 (Coach Workspace, which
 needs MOD-014 and MOD-008, both built) is the next eligible one, and MOD-006 is the Compose
