@@ -11,16 +11,17 @@ Console (15).
 
 A running Next.js application: sign-in against MOD-007 including the device challenge it
 raises, an admin landing page whose every control's visibility comes from MOD-008's gate, a
-section navigation filtered by that same gate, MOD-004's organization hierarchy, MOD-022's
-door board and zone detail, Arabic/English with full RTL, a dark theme, and four layers of
-tests that have each been shown to fail when the thing they guard is removed.
+section navigation filtered by that same gate, MOD-004's organization hierarchy, MOD-014's
+duplicate queue and Member 360 with every masked field marked, MOD-022's door board and zone
+detail, Arabic/English with full RTL, a dark theme, and four layers of tests that have each
+been shown to fail when the thing they guard is removed.
 
 | Layer | What it proves | Count | Command |
 |---|---|---|---|
 | Foundation (`tests/unit/`) | Tokens, contrast, type, theme coverage, backend parity. No dependencies, no DOM. | 57 | `npm run test:foundation` |
-| Component (`tests/component/`) | Control semantics, the message catalogue, the sign-in form's four states, the device-label parity and the hierarchy composer, in jsdom. | 31 | `npm test` |
-| End-to-end (`tests/e2e/*.spec.ts`) | A real browser against a real backend, including 12 axe runs across both locales and both themes, the no-JavaScript sign-in replay, and a surface driven as a session that may not read it. | 53 + 2 setup | `npm run e2e` |
-| Mutation sweep (`tests/e2e/mutate.mjs`) | Each protection above, broken on purpose, is caught by the test that names it. | 22/22 | `npm run e2e:mutate` |
+| Component (`tests/component/`) | Control semantics, the message catalogue, the sign-in form's four states, the device-label parity, the hierarchy composer and the mask marker, in jsdom. | 34 | `npm test` |
+| End-to-end (`tests/e2e/*.spec.ts`) | A real browser against a real backend, including 14 axe runs across both locales and both themes, the no-JavaScript sign-in replay, and two surfaces driven as a session that may not read them. | 68 + 2 setup | `npm run e2e` |
+| Mutation sweep (`tests/e2e/mutate.mjs`) | Each protection above, broken on purpose, is caught by the test that names it. | 27/27 | `npm run e2e:mutate` |
 
 ### Running it
 
@@ -213,6 +214,30 @@ client component reading `usePathname()`. The second is 15 lines and costs only 
 JavaScript is off; the links are anchors and work regardless, and the sign-in path, the one
 with credentials in it, has no client runtime at all.
 
+**A withheld value is marked, and the marker carries which of two reasons it is.** MOD-014 is
+the only module whose read path applies `Decision.mask`, and it replaces a field the caller may
+not read with `"***"` at every depth. Its own rule is that a redacted record still exists --
+telling a coach a member has no health notes when they have three is worse than telling them
+there are three they cannot read -- so the surface renders withheld rather than blank, with a
+dashed border rather than a colour (WCAG 1.4.1), and names the reason: an identity field needs
+a stronger sign-in, and a health field **cannot be read by anybody in this build**, because
+`member.health.read` is `biometric_sensitive`, which is assurance level 3, which needs a
+hardware authenticator MOD-007 cannot verify. Offering a step-up for the second would send
+somebody looking for a key the product cannot check.
+
+The fixture signs in with a password, so the session is assurance level 1 -- which is the
+useful level to test at: `contact` opens on a routine permission and `identity` needs a
+financial one, so one record shows a masked legal name beside an unmasked email address, and a
+surface that masked everything or nothing would pass a test that only looked at one of them.
+
+**Two of these mutations were uncaught the first time and the reason generalises.** A health
+note and a health custom field are separate code with separate tests, and the first version of
+the field assertion scoped to the section and took the last marker in it -- which a marker
+belonging to a different field also satisfies. The mutation that pointed a health field at the
+step-up message passed. Scoping to the `dl` that holds the field, asserting the marker count is
+one, and asserting the reason it does *not* carry is what catches it. That is this
+repository's "two controls refuse the same row" trap, in a browser.
+
 **The suite signs in twice per run, and that is a rate-limit fix rather than a speed one.**
 MOD-011's limiter allows 30 logins per minute per subject -- a real product control, bounding
 the volume MOD-007's lockout cannot see -- and a `beforeEach` that signs in puts a hard cap on
@@ -251,9 +276,10 @@ other 8 of 9 tokens recompute to the printed hundredth on all three surfaces.
 
 ## What this does not yet cover
 
-- **Six screens of a hundred and seventy.** `contracts/ui/screen-contracts.yaml` lists 170 V1
+- **Eight screens of a hundred and seventy.** `contracts/ui/screen-contracts.yaml` lists 170 V1
   screens across five surfaces; what exists is sign-in, an admin landing page, MOD-004's
-  organization hierarchy and MOD-022's door board and zone detail. The foundation, the controls, the gate wiring and the four test
+  organization hierarchy, MOD-014's duplicate queue and Member 360, and MOD-022's door board
+  and zone detail. The foundation, the controls, the gate wiring and the four test
   layers are built to carry the rest, and the per-module work is wiring each one's gate, its
   masked fields and its failure states the way MOD-022's are.
 - **`color.action.pressed` has no dark value**, declared in `ds.json`'s `DARK_GAPS`. The source
@@ -286,7 +312,11 @@ other 8 of 9 tokens recompute to the printed hundredth on all three surfaces.
   the backend, installs Chromium and runs the browser suite against the real API. A mocked
   backend would have passed every one of the defects the real one caught, which is why the job
   is slow on purpose.
-- **The access surfaces are read-only.** MOD-022's writes — declaring a zone, commissioning a
+- **There is no step-up form.** MOD-007 has `/auth/step-up` and the identity-class fields on a
+  member's record need assurance level 2, so the Member 360 tells a level-1 reader that a
+  stronger sign-in would reveal them and offers no way to do it. The form needs a recovery code
+  or a verified factor, which is a real flow rather than a button.
+- **The people and access surfaces are read-only.** MOD-022's writes — declaring a zone, commissioning a
   point, publishing a policy, issuing a credential, ordering an emergency release — all have
   routes and none has a form yet. The two that need the most care are the two with a second
   actor: publishing a policy and reviewing a release.

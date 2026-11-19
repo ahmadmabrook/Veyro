@@ -23,6 +23,8 @@ export type Fixture = {
   recoveryCode: string;
   zoneId: string;
   pointId: string;
+  /** The seeded member: a tag, a contact point, two notes and a health custom field. */
+  personId: string;
   /**
    * A second identity holding `access.zone.read` and **not**
    * `tenancy.organization.read` -- the one the gated-navigation tests need, because the
@@ -70,6 +72,7 @@ export function fixture(): Fixture {
     "VEYRO_E2E_RECOVERY_CODE",
     "VEYRO_E2E_ZONE_ID",
     "VEYRO_E2E_POINT_ID",
+    "VEYRO_E2E_PERSON_ID",
     "VEYRO_E2E_READER_EMAIL",
     "VEYRO_E2E_READER_PASSWORD",
   ] as const;
@@ -84,6 +87,7 @@ export function fixture(): Fixture {
     recoveryCode: env.VEYRO_E2E_RECOVERY_CODE!,
     zoneId: env.VEYRO_E2E_ZONE_ID!,
     pointId: env.VEYRO_E2E_POINT_ID!,
+    personId: env.VEYRO_E2E_PERSON_ID!,
     readerEmail: env.VEYRO_E2E_READER_EMAIL!,
     readerPassword: env.VEYRO_E2E_READER_PASSWORD!,
   };

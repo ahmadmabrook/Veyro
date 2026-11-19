@@ -35,8 +35,9 @@ export default async function RootLayout({
   const session = await currentSession();
   let items: NavItem[] = [];
   if (session) {
-    const [organization, access] = await Promise.all([
+    const [organization, people, access] = await Promise.all([
       gate("tenancy.organization.read"),
+      gate("people.person.read"),
       gate("access.zone.read"),
     ]);
     items = [
@@ -44,6 +45,7 @@ export default async function RootLayout({
       // needs no permission beyond having signed in.
       { href: "/", label: "nav.overview", allowed: true },
       { href: "/organization", label: "nav.organization", allowed: organization.allowed },
+      { href: "/people", label: "nav.people", allowed: people.allowed },
       { href: "/access", label: "nav.access", allowed: access.allowed },
     ];
   }

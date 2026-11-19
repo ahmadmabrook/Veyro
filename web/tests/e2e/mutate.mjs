@@ -209,6 +209,48 @@ const MUTATIONS = [
     grep: "parent is missing",
   },
   {
+    id: "member-mask-blank",
+    why: "a withheld field must be marked, because a blank reads as 'there was nothing here'",
+    file: "src/components/withheld.tsx",
+    from: "        {t(locale, \"member.withheld\")}",
+    to: "        {\"\"}",
+    grep: "marks a masked identity field as withheld",
+  },
+  {
+    id: "member-health-remedy",
+    why: "a health field needs AAL 3, which nothing in this build reaches, so offering a "
+      + "step-up would send somebody looking for a key the product cannot check",
+    file: "src/app/people/[personId]/page.tsx",
+    from: "                      ? \"member.withheldHealth\"\n                      : \"member.withheldIdentity\"",
+    to: "                      ? \"member.withheldIdentity\"\n                      : \"member.withheldIdentity\"",
+    grep: "cannot be read by anybody",
+  },
+  {
+    id: "note-health-remedy",
+    why: "a health note's body is unreadable by anybody in this build, like the field, and "
+      + "the two branches are separate code with separate tests",
+    file: "src/app/people/[personId]/page.tsx",
+    from: "            ? \"member.withheldHealth\"\n            : \"member.withheldIdentity\"",
+    to: "            ? \"member.withheldIdentity\"\n            : \"member.withheldIdentity\"",
+    grep: "keeps a health note visible as a note",
+  },
+  {
+    id: "member-sections-dropped",
+    why: "a section with no module behind it must be named, not rendered as an empty list",
+    file: "src/lib/people.ts",
+    from: "    unavailable: entries\n      .filter(([, source]) => source.startsWith(\"unavailable:\"))",
+    to: "    unavailable: ([] as [string, string][])\n      .filter(([, source]) => source.startsWith(\"unavailable:\"))",
+    grep: "names the sections no module in this build can answer",
+  },
+  {
+    id: "dedup-score-alone",
+    why: "a duplicate score with no signals behind it is not something to destroy a record on",
+    file: "src/app/people/page.tsx",
+    from: "                    {candidate.signals.join(\", \")}",
+    to: "                    {\"\"}",
+    grep: "score and the signals behind it",
+  },
+  {
     id: "device-label-parity",
     why: "the fixture's device label must equal the app's, or every sign-in is challenged and "
       + "the suite spends a single-use recovery code per run",

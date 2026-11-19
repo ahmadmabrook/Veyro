@@ -211,3 +211,33 @@ a {
   border-block-end-color: var(--color-action-default);
   font-weight: var(--type-label-weight);
 }
+
+/**
+ * A withheld value, and text only a screen reader gets.
+ *
+ * **The dashed border is the distinction, not the colour.** WCAG 1.4.1: colour alone is not a
+ * way to tell two things apart, and the two things here are "withheld" and "empty" -- which is
+ * exactly the pair MOD-014's "a redacted record still exists" is about.
+ */
+.withheld {
+  display: inline-block;
+  padding: 0 var(--space-1);
+  border: 1px dashed var(--color-border-strong);
+  border-radius: var(--radius-button);
+  color: var(--color-text-secondary);
+  font-size: var(--type-caption-size);
+}
+
+/* Visible to assistive technology and to nobody else. Not `display: none`, which removes it
+   from the accessibility tree as well. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}

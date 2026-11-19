@@ -384,6 +384,67 @@ async function seedAccess(tenantId, token, ownerEmail) {
     method: "POST", ...as(token),
     body: { legal_name: "Jane Member", correlation_id: cid() },
   });
+  // **A person with something to show, and something to withhold.** MOD-014's masking is the
+  // one place in the build where `Decision.mask` reaches a read path, and a surface cannot be
+  // shown to apply it against a record with nothing classified: `health` maps to AAL 3, which
+  // needs a hardware factor MOD-007 cannot verify, so a health note and a health custom field
+  // are masked for *every* caller. Both are seeded, beside an ordinary note and an ordinary
+  // tag, so a test can tell "withheld" from "absent".
+  await call(`/people/${person.person_id}/member-profile`, {
+    method: "POST", ...as(token),
+    body: { correlation_id: cid(), lifecycle_state: "lead", member_number: "M-00042" },
+  });
+  await call(`/people/${person.person_id}/contacts`, {
+    method: "POST", ...as(token),
+    body: { kind: "email", value: "jane.member@veyro.test", is_primary: true,
+            correlation_id: cid() },
+  });
+  const tag = await call("/people/tags", {
+    method: "POST", ...as(token),
+    body: { tag_key: "vip", display_name: "VIP", correlation_id: cid() },
+  });
+  await call(`/people/${person.person_id}/tags`, {
+    method: "POST", ...as(token),
+    body: { tag_id: tag.tag_id, correlation_id: cid() },
+  });
+  await call("/people/custom-fields", {
+    method: "POST", ...as(token),
+    body: { field_key: "injury_history", display_name: "Injury history",
+            value_type: "text", sensitivity: "health", correlation_id: cid() },
+  });
+  await call(`/people/${person.person_id}/custom-fields`, {
+    method: "PUT", ...as(token),
+    body: { field_key: "injury_history", value: "left knee, 2025",
+            correlation_id: cid() },
+  });
+  await call(`/people/${person.person_id}/notes`, {
+    method: "POST", ...as(token),
+    body: { body: "Prefers the 7am class.", note_class: "general",
+            correlation_id: cid() },
+  });
+  await call(`/people/${person.person_id}/notes`, {
+    method: "POST", ...as(token),
+    body: { body: "Cleared for training by her physiotherapist.", note_class: "health",
+            correlation_id: cid() },
+  });
+
+  // **A near-duplicate and a projected timeline, because both are empty until something
+  // runs.** MOD-014 projects the timeline from MOD-010's outbox when somebody calls it --
+  // the thirteenth module waiting on a worker runtime -- and the duplicate detector scores a
+  // person against everybody sharing an exact signal. A surface built against the unseeded
+  // version would be a page of empty states, which proves nothing about the populated one.
+  const twin = await call("/people", {
+    method: "POST", ...as(token),
+    body: { legal_name: "Jane Member", correlation_id: cid(),
+            contacts: [{ kind: "email", value: "jane.member@veyro.test", is_primary: true }] },
+  });
+  const candidates = await call(`/people/${twin.person_id}/duplicates`, {
+    method: "POST", ...as(token), body: { correlation_id: cid() },
+  });
+  await call("/people/timeline/project", {
+    method: "POST", ...as(token), body: { correlation_id: cid() },
+  });
+
   const credentialValue = `CARD-${randomUUID().slice(0, 12).toUpperCase()}`;
   const credential = await call("/access/credentials", {
     method: "POST", ...as(token),
@@ -404,6 +465,8 @@ async function seedAccess(tenantId, token, ownerEmail) {
   });
 
   return {
+    duplicateCandidates: candidates.length,
+    twinPersonId: twin.person_id,
     publisherEmail: secondEmail,
     publisherPassword: secondPassword,
     locationId: location.location_id,
@@ -434,6 +497,7 @@ if (invokedDirectly) {
       `VEYRO_E2E_RECOVERY_CODE=${fixture.recoveryCode}`,
       `VEYRO_E2E_ZONE_ID=${fixture.zoneId}`,
       `VEYRO_E2E_POINT_ID=${fixture.pointId}`,
+      `VEYRO_E2E_PERSON_ID=${fixture.personId}`,
       `VEYRO_E2E_READER_EMAIL=${fixture.publisherEmail}`,
       `VEYRO_E2E_READER_PASSWORD=${fixture.publisherPassword}`,
       "",

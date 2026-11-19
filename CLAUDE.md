@@ -3173,10 +3173,24 @@ same form, with the password field *removed* once a challenge is in flight; Engl
 with real RTL, switched by a form rather than an `onChange`; a light and dark theme; a section
 navigation whose every entry is present exactly when the gate allows the page behind it;
 MOD-004's hierarchy -- the organization, its brands, its sites with the timezone MOD-019 reads
-every rota window in, and the legal entity MOD-017 numbers invoices per; and MOD-022's door
-board and zone detail, which read the real routes and render the public code, the policy
-terms, the advisory occupancy with paragraph 4180's disclaimer, the access points, the gaps
-the module discloses about itself and the decision log with its public/private split.
+every rota window in, and the legal entity MOD-017 numbers invoices per; MOD-014's duplicate
+queue and Member 360; and MOD-022's door board and zone detail, which read the real routes and
+render the public code, the policy terms, the advisory occupancy with paragraph 4180's
+disclaimer, the access points, the gaps the module discloses about itself and the decision log
+with its public/private split.
+
+**The Member 360 is where `Decision.mask` finally reaches a reader.** MOD-008 computed
+`masked_fields` on every allowed decision and from MOD-008 to MOD-013 nothing read it; MOD-014
+applies it, and until this surface existed nothing *rendered* it. A page that dropped a masked
+value would undo the application silently, because an empty cell is indistinguishable from
+"there was nothing here" -- which is the one reading that is always wrong, and MOD-014's own
+rule is that a redacted record still exists. So a withheld value is marked, with a dashed
+border rather than a colour, and the marker names which of two reasons it is: an identity field
+needs a stronger sign-in, and a health field cannot be read by anybody in this build.
+Offering a step-up for the second would send somebody looking for a hardware key MOD-007
+cannot verify. The fixture's browser session is assurance level 1, which is the useful level to
+test at: `contact` opens on a routine permission and `identity` needs a financial one, so one
+record shows a masked legal name beside an unmasked email address.
 
 **The navigation is the first surface with a test that needs a weaker session.** The fixture's
 owner holds all 202 permissions, so signing in as the owner proves only the allowed half of any
@@ -3227,11 +3241,13 @@ has, which is the same shape as a test that passes vacuously. The flat config in
 `web/eslint.config.mjs` is the migration; its first run found four unused imports and
 variables, and it is in `npm run verify` and in the CI job now.
 
-Known gaps: the surface covers the sign-in, MOD-004 and MOD-022. The other sixteen implemented
-modules have no screens yet, which is the bulk of the remaining work; every `tenancy.*.write`
-is a stepped-up financial permission and none of those forms is built, so the hierarchy is
-read-only; there is no mobile client and no edge agent; and nothing here is deployed anywhere,
-which is deliberate while the platform plane is unauthenticated.
+Known gaps: the surface covers the sign-in, MOD-004, MOD-014 and MOD-022. The other fifteen
+implemented modules have no screens yet, which is the bulk of the remaining work; **there is no
+step-up form**, so the identity-class fields on a member's record are withheld from a
+level-1 reader with no way to raise the session; every `tenancy.*.write` is a stepped-up
+financial permission and none of those forms is built, so the hierarchy and the people surfaces
+are read-only; there is no mobile client and no edge agent; and nothing here is deployed
+anywhere, which is deliberate while the platform plane is unauthenticated.
 
 
 **Next.** The standard for a finished module is now the whole stack, not the backend: owner
