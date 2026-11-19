@@ -308,7 +308,13 @@ async function seedAccess(tenantId, token, ownerEmail) {
     method: "POST", ...as(token),
     body: {
       role_key: `publisher_${Date.now()}`, display_name: "Publisher",
-      permissions: ["devices.type.publish", "access.policy.publish", "access.zone.read"],
+      // **`scheduling.schedule.read` without `scheduling.session.change`** is the pair that
+      // makes MOD-019's masked reason provable: this session can read the board and cannot
+      // record a change, so the reason on a substitution arrives withheld. The owner holds
+      // both and so can only ever prove the unmasked half -- the same reason this identity
+      // exists at all.
+      permissions: ["devices.type.publish", "access.policy.publish", "access.zone.read",
+                    "scheduling.schedule.read"],
       correlation_id: cid(),
     },
   });
@@ -489,7 +495,16 @@ async function seedAccess(tenantId, token, ownerEmail) {
 
   const person = await call("/people", {
     method: "POST", ...as(token),
-    body: { legal_name: "Jane Member", correlation_id: cid() },
+    body: {
+      legal_name: "Jane Member", correlation_id: cid(),
+      // **A birth date, because MOD-019 derives an age rather than accepting one.** The
+      // schedule template below carries a `min_age` restriction and `take_hold` reads
+      // `ppl_persons.date_of_birth` to answer it -- a reviewer put a fourteen-year-old in an
+      // 18+ class by sending an age, which is why the column is the only source. It is an
+      // `identity`-class field, so it is masked on the Member 360 at AAL 1 like the legal
+      // name beside it.
+      date_of_birth: "1994-05-20",
+    },
   });
   // **A person with something to show, and something to withhold.** MOD-014's masking is the
   // one place in the build where `Decision.mask` reaches a read path, and a surface cannot be
@@ -568,6 +583,126 @@ async function seedAccess(tenantId, token, ownerEmail) {
     },
   });
 
+  // ---------------------------------------------------------------- MOD-019, a schedule
+  //
+  // **A class is five rows before it is a class**: the service it is, the people and the room
+  // it needs, the rota those people work, the rule that says when it recurs, and the
+  // occurrences generated from that rule. The board is only worth looking at once all five
+  // exist, which is why the fixture builds the whole chain rather than a session row.
+  const serviceResource = await call("/scheduling/resources", {
+    method: "POST", ...as(token),
+    body: { resource_code: "YOGA-FLOW", resource_kind: "service",
+            display_name: "Yoga flow", location_id: location.location_id,
+            correlation_id: cid() },
+  });
+  const instructor = await call("/scheduling/resources", {
+    method: "POST", ...as(token),
+    body: { resource_code: "COACH-1", resource_kind: "staff",
+            display_name: "Dana Coach", location_id: location.location_id,
+            correlation_id: cid() },
+  });
+  const studio = await call("/scheduling/resources", {
+    method: "POST", ...as(token),
+    body: { resource_code: "STUDIO-A", resource_kind: "room",
+            display_name: "Studio A", location_id: location.location_id,
+            correlation_id: cid() },
+  });
+  // **A resource with no rota is unconstrained; one with a weekly rota is bound every day.**
+  // So the instructor gets every weekday, which is what makes a generation over a week
+  // succeed rather than fail on availability for six of seven days.
+  for (let weekday = 0; weekday < 7; weekday += 1) {
+    await call("/scheduling/availability", {
+      method: "POST", ...as(token),
+      body: { resource_id: instructor.resource_id, window_kind: "working",
+              starts_at: "06:00", ends_at: "22:00", weekday, correlation_id: cid() },
+    });
+  }
+
+  const today = new Date();
+  const isoDay = (offset) =>
+    new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate() + offset))
+      .toISOString()
+      .slice(0, 10);
+
+  const template = await call("/scheduling/templates", {
+    method: "POST", ...as(token),
+    body: {
+      template_code: "YOGA-EVE", display_name: "Evening yoga flow",
+      service_resource_id: serviceResource.resource_id,
+      location_id: location.location_id,
+      rule: { frequency: "daily", local_time: "18:00", duration_minutes: 60,
+              starts_on: isoDay(0), until: isoDay(6) },
+      policy: { capacity: 12, setup_minutes: 10, cleanup_minutes: 10, waitlist_capacity: 4 },
+      requirements: [
+        { kind: "staff", quantity: 1, resource_id: instructor.resource_id },
+        { kind: "room", quantity: 1, resource_id: studio.resource_id },
+      ],
+      restrictions: [{ kind: "min_age", value: "16" }],
+      correlation_id: cid(),
+    },
+  });
+  // **Drafting and publishing are two acts**, and a draft generates nothing: `publish` is what
+  // makes the rule live, and `sessions` is what turns the live rule into occurrences.
+  await call(`/scheduling/templates/${template.template_id}/publish`, {
+    method: "POST", ...as(token),
+    body: { effective_from: isoDay(0), correlation_id: cid() },
+  });
+  const generated = await call(`/scheduling/templates/${template.template_id}/sessions`, {
+    method: "POST", ...as(token), body: { correlation_id: cid() },
+  });
+
+  // **A substitution, so a session has a change with a reason on it.** Without one the
+  // session page's `What changed` block is always the empty case, and the masked reason --
+  // the control MOD-019's review added after a reviewer read a health fact out of that
+  // column -- has nothing to mask. The reason here is deliberately ordinary prose: the point
+  // is who may read it, not what it says.
+  const standIn = await call("/scheduling/resources", {
+    method: "POST", ...as(token),
+    body: { resource_code: "COACH-2", resource_kind: "staff",
+            display_name: "Sami Stand-in", location_id: location.location_id,
+            correlation_id: cid() },
+  });
+  for (let weekday = 0; weekday < 7; weekday += 1) {
+    await call("/scheduling/availability", {
+      method: "POST", ...as(token),
+      body: { resource_id: standIn.resource_id, window_kind: "working",
+              starts_at: "06:00", ends_at: "22:00", weekday, correlation_id: cid() },
+    });
+  }
+  const substituted = generated.sessions?.[0]?.session_id ?? null;
+  if (substituted !== null) {
+    await call(`/scheduling/sessions/${substituted}/substitute`, {
+      method: "POST", ...as(token),
+      body: { replacement_resource_id: standIn.resource_id,
+              reason: "the usual instructor is away", correlation_id: cid() },
+    });
+  }
+
+  // ---------------------------------------------------------------- MOD-020, a booking
+  //
+  // **A booking needs a policy version, and the policy is what the booking snapshots.** What a
+  // member owes for cancelling late is decided months later and has to be decided on the terms
+  // they agreed to, so retiring a policy stops the next sale and changes nothing about the
+  // last. One version here, so a roster has something on it.
+  await call("/booking/policies", {
+    method: "POST", ...as(token),
+    body: { policy_key: "CLASSES", display_name: "Class bookings",
+            cancellation_hours: 12, max_concurrent: 5, quota: 10,
+            quota_period: "rolling_7_days", correlation_id: cid() },
+  });
+  // **The second occurrence, not the first.** The rule starts today, so the first occurrence
+  // is in the past for most of the day and MOD-020 refuses it with `window_closed` -- which is
+  // the correct refusal and not one a fixture should be arguing with. Tomorrow's occurrence is
+  // in the future whatever time this runs at.
+  const bookable = generated.sessions?.[1]?.session_id ?? null;
+  const booking = bookable === null ? null : await call(
+    `/booking/sessions/${bookable}/bookings`,
+    { method: "POST", ...as(token),
+      body: { person_id: person.person_id, policy_key: "CLASSES",
+              source_kind: "front_desk", idempotency_key: randomUUID(),
+              correlation_id: cid() } },
+  );
+
   // **A consumer the relay can route to.** Without one the outbox is fanned out to nobody and
   // the operations board has no deliveries to show -- which hides the half of that screen
   // that is still a standing gap: a delivery is created and never handled, because no name in
@@ -583,6 +718,13 @@ async function seedAccess(tenantId, token, ownerEmail) {
   const tick = runWorkerTick(tenantId);
 
   return {
+    templateId: template.template_id,
+    sessionsGenerated: generated.created,
+    firstSessionId: substituted,
+    standInResourceId: standIn.resource_id,
+    bookingId: booking?.booking_id ?? null,
+    bookedSessionId: bookable,
+    instructorResourceId: instructor.resource_id,
     workerRuns: tick.runs,
     workerFailed: tick.failed,
     deviceId: device.device_id,
@@ -624,6 +766,9 @@ if (invokedDirectly) {
       `VEYRO_E2E_PENDING_DEVICE_ID=${fixture.pendingDeviceId}`,
       `VEYRO_E2E_READER_EMAIL=${fixture.publisherEmail}`,
       `VEYRO_E2E_READER_PASSWORD=${fixture.publisherPassword}`,
+      `VEYRO_E2E_LOCATION_ID=${fixture.locationId}`,
+      `VEYRO_E2E_SESSION_ID=${fixture.firstSessionId}`,
+      `VEYRO_E2E_BOOKED_SESSION_ID=${fixture.bookedSessionId}`,
       "",
     ].join("\n"),
     { mode: 0o600 },
@@ -636,6 +781,8 @@ if (invokedDirectly) {
   console.log(`permissions ${fixture.permissions}`);
   console.log(`zone        ${fixture.zoneId}`);
   console.log(`decision    ${fixture.decisionCode}`);
+  console.log(`schedule    ${fixture.sessionsGenerated} sessions from one template`);
+  console.log(`booking     ${fixture.bookingId === null ? "none" : "one on tomorrow's class"}`);
   console.log(`worker      ${fixture.workerRuns} runs, ${fixture.workerFailed} failed`);
   console.log(`credentials written to web/.env.e2e.local (mode 600)`);
 }

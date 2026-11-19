@@ -2599,6 +2599,11 @@ Known gaps, deliberate:
   is a person's own name and *is* cleared, because the row says which person it is.
 - **The timeline does not know about any of this.** MOD-014 projects nine event types and none
   of MOD-019's five is among them, so a member's timeline shows no class they were booked into.
+- **The surface is read-only.** `web/` renders the calendar and one session -- see "The web
+  app" -- and every write here is a form that does not exist: publishing a schedule,
+  generating occurrences, substituting an instructor, cancelling and relocating. Each is a
+  stepped-up permission, which is the same reason the hierarchy surface is read-only, and the
+  step-up flow that would carry them is built.
 
 **MOD-020 (OPS-02 booking, waitlist, attendance and appeals) -- implemented, gated and
 reviewed.** Seven `bkg_` tables in `plt01` under the same forced RLS, nine trigger functions,
@@ -2806,6 +2811,10 @@ Known gaps, deliberate:
 - **The timeline does not know about any of this.** MOD-014 projects nine event types and none
   of MOD-020's seven is among them, so a member's timeline shows no class they booked.
 - **Nine free-text columns are residue an erasure cannot reach**, all declared by hand.
+- **The only surface is the roster**, which sits on MOD-019's session page -- see "The web
+  app". Booking, cancelling, joining a waitlist, checking in and appealing are all built on the
+  server and none has a form, so a member cannot book a class in this build and a front desk
+  cannot do it for them.
 
 **MOD-021 (HW-01 hardware, edge bridge and device fleet) -- implemented, gated and
 reviewed.** Twelve `dev_` tables in `plt01` under the same forced RLS, fourteen trigger
@@ -3317,11 +3326,13 @@ navigation whose every entry is present exactly when the gate allows the page be
 MOD-004's hierarchy -- the organization, its brands, its sites with the timezone MOD-019 reads
 every rota window in, and the legal entity MOD-017 numbers invoices per; MOD-008's roles, the
 permissions this session actually holds and the hash-chained audit log; MOD-014's duplicate
-queue and Member 360; MOD-021's fleet board and device detail; an operations board over
-MOD-010's event plane and MOD-011's objectives; and MOD-022's door board and zone detail, which read the real routes and
-render the public code, the policy terms, the advisory occupancy with paragraph 4180's
-disclaimer, the access points, the gaps the module discloses about itself and the decision log
-with its public/private split.
+queue and Member 360; MOD-019's schedule board and session detail with MOD-020's roster on
+it; MOD-021's fleet board and
+device detail; an operations board over MOD-010's event plane, MOD-011's objectives and the
+worker's own scheduled jobs; and MOD-022's door board and zone detail, which read the real
+routes and render the public code, the policy terms, the advisory occupancy with paragraph
+4180's disclaimer, the access points, the gaps the module discloses about itself and the
+decision log with its public/private split.
 
 **The Member 360 is where `Decision.mask` finally reaches a reader.** MOD-008 computed
 `masked_fields` on every allowed decision and from MOD-008 to MOD-013 nothing read it; MOD-014
@@ -3335,6 +3346,54 @@ Offering a step-up for the second would send somebody looking for a hardware key
 cannot verify. The fixture's browser session is assurance level 1, which is the useful level to
 test at: `contact` opens on a routine permission and `identity` needs a financial one, so one
 record shows a masked legal name beside an unmasked email address.
+
+**The schedule board is the second place a withheld field reaches a reader, and the first
+where the surface has to say which of two refusals it is.** MOD-019 masks a session change's
+`reason` for anybody who does not hold `scheduling.session.change`, after a reviewer read "she
+is having chemotherapy on Tuesdays" out of that column holding only the routine schedule
+permission. The page marks the withholding rather than dropping the entry -- an absent row
+says nothing changed, which is a different and wrong fact -- and then asks the gate *why* it is
+withheld, because `reason_masked` is one boolean over two situations with different remedies:
+
+  * **a session too weak for a financial action**, which a step-up fixes. `scheduling.session
+    .change` is financial class, so `held_permissions` filters it out of a password-only
+    session -- which means **the fixture's owner, holding all 202 permissions, cannot read it
+    either**. That is MOD-014's "a grant is not a session" finding showing up as a product
+    behaviour rather than as a defect, and the page offers the step-up it needs.
+  * **an identity that does not hold the permission at any assurance**, which a step-up would
+    not fix. Offering one would send somebody looking for a second factor that changes
+    nothing, so the page says so instead.
+
+Both answers are asserted, and the second needed a session that is genuinely masked: the
+fixture's second identity now holds `scheduling.schedule.read` without
+`scheduling.session.change`, which is the pair the mask exists for. Signing in as the owner
+could only ever have proved the step-up half.
+
+**Two more things the board says because the module refuses to store them.** `Taken` is a sum
+over the hold rows and `Free` is MOD-019's own answer rather than a subtraction -- there is no
+`held_count` anywhere in the module and the absence is swept for, so a reader who took these
+for counters would be reasoning about a mechanism that does not exist, and a surface that
+computed `places - held` would render a negative number for a session whose overbooking was
+reduced after the holds were taken. And `dst_adjusted` is the one flag marked on the board: a
+full class is ordinary and a cancelled one is a decision somebody made, but an occurrence
+stepped forward because its local time did not exist that day is a session whose members were
+told a time that is not when it happens.
+
+**The roster is on that page too, gated on its own permission**, because paragraph 4145 puts
+the occurrence and its capacity on MOD-019's side of the line and the member's reservation on
+MOD-020's. A reader may hold one and not the other, so the block refuses rather than rendering
+an empty class: "nobody is booked" and "you may not see who is" are different facts and only
+the first is one a coach would act on. The seats above it belong to the schedule -- there is no
+roster table and no cached total -- so the page says so, because a reader who counted the rows
+would disagree with the seat count the first time a hold had no booking behind it, which an
+unanswered waitlist offer is. That is also the first MOD-020 surface in the build, and the
+first time `/booking/sessions/{id}/roster` has been called by anything but a backend test.
+
+**Listing the sites is a different permission from reading the schedule**, and separating them
+was what let the masked-reason case be tested at all. The calendar carries the site's own name
+and timezone, so a board needs no hierarchy read -- only the *picker* does. A session holding
+the schedule read alone is told to open the board from a link that names the site, rather than
+shown an empty picker that would read as "this tenant has no sites".
 
 **The operations board is where the worker runtime became visible, and it changed what a
 backlog means.** This file's most-repeated gap was "nothing drives this on a schedule", and
@@ -3468,7 +3527,12 @@ has, which is the same shape as a test that passes vacuously. The flat config in
 variables, and it is in `npm run verify` and in the CI job now.
 
 Known gaps: the surface covers the sign-in, the step-up, MOD-004, MOD-008, MOD-010, MOD-011,
-MOD-014, MOD-021 and MOD-022. The other eleven implemented modules have no screens yet, which is the bulk of the remaining work;
+MOD-014, MOD-019, MOD-021 and MOD-022, plus MOD-020's roster on a session. The other nine
+implemented modules have no screens yet,
+which is the bulk of the remaining work; MOD-019's own surface is read-only -- publishing a
+schedule, substituting an instructor and cancelling a session are all built on the server and
+none has a form, which is the same gap the hierarchy has and for the same reason: every one of
+those writes is stepped-up;
 a step-up spends a recovery code and there is no screen for reissuing a batch, because TOTP and
 passkeys are implemented and unverifiable here so a recovery code is the only second factor;
 every `tenancy.*.write` is a stepped-up
@@ -3484,7 +3548,8 @@ is part of it. So "implemented" above is accurate about the server plane and inc
 the product for every module except MOD-022, and the backlog has two halves.
 
 The first is the screens the eighteen built modules do not have. `web/` covers the sign-in, the
-step-up, MOD-004, MOD-008, MOD-010, MOD-011, MOD-014, MOD-021 and MOD-022; `contracts/ui/screen-contracts.yaml` names the rest, and
+step-up, MOD-004, MOD-008, MOD-010, MOD-011, MOD-014, MOD-019, MOD-021 and MOD-022;
+`contracts/ui/screen-contracts.yaml` names the rest, and
 the work is per module rather than per screen because each one needs its gate, its masked
 fields and its failure states wired the way those are. The second is the modules themselves: MOD-023 (Coach Workspace, which
 needs MOD-014 and MOD-008, both built) is the next eligible one, and MOD-006 is the Compose

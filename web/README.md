@@ -14,17 +14,17 @@ raises and a step-up that actually raises a session's assurance, an admin landin
 every control's visibility comes from MOD-008's gate, a section navigation filtered by that
 same gate, MOD-004's organization hierarchy, MOD-008's roles and audit chain, MOD-014's
 duplicate queue and Member 360 with every masked field marked, MOD-021's fleet board and
-device detail, MOD-022's door board and zone detail, an operations board over MOD-010's event
-plane, MOD-011's objectives and the worker runtime's own scheduled jobs, Arabic/English with
-full RTL, a dark theme, and four layers of tests that have each been shown to fail when the
-thing they guard is removed.
+device detail, MOD-022's door board and zone detail, MOD-019's schedule board and session
+detail, an operations board over MOD-010's event plane, MOD-011's objectives and the worker
+runtime's own scheduled jobs, Arabic/English with full RTL, a dark theme, and four layers of
+tests that have each been shown to fail when the thing they guard is removed.
 
 | Layer | What it proves | Count | Command |
 |---|---|---|---|
 | Foundation (`tests/unit/`) | Tokens, contrast, type, theme coverage, backend parity. No dependencies, no DOM. | 57 | `npm run test:foundation` |
 | Component (`tests/component/`) | Control semantics, the message catalogue, the sign-in form's four states, the device-label parity, the hierarchy composer, the mask marker, the redirect guard and the relay verdict, in jsdom. | 46 | `npm test` |
-| End-to-end (`tests/e2e/*.spec.ts`) | A real browser against a real backend whose fixture ran the real worker, including 21 axe runs across both locales and both themes, the no-JavaScript sign-in replay, five surfaces driven as a session that may not read them, and a session raised from level 1 to level 2 for real. | 111 + 2 setup | `npm run e2e` |
-| Mutation sweep (`tests/e2e/mutate.mjs`) | Each protection above, broken on purpose, is caught by the test that names it. | 46/46 | `npm run e2e:mutate` |
+| End-to-end (`tests/e2e/*.spec.ts`) | A real browser against a real backend whose fixture ran the real worker, including 23 axe runs across both locales and both themes, the no-JavaScript sign-in replay, six surfaces driven as a session that may not read them, a withheld field proved against a session that is actually masked, a block refused because it belongs to another module, and a session raised from level 1 to level 2 for real. | 128 + 2 setup | `npm run e2e` |
+| Mutation sweep (`tests/e2e/mutate.mjs`) | Each protection above, broken on purpose, is caught by the test that names it. | 53/53 | `npm run e2e:mutate` |
 
 ### Running it
 
@@ -331,6 +331,48 @@ only ever see the well-formed case. `composeTree` keeps an orphan and marks it r
 dropping it, because a site that vanishes from the only page listing sites is the worse
 failure, and `tests/component/organization-tree.test.ts` is what holds that.
 
+**The schedule board is the second place a withheld field reaches a reader, and the first
+where the page has to say which of two refusals it is.** MOD-019 masks a session change's
+`reason` for anybody who does not hold `scheduling.session.change`, after a reviewer read a
+staged diagnosis out of that column holding only the routine schedule permission. So the page
+marks the withholding rather than dropping the entry — an absent row says nothing changed,
+which is a different and wrong fact — and then asks the gate *why*, because `reason_masked` is
+one boolean over two situations with different remedies: a session too weak for a financial
+action, which a step-up fixes, and an identity that does not hold the permission at all, which
+it would not. Offering a step-up for the second sends somebody looking for a second factor
+that changes nothing.
+
+**The owner cannot read it either**, which is the finding worth carrying: `scheduling.session
+.change` is financial class, so `held_permissions` filters it out of a password-only session
+even for an identity holding all 202 permissions. That is MOD-014's "a grant is not a session"
+showing up as product behaviour. Proving the *other* answer needed a session that is genuinely
+masked, so the fixture's second identity now holds `scheduling.schedule.read` without
+`scheduling.session.change` — signing in as the owner could only ever have proved the step-up
+half.
+
+**Two numbers on the board are explained because the module refuses to store them.** `Taken`
+is a sum over the hold rows and `Free` is MOD-019's own answer rather than a subtraction: there
+is no `held_count` anywhere in the module, so a surface that computed `places - held` would
+render a negative number for a session whose overbooking was reduced after the holds were
+taken. `dst_adjusted` is the one flag marked, because an occurrence stepped forward for a clock
+change is a session whose members were told a time that is not when it happens — a full class
+is ordinary and a cancelled one is a decision somebody made.
+
+**The roster is on the session page and gated on its own**, because the module boundary
+paragraph 4145 draws puts the occurrence and its capacity on the schedule's side and the
+member's reservation on booking's. A reader may hold one permission and not the other, so the
+block says "not permitted" rather than rendering an empty class — "nobody is booked" and "you
+may not see who is" are different facts, and the first is the one a coach would act on. The
+seats above it are the schedule's: there is no roster table and no cached total, so a surface
+that counted the rows it was handed would disagree with the seat count the first time a hold
+existed with no booking behind it, which an unanswered waitlist offer is.
+
+**And listing the sites is a different permission from reading the schedule.** The calendar
+carries the site's own name and timezone, so the board needs no hierarchy read; only the picker
+does. Separating them is what let the masked-reason case be tested at all, and a session with
+the schedule read alone is told to open the board from a link rather than shown an empty picker
+that would read as "this tenant has no sites".
+
 **The operations board was built to make the repository's most-repeated gap visible, and the
 worker runtime then changed what it shows.** "Nothing drives this on a schedule" appeared in
 fourteen module entries in `CLAUDE.md`, and the event outbox was where it became countable:
@@ -415,11 +457,13 @@ other 8 of 9 tokens recompute to the printed hundredth on all three surfaces.
 
 ## What this does not yet cover
 
-- **Thirteen screens of a hundred and seventy.** `contracts/ui/screen-contracts.yaml` lists 170 V1
-  screens across five surfaces; what exists is sign-in, an admin landing page, MOD-004's
-  organization hierarchy, MOD-014's duplicate queue and Member 360, MOD-022's door board and
-  zone detail, MOD-008's permissions page, MOD-021's fleet board and device detail, the
-  operations board, and the step-up flow. The foundation, the controls, the gate wiring and the four test
+- **Fifteen screens of a hundred and seventy.** `contracts/ui/screen-contracts.yaml` lists 170
+  V1 screens across five surfaces; what exists is sign-in, an admin landing page, MOD-004's
+  organization hierarchy, MOD-014's duplicate queue and Member 360, MOD-019's schedule board
+  and session detail, MOD-022's door board and zone detail, MOD-008's permissions page,
+  MOD-021's fleet board and device detail, the operations board, and the step-up flow. Every
+  one of them is read-only: every write in the modules they cover is a stepped-up permission,
+  and no form is built. The foundation, the controls, the gate wiring and the four test
   layers are built to carry the rest, and the per-module work is wiring each one's gate, its
   masked fields and its failure states the way MOD-022's are.
 - **`color.action.pressed` has no dark value**, declared in `ds.json`'s `DARK_GAPS`. The source

@@ -23,6 +23,12 @@ export type Fixture = {
   recoveryCode: string;
   zoneId: string;
   pointId: string;
+  /** The site MOD-019's calendar is addressed by, and whose timezone it converts in. */
+  locationId: string;
+  /** The first of seven generated occurrences, and the one with a substitution on it. */
+  sessionId: string;
+  /** Tomorrow's occurrence, which has a booking on it -- the first one's window has closed. */
+  bookedSessionId: string;
   /** The seeded member: a tag, a contact point, two notes and a health custom field. */
   personId: string;
   /** The commissioned, activated turnstile the access point stands on. */
@@ -81,6 +87,9 @@ export function fixture(): Fixture {
     "VEYRO_E2E_PENDING_DEVICE_ID",
     "VEYRO_E2E_READER_EMAIL",
     "VEYRO_E2E_READER_PASSWORD",
+    "VEYRO_E2E_LOCATION_ID",
+    "VEYRO_E2E_SESSION_ID",
+    "VEYRO_E2E_BOOKED_SESSION_ID",
   ] as const;
   for (const key of required) {
     if (!env[key]) throw new Error(`${key} missing from ${FILENAME} -- re-run fixture.mjs`);
@@ -93,6 +102,9 @@ export function fixture(): Fixture {
     recoveryCode: env.VEYRO_E2E_RECOVERY_CODE!,
     zoneId: env.VEYRO_E2E_ZONE_ID!,
     pointId: env.VEYRO_E2E_POINT_ID!,
+    locationId: env.VEYRO_E2E_LOCATION_ID!,
+    sessionId: env.VEYRO_E2E_SESSION_ID!,
+    bookedSessionId: env.VEYRO_E2E_BOOKED_SESSION_ID!,
     personId: env.VEYRO_E2E_PERSON_ID!,
     deviceId: env.VEYRO_E2E_DEVICE_ID!,
     pendingDeviceId: env.VEYRO_E2E_PENDING_DEVICE_ID!,

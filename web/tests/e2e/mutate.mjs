@@ -424,6 +424,71 @@ const MUTATIONS = [
     grep: "raises no alert",
   },
   {
+    id: "schedule-reason-marked",
+    why: "a withheld reason rendered as an empty cell is indistinguishable from one nobody "
+      + "wrote, and an absent entry says nothing changed -- which is a different fact",
+    file: "src/app/schedule/[sessionId]/page.tsx",
+    from: "                  {change.reason_masked ? (",
+    to: "                  {false ? (",
+    grep: "sees a change's reason withheld rather than absent",
+  },
+  {
+    id: "schedule-step-up-only-when-a-remedy",
+    why: "offering a step-up to a session that does not hold the permission at any assurance "
+      + "sends somebody looking for a second factor that would change nothing",
+    file: "src/app/schedule/[sessionId]/page.tsx",
+    from: "                {mayChange.step_up_required ? (",
+    to: "                {true ? (",
+    grep: "sees a change's reason withheld rather than absent",
+  },
+  {
+    id: "schedule-held-is-not-a-counter",
+    why: "there is no held_count anywhere in MOD-019 and the absence is swept for, so a "
+      + "reader who takes these for stored counters is reasoning about a mechanism that "
+      + "does not exist",
+    file: "src/app/schedule/page.tsx",
+    from: "            {text(\"schedule.heldExplained\")}",
+    to: "            {\"\"}",
+    grep: "says what Taken and Free are",
+  },
+  {
+    id: "schedule-former-resources-kept-apart",
+    why: "a substituted instructor's hold is kept rather than deleted, and one list with a "
+      + "flag puts a coach who was sent home back on the roster",
+    file: "src/app/schedule/[sessionId]/page.tsx",
+    from: "          <Resources list={session.former_resources} />",
+    to: "          <Resources list={[]} />",
+    grep: "shows what a session used to hold",
+  },
+  {
+    id: "roster-gated-on-its-own",
+    why: "the roster belongs to MOD-020 and the seats to MOD-019, so a reader may hold one "
+      + "permission and not the other -- and 'nobody is booked' is a different fact from "
+      + "'you may not see who is'",
+    file: "src/app/schedule/[sessionId]/page.tsx",
+    from: "        {!mayRoster.allowed ? (",
+    to: "        {false ? (",
+    grep: "is refused the roster, because it belongs to another module",
+  },
+  {
+    id: "roster-seats-are-the-schedules",
+    why: "there is no roster table and no cached total, so a reader who counted the rows "
+      + "would disagree with the seat count the first time a hold had no booking behind it",
+    file: "src/app/schedule/[sessionId]/page.tsx",
+    from: "              {text(\"roster.capacityIsElsewhere\")}",
+    to: "              {\"\"}",
+    grep: "says whose seats they are",
+  },
+  {
+    id: "roster-not-checked-in-is-a-sentence",
+    why: "a check-in is recorded rather than performed, so a blank cell reads as a missing "
+      + "value where the fact is that nobody has claimed one",
+    file: "src/i18n/locale.ts",
+    from: "    \"roster.notCheckedIn\": \"not yet\",",
+    to: "    \"roster.notCheckedIn\": \"\",",
+    grep: "says whose seats they are",
+  },
+  {
     id: "fleet-freshness-disclosure",
     why: "reachability is worked out when the page loads and nothing records it, so a board "
       + "that does not say so claims a freshness the product does not have",

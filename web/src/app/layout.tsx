@@ -35,7 +35,7 @@ export default async function RootLayout({
   const session = await currentSession();
   let items: NavItem[] = [];
   if (session) {
-    const [organization, people, access, permissions, devices, operations] =
+    const [organization, people, access, permissions, devices, operations, schedule] =
       await Promise.all([
       gate("tenancy.organization.read"),
       gate("people.person.read"),
@@ -43,6 +43,7 @@ export default async function RootLayout({
       gate("authz.role.read"),
       gate("devices.device.read"),
       gate("events.event.read"),
+      gate("scheduling.schedule.read"),
     ]);
     items = [
       // The overview is this session's own page -- what it is and what it may do -- so it
@@ -50,6 +51,7 @@ export default async function RootLayout({
       { href: "/", label: "nav.overview", allowed: true },
       { href: "/organization", label: "nav.organization", allowed: organization.allowed },
       { href: "/people", label: "nav.people", allowed: people.allowed },
+      { href: "/schedule", label: "nav.schedule", allowed: schedule.allowed },
       { href: "/access", label: "nav.access", allowed: access.allowed },
       { href: "/fleet", label: "nav.devices", allowed: devices.allowed },
       { href: "/permissions", label: "nav.permissions", allowed: permissions.allowed },
