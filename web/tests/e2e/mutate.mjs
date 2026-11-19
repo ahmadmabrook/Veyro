@@ -367,12 +367,40 @@ const MUTATIONS = [
   },
   {
     id: "ops-backlog-explained",
-    why: "a backlog nothing consumes is the missing worker, and a number rendered bare lets "
-      + "somebody conclude the relay is working",
+    why: "a delivery nobody handles accumulates by design, and a number rendered bare lets "
+      + "somebody conclude a consumer is reading it",
     file: "src/app/operations/page.tsx",
-    from: "                  ? text(\"ops.backlogExpected\")",
-    to: "                  ? \"\"",
-    grep: "missing worker, not a failure",
+    // **The branch the fixture actually renders.** It subscribes a consumer, so the page
+    // takes the `backlogUnexpected` arm -- and a mutation aimed at the arm nobody renders
+    // changes nothing a reader sees, which the sweep would rightly report as uncaught. The
+    // same trap as the fetch-guard-versus-rendering-guard one recorded below.
+    from: "                  : text(\"ops.backlogUnexpected\")}",
+    to: "                  : \"\"}",
+    grep: "a delivery nobody handles is expected",
+  },
+  {
+    id: "ops-relay-verdict",
+    why: "the relay running is what makes a pending event transient rather than a fault, and "
+      + "a page that never says so leaves the reader to guess which it is",
+    file: "src/app/operations/page.tsx",
+    from: "              ) : relay === \"running\" ? (",
+    to: "              ) : false ? (",
+    grep: "says the relay is running",
+  },
+  // No mutation for `ops.noRuns`, deliberately: it renders only for a job with no runs, and
+  // the fixture's last step runs the worker, so every job has one and the string is
+  // unreachable in the browser. A mutation nothing can catch is a gap to name rather than to
+  // hide -- the decision behind the label is `relayVerdict`, which has eight cases in
+  // `tests/component/operations-worker.test.ts`, and the e2e asserts the other direction:
+  // after a real tick, no job reads as never run.
+  {
+    id: "ops-worker-run-proves-what",
+    why: "a run is recorded by the worker itself, so a board that does not say so lets a "
+      + "reader take it as proof the job's effect reached something outside the database",
+    file: "src/app/operations/page.tsx",
+    from: "                {jobs.worker_gaps.map((gap) => (",
+    to: "                {([] as string[]).map((gap) => (",
+    grep: "says a burst of runs after a restart is expected",
   },
   {
     id: "ops-deadletter-gate",
@@ -394,6 +422,15 @@ const MUTATIONS = [
     from: "    \"ops.noObjectives\": \"No objective is defined. Nothing evaluates one on a schedule either, so an objective nobody runs raises no alert — which is why an empty list here is honest rather than reassuring.\",",
     to: "    \"ops.noObjectives\": \"No objective is defined.\",",
     grep: "raises no alert",
+  },
+  {
+    id: "fleet-freshness-disclosure",
+    why: "reachability is worked out when the page loads and nothing records it, so a board "
+      + "that does not say so claims a freshness the product does not have",
+    file: "src/i18n/locale.ts",
+    from: "    \"fleet.lead\": \"Every device at this tenant, what it can do, and whether it is reachable. Reachability is worked out from the last report a device sent — nothing stores it and nothing asks a device for it, so this is what was true when the page was loaded. A scheduled sweep does announce a device in service that has gone quiet; it changes nothing on this board.\",",
+    to: "    \"fleet.lead\": \"Every device at this tenant, what it can do, and whether it is reachable.\",",
+    grep: "says reachability is worked out rather than stored",
   },
   {
     id: "device-label-parity",

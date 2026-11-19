@@ -19,8 +19,9 @@
  *   node tests/e2e/fixture.mjs --print    # also print the tenant id (not the password)
  */
 
+import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { writeFileSync } from "node:fs";
+import { existsSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import { browserFingerprint } from "./device.mjs";
@@ -30,6 +31,43 @@ const api = process.env.VEYRO_API_ORIGIN ?? "http://127.0.0.1:8000";
 /** A correlation id per call, so a decision here is traceable to one there. */
 function cid() {
   return randomUUID();
+}
+
+/**
+ * Run the real worker once over this tenant, and fail the fixture if it fails.
+ *
+ * **The binary, not a stand-in.** The fixture used to call `/people/timeline/project` by hand,
+ * which seeded a timeline and proved nothing about the thing that is supposed to call it. This
+ * runs `python -m app.worker --once`, which is the same entry point a process manager runs, so
+ * the browser suite that follows is looking at rows a scheduled job actually wrote -- the
+ * relay's dispatch, the timeline projection and the two sweeps.
+ *
+ * Scoped to this tenant with `--tenant`, because a developer's database holds every tenant any
+ * earlier run ever provisioned and sweeping all of them would make the fixture's wall-clock a
+ * function of how long the machine has been used.
+ */
+function runWorkerTick(tenantId) {
+  const repo = fileURLToPath(new URL("../../..", import.meta.url));
+  const venv = `${repo}/.venv/bin/python3`;
+  const python = existsSync(venv) ? venv : "python3";
+  const result = spawnSync(python, ["-m", "app.worker", "--once", "--tenant", tenantId], {
+    cwd: `${repo}/backend`,
+    encoding: "utf8",
+    env: {
+      VEYRO_ENV: "local",
+      VEYRO_RELEASE: "e2e",
+      ...process.env,
+      VEYRO_DATABASE_URL:
+        process.env.VEYRO_DATABASE_URL ??
+        "postgresql://postgres:veyro_dev@127.0.0.1:55432/veyro",
+    },
+  });
+  if (result.status !== 0) {
+    throw new Error(
+      `worker tick failed (${result.status}): ${(result.stderr ?? "").slice(-600)}`,
+    );
+  }
+  return JSON.parse(result.stdout);
 }
 
 async function call(path, { method = "GET", body, tenant, token } = {}) {
@@ -510,9 +548,6 @@ async function seedAccess(tenantId, token, ownerEmail) {
   const candidates = await call(`/people/${twin.person_id}/duplicates`, {
     method: "POST", ...as(token), body: { correlation_id: cid() },
   });
-  await call("/people/timeline/project", {
-    method: "POST", ...as(token), body: { correlation_id: cid() },
-  });
 
   const credentialValue = `CARD-${randomUUID().slice(0, 12).toUpperCase()}`;
   const credential = await call("/access/credentials", {
@@ -533,7 +568,23 @@ async function seedAccess(tenantId, token, ownerEmail) {
     },
   });
 
+  // **A consumer the relay can route to.** Without one the outbox is fanned out to nobody and
+  // the operations board has no deliveries to show -- which hides the half of that screen
+  // that is still a standing gap: a delivery is created and never handled, because no name in
+  // this build has a handler behind it.
+  await call("/events/subscriptions", {
+    method: "POST", ...as(token),
+    body: { consumer: "member_projection", event_type: "person.created",
+            replay_safety: "safe", correlation_id: cid() },
+  });
+
+  // Last, so it sees everything above. The timeline, the dispatched outbox and the sweeps on
+  // the operations board are all this tick's work.
+  const tick = runWorkerTick(tenantId);
+
   return {
+    workerRuns: tick.runs,
+    workerFailed: tick.failed,
     deviceId: device.device_id,
     pendingDeviceId: pending.device_id,
     duplicateCandidates: candidates.length,
@@ -585,5 +636,6 @@ if (invokedDirectly) {
   console.log(`permissions ${fixture.permissions}`);
   console.log(`zone        ${fixture.zoneId}`);
   console.log(`decision    ${fixture.decisionCode}`);
+  console.log(`worker      ${fixture.workerRuns} runs, ${fixture.workerFailed} failed`);
   console.log(`credentials written to web/.env.e2e.local (mode 600)`);
 }

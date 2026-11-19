@@ -6,10 +6,12 @@ import { api } from "@/lib/api";
  * **Two of these fields are derived at read time and neither is stored**, which is the thing a
  * surface has to be careful with. `reachability` is computed from the last health report, so a
  * device that stopped reporting looks exactly like one that never did until the silence passes
- * a threshold -- and **nothing sweeps on a schedule in this build**, so the board only knows
- * what somebody last asked it. `blocks_operation` is `active` and `offline` together: a device
- * deliberately in maintenance is not an incident, and one nobody has finished installing is
- * not either.
+ * a threshold -- and **nothing records it**, so the board only knows what it worked out when
+ * it loaded. The worker's offline sweep does run on a schedule now, and it changes nothing
+ * here: it publishes `device.offline` for a device in service that has gone quiet, and it
+ * neither polls the device nor writes a reachability anybody can read back.
+ * `blocks_operation` is `active` and `offline` together: a device deliberately in maintenance
+ * is not an incident, and one nobody has finished installing is not either.
  */
 
 export type Reachability = "never_seen" | "online" | "late" | "offline";

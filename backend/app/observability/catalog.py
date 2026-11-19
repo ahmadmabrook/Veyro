@@ -26,6 +26,7 @@ from dataclasses import dataclass, field
 
 from app.authorization.catalog import SENSITIVE_FIELDS
 from app.privacy.classification import KIND_CLASS, PURPOSE_REQUIRED_AT
+from app.worker.names import JOB_NAMES
 
 METRIC_KEY = re.compile(r"^[a-z0-9]+(_[a-z0-9]+)*(\.[a-z0-9]+(_[a-z0-9]+)*)+$", re.ASCII)
 DIMENSION_NAME = re.compile(r"^[a-z0-9]+(_[a-z0-9]+)*$", re.ASCII)
@@ -159,6 +160,29 @@ METRICS: dict[str, Metric] = dict([
     _m("ops.synthetic_latency", "duration_ms", "millisecond", "MOD-011",
        "How long a synthetic probe took",
        _d("check_key", reason="tenant-defined; the check registry bounds it")),
+    # ---------------------------------------------------------------- the worker runtime
+    # **Two series and no table.** A job run is "how long work took and how often it succeeded",
+    # which is exactly what this store is for and exactly what has no table of its own -- so
+    # recording it here duplicates nothing. The alternative, a `wrk_job_runs` table, would be a
+    # second answer to "is the relay running" alongside the outbox's own pending count, with
+    # nothing able to say which was right when they disagreed. That is the argument this
+    # catalogue already makes against `events.outbox_pending`, and it applies to the thing that
+    # drains the outbox as much as to the outbox.
+    #
+    # **The `job` dimension is closed**, which no other dimension here manages: a consumer name
+    # and a check key are tenant-chosen and a job is code, declared in `app.worker.names`. A job
+    # added without a name there cannot record a point at all, which is the failure landing
+    # where somebody is writing the job rather than on a dashboard weeks later.
+    _m("worker.job_duration", "duration_ms", "millisecond", "WORKER",
+       "How long one scheduled job took for one tenant",
+       _d("job", *JOB_NAMES)),
+    # A ratio rather than a counter, because the question an operator asks is "is this job
+    # working", and a count of failures with no denominator cannot answer it -- which is the
+    # consequence `authz.denials` records about itself four entries up. Here the denominator is
+    # free: the runner attempts every due job for every active tenant, so it knows the trials.
+    _m("worker.job_success", "ratio", "run", "WORKER",
+       "Scheduled job runs that finished without raising, over runs attempted",
+       _d("job", *JOB_NAMES)),
 ])
 
 

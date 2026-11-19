@@ -15,15 +15,16 @@ every control's visibility comes from MOD-008's gate, a section navigation filte
 same gate, MOD-004's organization hierarchy, MOD-008's roles and audit chain, MOD-014's
 duplicate queue and Member 360 with every masked field marked, MOD-021's fleet board and
 device detail, MOD-022's door board and zone detail, an operations board over MOD-010's event
-plane and MOD-011's objectives, Arabic/English with full RTL, a dark theme, and four layers of tests that have each
-been shown to fail when the thing they guard is removed.
+plane, MOD-011's objectives and the worker runtime's own scheduled jobs, Arabic/English with
+full RTL, a dark theme, and four layers of tests that have each been shown to fail when the
+thing they guard is removed.
 
 | Layer | What it proves | Count | Command |
 |---|---|---|---|
 | Foundation (`tests/unit/`) | Tokens, contrast, type, theme coverage, backend parity. No dependencies, no DOM. | 57 | `npm run test:foundation` |
-| Component (`tests/component/`) | Control semantics, the message catalogue, the sign-in form's four states, the device-label parity, the hierarchy composer, the mask marker and the redirect guard, in jsdom. | 38 | `npm test` |
-| End-to-end (`tests/e2e/*.spec.ts`) | A real browser against a real backend, including 21 axe runs across both locales and both themes, the no-JavaScript sign-in replay, five surfaces driven as a session that may not read them, and a session raised from level 1 to level 2 for real. | 106 + 2 setup | `npm run e2e` |
-| Mutation sweep (`tests/e2e/mutate.mjs`) | Each protection above, broken on purpose, is caught by the test that names it. | 43/43 | `npm run e2e:mutate` |
+| Component (`tests/component/`) | Control semantics, the message catalogue, the sign-in form's four states, the device-label parity, the hierarchy composer, the mask marker, the redirect guard and the relay verdict, in jsdom. | 46 | `npm test` |
+| End-to-end (`tests/e2e/*.spec.ts`) | A real browser against a real backend whose fixture ran the real worker, including 21 axe runs across both locales and both themes, the no-JavaScript sign-in replay, five surfaces driven as a session that may not read them, and a session raised from level 1 to level 2 for real. | 111 + 2 setup | `npm run e2e` |
+| Mutation sweep (`tests/e2e/mutate.mjs`) | Each protection above, broken on purpose, is caught by the test that names it. | 46/46 | `npm run e2e:mutate` |
 
 ### Running it
 
@@ -245,6 +246,14 @@ None of the three is visible in a single run. `npm run e2e` **twice in a row** i
 them, and it is worth doing after any change to the fixture or to a test that presents a
 credential.
 
+**And the sibling of that rule: a test that asserts a freshness has to create it.** The fleet
+board shows `Online` only while a device has reported within ten minutes, which is true
+because the fixture's health report made it true -- so the assertion expires. CI provisions
+immediately before the suite and is deterministic; a local run against a fixture seeded an
+hour earlier reads `Late` and looks exactly like a product regression. The spec says so where
+the failure appears, because that is where somebody will be reading. Found by running the
+suite an hour after seeding, which is the only way to find it.
+
 **The step-up replaces the session cookie, and that is the whole flow in one sentence.**
 MOD-007 does not elevate a session in place: `_step_up_in_tx` revokes the one it came from with
 `revoke_reason = 'stepped_up'` and opens a new one, because a session's lifetime follows what it
@@ -322,20 +331,34 @@ only ever see the well-formed case. `composeTree` keeps an orphan and marks it r
 dropping it, because a site that vanishes from the only page listing sites is the worse
 failure, and `tests/component/organization-tree.test.ts` is what holds that.
 
-**The operations board exists to make the repository's most-repeated gap visible in the
-product.** Fourteen modules in `CLAUDE.md` end with some version of "nothing drives this on a
-schedule", and the event outbox is where that becomes countable: every module writes to it, no
-consumer in this build has a handler, no worker loops on the relay, and the table has no DELETE
-grant — so the number climbs whenever somebody uses the product. The fixture alone leaves a
-dozen events behind.
+**The operations board was built to make the repository's most-repeated gap visible, and the
+worker runtime then changed what it shows.** "Nothing drives this on a schedule" appeared in
+fourteen module entries in `CLAUDE.md`, and the event outbox was where it became countable:
+every module writes to it, the table has no DELETE grant, and nothing drained it — so the
+number climbed whenever somebody used the product and the page's whole job was to stop that
+reading as an incident.
 
-**So the page has to say which kind of number it is showing.** A backlog rendered with an alarm
-beside it would cry wolf on every ordinary use; rendered bare it would let somebody conclude the
-relay is working. `backlogIsExpected` is the distinction — no active subscription means nothing
-was ever going to drain it — and a dead letter is kept apart because that one *is* a fault
-whatever else is true: a delivery used its entire retry budget and is waiting for a person.
+**The relay now runs every fifteen seconds, so a pending event is a signal rather than a
+standing condition.** One that persists means the worker is down, which is the first fault
+this page can diagnose instead of excuse. A pending *delivery* is unchanged: no name in this
+build has a handler behind it, so that half still accumulates whatever the relay does, and
+`backlogIsExpected` is still the question for it.
 
-Four blocks, four permissions, each gated on its own, because an empty dead-letter table
+**Telling those apart needs evidence the worker ran**, which the scheduled-jobs block carries
+from `/ops/worker`. A zero there is a sentence rather than an absence — every job runs for
+every schedulable tenant at least every five minutes, so no recorded run over a window of
+hours is a stopped worker, while a count against an *expected* count is deliberately not
+returned because every reading of it is wrong unless the worker was up for the whole window — and `relayVerdict` keeps `no_evidence` apart from `stopped`,
+because a reader without `ops.metric.read` has learned nothing and a page that called that an
+incident would be inventing one out of its own permissions. A dead letter stays apart from all
+of it, because that one *is* a fault whatever else is true.
+
+**And the fixture runs the real worker.** `python -m app.worker --once` is its last step, so
+the board is asserted against rows a scheduled job actually wrote. The spec that used to
+assert the pending count was *not* zero now asserts that it is — which is the clearest single
+measure of what this change did.
+
+Five blocks, five permissions, each gated on its own, because an empty dead-letter table
 somebody may not see reads as "nothing is quarantined".
 
 **A fleet board is three answers, and the fixture seeds all three.** One healthy turnstile

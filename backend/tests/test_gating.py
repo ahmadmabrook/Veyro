@@ -58,6 +58,7 @@ READ_ROUTES = [
     ("get", "/events/subscriptions/all", None),
     ("get", "/events/dead-letters/all", None),
     ("get", "/ops/metrics/authz.denials", None),
+    ("get", "/ops/worker", None),
     ("get", "/ops/objectives", None),
     ("get", "/ops/synthetic-checks", None),
     ("get", f"/ops/synthetic-checks/{_ID}/results", None),

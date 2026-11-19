@@ -20,9 +20,16 @@ class CatalogTests(unittest.TestCase):
         The modules named here are the ones with a producer wired in this change. The list is
         short on purpose and this test is what keeps it honest: adding a metric means adding
         something that emits it.
+
+        `WORKER` is not a module id and is deliberately not dressed as one: the scheduled jobs
+        are cross-cutting, and calling the owner `MOD-011` would say the observability module
+        measures its own runs. Its producer is `app.worker.runner._record`, and
+        `test_worker.py` asserts both series exist after a tick -- including the failure case,
+        because a job that raised and recorded nothing is indistinguishable from a job that
+        never ran.
         """
         self.assertEqual({m.owner_module for m in catalog.METRICS.values()},
-                         {"MOD-008", "MOD-010", "MOD-011"})
+                         {"MOD-008", "MOD-010", "MOD-011", "WORKER"})
 
     def test_a_metric_that_duplicates_a_table_is_not_in_the_catalogue(self) -> None:
         """The four the first draft carried, every one a count over an existing table.

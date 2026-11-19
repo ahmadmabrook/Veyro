@@ -1725,3 +1725,40 @@ def zone_detail(pool: Pool, tenant_id: str, zone_id: str) -> dict[str, Any]:
             "caller in this build, so a door cannot read one and nothing writes a boolean "
             "that would stand in for it",
         ]}
+
+
+# ------------------------------------------------------------------ the replay cache sweep
+
+def sweep_replay_tokens(
+    pool: Pool, tenant_id: str, *, at: datetime | None = None, limit: int = 5000,
+) -> dict[str, Any]:
+    """Delete replay-cache rows whose window has closed.
+
+    **This is the one table in MOD-022 with a DELETE grant, and only `veyro_cp_worker` holds
+    it.** Everything else here is insert-only or lifecycle-only because it is evidence; a
+    replay token is not evidence, it is a claim that expires in ninety seconds, and a row that
+    outlives its own window answers no question anybody can ask. So the table is meant to be
+    swept, and until this function existed nothing swept it -- `CLAUDE.md` carried the gap in
+    as many words.
+
+    **A pool pinned to `veyro_cp_app` is refused here**, at the privilege layer rather than by
+    a check in this function, which is the point of declaring the role per job: the process
+    that sweeps a replay cache must not also be able to delete a tenant's feature flags.
+
+    **Deleting an unexpired row would re-open the replay window**, so the predicate is the
+    expiry and nothing else -- not a count, not an age, not a limit chosen to keep the table
+    small. The limit bounds one pass; the next pass takes the rest, and a row that is still
+    live is still there to refuse the second presentation of its token.
+    """
+    moment = at or _now()
+    if not 1 <= limit <= 50_000:
+        raise InvalidRequest("a_sweep_takes_between_one_and_fifty_thousand")
+    with tenant_scope(pool, tenant_id) as conn:
+        rows = conn.execute(
+            "DELETE FROM plt01.acc_replay_tokens"
+            " WHERE token_key IN ("
+            "   SELECT token_key FROM plt01.acc_replay_tokens"
+            "    WHERE expires_at <= %s ORDER BY expires_at LIMIT %s)"
+            " RETURNING token_key",
+            (moment, limit)).fetchall()
+    return {"deleted": len(rows), "as_of": moment.isoformat()}

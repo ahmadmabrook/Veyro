@@ -269,7 +269,11 @@ jobs:
           command -v psql >/dev/null || { echo "::error::psql is not on the runner"; exit 1; }
           PSQL="psql -h localhost -p 5432 -U postgres" backend/scripts/verify_db.sh
 
-      - name: Start the API and provision a synthetic tenant
+      # The fixture's last step runs `python -m app.worker --once`, so the browser suite that
+      # follows asserts against rows a scheduled job actually wrote -- the relay's dispatch,
+      # the timeline projection and the two sweeps. A worker that cannot start fails here,
+      # where the message says so, rather than as a page assertion three steps later.
+      - name: Start the API, provision a synthetic tenant and run the worker once
         env:
           VEYRO_DATABASE_URL: postgresql://postgres:veyro_ci@localhost:5432/veyro
         run: |

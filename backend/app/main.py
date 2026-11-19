@@ -70,6 +70,7 @@ from app.people import service as people
 from app.privacy import service as privacy
 from app.scheduling import service as scheduling
 from app.tenancy import service
+from app.worker import registry as worker_registry
 
 _UUID = re.compile(
     r"[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}", re.ASCII
@@ -4183,6 +4184,65 @@ def create_app(
         permit(session, "ops.metric.read")
         return obs_metrics.series(tenant_pool, tenant_id, metric_key=metric_key,
                                   window_hours=window_hours)
+
+    @app.get("/ops/worker")
+    def read_worker_jobs(
+        tenant_id: TenantId, session: Session,
+        window_hours: Annotated[int, Query(ge=1, le=8760)] = 24,
+    ) -> dict[str, Any]:
+        """What each scheduled job did for this tenant over a window.
+
+        **This is the one read where a dimension may be named**, and the reason is the reason
+        `read_series` gives for refusing one: a consumer name and a check key are tenant-chosen
+        strings, so enumerating them would turn the metric store into a directory of what a
+        tenant has configured. A job name is neither -- it is code, declared as a closed set in
+        `app.worker.names`, and this route can only ever return the six names that are in this
+        build whatever the tenant has done.
+
+        **A zero here is a real signal rather than an absence.** Every job runs at least every
+        five minutes for every schedulable tenant, so a job with no runs over a 24-hour window
+        is a worker that is not running -- which is precisely the question an operator opens
+        this page to ask, and the one a backlog count alone cannot answer.
+
+        **And a count of runs against an *expected* count is deliberately not returned.** The
+        arithmetic is trivial -- the window over the cadence -- and every reading of it is
+        wrong unless the worker was up for the whole window, which is the thing being tested.
+        A worker started ten minutes ago would report 40 runs against an expected 5,760 and
+        read as broken. The zero is actionable; the ratio is a number that looks like one.
+        """
+        permit(session, "ops.metric.read")
+        jobs: list[dict[str, Any]] = []
+        for job in worker_registry.JOBS:
+            success = obs_metrics.series(
+                tenant_pool, tenant_id, metric_key="worker.job_success",
+                window_hours=window_hours, dimensions={"job": job.name})
+            duration = obs_metrics.series(
+                tenant_pool, tenant_id, metric_key="worker.job_duration",
+                window_hours=window_hours, dimensions={"job": job.name})
+            runs = sum(int(b["observations"]) for b in success["buckets"])
+            succeeded = sum(float(b["total"]) for b in success["buckets"])
+            observed = sum(int(b["observations"]) for b in duration["buckets"])
+            total_ms = sum(float(b["total"]) for b in duration["buckets"])
+            jobs.append({
+                "job": job.name,
+                "summary": job.summary,
+                "role": job.role,
+                "every_seconds": int(job.every.total_seconds()),
+                "runs": runs,
+                "failed": runs - int(succeeded),
+                "mean_duration_ms": round(total_ms / observed, 1) if observed else None,
+            })
+        return {
+            "window_hours": window_hours,
+            "jobs": jobs,
+            "worker_gaps": [
+                "a run is recorded by the worker itself, so this says what the worker "
+                "reported and not that a job's effect reached anything outside the database",
+                "the schedule lives in the worker process's memory, so a restart makes every "
+                "job due at once -- which is safe because every job is idempotent, and it "
+                "means a burst here after a deployment is expected rather than a fault",
+            ],
+        }
 
     @app.get("/ops/objectives")
     def read_objectives(

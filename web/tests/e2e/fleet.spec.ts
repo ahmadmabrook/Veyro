@@ -18,6 +18,14 @@ test.describe("the fleet board", () => {
     await page.goto("/fleet");
   });
 
+  // **This assertion expires, and that is worth knowing before reading a failure here.**
+  // `Online` means the device reported within `fleet.LATE_AFTER`, which is ten minutes, and
+  // the fixture's health report is what makes that true. CI provisions immediately before
+  // the suite so it is deterministic there; a local run against a fixture seeded an hour ago
+  // reads `Late` and looks like a product regression. The sibling of this suite's own rule
+  // about budgets: **a test that asserts a freshness has to create it**, and here the fixture
+  // is what creates it -- so re-run `node tests/e2e/fixture.mjs` rather than reading the
+  // board.
   test("lists every device with its state and whether it is reachable", async ({ page }) => {
     await expect(page.getByRole("heading", { name: "Devices", level: 1 })).toBeVisible();
     const board = page.locator("table");
@@ -33,10 +41,15 @@ test.describe("the fleet board", () => {
   });
 
   test("says reachability is worked out rather than stored", async ({ page }) => {
-    // Nothing in this build polls on a schedule, so a board that read as live would claim a
-    // freshness the product does not have.
-    await expect(page.getByText(/not a state anything stores/)).toBeVisible();
-    await expect(page.getByText(/nothing polls on a schedule/)).toBeVisible();
+    // Nothing asks a device for its state and nothing records one, so a board that read as
+    // live would claim a freshness the product does not have. **The worker's offline sweep
+    // runs on a schedule now and changes nothing here**, which the lead says in as many
+    // words -- the earlier wording was "nothing polls on a schedule", and leaving it would
+    // have been a page making a claim the build had outgrown.
+    await expect(page.getByText(/nothing stores it and nothing asks a device for it/))
+      .toBeVisible();
+    await expect(page.getByText(/what was true when the page was loaded/)).toBeVisible();
+    await expect(page.getByText(/changes nothing on this board/)).toBeVisible();
   });
 
   test("does not call an unfinished or unreachable-but-idle device an incident", async ({

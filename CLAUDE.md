@@ -64,6 +64,9 @@ backend/app/            service code
                         own connection, so a decision and the unlock it caused commit
                         together -- and no path writes a decision at an exit
   errors.py             the five service errors every module's service raises
+  worker/               the scheduled jobs: names.py is the closed set both the registry and
+                        MOD-011's catalogue read, registry.py says what each job calls and the
+                        role it needs, runner.py owns the tick and the failure isolation
 backend/migrations/     platform/, tenant/ and product/ SQL, applied in that order
 backend/tests/          unittest suites; tests/sql/isolation.sql is the isolation proof
 backend/scripts/        verify_db.sh rebuilds the database and runs the isolation suite
@@ -138,6 +141,16 @@ These need `backend/requirements-dev.lock` installed in the active interpreter. 
 carries a `.venv/` (gitignored) created for this purpose; if `ruff`, `mypy`, `fastapi` or
 `psycopg` is missing, install the lock into it rather than working around the gap. Say so if the
 install is refused — CI covers these, but a local red is cheaper than a red `main`.
+
+Run the scheduled jobs once, over every schedulable tenant, and see what they did:
+
+```bash
+(cd backend && VEYRO_ENV=local VEYRO_RELEASE=dev VEYRO_DATABASE_URL=postgresql://postgres:veyro_dev@127.0.0.1:55432/veyro python3 -m app.worker --once)
+```
+
+It prints a JSON report and exits non-zero if any run failed. Drop `--once` to loop; add
+`--job events.relay` or `--tenant <id>` to narrow it. The e2e fixture runs exactly this
+command as its last step, so the browser suite asserts against rows a scheduled job wrote.
 
 Dependencies are declared in `backend/requirements.txt` and hash-pinned in
 `backend/requirements.lock`; regenerate with
@@ -359,7 +372,9 @@ Known gaps, deliberate:
   bearer token writes no audit row, because recording one would let anyone grow an insert-only
   table without limit. Both want the same missing limiter.
 - **`iam.challenges` is never swept.** One row per `/auth/require/*` call and per challenged
-  login, with no DELETE grant by design. Harmless at this size; it wants a worker, not a grant.
+  login, with no DELETE grant by design. Harmless at this size, and a worker runtime now
+  exists -- which is exactly what makes the point: a job here would run and delete nothing,
+  because no role holds DELETE on anything in `iam`. It wants the grant decision, not a job.
 - **Metering cuts both ways.** Now that the re-authentication paths count failures, somebody
   holding a stolen session token can lock the victim out of their own login with five wrong
   passwords at `/auth/step-up`, and lock their recovery budget with five wrong codes. That is the
@@ -655,8 +670,10 @@ Known gaps, deliberate:
   done.
 - **No subprocessor propagation.** SEC-01-R07 asks a DSAR to reach subprocessors; there are none
   wired up.
-- **No retention sweep.** `retention.may_delete` decides and nothing calls it on a schedule --
-  the same missing worker as MOD-007's challenge sweep. `may_delete` also passes
+- **No retention sweep.** `retention.may_delete` decides and no job calls it: a worker runtime
+  exists, and destroying records on a schedule is the one sweep where being wrong is
+  unrecoverable, so it waits for a decision about what a sweep may delete without a person.
+  `may_delete` also passes
   `subject_id=None`, so under the (correct) hold asymmetry one live per-subject hold blocks
   scheduled expiry of that resource type for every subject. Fail-closed, and a real limitation
   the day a sweep exists.
@@ -838,9 +855,11 @@ Known gaps, deliberate:
   and one durable outbox row per flag evaluation is a write amplification nothing here can
   absorb. It wants sampling or aggregation, which is a decision about a metrics pipeline that
   does not exist.
-- **Nothing drives the relay.** `dispatch_pending` and `deliver_pending` are called by a route
-  and by tests; no worker loops on them, which is the same missing worker runtime as MOD-007's
-  challenge sweep and MOD-009's retention sweep. Three modules now want it.
+- **The relay runs; delivery still does not.** `app/worker/` drives `dispatch_pending` every
+  fifteen seconds for every schedulable tenant, so an event reaches its subscribers' delivery
+  rows without a person asking. `deliver_pending` is deliberately *not* wired: it refuses a
+  consumer with no handler, this process registers none, and a relay driving an empty registry
+  would read as a control and do nothing.
 - **No consumers.** The subscription table routes to names, and no name in this build has a
   handler behind it.
 - **One delivery can still run two handlers concurrently.** The claim is a lease, not a lock, so
@@ -1008,10 +1027,13 @@ Known gaps, deliberate:
   already threads through every module. A trace needs a collector, and `/events/trace` is the
   nearest thing here.
 - **Nothing drives any of it on a schedule.** `evaluate_objective` and `evaluate_budget` are
-  called by a route and by tests; no worker loops on them, which is the same missing worker
-  runtime as MOD-007's challenge sweep, MOD-009's retention sweep and MOD-010's relay. Four
-  modules now want it, and this is the first one where the absence changes the product: an
-  objective nobody evaluates raises no alert.
+  called by a route and by tests, and the worker runtime deliberately does not call either:
+  *which* objective and *which* budget period are due is a judgement a registry would have to
+  invent. The absence still changes the product -- an objective nobody evaluates raises no
+  alert -- which makes this the first of the undriven jobs worth wiring once that judgement is
+  written down. **The runtime does record into this store**: `worker.job_duration` and
+  `worker.job_success` are its two series, so an objective over them is the one case where the
+  wiring is already half done.
 - **No load tests and no scaling policy** (part of paragraph 3498). The capacity table records a
   forecast somebody made; nothing generates the load that would inform one.
 - **No cost feed.** The ledger, budgets, burn arithmetic and alerts are built and there is no
@@ -1148,7 +1170,8 @@ Known gaps, deliberate:
 - **No rotation on a schedule.** `credentials_due` decides and publishes when somebody calls it;
   nothing loops, and it is **not idempotent across calls** by design -- making it so needs a
   record of what has already been announced, and a table of announcements nobody consumes is
-  the shape this codebase refuses elsewhere. The fifth module now waiting on a worker runtime.
+  the shape this codebase refuses elsewhere. A worker runtime now exists and this is one of
+  the jobs deliberately not wired to it, for that reason.
 - **No vendor dependency register** (paragraph 3030's SLA, outage fallback, cost and exit plan
   as a catalogue). The per-install obligations are built and enforced at activation; the
   platform-wide register is not.
@@ -1363,7 +1386,8 @@ Known gaps, deliberate:
   there are none. Channel fallback, which is the half that does not, is built.
 - **Digests are batched and never sent.** `ntf_digests` fills and closes; rendering a batch into
   one message needs a digest template format the sources do not state, and nothing sweeps the
-  open windows -- the sixth module now waiting on a worker runtime.
+  open windows. A worker runtime now exists; closing a digest window needs that format first,
+  so this stays a job nobody has written rather than a job nothing drives.
 - **`status_update.published` is declared and unproduced.** A status page is a surface this
   build does not have, and an event announcing a publication that never happened would be worse
   than the gap.
@@ -1594,11 +1618,10 @@ Known gaps, deliberate:
   pre-filter is ENG-01's, and a `LIKE` scan presented as search would be a read path with no
   freshness contract and no pre-filter. The duplicate detector draws its candidates through the
   indexes instead, which is the one place this module needs to find people by a value.
-- **Nothing drives the timeline projection.** `project_timeline` is called by a route and by
-  tests; no worker loops on it -- the same missing runtime as MOD-007's challenge sweep,
-  MOD-009's retention sweep, MOD-010's relay, MOD-011's objectives, MOD-012's rotations and
-  MOD-013's digests. The seventh module to want it, and the third where the absence changes the
-  product: a timeline nobody projects stays empty.
+- **The timeline projection runs on a schedule now.** `people.project_timeline` is a worker
+  job at sixty seconds, which closes the gap this bullet used to record -- the third place
+  where the absence changed the product, because a timeline nobody projects stays empty and
+  the Member 360 then shows a member with no history.
 - **A verification is recorded, not performed.** Nothing here sends a code or reads a reply, so
   `verify_contact_point` records that a named actor asserted it at a time -- the same shape as
   MOD-012's `validated` install state, and for the same reason.
@@ -1815,11 +1838,9 @@ Known gaps, deliberate:
 - **A coupon's limit is serialised per code, not per tenant.** `FOR UPDATE` on the coupon row
   closes the race the reviewers demonstrated; two different codes on one promotion still race
   each other's `max_total_redemptions`, which is counted per promotion.
-- **Nothing expires anything on a schedule.** A promotion's window and a price's window are
-  read at resolution time and nothing sweeps them, which is the same missing worker runtime as
-  MOD-007's challenge sweep, MOD-009's retention sweep, MOD-010's relay, MOD-011's objectives,
-  MOD-012's rotations, MOD-013's digests and MOD-014's timeline projection. The eighth module
-  to want it, and here the absence is benign: an expired promotion stops applying because the
+- **Nothing expires anything on a schedule**, and here that is benign rather than a gap the
+  worker runtime closes: a promotion's window and a price's window are read at resolution time,
+  so an expired promotion stops applying because the
   resolver reads the window, not because a sweep retired it.
 - **An approval's window is twelve hours and the sources state none.** `APPROVAL_VALID_FOR` is a
   judgement -- a shift is the unit of time a till decision belongs to -- and it is a decision
@@ -2005,8 +2026,10 @@ day before their anniversary and got a second allowance, the whole of COM-01-R04
 with a date field. It also wrote `status = 'frozen'` whatever the date said, so a freeze booked
 for August made the membership read as frozen in May while `status_as_of` correctly said no.
 The obvious repair is to leave the cache behind and let something catch it up when the date
-arrives. **There is nothing to catch it up**: this build has no worker runtime, and a booked
-freeze that never takes effect is worse than one that cannot be booked. So a freeze starts
+arrives. **There was nothing to catch it up** when this was decided, and there still is no job
+that does -- a worker runtime exists now, and applying a booked freeze is a membership
+lifecycle decision rather than a sweep, so wiring it needs the decision written down first. A
+booked freeze that never takes effect is worse than one that cannot be booked. So a freeze starts
 within the month before today -- a month back because one agreed at the desk on Friday is
 recorded on Monday -- and the cache moves because the change is effective. `planned_ends_on`
 remains a column, because what the member asked for and the day the freeze actually ended are
@@ -2046,8 +2069,9 @@ Known gaps, deliberate:
   followed. What is enforced is that whatever rate was applied is recorded on the line and in
   the return.
 - **Nothing drives anything on a schedule.** A renewal, a grace-period entry, an expiry, a
-  dunning step, a lapsed-hold sweep and a future-dated cancellation all want the worker runtime
-  this build does not have -- the ninth module to want one. Two of those change the product:
+  dunning step, a lapsed-hold sweep and a future-dated cancellation all want a job, and the
+  worker runtime that would run one exists -- none of these is wired, because each needs a
+  product decision the sources do not state. Two of them change the product:
   nothing renews a membership and nothing applies a cancellation when its notice runs out, so
   the status cache for a future-dated cancellation stays `active` and `membership_as_of` is the
   function that tells the truth.
@@ -2331,8 +2355,9 @@ Known gaps, deliberate:
   freeze was deleted rather than left half-built.
 - **Nothing expires wallet value, recognises revenue, closes a period or sweeps a lapsed
   deposit on a schedule.** `expiring_before` and `recognition_due` decide and a route calls
-  them; no worker loops. The tenth module to want the worker runtime, and here the absence
-  changes the product twice: lapsed promotional value is still spendable until somebody calls
+  them; no worker job calls either, because which period and which schedule are due is an
+  accountant's judgement rather than a sweep's predicate. The absence changes the product
+  twice: lapsed promotional value is still spendable until somebody calls
   the expiry, and revenue sits unrecognised until somebody asks.
 - **`credit.issued` and `credit.consumed` are declared and deliberately unproduced**: the
   credits COM-04 means are MOD-017's entitlement grants, which already publish their own pair.
@@ -2551,7 +2576,8 @@ Known gaps, deliberate:
   write-table access", the same shape as MOD-017's entitlement reservation.
 - **Nothing drives anything on a schedule.** A session is generated when somebody asks, and
   nothing completes a session whose time has passed, sweeps a lapsed hold or expires a booking
-  window. The eleventh module to want the worker runtime this build does not have.
+  window. The worker runtime exists and none of these is wired: completing a session is a
+  statement that it happened, which is the same judgement MOD-020's settlement needs.
 - **No travel buffer is enforced.** `availability.check_travel` decides and nothing calls it:
   the buffer is a per-tenant figure the sources do not state, and paragraph 1835's
   cross-location case needs a resource scheduled at two sites in one day, which the location
@@ -2755,11 +2781,13 @@ Things worth knowing before extending it:
 
 Known gaps, deliberate:
 
-- **Nothing drives anything on a schedule.** An offer expires when somebody calls
-  `/booking/waitlist/expire`, a session settles when somebody calls its settle route, and a
-  `lapsed` entry is never swept. The twelfth module to want the worker runtime this build does
-  not have, and here the absence is visible twice: a seat held by an unanswered offer stays
-  held, and a session nobody settles leaves every member's place reading as held for ever.
+- **Offers expire on a schedule; sessions still settle only when asked.**
+  `booking.expire_offers` is a worker job at sixty seconds, so a seat held by an unanswered
+  offer is released for the next person in the queue. Settlement is not a job and deliberately
+  so: it decides whether somebody was absent, and `settle_session_bookings` takes no
+  caller-supplied instant precisely because a settlement time a caller chooses decides who is
+  recorded a no-show. Driving it needs a decision about *which* sessions are due, which is
+  product nobody has stated. A `lapsed` entry is still never swept.
 - **Nothing charges or credits anything.** `fee_due` and `credit_forfeit` are decisions for
   MOD-017 to act on, and an upheld appeal about money is recorded rather than executed. Real
   financial expenditure is owner-reserved.
@@ -2947,11 +2975,12 @@ Known gaps, deliberate:
   fingerprint and a vault reference; `signature_ref` locates a signature this build never
   made. The vault is the same one MOD-007's TOTP seeds, MOD-009's crypto-shred and MOD-012's
   webhook signatures are waiting on.
-- **Nothing drives anything on a schedule.** An offline sweep, a command expiry and a
-  certificate rotation all want the worker runtime this build does not have -- the
-  thirteenth module to want one, and here the absence is visible twice: a device nobody
-  sweeps has its silence reach no dashboard, and an unlock nobody expires reads as a door
-  waiting to open.
+- **The offline sweep and the command expiry run; certificate rotation does not.**
+  `devices.sweep_offline` is a worker job at five minutes against a half-hour silence
+  threshold, and `devices.expire_commands` at sixty seconds, so a dead unit reaches a
+  dashboard and an uncollected unlock stops reading as a door waiting to open.
+  `credentials_due` is still called by a route only: it is **not idempotent across calls** by
+  design, so scheduling it needs a record of what has already been announced.
 - **`on_egress_path` is a caller's claim**, like `skills` in MOD-019 and `validated` in
   MOD-012. Nothing in this build can see a building, so a commissioning record is what a
   named person asserted at a time -- which is why the attribution and the evidence locator
@@ -3137,10 +3166,13 @@ Known gaps, deliberate:
   is a MOD-021 command written for whatever collects it, and `settle_command` records what
   that thing reported. A row saying a turnstile opened, written by nothing that drives a
   turnstile, is the fabricated-evidence shape this codebase has been bitten by six times.
-- **Nothing drives anything on a schedule.** The replay cache is never swept, an offline
-  reconciliation runs when somebody calls it, and an unreviewed emergency release sits in its
-  index until a human looks. The **fourteenth** module to want the worker runtime this build
-  does not have.
+- **The replay cache is swept; the rest still waits for a person.** `access.replay_sweep` is
+  a worker job at five minutes, and the only job in the registry that runs as
+  `veyro_cp_worker` -- `sweep_replay_tokens` needs the DELETE grant that `veyro_cp_app` holds
+  nowhere, which is why a job declares the role it needs rather than the process holding the
+  union of both. An offline reconciliation still runs when somebody calls it, and an
+  unreviewed emergency release sits in its index until a human looks: both are judgements
+  rather than sweeps.
 - **Occupancy is advisory and a capacity policy cannot be enforced from it.** A count built
   from readers is wrong the moment a door is held, and refusing a member on a number the
   module itself calls approximate is the direction nobody would defend. Enforcing it needs
@@ -3156,6 +3188,114 @@ Known gaps, deliberate:
   because the reachability sweep matches column names.
 - **The timeline does not know about any of this.** MOD-014 projects nine event types and none
   of MOD-022's six is among them, so a member's timeline shows no door they walked through.
+
+## The worker runtime
+
+`backend/app/worker/` is the thing this file asked for in fourteen places. Every one of those
+bullets named a decision function that was written, tested and reachable from a route, waiting
+for something to call it without a person asking -- and until now the honest answer was that no
+such thing existed. Six jobs are wired: MOD-010's relay, MOD-014's timeline projection,
+MOD-021's offline sweep and command expiry, MOD-020's waitlist-offer expiry and MOD-022's
+replay-cache sweep. `python -m app.worker --once` runs one tick and prints what it did;
+without `--once` it loops until a signal.
+
+Five decisions carry it, and three of them are refusals:
+
+- **A job is an adapter, not a new implementation.** Every entry in `registry.py` calls a
+  service function that already exists with arguments it already takes. A worker that
+  re-implemented a sweep would be a second copy of the rule, and the day the two disagreed
+  nobody could say which was the policy -- which is MOD-012's argument for importing MOD-010's
+  backoff rather than copying it.
+- **A job declares the role it needs, and the replay sweep is why.** `veyro_cp_worker` differs
+  from `veyro_cp_app` in exactly one direction: it holds DELETE on the configuration registry
+  and on `plt01.acc_replay_tokens`, and `veyro_cp_app` holds DELETE nowhere. A process holding
+  the union of both could delete a tenant's feature flags in order to sweep a replay cache, so
+  `Pools` carries the pools and `Job.role` picks one. The negative test is what makes that real
+  rather than decorative: `sweep_replay_tokens` under the `veyro_cp_app` pool is refused by the
+  privilege layer, and the test asserts the refusal. This is also the first thing in the build
+  to use `veyro_cp_worker` as a *client* rather than as a name in a GRANT -- a review found it
+  had never been exercised behaviourally at all.
+- **Every job is idempotent, so the schedule is disposable, so there is no table.** Due-times
+  live in the runner's memory and a restart makes everything due at once. That is safe because
+  a second pass is free by construction -- a unique index, an idempotency key, or a predicate
+  that no longer matches -- and it is why this change adds no migration, no RLS, no grants, no
+  isolation checks and no mutation sweep. What a durable schedule would buy is *not* re-running
+  after a restart; what it would cost beyond the work is a second place where "has this run" is
+  recorded, which can disagree with the effect the job had. **The day a job appears that is not
+  idempotent, it needs durable state before it needs a schedule.**
+- **No lock, and the jobs are why.** `dispatch_pending` claims with `FOR UPDATE SKIP LOCKED`,
+  `project_timeline` is idempotent by a unique index, `sweep_offline` filters on idempotency
+  keys before it publishes, and the sweeps are statements whose predicate no longer matches the
+  rows another worker took. An advisory lock around each job would make that invisible rather
+  than true, and `test_two_runners_over_one_tenant_do_not_dispatch_an_event_twice` is two real
+  threads rather than an assertion about one.
+- **Two metrics and no table, for the same reason.** A job run is "how long work took and how
+  often it succeeded", which is exactly what MOD-011's store is for and exactly what has no
+  table of its own -- so `worker.job_duration` and `worker.job_success` duplicate nothing,
+  which is the test that catalogue applies to itself. The `job` dimension is the first closed
+  one in it: a consumer name and a check key are tenant-chosen, and a job is code.
+
+Things worth knowing before extending it:
+
+- **A failure path inside a batch loop must not raise**, and here the unit is a whole tenant.
+  MOD-010 shipped a relay whose failure handler raised, so a poison row aborted every healthy
+  delivery behind it; the same shape is available one level up, where one tenant's bad data
+  would stop every tenant after it in the list while the process still looked like it was
+  running. Every job runs inside its own `try`, and `run_forever` catches the tick's own
+  exceptions too -- a tenant list that cannot be read is a reason to wait, not to exit.
+- **The schedulable set is `provisioned` and `active`.** Suspension is a customer being told
+  they do not have the product, and archival is finished, so neither gets work done on its
+  behalf. Provisioned is the one worth arguing: the obvious reading is that nothing has
+  happened in it yet, and in this build that is false -- nothing on the tenant plane checks the
+  registry before a write, so a tenant accumulates outbox rows from its own bootstrap onwards.
+  Excluding it would leave a backlog that reads exactly like a relay that had stopped.
+- **The actor is a fixed, derived identifier and is obviously not a person.** Three jobs write
+  evidence, and this codebase's standing rule is that evidence with nobody's name on it answers
+  nothing. `WORKER_ACTOR` is a version-5 UUID over a `.invalid` URL: stable across restarts,
+  never issued by MOD-007 (whose identifiers are version 4), and a row attributed to it says
+  "the scheduled worker did this", which is a true and useful sentence. A random id per run
+  would say nothing and a borrowed operator's id would be a lie about who decided.
+- **The name list is a leaf module on purpose.** `app/worker/names.py` imports nothing, because
+  the registry imports every module whose work it drives and MOD-011's catalogue is imported by
+  most of them -- so the names could not live in the registry without closing that loop. The
+  registry asserts at import that the two agree in both directions, which is MOD-010's
+  check-at-import argument: a job with no declared name could not record a point at all, and a
+  declared name with no job is a dimension value nothing can emit.
+
+What is deliberately **not** a job, each for a stated reason:
+
+- **MOD-007's challenge sweep.** `iam.challenges` has no DELETE grant for any role, by design.
+  A job that ran and deleted nothing would be activity with no effect -- worse than the gap.
+- **MOD-010's `deliver_pending`.** It refuses a consumer with no handler, and this process
+  registers none. A relay driving an empty registry would read as a control and do nothing.
+- **MOD-020's session settlement.** It decides whether somebody was absent, and
+  `settle_session_bookings` deliberately takes no caller-supplied instant. Driving it needs a
+  decision about which sessions are due that the sources do not state.
+- **MOD-012's credential rotation announcement.** `credentials_due` is not idempotent across
+  calls by design, so scheduling it needs a record of what has already been announced -- the
+  durable state the bullet above says comes first.
+- **MOD-009's retention sweep, MOD-011's objective evaluation, MOD-013's digest close,
+  MOD-017's renewals and dunning, MOD-018's recognition and period close.** Each needs a
+  judgement this registry would have to invent -- which deadline, which objective, which
+  period -- and inventing product is the one thing the delegation does not cover. They are the
+  next jobs, and each wants its own decision written down first.
+
+Known gaps, deliberate:
+
+- **One process, and the schedule is in its memory.** Two workers are safe (the jobs
+  coordinate) but they do the same work twice; there is no leader election and no partitioning
+  by tenant. At this scale that is waste rather than a fault.
+- **Nothing restarts it.** There is no process manager, no deployment and no health endpoint
+  for the worker itself -- the operations board answers "did it run" from what it recorded,
+  which is the honest form of that question and not a heartbeat.
+- **A tick is sequential over tenants and jobs**, so the wall-clock of one tick grows linearly
+  with the tenant count. The fix when it matters is concurrency per tenant, which the advisory
+  lock this change did not need would then earn.
+- **`project_timeline` re-asks "what is not yet projected" every minute**, against an outbox
+  that has no DELETE grant and no archive. The predicate is a `NOT EXISTS` over the timeline
+  table bounded by the nine projected event types, so it is cheap now and gets less cheap as
+  the outbox grows -- the cost of running a job on a schedule rather than when somebody asks.
+  The archive MOD-010 names is what fixes it, not a change here.
 
 ## The web app
 
@@ -3196,14 +3336,32 @@ cannot verify. The fixture's browser session is assurance level 1, which is the 
 test at: `contact` opens on a routine permission and `identity` needs a financial one, so one
 record shows a masked legal name beside an unmasked email address.
 
-**The operations board makes this file's most-repeated gap countable.** Fourteen module
-entries above end with some version of "nothing drives this on a schedule", and the event
-outbox is where that shows: every module writes to it, no consumer has a handler, no worker
-loops on the relay, and there is no DELETE grant -- so the number climbs whenever somebody uses
-the product, and the fixture alone leaves a dozen behind. The page therefore has to say *which
-kind* of number it is showing: a backlog with an alarm beside it cries wolf on every ordinary
-use, and one rendered bare lets a reader conclude the relay is working. A dead letter is kept
-apart, because that one is a fault whatever else is true.
+**The operations board is where the worker runtime became visible, and it changed what a
+backlog means.** This file's most-repeated gap was "nothing drives this on a schedule", and
+the event outbox was where it showed: every module writes to it, there is no DELETE grant, and
+nothing drained it -- so the number climbed whenever somebody used the product and the page's
+whole job was to stop that reading as an incident. The relay now runs every fifteen seconds,
+so a *pending event* that persists is a worker that is down, which is the first fault this
+page can diagnose rather than excuse. A *pending delivery* is unchanged and still expected: no
+name in this build has a handler behind it.
+
+Telling those apart needs evidence the worker ran, and the scheduled-jobs block is it --
+`/ops/worker`, the one read in the build where a dimension may be named, because a job name is
+code and a consumer name is a tenant's. **A zero there is a sentence rather than an absence**:
+every job runs for every tenant at least every five minutes, so no recorded run over a window
+of hours is a stopped worker. A count of runs against an *expected* count is deliberately not
+returned, although the arithmetic is trivial: every reading of it is wrong unless the worker
+was up for the whole window, which is the thing being tested, so a worker started ten minutes
+ago would report 40 runs against an expected 5,760 and read as broken. `no_evidence` is kept apart from `stopped` for the same reason a
+refusal is kept apart from an empty table -- a reader without `ops.metric.read` has learned
+nothing, and a page that called that an incident would be inventing one out of its own
+permissions. A dead letter stays apart from all of it, because that one is a fault whatever
+else is true.
+
+And the fixture **runs the real worker**: `python -m app.worker --once` is its last step, so
+the board is asserted against rows a scheduled job actually wrote rather than against an empty
+screen with an explanation on it. The spec that used to assert the pending count was *not*
+zero now asserts that it is.
 
 **The fleet board is three answers rather than a list**, and the fixture seeds all three
 because one healthy turnstile cannot show what the board is for: a door that works, a door that
@@ -3295,6 +3453,13 @@ database, starts the backend, installs Chromium and runs the browser suite rathe
 mocking the API -- a mocked backend would have passed every one of the defects the real one
 caught.
 
+**And a test that asserts a freshness has to create it**, which is the same rule as the three
+budget findings above and was found the same way: by running the suite an hour after seeding.
+The fleet board shows `Online` only while a device has reported within ten minutes, so that
+assertion is true because the fixture's health report made it true. CI provisions immediately
+before the suite and is deterministic; a local run against a stale fixture reads `Late` and
+looks exactly like a product regression. The spec names it where the failure appears.
+
 **And the linter had never run.** `next lint` was removed in Next 16 and ESLint 10 ignores
 `.eslintrc.json`, so `npm run lint` answered "Invalid project directory provided, no such
 directory: web/lint" and nothing in CI called it -- a check that cannot run is a check nobody
@@ -3326,16 +3491,23 @@ needs MOD-014 and MOD-008, both built) is the next eligible one, and MOD-006 is 
 Multiplatform qualification, which is a client-side proof the server plane does not need and
 the mobile half does.
 
-Three things named rather than done remain open across the build: the platform plane is
+Two things named rather than done remain open across the build: the platform plane is
 unauthenticated -- and MOD-012 makes that worse, since the definition catalogue decides which
-scopes a tenant may hand to a third party -- no worker runtime exists for the **fourteen**
-schedules that want one, which MOD-022 adds to again because nothing sweeps the replay cache
-and an unreviewed emergency release waits for a human, and there is no key vault, which is what
+scopes a tenant may hand to a third party -- and there is no key vault, which is what
 MOD-009's crypto-shred, MOD-007's TOTP seeds, MOD-012's inbound webhook signatures and
 MOD-021's device certificates are all waiting on. **The vault is the one that has moved from
 inconvenient to load-bearing**: MOD-021 enrols a credential it cannot verify a signature
 against, so a device's identity is a fingerprint somebody recorded rather than a key anything
 checks -- and MOD-022 now opens doors on that identity.
+
+**The worker runtime is no longer on that list, and six of the fourteen schedules are driven.**
+`backend/app/worker/` has its own section above. What closing it took is worth the same note
+`Decision.mask` gets below: no new table, because every wired job is idempotent and a durable
+schedule's real cost is a second place where "has this run" is recorded that can disagree with
+the effect the job had. The eight schedules still undriven are undriven for a reason each --
+`iam.challenges` has no DELETE grant for anybody, `deliver_pending` has no handler to drive,
+and the rest need a judgement the registry would have to invent. Those are the next jobs, and
+each wants its decision written down before it is wired.
 
 `Decision.mask` is no longer on that list. MOD-014 applies it, which closes the five-module gap
 -- and note what closing it took: `permit` had to return the gate rather than the session, and
