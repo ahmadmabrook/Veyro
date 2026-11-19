@@ -14,15 +14,16 @@ raises and a step-up that actually raises a session's assurance, an admin landin
 every control's visibility comes from MOD-008's gate, a section navigation filtered by that
 same gate, MOD-004's organization hierarchy, MOD-008's roles and audit chain, MOD-014's
 duplicate queue and Member 360 with every masked field marked, MOD-021's fleet board and
-device detail, MOD-022's door board and zone detail, Arabic/English with full RTL, a dark theme, and four layers of tests that have each
+device detail, MOD-022's door board and zone detail, an operations board over MOD-010's event
+plane and MOD-011's objectives, Arabic/English with full RTL, a dark theme, and four layers of tests that have each
 been shown to fail when the thing they guard is removed.
 
 | Layer | What it proves | Count | Command |
 |---|---|---|---|
 | Foundation (`tests/unit/`) | Tokens, contrast, type, theme coverage, backend parity. No dependencies, no DOM. | 57 | `npm run test:foundation` |
 | Component (`tests/component/`) | Control semantics, the message catalogue, the sign-in form's four states, the device-label parity, the hierarchy composer, the mask marker and the redirect guard, in jsdom. | 38 | `npm test` |
-| End-to-end (`tests/e2e/*.spec.ts`) | A real browser against a real backend, including 19 axe runs across both locales and both themes, the no-JavaScript sign-in replay, four surfaces driven as a session that may not read them, and a session raised from level 1 to level 2 for real. | 99 + 2 setup | `npm run e2e` |
-| Mutation sweep (`tests/e2e/mutate.mjs`) | Each protection above, broken on purpose, is caught by the test that names it. | 40/40 | `npm run e2e:mutate` |
+| End-to-end (`tests/e2e/*.spec.ts`) | A real browser against a real backend, including 21 axe runs across both locales and both themes, the no-JavaScript sign-in replay, five surfaces driven as a session that may not read them, and a session raised from level 1 to level 2 for real. | 106 + 2 setup | `npm run e2e` |
+| Mutation sweep (`tests/e2e/mutate.mjs`) | Each protection above, broken on purpose, is caught by the test that names it. | 43/43 | `npm run e2e:mutate` |
 
 ### Running it
 
@@ -321,6 +322,22 @@ only ever see the well-formed case. `composeTree` keeps an orphan and marks it r
 dropping it, because a site that vanishes from the only page listing sites is the worse
 failure, and `tests/component/organization-tree.test.ts` is what holds that.
 
+**The operations board exists to make the repository's most-repeated gap visible in the
+product.** Fourteen modules in `CLAUDE.md` end with some version of "nothing drives this on a
+schedule", and the event outbox is where that becomes countable: every module writes to it, no
+consumer in this build has a handler, no worker loops on the relay, and the table has no DELETE
+grant — so the number climbs whenever somebody uses the product. The fixture alone leaves a
+dozen events behind.
+
+**So the page has to say which kind of number it is showing.** A backlog rendered with an alarm
+beside it would cry wolf on every ordinary use; rendered bare it would let somebody conclude the
+relay is working. `backlogIsExpected` is the distinction — no active subscription means nothing
+was ever going to drain it — and a dead letter is kept apart because that one *is* a fault
+whatever else is true: a delivery used its entire retry budget and is waiting for a person.
+
+Four blocks, four permissions, each gated on its own, because an empty dead-letter table
+somebody may not see reads as "nothing is quarantined".
+
 **A fleet board is three answers, and the fixture seeds all three.** One healthy turnstile
 cannot show what the board is for: an operator has to tell a door that works from a door that
 cannot be put into service because paragraph 4175's commissioning is incomplete, and both from
@@ -375,11 +392,11 @@ other 8 of 9 tokens recompute to the printed hundredth on all three surfaces.
 
 ## What this does not yet cover
 
-- **Twelve screens of a hundred and seventy.** `contracts/ui/screen-contracts.yaml` lists 170 V1
+- **Thirteen screens of a hundred and seventy.** `contracts/ui/screen-contracts.yaml` lists 170 V1
   screens across five surfaces; what exists is sign-in, an admin landing page, MOD-004's
   organization hierarchy, MOD-014's duplicate queue and Member 360, MOD-022's door board and
-  zone detail, MOD-008's permissions page, MOD-021's fleet board and device detail, and the
-  step-up flow. The foundation, the controls, the gate wiring and the four test
+  zone detail, MOD-008's permissions page, MOD-021's fleet board and device detail, the
+  operations board, and the step-up flow. The foundation, the controls, the gate wiring and the four test
   layers are built to carry the rest, and the per-module work is wiring each one's gate, its
   masked fields and its failure states the way MOD-022's are.
 - **`color.action.pressed` has no dark value**, declared in `ds.json`'s `DARK_GAPS`. The source

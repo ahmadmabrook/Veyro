@@ -3177,8 +3177,8 @@ navigation whose every entry is present exactly when the gate allows the page be
 MOD-004's hierarchy -- the organization, its brands, its sites with the timezone MOD-019 reads
 every rota window in, and the legal entity MOD-017 numbers invoices per; MOD-008's roles, the
 permissions this session actually holds and the hash-chained audit log; MOD-014's duplicate
-queue and Member 360; MOD-021's fleet board and device detail; and MOD-022's door board and
-zone detail, which read the real routes and
+queue and Member 360; MOD-021's fleet board and device detail; an operations board over
+MOD-010's event plane and MOD-011's objectives; and MOD-022's door board and zone detail, which read the real routes and
 render the public code, the policy terms, the advisory occupancy with paragraph 4180's
 disclaimer, the access points, the gaps the module discloses about itself and the decision log
 with its public/private split.
@@ -3195,6 +3195,15 @@ Offering a step-up for the second would send somebody looking for a hardware key
 cannot verify. The fixture's browser session is assurance level 1, which is the useful level to
 test at: `contact` opens on a routine permission and `identity` needs a financial one, so one
 record shows a masked legal name beside an unmasked email address.
+
+**The operations board makes this file's most-repeated gap countable.** Fourteen module
+entries above end with some version of "nothing drives this on a schedule", and the event
+outbox is where that shows: every module writes to it, no consumer has a handler, no worker
+loops on the relay, and there is no DELETE grant -- so the number climbs whenever somebody uses
+the product, and the fixture alone leaves a dozen behind. The page therefore has to say *which
+kind* of number it is showing: a backlog with an alarm beside it cries wolf on every ordinary
+use, and one rendered bare lets a reader conclude the relay is working. A dead letter is kept
+apart, because that one is a fault whatever else is true.
 
 **The fleet board is three answers rather than a list**, and the fixture seeds all three
 because one healthy turnstile cannot show what the board is for: a door that works, a door that
@@ -3293,8 +3302,8 @@ has, which is the same shape as a test that passes vacuously. The flat config in
 `web/eslint.config.mjs` is the migration; its first run found four unused imports and
 variables, and it is in `npm run verify` and in the CI job now.
 
-Known gaps: the surface covers the sign-in, the step-up, MOD-004, MOD-008, MOD-014, MOD-021
-and MOD-022. The other thirteen implemented modules have no screens yet, which is the bulk of the remaining work;
+Known gaps: the surface covers the sign-in, the step-up, MOD-004, MOD-008, MOD-010, MOD-011,
+MOD-014, MOD-021 and MOD-022. The other eleven implemented modules have no screens yet, which is the bulk of the remaining work;
 a step-up spends a recovery code and there is no screen for reissuing a batch, because TOTP and
 passkeys are implemented and unverifiable here so a recovery code is the only second factor;
 every `tenancy.*.write` is a stepped-up
@@ -3310,7 +3319,7 @@ is part of it. So "implemented" above is accurate about the server plane and inc
 the product for every module except MOD-022, and the backlog has two halves.
 
 The first is the screens the eighteen built modules do not have. `web/` covers the sign-in, the
-step-up, MOD-004, MOD-008, MOD-014, MOD-021 and MOD-022; `contracts/ui/screen-contracts.yaml` names the rest, and
+step-up, MOD-004, MOD-008, MOD-010, MOD-011, MOD-014, MOD-021 and MOD-022; `contracts/ui/screen-contracts.yaml` names the rest, and
 the work is per module rather than per screen because each one needs its gate, its masked
 fields and its failure states wired the way those are. The second is the modules themselves: MOD-023 (Coach Workspace, which
 needs MOD-014 and MOD-008, both built) is the next eligible one, and MOD-006 is the Compose

@@ -366,6 +366,36 @@ const MUTATIONS = [
     grep: "malformed device id",
   },
   {
+    id: "ops-backlog-explained",
+    why: "a backlog nothing consumes is the missing worker, and a number rendered bare lets "
+      + "somebody conclude the relay is working",
+    file: "src/app/operations/page.tsx",
+    from: "                  ? text(\"ops.backlogExpected\")",
+    to: "                  ? \"\"",
+    grep: "missing worker, not a failure",
+  },
+  {
+    id: "ops-deadletter-gate",
+    why: "an empty dead-letter table somebody may not see reads as 'nothing is quarantined', "
+      + "which is a different fact",
+    file: "src/app/operations/page.tsx",
+    // **The rendering guard, not the fetch guard.** The first version of this mutation
+    // removed the condition on the *request* -- which changes nothing a reader sees, because
+    // `Gated` still refuses, so the sweep reported it uncaught and was right to.
+    from: "  if (!gate.allowed) {",
+    to: "  if (false) {",
+    grep: "refused each block rather than shown four empty ones",
+  },
+  {
+    id: "ops-objective-honesty",
+    why: "nothing evaluates an objective on a schedule, so an empty list is honest rather "
+      + "than reassuring and the page has to say which",
+    file: "src/i18n/locale.ts",
+    from: "    \"ops.noObjectives\": \"No objective is defined. Nothing evaluates one on a schedule either, so an objective nobody runs raises no alert — which is why an empty list here is honest rather than reassuring.\",",
+    to: "    \"ops.noObjectives\": \"No objective is defined.\",",
+    grep: "raises no alert",
+  },
+  {
     id: "device-label-parity",
     why: "the fixture's device label must equal the app's, or every sign-in is challenged and "
       + "the suite spends a single-use recovery code per run",
