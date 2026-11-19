@@ -3177,7 +3177,8 @@ navigation whose every entry is present exactly when the gate allows the page be
 MOD-004's hierarchy -- the organization, its brands, its sites with the timezone MOD-019 reads
 every rota window in, and the legal entity MOD-017 numbers invoices per; MOD-008's roles, the
 permissions this session actually holds and the hash-chained audit log; MOD-014's duplicate
-queue and Member 360; and MOD-022's door board and zone detail, which read the real routes and
+queue and Member 360; MOD-021's fleet board and device detail; and MOD-022's door board and
+zone detail, which read the real routes and
 render the public code, the policy terms, the advisory occupancy with paragraph 4180's
 disclaimer, the access points, the gaps the module discloses about itself and the decision log
 with its public/private split.
@@ -3194,6 +3195,17 @@ Offering a step-up for the second would send somebody looking for a hardware key
 cannot verify. The fixture's browser session is assurance level 1, which is the useful level to
 test at: `contact` opens on a routine permission and `identity` needs a financial one, so one
 record shows a masked legal name beside an unmasked email address.
+
+**The fleet board is three answers rather than a list**, and the fixture seeds all three
+because one healthy turnstile cannot show what the board is for: a door that works, a door that
+cannot be put into service because paragraph 4175's commissioning is incomplete, and a device
+that is not a door at all. The pages say three things the product cannot do -- reachability is
+worked out from the last report and nothing polls on a schedule, so the board is "as of" when
+it loaded; "needs somebody" is `active` *and* `offline` together, because a device in
+maintenance is not an incident; and a credential is a fingerprint and a vault reference with no
+signature verified anywhere, which matters because MOD-022 opens doors on that identity. The
+commissioning block lists all seven tests with which are recorded, not only the missing ones: a
+list of what is missing cannot be told from a list of everything when nothing is missing.
 
 **The permissions page is where a surface had to be stopped from making a true-sounding
 claim.** MOD-008's chain detects editing and not truncation by somebody who also moves the
@@ -3281,8 +3293,8 @@ has, which is the same shape as a test that passes vacuously. The flat config in
 `web/eslint.config.mjs` is the migration; its first run found four unused imports and
 variables, and it is in `npm run verify` and in the CI job now.
 
-Known gaps: the surface covers the sign-in, the step-up, MOD-004, MOD-008, MOD-014 and
-MOD-022. The other fourteen implemented modules have no screens yet, which is the bulk of the remaining work;
+Known gaps: the surface covers the sign-in, the step-up, MOD-004, MOD-008, MOD-014, MOD-021
+and MOD-022. The other thirteen implemented modules have no screens yet, which is the bulk of the remaining work;
 a step-up spends a recovery code and there is no screen for reissuing a batch, because TOTP and
 passkeys are implemented and unverifiable here so a recovery code is the only second factor;
 every `tenancy.*.write` is a stepped-up
@@ -3298,7 +3310,7 @@ is part of it. So "implemented" above is accurate about the server plane and inc
 the product for every module except MOD-022, and the backlog has two halves.
 
 The first is the screens the eighteen built modules do not have. `web/` covers the sign-in, the
-step-up, MOD-004, MOD-008, MOD-014 and MOD-022; `contracts/ui/screen-contracts.yaml` names the rest, and
+step-up, MOD-004, MOD-008, MOD-014, MOD-021 and MOD-022; `contracts/ui/screen-contracts.yaml` names the rest, and
 the work is per module rather than per screen because each one needs its gate, its masked
 fields and its failure states wired the way those are. The second is the modules themselves: MOD-023 (Coach Workspace, which
 needs MOD-014 and MOD-008, both built) is the next eligible one, and MOD-006 is the Compose

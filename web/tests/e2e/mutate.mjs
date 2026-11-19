@@ -331,6 +331,41 @@ const MUTATIONS = [
     grep: "at the scope the server derived",
   },
   {
+    id: "fleet-attention-rule",
+    why: "'needs somebody' is a device in service that has gone quiet, not every device that "
+      + "is not online -- listing the others is how an alert channel gets muted",
+    file: "src/app/fleet/page.tsx",
+    from: "  const attention = new Set(fleet.needs_attention);",
+    to: "  const attention = new Set(fleet.devices.filter((d) => d.reachability !== \"online\").map((d) => d.device_id));",
+    grep: "an incident",
+  },
+  {
+    id: "fleet-commissioning-denominator",
+    why: "a list of only the missing tests cannot be told from a list of everything when "
+      + "nothing is missing, and the question is what is left before the door can open",
+    file: "src/app/fleet/[deviceId]/page.tsx",
+    from: "            {commissioning(device.outstanding_tests).map(({ test, done }) => (",
+    to: "            {commissioning(device.outstanding_tests).filter((entry) => !entry.done).map(({ test, done }) => (",
+    grep: "nothing outstanding",
+  },
+  {
+    id: "device-credential-disclosure",
+    why: "no signature is verified anywhere in this build, and MOD-022 opens doors on that "
+      + "identity -- a page that omits it presents a fingerprint as a key",
+    file: "src/app/fleet/[deviceId]/page.tsx",
+    from: "          {text(\"device.certificatesLead\")}",
+    to: "          {\"\"}",
+    grep: "not a key anything checks",
+  },
+  {
+    id: "device-not-found",
+    why: "a malformed id in a URL is a bad link, not a broken product",
+    file: "src/app/fleet/[deviceId]/page.tsx",
+    from: "    if (error instanceof ApiError && (error.status === 404 || error.status === 422)) {",
+    to: "    if (error instanceof ApiError && error.status === 404) {",
+    grep: "malformed device id",
+  },
+  {
     id: "device-label-parity",
     why: "the fixture's device label must equal the app's, or every sign-in is challenged and "
       + "the suite spends a single-use recovery code per run",

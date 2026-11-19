@@ -336,6 +336,75 @@ async function seedAccess(tenantId, token, ownerEmail) {
     method: "POST", ...as(token), body: { correlation_id: cid() },
   });
 
+  // **A fleet worth looking at.** One device is not a board: the three shapes an operator
+  // actually has to tell apart are a door that works, a door that cannot go live because
+  // paragraph 4175's commissioning is incomplete, and a device that is not a door at all. A
+  // surface built against a single healthy turnstile proves none of them.
+  await call(`/fleet/${device.device_id}/health`, {
+    method: "POST", ...as(token),
+    body: {
+      latency_ms: 42, error_count: 0, storage_free_bytes: 8 * 1024 * 1024 * 1024,
+      agent_version: "1.4.2", correlation_id: cid(),
+    },
+  });
+
+  // Part-commissioned: a safety profile and four of the seven tests, never activated. Its
+  // `outstanding_tests` is the list paragraph 4175 blocks it on.
+  const pending = await call("/fleet", {
+    method: "POST", ...as(token),
+    body: {
+      type_id: type.type_id, location_id: location.location_id,
+      serial_number: `SN-${randomUUID().slice(0, 10).toUpperCase()}`,
+      display_name: "South turnstile", correlation_id: cid(),
+    },
+  });
+  await call(`/fleet/${pending.device_id}/provision`, {
+    method: "POST", ...as(token),
+    body: {
+      fingerprint: (randomUUID() + randomUUID()).replace(/-/g, "").slice(0, 64),
+      vault_ref: "vault:acme/gate/2", not_before: notBefore, not_after: notAfter,
+      correlation_id: cid(),
+    },
+  });
+  await call(`/fleet/${pending.device_id}/commission`, {
+    method: "POST", ...as(token),
+    body: {
+      profile: "fail_safe", on_egress_path: true, fire_release_is_independent: true,
+      local_emergency_input: true, evidence_ref: "uri:certs/fire-officer-2026-11",
+      door_description: "south entrance, single leaf", correlation_id: cid(),
+    },
+  });
+  for (const testName of ["power_loss", "edge_agent_crash", "controller_disconnect",
+                          "fire_alarm_input"]) {
+    await call(`/fleet/${pending.device_id}/commissioning-tests`, {
+      method: "POST", ...as(token),
+      body: { test_name: testName, passed: true, correlation_id: cid() },
+    });
+  }
+
+  // A scanner: no `access.actuate`, so it is not an access point and has no safety profile.
+  // MOD-022's actuator trigger refuses a point declared over one, which is the whole reason
+  // the capability set and the kind are separate facts.
+  const scannerType = await call("/fleet/types", {
+    method: "POST", ...as(token),
+    body: {
+      type_code: `SCAN-${Date.now().toString(36).toUpperCase()}`, vendor: "Acme",
+      model: "Scan 100", kind: "scanner", display_name: "Acme Scan 100",
+      capabilities: ["scan", "telemetry"], correlation_id: cid(),
+    },
+  });
+  await call(`/fleet/types/${scannerType.type_id}/publish`, {
+    method: "POST", ...as(publisherToken), body: { correlation_id: cid() },
+  });
+  await call("/fleet", {
+    method: "POST", ...as(token),
+    body: {
+      type_id: scannerType.type_id, location_id: location.location_id,
+      serial_number: `SN-${randomUUID().slice(0, 10).toUpperCase()}`,
+      display_name: "Reception scanner", correlation_id: cid(),
+    },
+  });
+
   const zone = await call("/access/zones", {
     method: "POST", ...as(token),
     body: {
@@ -465,6 +534,8 @@ async function seedAccess(tenantId, token, ownerEmail) {
   });
 
   return {
+    deviceId: device.device_id,
+    pendingDeviceId: pending.device_id,
     duplicateCandidates: candidates.length,
     twinPersonId: twin.person_id,
     publisherEmail: secondEmail,
@@ -498,6 +569,8 @@ if (invokedDirectly) {
       `VEYRO_E2E_ZONE_ID=${fixture.zoneId}`,
       `VEYRO_E2E_POINT_ID=${fixture.pointId}`,
       `VEYRO_E2E_PERSON_ID=${fixture.personId}`,
+      `VEYRO_E2E_DEVICE_ID=${fixture.deviceId}`,
+      `VEYRO_E2E_PENDING_DEVICE_ID=${fixture.pendingDeviceId}`,
       `VEYRO_E2E_READER_EMAIL=${fixture.publisherEmail}`,
       `VEYRO_E2E_READER_PASSWORD=${fixture.publisherPassword}`,
       "",

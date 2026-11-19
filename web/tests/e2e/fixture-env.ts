@@ -25,6 +25,10 @@ export type Fixture = {
   pointId: string;
   /** The seeded member: a tag, a contact point, two notes and a health custom field. */
   personId: string;
+  /** The commissioned, activated turnstile the access point stands on. */
+  deviceId: string;
+  /** A turnstile with four of paragraph 4175's seven tests, so it cannot go live. */
+  pendingDeviceId: string;
   /**
    * A second identity holding `access.zone.read` and **not**
    * `tenancy.organization.read` -- the one the gated-navigation tests need, because the
@@ -73,6 +77,8 @@ export function fixture(): Fixture {
     "VEYRO_E2E_ZONE_ID",
     "VEYRO_E2E_POINT_ID",
     "VEYRO_E2E_PERSON_ID",
+    "VEYRO_E2E_DEVICE_ID",
+    "VEYRO_E2E_PENDING_DEVICE_ID",
     "VEYRO_E2E_READER_EMAIL",
     "VEYRO_E2E_READER_PASSWORD",
   ] as const;
@@ -88,6 +94,8 @@ export function fixture(): Fixture {
     zoneId: env.VEYRO_E2E_ZONE_ID!,
     pointId: env.VEYRO_E2E_POINT_ID!,
     personId: env.VEYRO_E2E_PERSON_ID!,
+    deviceId: env.VEYRO_E2E_DEVICE_ID!,
+    pendingDeviceId: env.VEYRO_E2E_PENDING_DEVICE_ID!,
     readerEmail: env.VEYRO_E2E_READER_EMAIL!,
     readerPassword: env.VEYRO_E2E_READER_PASSWORD!,
   };

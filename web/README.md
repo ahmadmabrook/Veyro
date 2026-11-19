@@ -13,16 +13,16 @@ A running Next.js application: sign-in against MOD-007 including the device chal
 raises and a step-up that actually raises a session's assurance, an admin landing page whose
 every control's visibility comes from MOD-008's gate, a section navigation filtered by that
 same gate, MOD-004's organization hierarchy, MOD-008's roles and audit chain, MOD-014's
-duplicate queue and Member 360 with every masked field marked, MOD-022's door board and zone
-detail, Arabic/English with full RTL, a dark theme, and four layers of tests that have each
+duplicate queue and Member 360 with every masked field marked, MOD-021's fleet board and
+device detail, MOD-022's door board and zone detail, Arabic/English with full RTL, a dark theme, and four layers of tests that have each
 been shown to fail when the thing they guard is removed.
 
 | Layer | What it proves | Count | Command |
 |---|---|---|---|
 | Foundation (`tests/unit/`) | Tokens, contrast, type, theme coverage, backend parity. No dependencies, no DOM. | 57 | `npm run test:foundation` |
 | Component (`tests/component/`) | Control semantics, the message catalogue, the sign-in form's four states, the device-label parity, the hierarchy composer, the mask marker and the redirect guard, in jsdom. | 38 | `npm test` |
-| End-to-end (`tests/e2e/*.spec.ts`) | A real browser against a real backend, including 17 axe runs across both locales and both themes, the no-JavaScript sign-in replay, three surfaces driven as a session that may not read them, and a session raised from level 1 to level 2 for real. | 86 + 2 setup | `npm run e2e` |
-| Mutation sweep (`tests/e2e/mutate.mjs`) | Each protection above, broken on purpose, is caught by the test that names it. | 36/36 | `npm run e2e:mutate` |
+| End-to-end (`tests/e2e/*.spec.ts`) | A real browser against a real backend, including 19 axe runs across both locales and both themes, the no-JavaScript sign-in replay, four surfaces driven as a session that may not read them, and a session raised from level 1 to level 2 for real. | 99 + 2 setup | `npm run e2e` |
+| Mutation sweep (`tests/e2e/mutate.mjs`) | Each protection above, broken on purpose, is caught by the test that names it. | 40/40 | `npm run e2e:mutate` |
 
 ### Running it
 
@@ -321,6 +321,31 @@ only ever see the well-formed case. `composeTree` keeps an orphan and marks it r
 dropping it, because a site that vanishes from the only page listing sites is the worse
 failure, and `tests/component/organization-tree.test.ts` is what holds that.
 
+**A fleet board is three answers, and the fixture seeds all three.** One healthy turnstile
+cannot show what the board is for: an operator has to tell a door that works from a door that
+cannot be put into service because paragraph 4175's commissioning is incomplete, and both from
+a device that is not a door at all. The fixture now seeds a commissioned and reporting
+turnstile, one with four of the seven tests recorded, and a scanner that declares no
+`access.actuate` -- so the assertions are about telling them apart rather than about rendering
+a row.
+
+Three things the pages say out loud because the product cannot do them:
+
+- **reachability is worked out from the last report, not stored**, and nothing in this build
+  polls on a schedule -- so the board is "as of" when it was loaded rather than live;
+- **"needs somebody" is `active` *and* `offline` together.** A device deliberately in
+  maintenance is not an incident and one nobody has finished installing is not either; listing
+  them is how an alert channel gets muted, and the mutation sweep widens the rule to prove the
+  assertion bites;
+- **a credential is a fingerprint and a reference to a secret this build cannot read.** No
+  signature is verified anywhere, so the device's identity is what somebody recorded -- and
+  MOD-022 opens doors on that identity, which is why the disclosure is on the page rather than
+  in a design note.
+
+And the commissioning block lists **all seven tests** with which have a passing record, not
+only the missing ones: a list of what is missing cannot be told from a list of everything when
+nothing is missing, and the question being answered needs the denominator.
+
 **A hash chain's green answer carries its caveat, or it is the more misleading of the two.**
 MOD-008's audit chain detects editing and not truncation by somebody who also moves the head,
 because every value the verifier compares lives in the database that actor already controls --
@@ -350,10 +375,11 @@ other 8 of 9 tokens recompute to the printed hundredth on all three surfaces.
 
 ## What this does not yet cover
 
-- **Ten screens of a hundred and seventy.** `contracts/ui/screen-contracts.yaml` lists 170 V1
+- **Twelve screens of a hundred and seventy.** `contracts/ui/screen-contracts.yaml` lists 170 V1
   screens across five surfaces; what exists is sign-in, an admin landing page, MOD-004's
   organization hierarchy, MOD-014's duplicate queue and Member 360, MOD-022's door board and
-  zone detail, MOD-008's permissions page, and the step-up flow. The foundation, the controls, the gate wiring and the four test
+  zone detail, MOD-008's permissions page, MOD-021's fleet board and device detail, and the
+  step-up flow. The foundation, the controls, the gate wiring and the four test
   layers are built to carry the rest, and the per-module work is wiring each one's gate, its
   masked fields and its failure states the way MOD-022's are.
 - **`color.action.pressed` has no dark value**, declared in `ds.json`'s `DARK_GAPS`. The source
