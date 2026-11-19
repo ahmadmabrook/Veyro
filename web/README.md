@@ -10,18 +10,19 @@ Console (15).
 ## State
 
 A running Next.js application: sign-in against MOD-007 including the device challenge it
-raises, an admin landing page whose every control's visibility comes from MOD-008's gate, a
-section navigation filtered by that same gate, MOD-004's organization hierarchy, MOD-014's
-duplicate queue and Member 360 with every masked field marked, MOD-022's door board and zone
-detail, Arabic/English with full RTL, a dark theme, and four layers of tests that have each
-been shown to fail when the thing they guard is removed.
+raises and a step-up that actually raises a session's assurance, an admin landing page whose
+every control's visibility comes from MOD-008's gate, a section navigation filtered by that
+same gate, MOD-004's organization hierarchy, MOD-014's duplicate queue and Member 360 with
+every masked field marked, MOD-022's door board and zone detail, Arabic/English with full RTL,
+a dark theme, and four layers of tests that have each been shown to fail when the thing they
+guard is removed.
 
 | Layer | What it proves | Count | Command |
 |---|---|---|---|
 | Foundation (`tests/unit/`) | Tokens, contrast, type, theme coverage, backend parity. No dependencies, no DOM. | 57 | `npm run test:foundation` |
-| Component (`tests/component/`) | Control semantics, the message catalogue, the sign-in form's four states, the device-label parity, the hierarchy composer and the mask marker, in jsdom. | 34 | `npm test` |
-| End-to-end (`tests/e2e/*.spec.ts`) | A real browser against a real backend, including 14 axe runs across both locales and both themes, the no-JavaScript sign-in replay, and two surfaces driven as a session that may not read them. | 68 + 2 setup | `npm run e2e` |
-| Mutation sweep (`tests/e2e/mutate.mjs`) | Each protection above, broken on purpose, is caught by the test that names it. | 27/27 | `npm run e2e:mutate` |
+| Component (`tests/component/`) | Control semantics, the message catalogue, the sign-in form's four states, the device-label parity, the hierarchy composer, the mask marker and the redirect guard, in jsdom. | 38 | `npm test` |
+| End-to-end (`tests/e2e/*.spec.ts`) | A real browser against a real backend, including 15 axe runs across both locales and both themes, the no-JavaScript sign-in replay, two surfaces driven as a session that may not read them, and a session raised from level 1 to level 2 for real. | 77 + 2 setup | `npm run e2e` |
+| Mutation sweep (`tests/e2e/mutate.mjs`) | Each protection above, broken on purpose, is caught by the test that names it. | 32/32 | `npm run e2e:mutate` |
 
 ### Running it
 
@@ -214,6 +215,36 @@ client component reading `usePathname()`. The second is 15 lines and costs only 
 JavaScript is off; the links are anchors and work regardless, and the sign-in path, the one
 with credentials in it, has no client runtime at all.
 
+**The step-up replaces the session cookie, and that is the whole flow in one sentence.**
+MOD-007 does not elevate a session in place: `_step_up_in_tx` revokes the one it came from with
+`revoke_reason = 'stepped_up'` and opens a new one, because a session's lifetime follows what it
+can do and a level-2 window is twelve hours rather than a fortnight. So **a step-up that does
+not write the new token into the cookie signs the reader out** -- on the one path where they
+have just proved who they are. The browser suite asserts the landing page afterwards and the
+mutation sweep deletes the cookie write to prove the assertion bites.
+
+Three more things the page gets from the server rather than assuming:
+
+- **which factor can raise this session.** `policy.assurance_for` reads distinct *kinds*, so two
+  passwords are one factor: a password session is raised by a recovery code and a
+  recovery-code session by the password. The page reads `factors` off `/auth/session` and asks
+  for the one that would work.
+- **whether the level is reachable at all.** `biometric_sensitive` is level 3, which needs a
+  hardware authenticator MOD-007 cannot verify, so the page says so instead of rendering a
+  field. Offering one would send somebody looking for a key the product cannot check.
+- **the challenge, fetched immediately before the post rather than rendered into a hidden
+  field.** A nonce is one-use and bound to the session; a page that handed one to the reader
+  would hand them a token that goes stale while they look for their recovery codes, and the
+  failure would read as "that code was not accepted".
+
+**`next` is validated as a shape, not against a list of hosts.** It arrives in a link, which is
+the one thing a reader can be handed, and sign-in and step-up are the two pages where a redirect
+to a lookalike host is worth the most. `safeNext` keeps a same-origin path and refuses the four
+shapes that leave the origin -- protocol-relative `//host`, the backslash variant browsers
+normalise, an absolute URL with or without a leading slash, and a control character. A refused
+`next` is never an error the reader sees: being sent somewhere safe is the correct outcome, and
+a message would only teach somebody which probe got through.
+
 **A withheld value is marked, and the marker carries which of two reasons it is.** MOD-014 is
 the only module whose read path applies `Decision.mask`, and it replaces a field the caller may
 not read with `"***"` at every depth. Its own rule is that a redacted record still exists --
@@ -276,10 +307,10 @@ other 8 of 9 tokens recompute to the printed hundredth on all three surfaces.
 
 ## What this does not yet cover
 
-- **Eight screens of a hundred and seventy.** `contracts/ui/screen-contracts.yaml` lists 170 V1
+- **Nine screens of a hundred and seventy.** `contracts/ui/screen-contracts.yaml` lists 170 V1
   screens across five surfaces; what exists is sign-in, an admin landing page, MOD-004's
-  organization hierarchy, MOD-014's duplicate queue and Member 360, and MOD-022's door board
-  and zone detail. The foundation, the controls, the gate wiring and the four test
+  organization hierarchy, MOD-014's duplicate queue and Member 360, MOD-022's door board and
+  zone detail, and the step-up flow. The foundation, the controls, the gate wiring and the four test
   layers are built to carry the rest, and the per-module work is wiring each one's gate, its
   masked fields and its failure states the way MOD-022's are.
 - **`color.action.pressed` has no dark value**, declared in `ds.json`'s `DARK_GAPS`. The source
@@ -312,10 +343,10 @@ other 8 of 9 tokens recompute to the printed hundredth on all three surfaces.
   the backend, installs Chromium and runs the browser suite against the real API. A mocked
   backend would have passed every one of the defects the real one caught, which is why the job
   is slow on purpose.
-- **There is no step-up form.** MOD-007 has `/auth/step-up` and the identity-class fields on a
-  member's record need assurance level 2, so the Member 360 tells a level-1 reader that a
-  stronger sign-in would reveal them and offers no way to do it. The form needs a recovery code
-  or a verified factor, which is a real flow rather than a button.
+- **A step-up spends a recovery code, and nothing in this build mints more on its own.** TOTP
+  and passkeys are implemented and cannot be verified here, so a recovery code is the only
+  second factor -- which means ten step-ups per batch and a trip to
+  `POST /identities/{id}/recovery-codes` after that. There is no screen for reissuing them.
 - **The people and access surfaces are read-only.** MOD-022's writes — declaring a zone, commissioning a
   point, publishing a policy, issuing a credential, ordering an emergency release — all have
   routes and none has a form yet. The two that need the most care are the two with a second

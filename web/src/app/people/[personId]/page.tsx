@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { Alert } from "@/components/controls";
@@ -192,6 +193,14 @@ export default async function Member360Page({
 
 function IdentityPanel({ person, locale }: { person: Person; locale: Locale }) {
   const text = (key: MessageKey) => t(locale, key);
+  // **The remedy, where the refusal is.** An identity field is withheld because this session is
+  // assurance level 1 and `member.identity.read` is a financial action -- which is a thing the
+  // reader can fix, unlike the health class, where nobody in this build can. Naming the remedy
+  // and not offering it is the dead end MOD-007's review records one layer down.
+  const identityWithheld =
+    isWithheld(person.legal_name)
+    || isWithheld(person.preferred_name)
+    || isWithheld(person.date_of_birth);
   return (
     <section className="panel stack">
       <h2 style={{ margin: 0 }}>{text("member.identity")}</h2>
@@ -228,6 +237,15 @@ function IdentityPanel({ person, locale }: { person: Person; locale: Locale }) {
           correct direction: treating every undated person as one would make a guardian
           relationship mandatory before anybody could read the record of a member who never
           gave a birthday, which is most leads. */}
+      {identityWithheld ? (
+        <p style={{ margin: 0 }}>
+          <Link
+            href={`/step-up?for=financial&next=${encodeURIComponent(`/people/${person.person_id}`)}`}
+          >
+            {text("member.raiseSession")}
+          </Link>
+        </p>
+      ) : null}
       <p className="muted" style={{ margin: 0 }}>
         {person.is_minor ? text("member.minor") : text("member.notMinor")}
       </p>

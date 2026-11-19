@@ -3169,7 +3169,9 @@ What is built: a sign-in flow that works with JavaScript disabled, because it is
 Action and a form rather than a fetch (the first version was a client component, and an
 un-hydrated page did a native GET that put the password in the query string -- the defect is
 recorded at the top of `src/app/login/actions.ts`); MOD-007's device challenge answered in the
-same form, with the password field *removed* once a challenge is in flight; English and Arabic
+same form, with the password field *removed* once a challenge is in flight; a step-up that
+raises a session from level 1 to level 2 and replaces the cookie, which is what makes the
+identity-class fields on a member's record readable; English and Arabic
 with real RTL, switched by a form rather than an `onChange`; a light and dark theme; a section
 navigation whose every entry is present exactly when the gate allows the page behind it;
 MOD-004's hierarchy -- the organization, its brands, its sites with the timezone MOD-019 reads
@@ -3191,6 +3193,25 @@ Offering a step-up for the second would send somebody looking for a hardware key
 cannot verify. The fixture's browser session is assurance level 1, which is the useful level to
 test at: `contact` opens on a routine permission and `identity` needs a financial one, so one
 record shows a masked legal name beside an unmasked email address.
+
+**The step-up is where the web app meets MOD-007's own shape most directly.** MOD-007 does not
+elevate a session in place: it revokes the one it came from with `revoke_reason = 'stepped_up'`
+and opens a new one, because a session's lifetime follows what it can do and a level-2 window is
+twelve hours rather than a fortnight. **So a step-up that does not write the new token into the
+cookie is a sign-out dressed as a success** -- on the one path where the reader has just proved
+who they are -- and that is the first thing the browser suite asserts. Three more facts come from
+the server rather than from an assumption: which factor can raise *this* session (two passwords
+are one kind, so a password session needs a recovery code and a recovery-code session needs the
+password), whether the level is reachable at all (level 3 is not, by anybody here), and the
+challenge, fetched immediately before the post rather than rendered into a hidden field where it
+would go stale while somebody looks for their codes.
+
+And `next` is validated as a shape rather than against a list of hosts -- it arrives in a link,
+and sign-in and step-up are the two pages where a redirect to a lookalike host is worth the
+most. `safeNext` keeps a same-origin path and refuses protocol-relative `//host`, the backslash
+variant browsers normalise, an absolute URL with or without a leading slash, and a control
+character; a refused value redirects home without saying so, because a message would only teach
+somebody which probe got through.
 
 **The navigation is the first surface with a test that needs a weaker session.** The fixture's
 owner holds all 202 permissions, so signing in as the owner proves only the allowed half of any
@@ -3241,10 +3262,11 @@ has, which is the same shape as a test that passes vacuously. The flat config in
 `web/eslint.config.mjs` is the migration; its first run found four unused imports and
 variables, and it is in `npm run verify` and in the CI job now.
 
-Known gaps: the surface covers the sign-in, MOD-004, MOD-014 and MOD-022. The other fifteen
-implemented modules have no screens yet, which is the bulk of the remaining work; **there is no
-step-up form**, so the identity-class fields on a member's record are withheld from a
-level-1 reader with no way to raise the session; every `tenancy.*.write` is a stepped-up
+Known gaps: the surface covers the sign-in, the step-up, MOD-004, MOD-014 and MOD-022. The
+other fifteen implemented modules have no screens yet, which is the bulk of the remaining work;
+a step-up spends a recovery code and there is no screen for reissuing a batch, because TOTP and
+passkeys are implemented and unverifiable here so a recovery code is the only second factor;
+every `tenancy.*.write` is a stepped-up
 financial permission and none of those forms is built, so the hierarchy and the people surfaces
 are read-only; there is no mobile client and no edge agent; and nothing here is deployed
 anywhere, which is deliberate while the platform plane is unauthenticated.
@@ -3256,10 +3278,10 @@ backend tests pass, and that every applicable frontend, integration and end-to-e
 is part of it. So "implemented" above is accurate about the server plane and incomplete about
 the product for every module except MOD-022, and the backlog has two halves.
 
-The first is the screens the eighteen built modules do not have. `web/` covers the sign-in and
-MOD-022; `contracts/ui/screen-contracts.yaml` names the rest, and the work is per module rather
-than per screen because each one needs its gate, its masked fields and its failure states wired
-the way MOD-022's are. The second is the modules themselves: MOD-023 (Coach Workspace, which
+The first is the screens the eighteen built modules do not have. `web/` covers the sign-in, the
+step-up, MOD-004, MOD-014 and MOD-022; `contracts/ui/screen-contracts.yaml` names the rest, and
+the work is per module rather than per screen because each one needs its gate, its masked
+fields and its failure states wired the way those are. The second is the modules themselves: MOD-023 (Coach Workspace, which
 needs MOD-014 and MOD-008, both built) is the next eligible one, and MOD-006 is the Compose
 Multiplatform qualification, which is a client-side proof the server plane does not need and
 the mobile half does.

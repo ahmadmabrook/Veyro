@@ -251,6 +251,50 @@ const MUTATIONS = [
     grep: "score and the signals behind it",
   },
   {
+    id: "stepup-cookie",
+    why: "MOD-007 revokes the session it steps up from, so not replacing the cookie is a "
+      + "sign-out dressed as a success",
+    file: "src/app/step-up/actions.ts",
+    from: "    jar.set(SESSION_COOKIE, token, {",
+    to: "    void jar; void ((_unused) => _unused)({",
+    grep: "keeps the reader signed in",
+  },
+  {
+    id: "stepup-open-redirect",
+    why: "a `next` arrives in a link, so following it anywhere is an open redirect on the one "
+      + "page where somebody has just typed a credential",
+    file: "src/lib/navigation.ts",
+    from: '  if (candidate.startsWith("//") || candidate.startsWith("/\\\\")) return HOME;',
+    to: "  // guard removed",
+    grep: "never to another host",
+  },
+  {
+    id: "stepup-factor",
+    why: "a password session cannot raise itself with another password, so asking for one is a "
+      + "refusal the reader cannot act on",
+    file: "src/app/step-up/page.tsx",
+    from: '      ? "recovery_code"\n      : "password";',
+    to: '      ? "password"\n      : "password";',
+    grep: "asks for a recovery code",
+  },
+  {
+    id: "stepup-unreachable",
+    why: "level 3 needs a hardware authenticator this build cannot verify, so offering a field "
+      + "sends somebody looking for a key the product cannot check",
+    file: "src/app/step-up/page.tsx",
+    from: "  if (!asked.reachable) {",
+    to: "  if (false) {",
+    grep: "a level nobody can reach",
+  },
+  {
+    id: "member-stepup-offer",
+    why: "naming a remedy and not offering it is the dead end MOD-007's own review records",
+    file: "src/app/people/[personId]/page.tsx",
+    from: "            {text(\"member.raiseSession\")}",
+    to: "            {\"\"}",
+    grep: "is offered where the refusal is",
+  },
+  {
     id: "device-label-parity",
     why: "the fixture's device label must equal the app's, or every sign-in is challenged and "
       + "the suite spends a single-use recovery code per run",
