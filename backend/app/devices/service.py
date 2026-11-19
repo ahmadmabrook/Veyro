@@ -976,35 +976,57 @@ def publish_snapshot(
     sixty-second revocation target.
     """
     moment = at or _now()
+    with tenant_scope(pool, tenant_id) as conn:
+        return publish_snapshot_on(
+            conn, tenant_id, device_id, content_digest=content_digest,
+            signature_ref=signature_ref, ttl_minutes=ttl_minutes, actor_id=actor_id,
+            correlation_id=correlation_id, at=moment)
+
+
+def publish_snapshot_on(
+    conn: Connection[Any], tenant_id: str, device_id: str, *, content_digest: str,
+    signature_ref: str | None, ttl_minutes: int, actor_id: str, correlation_id: str,
+    at: datetime | None = None,
+) -> dict[str, Any]:
+    """The same publication, on a caller's connection.
+
+    **Split out for MOD-022, which has a bound of its own to apply in the same transaction.**
+    A zone's risk class caps how long an offline authorization for it may live, and the
+    access service checked that cap in one transaction and published through the pool in
+    another -- so a reclassification landing between them issued a twelve-hour snapshot for a
+    zone that had just become high-risk. The check and the write have to commit together,
+    which is MOD-010's `append_event` argument and MOD-018's `post_journal` argument applied
+    to an authorization's lifetime.
+    """
+    moment = at or _now()
     expires = moment + timedelta(minutes=ttl_minutes)
     try:
         snapshots.check_ttl(moment, expires)
     except ValueError as e:
         raise InvalidRequest(str(e)) from None
-    with tenant_scope(pool, tenant_id) as conn:
-        device = _device(conn, device_id, for_update=True)
-        if not enrollment.is_operable(device["state"]):
-            raise Conflict(
-                f"this_device_is_{device['state']}_and_takes_no_policy")
-        try:
-            row = conn.execute(
-                """
-                INSERT INTO plt01.dev_policy_snapshots
-                    (tenant_id, device_id, revocation_epoch, content_digest,
-                     signature_ref, issued_at, expires_at, issued_by, correlation_id)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                RETURNING snapshot_id
-                """,
-                (tenant_id, device_id, device["revocation_epoch"],
-                 content_digest.strip().lower(),
-                 (signature_ref or "").strip() or None, moment, expires, actor_id,
-                 correlation_id),
-            ).fetchone()
-        except errors.CheckViolation as e:
-            raise InvalidRequest(_check_name(e)) from None
-        except errors.RaiseException as e:
-            raise Conflict(str(e).strip().splitlines()[0]) from None
-        assert row is not None
+    device = _device(conn, device_id, for_update=True)
+    if not enrollment.is_operable(device["state"]):
+        raise Conflict(
+            f"this_device_is_{device['state']}_and_takes_no_policy")
+    try:
+        row = conn.execute(
+            """
+            INSERT INTO plt01.dev_policy_snapshots
+                (tenant_id, device_id, revocation_epoch, content_digest,
+                 signature_ref, issued_at, expires_at, issued_by, correlation_id)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING snapshot_id
+            """,
+            (tenant_id, device_id, device["revocation_epoch"],
+             content_digest.strip().lower(),
+             (signature_ref or "").strip() or None, moment, expires, actor_id,
+             correlation_id),
+        ).fetchone()
+    except errors.CheckViolation as e:
+        raise InvalidRequest(_check_name(e)) from None
+    except errors.RaiseException as e:
+        raise Conflict(str(e).strip().splitlines()[0]) from None
+    assert row is not None
     return {"snapshot_id": str(row[0]), "device_id": device_id,
             "revocation_epoch": device["revocation_epoch"],
             "issued_at": moment.isoformat(), "expires_at": expires.isoformat(),

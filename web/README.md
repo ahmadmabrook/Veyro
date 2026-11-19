@@ -9,16 +9,17 @@ Console (15).
 
 ## State
 
-A running Next.js application: sign-in against MOD-007, an admin landing page whose every
-control's visibility comes from MOD-008's gate, Arabic/English with full RTL, a dark theme, and
-four layers of tests that have each been shown to fail when the thing they guard is removed.
+A running Next.js application: sign-in against MOD-007 including the device challenge it
+raises, an admin landing page whose every control's visibility comes from MOD-008's gate,
+MOD-022's door board and zone detail, Arabic/English with full RTL, a dark theme, and four
+layers of tests that have each been shown to fail when the thing they guard is removed.
 
 | Layer | What it proves | Count | Command |
 |---|---|---|---|
 | Foundation (`tests/unit/`) | Tokens, contrast, type, theme coverage, backend parity. No dependencies, no DOM. | 57 | `npm run test:foundation` |
-| Component (`tests/component/`) | Control semantics and the message catalogue, in jsdom. | 21 | `npm test` |
-| End-to-end (`tests/e2e/*.spec.ts`) | A real browser against a real backend, including 8 axe runs across both locales and both themes, and the no-JavaScript sign-in replay. | 32 | `npm run e2e` |
-| Mutation sweep (`tests/e2e/mutate.mjs`) | Each protection above, broken on purpose, is caught by the test that names it. | 12/12 | `npm run e2e:mutate` |
+| Component (`tests/component/`) | Control semantics, the message catalogue, the sign-in form's four states and the device-label parity, in jsdom. | 28 | `npm test` |
+| End-to-end (`tests/e2e/*.spec.ts`) | A real browser against a real backend, including 10 axe runs across both locales and both themes, and the no-JavaScript sign-in replay. | 45 | `npm run e2e` |
+| Mutation sweep (`tests/e2e/mutate.mjs`) | Each protection above, broken on purpose, is caught by the test that names it. | 18/18 | `npm run e2e:mutate` |
 
 ### Running it
 
@@ -140,6 +141,59 @@ with a stated reason if no Python is on PATH rather than passing vacuously.
 first version put ` ` in a regex literal; U+2028 is a JavaScript line terminator, so the
 module did not parse. Every bidi and Arabic-numeral control is now `String.fromCodePoint`.
 
+**The challenge form is proved by a component test, and that is a decision about what a
+browser suite can prove.** MOD-007 challenges a login from a device it has not seen and then
+*confirms* that device, so a browser is challenged exactly once per fixture -- which means an
+end-to-end assertion about the challenge passes or fails depending on whether some earlier
+test in the run happened to burn it. The sweep showed it: deleting the recovery-code field
+left the E2E suite green, because by then the device was trusted. `tests/component/login-form.test.tsx`
+renders the state the server returns and asserts what the reader is given, which is the half
+that must never regress -- a form that says a recovery code is needed and offers nowhere to
+type one is the dead end MOD-007's own review records one layer down. **And the password field
+goes away when a challenge is in flight**, because asking for it again after a security prompt
+is the habit a phishing page relies on.
+
+**The fixture confirms this app's device, and the browser suite is never challenged.**
+MOD-007 challenges a login from a device it has not seen and confirms that device permanently
+when the challenge is answered -- and a recovery code is single-use. So a helper that answered
+the challenge in the browser passed on the first run against a fresh fixture and failed on
+every run after it: the second run found the code spent and every signing-in test timed out at
+the recovery field, which is a suite whose green depends on how many times it has been run.
+The fixture now logs in *as the browser's device* and answers the challenge itself, and
+`tests/e2e/sign-in.ts` **throws** if a challenge appears, because one appearing means the
+device label drifted or the fixture was not re-run. The formula lives in `src/lib/device.ts`
+for the app and `tests/e2e/device.mjs` for the fixture -- two spellings of one rule, which is
+why `tests/component/device-parity.test.ts` runs both over a vector set and compares, and why
+the mutation sweep breaks one of them and checks that comparison fails.
+
+`sign-in.ts` is also the only place a spec authenticates, so no spec has its own idea of what
+signing in looks like, and it reports the assurance level, which is what lets a gate test
+assert a step-up refusal rather than guessing at one.
+
+**The access surface masks what the backend masks, and does not re-derive it.** MOD-022 returns
+a public code and withholds the private reason unless the session holds the permission for it;
+`src/lib/access.ts` carries `RESTRICTED_CODES` and renders a withheld reason as *visibly*
+withheld rather than as absent. An empty cell is indistinguishable from "there was no reason",
+and the sweep has a mutation for exactly that (`withheld-unmarked`). The list is a mirror of
+the backend's and the point of mirroring it is the rendering decision, not the masking: the
+decision about what may be said is the server's, and a surface that recomputed it would be a
+second definition of the same control.
+
+**A wrong-password test uses an address nobody registered.** The first version used the fixture's
+own identity, and MOD-007's lockout is per identity -- so the refusal tests accumulated failures
+against the account every other test signs in with, and the suite locked itself out partway
+through. Using an unknown address is sound precisely because of MOD-007's own review finding:
+every refusal costs one scrypt and returns the same 401, so an unregistered address and a wrong
+password are indistinguishable by design, which is what makes the substitution faithful.
+
+**The mutation harness restores on a signal, not only on an exception.** A sweep stopped
+halfway left a deleted line in `src/app/access/[zoneId]/page.tsx` -- paragraph 4180's
+disclaimer, the mutation whose `to` is the empty string -- because `finally` does not run when
+the process is killed. Searching the tree for mutated text cannot find a *deletion*, so the
+only trace was the next run reporting "the anchor appears 0 times", and in between a browser
+run went green against a page that was missing the thing one of its tests is named after.
+`mutate.mjs` now restores the file it is holding on SIGINT, SIGTERM and SIGHUP.
+
 ## Findings raised against the sources
 
 **`ai.600`'s published contrast ratios do not match its published hex.** `ds.json`'s CONTRAST
@@ -155,9 +209,11 @@ other 8 of 9 tokens recompute to the printed hundredth on all three surfaces.
 
 ## What this does not yet cover
 
-- **Two screens of a hundred and seventy.** `contracts/ui/screen-contracts.yaml` lists 170 V1
-  screens across five surfaces; what exists is sign-in and an admin landing page. The foundation,
-  the controls, the gate wiring and the five test layers are built to carry the rest.
+- **Four screens of a hundred and seventy.** `contracts/ui/screen-contracts.yaml` lists 170 V1
+  screens across five surfaces; what exists is sign-in, an admin landing page and MOD-022's
+  door board and zone detail. The foundation, the controls, the gate wiring and the four test
+  layers are built to carry the rest, and the per-module work is wiring each one's gate, its
+  masked fields and its failure states the way MOD-022's are.
 - **`color.action.pressed` has no dark value**, declared in `ds.json`'s `DARK_GAPS`. The source
   names `accent.pressed` on that token and gives it no value anywhere — not in the ramps, not in
   the semantic table, not in the dark-mode note — and inventing a hex would be inventing design.
@@ -178,6 +234,13 @@ other 8 of 9 tokens recompute to the printed hundredth on all three surfaces.
   as belonging elsewhere: no italics, containers sized for Arabic, numerals as a tenant setting
   and bidi isolation. The last two live in `src/i18n/conventions.mjs`; the first two are a
   component and review obligation.
-- The EIP's CI gates for this layer do not exist in `.github/workflows/` — it names a "screen
-  contract lint" and a "localization/RTL resource + accessibility gate exercised in staging
-  E2E". `npm run verify` is the local equivalent for what is built.
+- **The EIP's "screen contract lint" does not exist.** The other gate it names — a
+  localization/RTL resource and accessibility gate exercised in E2E — now runs in
+  `.github/workflows/veyro-foundation-ci.yml`'s `web` job, which builds the database, starts
+  the backend, installs Chromium and runs the browser suite against the real API. A mocked
+  backend would have passed every one of the defects the real one caught, which is why the job
+  is slow on purpose.
+- **The access surfaces are read-only.** MOD-022's writes — declaring a zone, commissioning a
+  point, publishing a policy, issuing a credential, ordering an emergency release — all have
+  routes and none has a form yet. The two that need the most care are the two with a second
+  actor: publishing a policy and reviewing a release.

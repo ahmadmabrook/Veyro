@@ -38,7 +38,9 @@ export function LoginForm({ locale }: { locale: Locale }) {
       <form action={formAction} noValidate className="panel stack" style={{ width: "100%", maxWidth: "420px" }}>
         <h1>{text("login.title")}</h1>
 
-        {state.error ? <Alert tone="error">{text(state.error)}</Alert> : null}
+        {state.error ? (
+          <Alert tone={state.challenge ? "info" : "error"}>{text(state.error)}</Alert>
+        ) : null}
 
         <Field
           id="tenant"
@@ -63,17 +65,39 @@ export function LoginForm({ locale }: { locale: Locale }) {
           {...(state.missing.identifier ? { error: text("login.required") } : {})}
         />
 
-        <Field
-          id="password"
-          name="password"
-          type="password"
-          label={text("login.password")}
-          // No `defaultValue`: a refused attempt clears the password and only the password.
-          autoComplete="current-password"
-          {...(state.missing.password ? { error: text("login.required") } : {})}
-        />
+        {/* **The password field goes away once a challenge is in flight**, and the challenge
+            rides in a hidden field. MOD-007 has already taken the password; asking for it
+            again after a security prompt is the habit a phishing page relies on, and
+            re-sending it would mean a second scrypt for nothing. */}
+        {state.challenge ? (
+          <>
+            <input type="hidden" name="challenge" value={state.challenge} />
+            <Field
+              id="recovery"
+              name="recovery_code"
+              label={text("login.recovery")}
+              hint={text("login.recoveryHint")}
+              autoComplete="one-time-code"
+              inputMode="text"
+              {...(state.missing.recovery ? { error: text("login.required") } : {})}
+            />
+          </>
+        ) : (
+          <Field
+            id="password"
+            name="password"
+            type="password"
+            label={text("login.password")}
+            // No `defaultValue`: a refused attempt clears the password and only the password.
+            autoComplete="current-password"
+            {...(state.missing.password ? { error: text("login.required") } : {})}
+          />
+        )}
 
-        <SubmitButton idle={text("login.submit")} busy={text("login.working")} />
+        <SubmitButton
+          idle={state.challenge ? text("login.continue") : text("login.submit")}
+          busy={text("login.working")}
+        />
       </form>
     </div>
   );

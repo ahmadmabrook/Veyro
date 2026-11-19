@@ -2,6 +2,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 
 import { fixture } from "./fixture-env";
+import { signIn } from "./sign-in";
 
 /**
  * Language, direction, theme and accessibility -- on every combination, because the defects
@@ -14,15 +15,6 @@ import { fixture } from "./fixture-env";
  */
 
 const creds = fixture();
-
-async function signIn(page: Page) {
-  await page.goto("/login");
-  await page.getByLabel("Tenant ID").fill(creds.tenantId);
-  await page.getByLabel("Email or phone").fill(creds.email);
-  await page.getByLabel("Password").fill(creds.password);
-  await page.getByRole("button", { name: "Sign in" }).click();
-  await page.waitForURL("/");
-}
 
 const WCAG = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"];
 

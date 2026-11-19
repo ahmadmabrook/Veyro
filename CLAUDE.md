@@ -53,12 +53,29 @@ backend/app/            service code
                         settlement.py decide; service.py holds the one thing that is
                         load-bearing -- post_journal takes a connection, so a posting commits
                         in the transaction that caused it
+  devices/              MOD-021: catalog.py, enrollment.py, safety.py, policy.py and
+                        commands.py decide; service.py writes, and `issue_command_on` takes
+                        a connection so a command and the state that authorized it commit
+                        together
+  access/               MOD-022: zones.py classifies and decides what a reader may be told,
+                        policy.py evaluates one presentation, credentials.py hashes and
+                        bounds a rotating code, occupancy.py counts from events, offline.py
+                        judges a reconciliation; service.py takes MOD-021's command on its
+                        own connection, so a decision and the unlock it caused commit
+                        together -- and no path writes a decision at an exit
   errors.py             the five service errors every module's service raises
 backend/migrations/     platform/, tenant/ and product/ SQL, applied in that order
 backend/tests/          unittest suites; tests/sql/isolation.sql is the isolation proof
 backend/scripts/        verify_db.sh rebuilds the database and runs the isolation suite
 knowledge/              decisions and module notes
 tools/                  governance and lint tooling (see "Tooling that still earns its place")
+web/                    the Next.js operator surface (see "The web app")
+  src/design/           ds.json is the design system; generate.mjs emits the CSS tokens and
+                        refuses an unresolved dark reference
+  src/lib/              api.ts is the only place a request reaches the backend
+  tests/unit/           Node's own test runner, no dependencies
+  tests/component/      Vitest and Testing Library
+  tests/e2e/            Playwright, against a real uvicorn and a real database
 ```
 
 Sources of product scope and architecture: the two `.docx` baselines and
@@ -2946,26 +2963,269 @@ Known gaps, deliberate:
 - **The timeline does not know about any of this.** MOD-014 projects nine event types and
   none of MOD-021's six is among them.
 
-**Next.** Nothing in the Foundation wave is left except MOD-006, the Compose Multiplatform
-qualification, which is a client-side proof the server plane does not need. With MOD-021
-built, the eligible product modules are MOD-022 (Check-in & Access, which needs MOD-021 and
-MOD-017, both built) and MOD-023 (Coach Workspace, which needs MOD-014 and MOD-008, both
-built). MOD-022 is the one the last two modules were pointing at: MOD-020's check-in records
-a claim and `CHECKIN_SOURCES` already names `device`, MOD-021 has the turnstile that claim
-would come *from*, and MOD-017 has the entitlement that says whether the door should open.
-Nothing joins them yet -- `dev_commands` knows nothing about a member and `bkg_bookings`
-knows nothing about a door.
+**MOD-022 (ACC-01 check-in and access control) -- implemented, gated and reviewed.** Eight
+`acc_` tables in `plt01` under the same forced RLS, ten trigger functions, `app/access/`
+beside them, and twenty-one HTTP routes. Working: zones with a declared risk class and the
+offline ceiling that follows from it; access points joining a zone to a MOD-021 device that
+can actually move a barrier and is in service; policy versions drafted and published as two
+acts by two people, frozen on publication; credentials held as a SHA-256 digest with a
+bounded window for a rotating code and a replay cache behind it; one presentation evaluated
+against the policy, the membership, the entitlement, the balance, the age, anti-passback and
+the zone's capacity; a decision recorded as a receipt with a public line and a private
+reason; the unlock issued through MOD-021 **on the same connection**, so a door that opened
+and the decision that opened it commit together; events as what actually happened, which is
+not what was decided; occupancy counted from events and disclosed as advisory; offline
+reconciliation that judges a decision taken on a snapshot; and an emergency release reviewed
+afterwards by somebody other than whoever ordered it. All six of ACC-01's events are
+produced. Proven: isolation checks 106-111, mutation-tested in four rounds -- the reviewer's
+own 98 drops, of which this module's suite caught seven; 136 drops, keys and branches, all
+caught once checks 110 and 111 existed; 193 with the weakenings added, which found nineteen
+more gaps; and 192 with none uncaught and none unrun, over 76 CHECK drops, 56 weakenings, 16
+keys and indexes and all 44 trigger branches. Also 55 domain unit tests with no database and
+50 HTTP tests, one per blocking review finding.
+
+**This is the module that joins three planes that did not know about each other.** MOD-021
+has the turnstile and no idea who a member is; MOD-017 has the entitlement and no idea where
+a door is; MOD-020 records a check-in whose `CHECKIN_SOURCES` already names `device` with
+nothing behind it. `acc_points` is the join MOD-021 deliberately did not make, and it is a
+join rather than a column because a device becomes a door only once somebody says which zone
+it stands at and which way it faces.
+
+Six decisions carry the module, and the first is a refusal with no permission that buys it:
+
+- **Egress is never software-gated, and the refusal is in the database.** Paragraph 4177 puts
+  the way out of a building outside the Veyro application path, so there is no policy, no
+  grace and no configuration that records a decision at an exit: `acc_decision_is_coherent`
+  raises on a point that faces out *or* on a reader that reports an exit, and the only code
+  it admits there is `point_not_an_entry`. A service could be bypassed; this cannot.
+- **A credential identifies, and the policy and the entitlement authorize** (paragraph 4155).
+  So no column holds a credential in the clear -- `credential_digest` is a SHA-256 and there
+  is no card number, no PAN, no secret and no key anywhere in the module, which check 106
+  asserts as an absence because an absence is what a later migration restores.
+- **A decision is a receipt with two reasons**, which is paragraph 1944's Critical Control
+  written as a pair of columns: a public line a door may say out loud and a private reason
+  only a permission holder reads. `acc_decisions_restricted_is_masked` makes the five codes
+  that disclose a membership, an entitlement, a balance, an age or a safety hold carry the
+  discreet line, by constraint rather than by convention.
+- **The correspondence trigger, which is most of the module's integrity.** A decision names
+  six things -- a point, a zone, a credential, a person, a policy and a policy snapshot --
+  and five of them could be another tenant's business entirely if nothing compared them.
+  Every one is compared, including the snapshot, whose device must be the door's own.
+- **Occupancy is counted from events and is advisory, and says so.** Paragraph 4180 wants a
+  count; a count built from readers is wrong the moment somebody holds a door, so
+  `occupancy.py` derives it from entries and exits and every surface that shows it carries
+  the paragraph's own disclaimer. A capacity policy at a zone with one reader therefore
+  **does not refuse** on that number, which a reviewer found by walking through a building.
+- **An emergency release is not an unlock, and the second person comes afterwards.** A fire
+  alarm cannot wait for an approver, so the order is one act and the review is a separate one
+  by somebody who is not the orderer -- the opposite trade from MOD-016's discount approval,
+  deliberately, because the harm of a wrongly-refused release is a locked fire door.
+
+**Three reviewers worked this module in parallel -- the schema, the decision modules and the
+request path -- and all three returned CHANGES_REQUESTED.** Each finding is carried forward
+as a rule, because each is a shape that has now recurred:
+
+- **Gate the fact, not the sentence.** Both reviewers found the same thing: the public and
+  private reasons were split correctly and the real `code` was returned beside them, so every
+  one of the five restricted codes reached a reader through the field a surface actually
+  renders. The discreet line was doing nothing. `zones.public_code` is the fix, and the
+  lesson generalises past this module -- a mask applied to the prose and not to the
+  enumeration is a mask on the part nobody reads.
+- **Never believe a caller's description of itself** -- MOD-007's first rule, in a building.
+  A presentation carried the credential's `kind`, and the kind decides whether the rotating
+  window and the replay cache apply: a reviewer enrolled a `qr_rotating` credential, presented
+  it as `nfc_card` with a month-old token, and was granted. The kind comes from the stored
+  credential now, and the request does not carry one.
+- **An idempotency key compared on fewer fields than the command takes**, for the fourth
+  module running, and three times here. A reused key with a *different card* returned the
+  previous decision -- so a till reusing a per-shift counter presented a revoked card and was
+  handed somebody else's grant. An override wrote into the ordinary decision namespace, which
+  is MOD-018's "a namespace a caller can write into is not a namespace". And an emergency key
+  reused for another zone released the first zone's doors and reported the second's.
+- **A failure path must not carry on inside a transaction PostgreSQL has aborted.** The
+  replay insert caught its own unique violation -- which is the replay being *detected* --
+  and went on to record the refusal, in a transaction that was already dead: the caller got a
+  500 and the attempt was recorded nowhere, so the one control that notices a cloned rotating
+  code left no evidence at all. The detection happens before the write now.
+- **A declared value with no writer is a feature that silently does nothing** -- MOD-020's
+  rule, and a reviewer tested it the way the rule says to: they grepped the writers of all
+  nineteen denial codes and found one that nothing ever produced.
+- **A lookup that proves something exists does not authorise what you do next.** An access
+  point could be declared over a device that had been registered and nothing else -- no safety
+  profile, no commissioning tests, never activated. MOD-021 still refused the unlock, so no
+  door opened; what was created was a point that **reads as commissioned and can never work**,
+  while a decision at it answers `granted`. Paragraph 4175 is explicit that a failed or
+  missing commissioning blocks the point going into production, and declaring the point *is*
+  that. The actuator trigger now reads the device's state.
+- **A rate-limit budget that does not exist is not a limit.** `access/evaluate` named a budget
+  `ratelimit.BUDGETS` did not declare, and `decide` defaulted to allowing -- so the one
+  unauthenticated-adjacent route in the module was unlimited while reading as limited.
+  `decide` refuses an undeclared key now, and
+  `test_every_rate_limited_route_names_a_budget_that_exists` walks `main.py` with `ast` and
+  asserts every `rate_limit(limit_key=...)` names a declared one. Mutation-proven, because a
+  structural test that passes vacuously is the thing it is written against.
+- **A `both` lane decides nothing on the way out either.** A turnstile that reads in each
+  direction is the arrangement that makes paragraph 4177 hard: the point's own `direction` is
+  `both`, so nothing in the row said which way this particular person was going, and a
+  reviewer walked a member in and then refused them on the way out. `reported_direction` is
+  the column that carries what the reader saw, and the egress branch reads it as well as the
+  point's.
+- **A biconditional between a status and its timestamp breaks the moment a state is
+  re-entered** -- the rules file records this for MOD-018's period lock, and
+  `acc_policies_published_is_published` had the same shape. It is an implication now: a
+  published policy has a publication time, and "a publication time never disappears" is the
+  trigger's job.
+- A naive timestamp answered 500 rather than 422, which is MOD-011's finding for the third
+  time, and the bound on an event's `occurred_at` is forward-only: an offline reader
+  legitimately reports something from two hours ago, and refusing that would make the offline
+  path unusable.
+
+**And the evidence was the largest finding of the three.** The module shipped with seven
+behavioural cases for ninety-eight schema rules and no mutation sweep at all -- its
+"20/20 mutations caught" was a Python sweep over the decision modules, which is a different
+half of the system. An independent reviewer dropped all 73 `acc_` CHECK constraints
+individually and watched the suite catch seven; dropped all 25 indexes and keys and watched it
+catch none; and replaced five of the ten trigger functions with `BEGIN RETURN NEW; END` while
+the suite reported 109/109. Check 110 is the answer for the constraints and the keys -- 115
+cases, generated from the catalogue by `tests/sql/generate_access_cases.py` from a row the
+committed seed already proved valid, with exactly one column moved so the row violates exactly
+the rule under test, **one case per weakening rather than one per constraint**: a two-sided
+bound needs a case at each end and a conjunction needs one per conjunct, and the sweep found
+seventeen bounds with only one side proven. Check 111 is the answer for the trigger functions:
+**one probe per plpgsql branch, forty-four of them**, each asserting the sentence that must
+refuse it rather than the exception class, because a `NOT EXISTS` branch is satisfied by a
+parent that does not exist and so answers for the branch above it; the probe count is compared
+against the `RAISE` count in the catalogue, so a branch added later without a probe fails.
+`tests/sql/sweep_access.sh` is the harness, and it judges checks 108-111 alone rather than the
+whole file, because check 107's definition pin notices any change to a rule's text and a sweep
+that cannot tell a pin from a case reports the vacuity as success.
+
+**And every case now names the constraint that refused it.** `check_violation` is the same
+exception for every CHECK on a table, so a case that counts it proves whichever fires first --
+the trap this repository has shipped in five modules and found by sweeping afterwards each
+time. `GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME` turns that into a failure on a clean
+database: it caught fourteen of these cases being answered by a sibling, and four more in the
+hour it was added, two of them in cases written minutes earlier. The remedy per case is the
+companion columns the sibling demands -- an attribution trio needs its status, a bound needs
+the pairing that lets the column be set at all -- which is not derivable from the predicate
+under test and so is written down beside it.
+
+Things worth knowing before extending it:
+
+- **`issue_command_on` takes the connection**, so the unlock command and the decision that
+  authorized it commit in one transaction. A pool-taking version would read identically and
+  guarantee a door that opened with no record, or a record with no door.
+- **The replay cache is the one table in this module with a DELETE grant**, because every row
+  in it expires and it is meant to be swept. Everything else is insert-only or
+  lifecycle-only, and the decisions table has no UPDATE at all.
+- **A decision and an event are different rows on purpose.** What was decided is not what
+  happened: a granted decision followed by nobody walking through is an ordinary occurrence,
+  and an entry that cites a refusal is a door held open -- an incident rather than an entry,
+  which the event trigger refuses outright.
+- **One live policy per zone at every statement**, which is what makes "the policy that
+  decided this" answerable a year later without reading a history.
+- **A health or safety hold is not a column in this build.** MOD-014's health classes are
+  unreachable by anybody, so `safety_hold` is a code the evaluator can return and nothing
+  here produces -- disclosed rather than faked.
+
+Known gaps, deliberate:
+
+- **Nothing opens a door.** There is no gateway, no relay and no outbound anything: the unlock
+  is a MOD-021 command written for whatever collects it, and `settle_command` records what
+  that thing reported. A row saying a turnstile opened, written by nothing that drives a
+  turnstile, is the fabricated-evidence shape this codebase has been bitten by six times.
+- **Nothing drives anything on a schedule.** The replay cache is never swept, an offline
+  reconciliation runs when somebody calls it, and an unreviewed emergency release sits in its
+  index until a human looks. The **fourteenth** module to want the worker runtime this build
+  does not have.
+- **Occupancy is advisory and a capacity policy cannot be enforced from it.** A count built
+  from readers is wrong the moment a door is held, and refusing a member on a number the
+  module itself calls approximate is the direction nobody would defend. Enforcing it needs
+  anti-tailgating hardware this build has no access to.
+- **No anti-tailgating, no video, no visitor management and no mobile credential.** A reader
+  presents a digest; the NFC, BLE and wallet-credential halves are a client-side problem and
+  the vault one.
+- **An offline decision is judged, not prevented.** The snapshot ceiling bounds how long a
+  reader may decide alone and `offline.py` says afterwards whether what it decided stands;
+  nothing stops a device that has lost its link from granting inside its window, which is the
+  point of the window.
+- **Eleven free-text columns are residue an erasure cannot reach**, all declared by hand
+  because the reachability sweep matches column names.
+- **The timeline does not know about any of this.** MOD-014 projects nine event types and none
+  of MOD-022's six is among them, so a member's timeline shows no door they walked through.
+
+## The web app
+
+`web/` is the operator surface, and it exists because a module whose only client is a test is
+not a product. Next.js 16 on the App Router, TypeScript, no UI framework and no CSS library:
+`src/design/ds.json` is the design system and `generate.mjs` emits the CSS custom properties
+from it, **failing the build on a dark-mode reference it cannot resolve** -- which is how
+seven missing dark tokens were found rather than shipped.
+
+What is built: a sign-in flow that works with JavaScript disabled, because it is a Server
+Action and a form rather than a fetch (the first version was a client component, and an
+un-hydrated page did a native GET that put the password in the query string -- the defect is
+recorded at the top of `src/app/login/actions.ts`); MOD-007's device challenge answered in the
+same form, with the password field *removed* once a challenge is in flight; English and Arabic
+with real RTL, switched by a form rather than an `onChange`; a light and dark theme; and
+MOD-022's door board and zone detail, which read the real routes and render the public code,
+the policy terms, the advisory occupancy with paragraph 4180's disclaimer, the access points,
+the gaps the module discloses about itself and the decision log with its public/private split.
+
+How it is proved, in four layers that answer different questions:
+
+```bash
+(cd web && npm run verify)
+```
+
+- `tests/unit/` runs on Node's own test runner with no dependencies -- the design tokens, the
+  contrast ratios, the locale conventions.
+- `tests/component/` is Vitest and Testing Library: the states a reader is actually given,
+  which is where the challenge form lives, because an end-to-end test of a challenge passes
+  or fails depending on whether an earlier test in the run burned it.
+- `tests/e2e/` is Playwright against a real uvicorn and a real PostgreSQL. `tests/e2e/serve.mjs`
+  starts the backend, `tests/e2e/fixture.mjs` provisions a tenant, an identity, a session
+  stepped up to AAL 2 and a complete MOD-022 fixture through the service layer, and writes
+  `web/.env.e2e.local` at mode 600. **It never prints the password.**
+- `tests/e2e/mutate.mjs` is the sweep: it breaks a surface on purpose and asserts the suite
+  goes red. A green browser suite proves nothing about a page nobody asserted, and this is
+  what found a test that passed with the recovery-code field deleted.
+
+Both jobs run in CI (`.github/workflows/veyro-foundation-ci.yml`), and the web job builds the
+database, starts the backend, installs Chromium and runs the browser suite rather than
+mocking the API -- a mocked backend would have passed every one of the defects the real one
+caught.
+
+Known gaps: the surface covers MOD-022 and the sign-in only. The other seventeen implemented
+modules have no screens yet, which is the bulk of the remaining work; there is no mobile
+client and no edge agent; and nothing here is deployed anywhere, which is deliberate while the
+platform plane is unauthenticated.
+
+
+**Next.** The standard for a finished module is now the whole stack, not the backend: owner
+directive of 2026-11-18, which says in as many words that a module is not complete because its
+backend tests pass, and that every applicable frontend, integration and end-to-end requirement
+is part of it. So "implemented" above is accurate about the server plane and incomplete about
+the product for every module except MOD-022, and the backlog has two halves.
+
+The first is the screens the eighteen built modules do not have. `web/` covers the sign-in and
+MOD-022; `contracts/ui/screen-contracts.yaml` names the rest, and the work is per module rather
+than per screen because each one needs its gate, its masked fields and its failure states wired
+the way MOD-022's are. The second is the modules themselves: MOD-023 (Coach Workspace, which
+needs MOD-014 and MOD-008, both built) is the next eligible one, and MOD-006 is the Compose
+Multiplatform qualification, which is a client-side proof the server plane does not need and
+the mobile half does.
 
 Three things named rather than done remain open across the build: the platform plane is
 unauthenticated -- and MOD-012 makes that worse, since the definition catalogue decides which
-scopes a tenant may hand to a third party -- no worker runtime exists for the **thirteen**
-schedules that want one, which MOD-018 makes more pressing again because nothing expires lapsed
-wallet value and nothing recognises revenue until somebody asks, and there is no key vault,
-which is what MOD-009's crypto-shred, MOD-007's TOTP seeds, MOD-012's inbound webhook
-signatures and now MOD-021's device certificates are all waiting on. **The vault is the one
-that has moved from inconvenient to load-bearing**: MOD-021 enrols a credential it cannot
-verify a signature against, so a device's identity is a fingerprint somebody recorded rather
-than a key anything checks.
+scopes a tenant may hand to a third party -- no worker runtime exists for the **fourteen**
+schedules that want one, which MOD-022 adds to again because nothing sweeps the replay cache
+and an unreviewed emergency release waits for a human, and there is no key vault, which is what
+MOD-009's crypto-shred, MOD-007's TOTP seeds, MOD-012's inbound webhook signatures and
+MOD-021's device certificates are all waiting on. **The vault is the one that has moved from
+inconvenient to load-bearing**: MOD-021 enrols a credential it cannot verify a signature
+against, so a device's identity is a fingerprint somebody recorded rather than a key anything
+checks -- and MOD-022 now opens doors on that identity.
 
 `Decision.mask` is no longer on that list. MOD-014 applies it, which closes the five-module gap
 -- and note what closing it took: `permit` had to return the gate rather than the session, and
@@ -3007,6 +3267,26 @@ enumeration is a claim about what the software does**, so the question to ask of
 value is not "is this reachable in principle" but "grep the writers: which line puts this
 value in the column". A value with no writer is either a gap to disclose or a defect wearing a
 design decision's clothes, and in MOD-020 it was four of each.
+
+MOD-022 shipped four more of the first kind and one of the second, and added a third shape
+that is worth naming because it is the one a careful reader is most likely to produce: **a
+control applied to the explanation rather than to the fact.** The decision receipt splits a
+public line from a private reason exactly as paragraph 1944 asks, and five denial codes are
+required by constraint to carry the discreet public line -- and the real `code` was returned
+beside it, in the field a surface actually renders. Both reviewers found it independently.
+Nothing was unvalidated, nothing was caller-supplied, and the module's own tests asserted the
+masking they were written for; the mask was simply on the prose and the enumeration went out
+in the clear. **So the question to ask of any disclosure control is not "is the sensitive
+text masked" but "what else in this response answers the same question".**
+
+And MOD-022's largest finding was not in the code at all. Its schema carried ninety-eight
+rules and seven behavioural cases, and no mutation sweep had ever been run against it -- the
+"20/20 mutations caught" it shipped with was a Python sweep over the decision modules, which
+is a different half of the system. A reviewer dropped all 73 CHECK constraints one at a time
+and the suite caught seven; dropped all 25 keys and indexes and it caught none; replaced five
+of the ten trigger functions with `BEGIN RETURN NEW; END` and it reported 109/109. Nothing in
+the shipped schema was wrong. **A module's evidence is a deliverable with its own failure
+mode, and the only thing that measures it is breaking the rules on purpose and watching.**
 
 Module ids are in `tools/mission_runner/module_catalog.json` and are not the TSD's section order.
 MOD-006 (Compose Multiplatform qualification) is unbuilt; MOD-007's dependency on it is a

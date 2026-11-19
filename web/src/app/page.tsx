@@ -1,8 +1,9 @@
 import { redirect } from "next/navigation";
 
+import Link from "next/link";
+
 import { signOut } from "@/app/actions";
 import { Alert, Button } from "@/components/controls";
-import { LocaleSwitch } from "@/components/locale-switch";
 import { formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
 import { currentSession, gate, type GateAnswer } from "@/lib/api";
 import { presentation } from "@/lib/preferences";
@@ -23,7 +24,7 @@ import { presentation } from "@/lib/preferences";
  * a key the product cannot check.
  */
 export default async function HomePage() {
-  const { locale, theme } = await presentation();
+  const { locale } = await presentation();
   const text = (key: MessageKey) => t(locale, key);
 
   const session = await currentSession();
@@ -55,7 +56,12 @@ export default async function HomePage() {
       >
         <h1 style={{ margin: 0 }}>{text("home.title")}</h1>
         <div style={{ display: "flex", gap: "var(--space-4)", alignItems: "center" }}>
-          <LocaleSwitch locale={locale} theme={theme} />
+          {/* **The link is rendered only when the gate allows the read.** A navigation item
+              that leads to a 403 is a disclosure that the capability exists and a dead end
+              for the person who clicks it. MOD-008 computes this per action; the page asks. */}
+          {answers.find((a) => a.action === "access.decision.evaluate")?.allowed ? (
+            <Link href="/access">{text("nav.doors")}</Link>
+          ) : null}
           <form action={signOut}>
             <Button type="submit">{text("nav.signOut")}</Button>
           </form>

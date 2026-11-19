@@ -52,7 +52,14 @@ REPLAY_WINDOW = ROTATING_LIFETIME + READER_CLOCK_TOLERANCE * 2
 #: Where a binding is in its life. There is no `suspended`: a credential is usable or it is
 #: not, and a membership that is suspended is a *policy* fact about the subject rather than a
 #: fact about the card in their wallet -- which is this module's whole separation.
-CREDENTIAL_STATES: tuple[str, ...] = ("active", "revoked", "expired")
+#:
+#: **And there is no `expired` either, although there was.** Expiry is derived from
+#: `expires_at` by `is_usable`, and nothing in the build ever wrote the state -- a declared
+#: value with no writer, which is MOD-020's defect and the one this module deleted
+#: `snapshot_stale` and `wrong_zone` for. A state that says what a column already says is a
+#: second copy of the truth that can disagree with it, which is MOD-018's argument against a
+#: stored balance applied to a card.
+CREDENTIAL_STATES: tuple[str, ...] = ("active", "revoked")
 
 _DIGEST = re.compile(r"^[0-9a-f]{64}$")
 

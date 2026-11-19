@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
 
-import { LocaleSwitch } from "@/components/locale-switch";
 import { currentSession } from "@/lib/api";
 import { presentation } from "@/lib/preferences";
 
@@ -21,18 +20,5 @@ export default async function LoginPage() {
   const { locale } = await presentation();
   if (await currentSession()) redirect("/");
 
-  return (
-    <>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "flex-end",
-          padding: "var(--space-4) var(--space-4) 0",
-        }}
-      >
-        <LocaleSwitch locale={locale} />
-      </div>
-      <LoginForm locale={locale} />
-    </>
-  );
+  return <LoginForm locale={locale} />;
 }

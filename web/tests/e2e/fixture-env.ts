@@ -19,6 +19,10 @@ export type Fixture = {
   identityId: string;
   email: string;
   password: string;
+  /** One unused code, for the device challenge a browser gets on its first sign-in. */
+  recoveryCode: string;
+  zoneId: string;
+  pointId: string;
 };
 
 const FILENAME = ".env.e2e.local";
@@ -56,6 +60,9 @@ export function fixture(): Fixture {
     "VEYRO_E2E_IDENTITY_ID",
     "VEYRO_E2E_EMAIL",
     "VEYRO_E2E_PASSWORD",
+    "VEYRO_E2E_RECOVERY_CODE",
+    "VEYRO_E2E_ZONE_ID",
+    "VEYRO_E2E_POINT_ID",
   ] as const;
   for (const key of required) {
     if (!env[key]) throw new Error(`${key} missing from ${FILENAME} -- re-run fixture.mjs`);
@@ -65,5 +72,8 @@ export function fixture(): Fixture {
     identityId: env.VEYRO_E2E_IDENTITY_ID!,
     email: env.VEYRO_E2E_EMAIL!,
     password: env.VEYRO_E2E_PASSWORD!,
+    recoveryCode: env.VEYRO_E2E_RECOVERY_CODE!,
+    zoneId: env.VEYRO_E2E_ZONE_ID!,
+    pointId: env.VEYRO_E2E_POINT_ID!,
   };
 }

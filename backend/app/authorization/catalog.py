@@ -715,6 +715,13 @@ PERMISSIONS: dict[str, Permission] = dict([
     _p("access.policy.publish",
        "Settle a zone's access policy, or retire one", "configuration", "financial"),
     # Binding a credential to a person is handing somebody a key to a building.
+    # **Its own permission, because `access.zone.read` is a claim about zones.** The
+    # credential status was gated on that one, whose description is "See access zones, their
+    # points, their live policy and a zone's occupancy" -- so a session granted the door board
+    # also read which person every card belongs to. MOD-013 split `notifications.policy.read`
+    # off `notifications.template.read` for exactly this.
+    _p("access.credential.read",
+       "See a credential's kind, its state and whose it is", "data_access"),
     _p("access.credential.issue",
        "Enrol a credential against a person", "access", "financial"),
     # **Revocation is routine, and the asymmetry is the point.** A card reported stolen at

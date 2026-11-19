@@ -70,12 +70,40 @@ def check_snapshot_ttl(ttl: timedelta, *, risk: str) -> None:
 
 
 def decides_entry(direction: str) -> bool:
-    """Whether a reader facing this way makes an access decision at all.
+    """Whether a reader facing this way can make an access decision at all.
 
-    **An exit reader does not.** Paragraph 4177 puts egress outside the Veyro application
-    path entirely, so this module has no code path that can refuse somebody leaving -- not a
-    policy that happens to allow it, not a configuration that happens to be set. An exit is
-    recorded as an event and nothing is asked.
+    **An exit reader never does.** Paragraph 4177 puts egress outside the Veyro application
+    path entirely. A `both` reader *can*, on the way in -- which is why `decides_for` below
+    exists and why this predicate is not enough on its own.
     """
     check_direction(direction)
     return direction in ("entry", "both")
+
+
+def decides_for(point_direction: str, reported_direction: str) -> bool:
+    """Whether a presentation at this reader, going this way, is a decision at all.
+
+    **This function is the fix for a paragraph 4177 violation a tenant reached by wiring the
+    ordinary hardware.** `both` is one lane that reads in each direction -- the arrangement
+    that makes a zone's occupancy `measured` and therefore the one a tenant is pushed toward
+    -- and `evaluate_access` took no direction, so every presentation at a `both` lane was
+    evaluated as an entry and could be refused. A reviewer walked a member in, then presented
+    the same card on the way out and got `anti_passback`: the member was inside and the
+    software would not let them out. Any restricted code reaches the same place, so a member
+    whose card lapsed while they were in the building could not leave by the lane they came
+    in by.
+
+    The docstring above it claimed at the time that this module "has no code path that can
+    refuse somebody leaving -- not a policy that happens to allow it, not a configuration that
+    happens to be set". The configuration existed, was admitted by the schema and by
+    `commission_point`, and was the tempting one.
+
+    **The reported direction is the reader's, and lying about it buys nothing**, which is what
+    makes taking it safe: a presentation claiming `exit` is not a decision, so it issues no
+    unlock. The only thing a false `exit` achieves is not opening the door.
+    """
+    check_direction(point_direction)
+    check_direction(reported_direction)
+    if reported_direction == "exit":
+        return False
+    return decides_entry(point_direction)

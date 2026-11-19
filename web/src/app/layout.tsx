@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 
+import { LocaleSwitch } from "@/components/locale-switch";
 import { t } from "@/i18n/locale";
 import { presentation } from "@/lib/preferences";
 
@@ -33,6 +34,19 @@ export default async function RootLayout({
         <a className="skip-link" href="#main">
           {t(locale, "app.skipToContent")}
         </a>
+        {/* **In the layout, so every page has it.** The first version put the language and
+            theme controls on the landing page and the sign-in page, which left a reader who
+            followed a link to a zone with no way back to their own language -- and made the
+            direction of the whole document depend on which page they happened to enter by. */}
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "flex-end",
+            padding: "var(--space-4) var(--space-4) 0",
+          }}
+        >
+          <LocaleSwitch locale={locale} theme={theme} />
+        </div>
         <main id="main">{children}</main>
       </body>
     </html>

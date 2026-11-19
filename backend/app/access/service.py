@@ -49,17 +49,6 @@ def _check_name(error: errors.CheckViolation) -> str:
     return str(name) if name else "constraint_violation"
 
 
-def _settled(error: Exception | None) -> None:
-    """Raise after the commit, never inside it.
-
-    `tenant_scope` rolls back on a raise, so a refusal path that wrote its own evidence throws
-    it away. MOD-007 and MOD-008 each paid for this; here the evidence is the one record of
-    why a door did not open, which is the single thing this module exists to leave behind.
-    """
-    if error is not None:
-        raise error
-
-
 # ------------------------------------------------------------------------- zones
 
 
@@ -255,6 +244,12 @@ def draft_policy(
             (zone_id,)).fetchone()
         if zone is None:
             raise NotFound("zone_not_found")
+        # The status was selected and discarded -- MOD-016's "a status selected and discarded
+        # is a control that does not exist". A retired zone has no active points, so the
+        # release would answer `points_released: 0` and read as a success during an
+        # evacuation. Saying which zone is retired is the useful answer.
+        if str(zone[0]) != "active":
+            raise Conflict(f"this_zone_is_{zone[0]}_and_releases_nothing")
         if zone[0] != "active":
             raise Conflict(f"this_zone_is_{zone[0]}")
         version = conn.execute(
@@ -489,10 +484,21 @@ def _live_policy(conn: Connection[Any], zone_id: str) -> policy.ZonePolicy | Non
 
 
 def _binding(conn: Connection[Any], digest: str) -> credentials.Binding | None:
+    """The enrolment behind a presented value, read under a share lock.
+
+    **`FOR SHARE`, which is the right strength here and not the wrong one.** This file's rules
+    say a trigger deciding whether a child may be written needs `FOR UPDATE`, because two
+    share locks do not conflict with each other. This is the other case: what must not happen
+    is a revocation committing between this read and the unlock issued in the same
+    transaction, and `revoke_credential` takes `FOR UPDATE` -- which a share lock does block.
+    Taking `FOR UPDATE` here instead would serialise every presentation at every door against
+    every other, which is the cost without the benefit.
+    """
     row = conn.execute(
         "SELECT credential_id, person_id, kind, state, issued_at, expires_at,"
         "       revocation_epoch"
-        " FROM plt01.acc_credentials WHERE credential_digest = %s", (digest,)).fetchone()
+        " FROM plt01.acc_credentials WHERE credential_digest = %s FOR SHARE",
+        (digest,)).fetchone()
     if row is None:
         return None
     return credentials.Binding(
@@ -518,12 +524,46 @@ def _subject(
     dob = person[0]
     age = None
     if dob is not None:
-        today = at.date()
-        age = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
+        born = at.date()
+        age = born.year - dob.year - ((born.month, born.day) < (dob.month, dob.day))
+    # **The membership a door reads is one that is live *now*, not the newest row.**
+    #
+    # The first version took `ORDER BY starts_on DESC LIMIT 1` and read only `status`, which
+    # was wrong in both directions and reachable without trying. Fail-open:
+    # `activate_membership` writes `status = 'active'` whatever `starts_on` says, so a member
+    # who signed up in advance was admitted months before their membership began.
+    # Fail-closed: a member whose main membership is live and who cancelled a second one was
+    # refused their own gym, because the cancelled row started later and won the sort -- and
+    # told "see the front desk", with the real reason behind a permission a front desk does
+    # not hold.
+    #
+    # And the standing one `CLAUDE.md` names: `cancel_membership` with a notice period writes
+    # `ends_on` and leaves `status = 'active'`, and nothing in this build applies it on a
+    # schedule -- so a row that reads `active` can be a membership that ended last month.
+    # Reading the dates here is what makes "a cancelled membership whose entitlements still
+    # work is access nobody is paying for" not also true of the door.
+    #
+    # The order is deliberate: **any live membership admits**, so a member with two is judged
+    # on the one that lets them in rather than on whichever sorts first. Where none is live,
+    # the most recently started row is what the refusal names, because that is the one the
+    # front desk will be asked about.
+    today = at.date()
     membership = conn.execute(
-        "SELECT status FROM plt01.mem_memberships WHERE person_id = %s"
+        "SELECT status FROM plt01.mem_memberships"
+        " WHERE person_id = %s AND starts_on <= %s"
+        "   AND (ends_on IS NULL OR ends_on >= %s)"
+        "   AND status IN ('active', 'trialing')"
         " ORDER BY starts_on DESC, membership_number LIMIT 1",
-        (person_id,)).fetchone()
+        (person_id, today, today)).fetchone()
+    if membership is None:
+        membership = conn.execute(
+            "SELECT status FROM plt01.mem_memberships WHERE person_id = %s"
+            " ORDER BY starts_on DESC, membership_number LIMIT 1",
+            (person_id,)).fetchone()
+        if membership is not None and str(membership[0]) in ("active", "trialing"):
+            # A row that calls itself active while its own dates say otherwise. Naming it
+            # `expired` is the truth and keeps the refusal inside the closed reason set.
+            membership = ("expired",)
     # **MOD-017 owns the figure.** Summing it here would be a second definition of one
     # balance, which is MOD-018's finding about two functions that disagreed about what was
     # in a till.
@@ -586,17 +626,22 @@ def _entitled(
             location_id=location_id, brand_id=brand_id, local_minute=local_minute)
         if verdict.ok:
             return True, None
-        last = verdict.reason
+        # **The first refusal, not the last.** The rows are `ORDER BY valid_from DESC`, so
+        # overwriting kept the *oldest* grant's reason -- a member whose current pass is out
+        # of hours was told about a membership that lapsed two years ago.
+        if last is None:
+            last = verdict.reason
     return False, last or "this member holds nothing that admits them here"
 
 
 def evaluate_access(
     pool: Pool, tenant_id: str, *, point_id: str, credential_value: str,
     idempotency_key: str, actor_id: str, correlation_id: str,
-    kind: str | None = None, rotation_counter: int | None = None,
+    reported_direction: str = "entry",
+    rotation_counter: int | None = None,
     nonce: str | None = None, token_issued_at: datetime | None = None,
-    token_expires_at: datetime | None = None, signature_verified: bool = False,
-    reader_clock_skew_seconds: int = 0, at: datetime | None = None,
+    token_expires_at: datetime | None = None,
+    reader_clock_at: datetime | None = None, at: datetime | None = None,
 ) -> dict[str, Any]:
     """EvaluateAccess. Paragraph 1935's pipeline, in the order paragraph 4183 requires.
 
@@ -610,42 +655,83 @@ def evaluate_access(
     nobody can account for; a decision with no command is a member being told they were
     admitted while standing at a locked door.
 
-    **Every refusal is recorded**, which is why each one returns its error and `_settled`
-    raises it after the commit. `tenant_scope` rolls back on a raise, and the evidence of why
-    a door did not open is the one thing this module exists to leave behind.
+    **Every refusal is recorded**, and the way it is done here is that a refusal is a *row*
+    rather than an exception: `_record` writes the decision and returns it, so there is no
+    raise inside `tenant_scope` to roll the evidence back. MOD-007's `_settled` helper exists
+    for modules whose refusals have to raise; this one had a copy of it that was never called,
+    and a reviewer pointed out that the one raise which did happen inside the block -- the
+    replay insert aborting the transaction -- was the case it was written to prevent. That is
+    fixed with a savepoint in `_resolve`, which is the right tool, and the unused helper is
+    gone rather than left as a claim.
     """
     moment = at or _now()
     key = _required(idempotency_key, "idempotency_key", 200)
-    skew = timedelta(seconds=reader_clock_skew_seconds)
+    # **Measured against this server's instant, not taken from the device.** A reader that
+    # sends no clock is treated as in step, which is the only honest default: an unknown skew
+    # is not a large one, and refusing every reader that does not report its clock would shut
+    # every door that predates the field.
+    skew = timedelta(0) if reader_clock_at is None else reader_clock_at - moment
     with tenant_scope(pool, tenant_id) as conn:
+        stored = _namespaced("evaluate", key)
+        digest = credentials.digest_of(credential_value)
         prior = conn.execute(
-            "SELECT decision_id, granted, code, public_reason FROM plt01.acc_decisions"
-            " WHERE idempotency_key = %s", (key,)).fetchone()
+            "SELECT decision_id, granted, code, public_reason, masked, point_id,"
+            "       credential_id"
+            " FROM plt01.acc_decisions WHERE idempotency_key = %s", (stored,)).fetchone()
         if prior is not None:
+            # **The repeat is answered only when the request is the same request.** It used to
+            # compare the key and nothing else, so a reader that reused a per-shift counter
+            # with a *different, revoked* card was told "granted" and handed the previous
+            # member's decision id. The point and the credential are what the command takes;
+            # both are compared.
+            seen = _binding(conn, digest)
+            same_credential = (
+                (None if seen is None else seen.credential_id)
+                == (None if prior[6] is None else str(prior[6])))
+            if str(prior[5]) != point_id or not same_credential:
+                raise _repeat_mismatch("evaluate", key)
             return {"decision_id": str(prior[0]), "granted": bool(prior[1]),
-                    "code": str(prior[2]), "public_reason": str(prior[3]),
-                    "repeated": True}
+                    "code": policy.public_code(str(prior[2])),
+                    "public_reason": str(prior[3]),
+                    "reason_withheld": bool(prior[4]), "repeated": True}
         point = _point(conn, point_id)
-        # **An exit reader decides nothing**, and the refusal is recorded rather than thrown:
-        # a reader wired the wrong way round is a commissioning mistake somebody has to see.
-        if not zones.decides_entry(point["direction"]):
+        # **Nothing is decided on the way out, at any reader.** An `exit` point never decides
+        # -- a reader wired the wrong way round is a commissioning mistake somebody has to
+        # see, so the refusal is recorded rather than thrown. A `both` lane decides on the way
+        # in and not on the way out, which is the half this used to get wrong.
+        if not zones.decides_for(point["direction"], reported_direction):
             facing_out = policy.refuse(
                 "point_not_an_entry",
-                "this reader faces out; egress is not conditioned on membership, "
+                "nothing is decided on the way out; egress is not conditioned on membership, "
                 "reachability or software authorization")
-            return _record(conn, tenant_id, point, facing_out, key=key,
+            return _record(conn, tenant_id, point, facing_out, key=stored,
                            credential_id=None, person_id=None, at=moment,
                            actor_id=actor_id, correlation_id=correlation_id,
                            mode="online", scope="global", occupancy_seen=None,
                            snapshot_id=None)
         posture, mode = _posture(conn, point["device_id"], skew=skew, at=moment)
-        digest = credentials.digest_of(credential_value)
         binding = _binding(conn, digest)
+        # **The kind is the enrolment's, and a reader does not get a say.**
+        #
+        # It used to be `kind or binding.kind`, taking the caller's word when one was sent --
+        # and `kind` decides which controls run at all: `check_clock`, `check_presentation`
+        # and the replay-cache insert are each guarded by `presented.kind in ROTATING_KINDS`.
+        # So a free-text field on the request body switched off paragraph 4183's entire token
+        # validation. A reviewer enrolled a `qr_rotating` credential, sent
+        # `{"kind": "nfc_card"}` with a captured token and was admitted -- then again, and
+        # again, with no window, no counter, no nonce, no replay cache and no clock refusal,
+        # each repetition issuing MOD-021's unlock. `check_kind` was never reached either, so
+        # any forty-character string did it.
+        #
+        # This is the module's own "derive, never accept" standard, broken on the one field
+        # that chooses which rules apply -- MOD-017's `reserve_entitlement` finding, where a
+        # caller sent the grant's own brand id, in a worse place. The fallback for an unknown
+        # credential is irrelevant to the outcome: with no binding the decision is
+        # `credential_unknown` whatever kind it is called.
         presented = credentials.Presented(
-            digest=digest, kind=kind or (binding.kind if binding else "physical_card"),
+            digest=digest, kind=binding.kind if binding else "physical_card",
             presented_at=moment, rotation_counter=rotation_counter, nonce=nonce,
-            issued_at=token_issued_at, expires_at=token_expires_at,
-            signature_verified=signature_verified)
+            issued_at=token_issued_at, expires_at=token_expires_at)
         resolved, credential_id, person_id = _resolve(
             conn, point, binding=binding, presented=presented, posture=posture,
             mode=mode, at=moment, correlation_id=correlation_id)
@@ -658,28 +744,65 @@ def evaluate_access(
                 decision = policy.refuse(
                     "zone_closed", "no published policy admits anybody to this zone")
             else:
-                occupancy_seen = _inside(conn, point["zone_id"])
+                occupancy_seen = _capacity_seen(
+                    conn, point["zone_id"], location_id=point["location_id"], at=moment)
                 subject = _subject(conn, binding.person_id,
                                    location_id=point["location_id"], at=moment)
                 decision = policy.decide(
                     subject=subject, policy=live, local_minute=point["local_minute"],
                     at=moment,
                     seconds_since_last_entry=_seconds_since_entry(
-                        conn, binding.credential_id, at=moment),
+                        conn, binding.credential_id, zone_id=point["zone_id"], at=moment),
                     occupancy=occupancy_seen)
         else:
             decision = resolved
         return _record(
-            conn, tenant_id, point, decision, key=key, credential_id=credential_id,
+            conn, tenant_id, point, decision, key=stored, credential_id=credential_id,
             person_id=person_id, at=moment, actor_id=actor_id,
             correlation_id=correlation_id, mode=mode,
-            scope=passback.claim(online=mode == "online"),
+            # **`global` because this decision read every entry in the zone**, which is what
+            # `passback.claim` is about -- not whether the device had filed a health report in
+            # the last five minutes. Keying it on `mode` recorded `controller_group` on
+            # essentially every server-side decision and understated the guarantee the module
+            # actually made.
+            scope=passback.claim(online=True),
             occupancy_seen=occupancy_seen, snapshot_id=posture_snapshot(posture))
 
 
 def posture_snapshot(posture: offline.Posture | None) -> str | None:
     """The snapshot id a decision cites, where there is one. Paragraph 1952's reference."""
     return None if posture is None else getattr(posture, "snapshot_id", None)
+
+
+def _posture_at(
+    conn: Connection[Any], device_id: str, *, when: datetime,
+) -> offline.Posture | None:
+    """The device's posture **as it was when something happened**, for reconciliation.
+
+    `_posture` reads the latest snapshot, which is the right answer for a decision being made
+    now and the wrong one for judging a decision made hours ago: see the comment in
+    `reconcile_offline_access`. This selects the snapshot whose own window covers `when`, so
+    publishing a fresh one cannot retroactively excuse a decision taken on a stale one -- and
+    a decision taken when the reader held nothing finds nothing here either.
+    """
+    row = conn.execute(
+        "SELECT d.revocation_epoch, s.snapshot_id, s.revocation_epoch, s.issued_at,"
+        "       s.expires_at"
+        " FROM plt01.dev_devices d"
+        " LEFT JOIN LATERAL ("
+        "   SELECT snapshot_id, revocation_epoch, issued_at, expires_at"
+        "     FROM plt01.dev_policy_snapshots"
+        "    WHERE tenant_id = d.tenant_id AND device_id = d.device_id"
+        "      AND issued_at <= %s AND expires_at > %s"
+        "    ORDER BY issued_at DESC LIMIT 1) s ON true"
+        " WHERE d.device_id = %s", (when, when, device_id)).fetchone()
+    if row is None:
+        return None
+    return offline.Posture(
+        mode="offline", snapshot_issued_at=row[3], snapshot_expires_at=row[4],
+        snapshot_epoch=None if row[2] is None else int(row[2]),
+        device_epoch=int(row[0]), clock_skew=timedelta(0),
+        snapshot_id=None if row[1] is None else str(row[1]))
 
 
 def _posture(
@@ -769,16 +892,29 @@ def _resolve(
         return policy.refuse("credential_window", str(e)), \
             binding.credential_id, binding.person_id
     if presented.kind in credentials.ROTATING_KINDS:
+        # **Inside a savepoint**, because PostgreSQL aborts the whole transaction on a
+        # constraint violation and this one is expected: a replayed token is the refusal, not
+        # an error. The first version caught `UniqueViolation` and carried on in the aborted
+        # transaction, so the very next statement -- writing the decision -- raised
+        # `InFailedSqlTransaction`, which nothing catches. The result was that an honest
+        # replay answered **500** and recorded nothing: `credential_replayed` was a declared
+        # reason code no path could write, and the refusal paragraph 4183 calls the core of
+        # the token design left no evidence at all. Found by a reviewer presenting the same
+        # valid token twice.
+        #
+        # Every other `UniqueViolation` catch in this module raises immediately, which is why
+        # none of them needed this; a catch that *continues* is the one that does.
         try:
-            conn.execute(
-                "INSERT INTO plt01.acc_replay_tokens"
-                " (tenant_id, token_key, credential_id, point_id, seen_at, expires_at,"
-                "  correlation_id)"
-                " SELECT %s, %s, %s, %s, %s, %s, %s",
-                (point.get("tenant_id") or _tenant_of(conn),
-                 credentials.replay_key(presented), binding.credential_id,
-                 point["point_id"], at,
-                 credentials.replay_expiry(presented, at=at), correlation_id))
+            with conn.transaction():
+                conn.execute(
+                    "INSERT INTO plt01.acc_replay_tokens"
+                    " (tenant_id, token_key, credential_id, point_id, seen_at, expires_at,"
+                    "  correlation_id)"
+                    " SELECT %s, %s, %s, %s, %s, %s, %s",
+                    (point.get("tenant_id") or _tenant_of(conn),
+                     credentials.replay_key(presented), binding.credential_id,
+                     point["point_id"], at,
+                     credentials.replay_expiry(presented, at=at), correlation_id))
         except errors.UniqueViolation:
             return policy.refuse(
                 "credential_replayed",
@@ -793,37 +929,128 @@ def _tenant_of(conn: Connection[Any]) -> str:
     return str(row[0])
 
 
-def _inside(conn: Connection[Any], zone_id: str) -> int:
-    """Occupancy, summed from the events. **No stored count anywhere.**"""
+def _readers(conn: Connection[Any], zone_id: str) -> occupancy.Readers:
     row = conn.execute(
-        "SELECT count(*) FILTER (WHERE direction = 'entry'),"
-        "       count(*) FILTER (WHERE direction = 'exit')"
-        " FROM plt01.acc_events WHERE zone_id = %s", (zone_id,)).fetchone()
-    assert row is not None
-    readers = conn.execute(
         "SELECT bool_or(direction IN ('entry', 'both')),"
         "       bool_or(direction IN ('exit', 'both'))"
         " FROM plt01.acc_points WHERE zone_id = %s AND status = 'active'",
         (zone_id,)).fetchone()
-    assert readers is not None
+    assert row is not None
+    return occupancy.Readers(has_entry_reader=bool(row[0]),
+                             has_exit_reader=bool(row[1]))
+
+
+def _inside(conn: Connection[Any], zone_id: str, *, since: datetime | None = None) -> int:
+    """Occupancy, summed from the events. **No stored count anywhere.**
+
+    `since` bounds the tally to the current local day where a caller supplies one. The
+    unbounded form is the honest answer to "how many events has this zone ever seen"; it is
+    not an answer to "how many people are inside", and the difference is a defect this module
+    shipped -- see `_capacity_seen`.
+    """
+    row = conn.execute(
+        "SELECT count(*) FILTER (WHERE direction = 'entry'),"
+        "       count(*) FILTER (WHERE direction = 'exit')"
+        " FROM plt01.acc_events WHERE zone_id = %s"
+        "   AND (%s::timestamptz IS NULL OR occurred_at >= %s)",
+        (zone_id, since, since)).fetchone()
+    assert row is not None
     return occupancy.inside(
-        int(row[0]), int(row[1]),
-        readers=occupancy.Readers(has_entry_reader=bool(readers[0]),
-                                  has_exit_reader=bool(readers[1])))
+        int(row[0]), int(row[1]), readers=_readers(conn, zone_id))
+
+
+def _capacity_seen(
+    conn: Connection[Any], zone_id: str, *, location_id: str, at: datetime,
+) -> int | None:
+    """The occupancy a capacity refusal may be made on, or `None` for "do not refuse".
+
+    **Two defects in one place, and both were reachable by a tenant doing nothing unusual.**
+    `_inside` counted every event the zone had ever seen, with no time bound, and
+    `policy.decide` refused on it -- so a studio with `capacity = 20` stopped admitting
+    anybody after its twentieth lifetime entry. `acc_events` has no DELETE grant for any
+    runtime role and an entry-only zone records no exits, so **no act inside this module could
+    ever bring the number down**: the only remedy was drafting and publishing a new policy,
+    which is two acts by two people. Both reviewers found it; one shut a door with three
+    requests from the weakest write permission in the module.
+
+    Two things fix it, and both are needed:
+
+      * **The tally is the current local day**, in the location's own zone. A count that never
+        resets ratchets toward refusal on every uncounted exit -- a held door, a fire escape, a
+        reader outage, an emergency release -- and those are not rare.
+      * **A capacity refusal needs a `measured` zone.** `occupancy.py` says an entry-only
+        zone's number "rises all day and is wrong by closing time" and reports it as
+        `advisory`; refusing entry on a number the module declares untrustworthy is the same
+        contradiction MOD-011 refuses when it will not evaluate a percentile it cannot
+        compute. Where the zone cannot see both directions, this returns `None` and
+        `policy.decide` does not reach the capacity branch at all -- which `zone_detail`
+        reports in `access_gaps` rather than leaving to be discovered.
+    """
+    readers = _readers(conn, zone_id)
+    if occupancy.confidence(readers) != "measured":
+        return None
+    row = conn.execute(
+        "SELECT date_trunc('day', %s AT TIME ZONE l.timezone) AT TIME ZONE l.timezone"
+        " FROM plt01.locations l WHERE l.location_id = %s", (at, location_id)).fetchone()
+    since = None if row is None else row[0]
+    return _inside(conn, zone_id, since=since)
 
 
 def _seconds_since_entry(
-    conn: Connection[Any], credential_id: str, *, at: datetime,
+    conn: Connection[Any], credential_id: str, *, zone_id: str, at: datetime,
 ) -> int | None:
+    """How long ago this credential last entered **this zone**.
+
+    The zone predicate is the fix for a defect a reviewer found by walking through a building
+    the ordinary way. The query was tenant-wide, and the window it is compared against belongs
+    to one zone -- so a member who came through the front door could not enter the studio for
+    the length of the studio's window, and the refusal said "**this zone** admits one entry
+    every 300 seconds" about an entry that happened at a different door. Nested zones (building
+    to studio to pool) are the normal arrangement, so this was every member, every visit.
+
+    `passback.Entry` carried `zone_id` and `point_id` from the start and nothing compared
+    them, which is MOD-019's "a field stored beside a decision and never read is not a
+    parameter, it is a comment".
+    """
     row = conn.execute(
         "SELECT occurred_at, zone_id, point_id FROM plt01.acc_events"
-        " WHERE credential_id = %s AND direction = 'entry'"
-        " ORDER BY occurred_at DESC LIMIT 1", (credential_id,)).fetchone()
+        " WHERE credential_id = %s AND zone_id = %s AND direction = 'entry'"
+        " ORDER BY occurred_at DESC LIMIT 1", (credential_id, zone_id)).fetchone()
     if row is None:
         return None
     return passback.seconds_since(
         passback.Entry(at=row[0], zone_id=str(row[1]), point_id=str(row[2]),
                        scope="global"), at=at)
+
+
+def _namespaced(command: str, key: str) -> str:
+    """The stored idempotency key, prefixed by the command that wrote it.
+
+    **An idempotency namespace a caller can write into is not a namespace** -- MOD-018's rule,
+    and this module shipped it twice over. `acc_decisions.idempotency_key` is one column, so a
+    presentation at a turnstile and a staff override shared it: a reviewer made an override
+    under `shift-counter-12`, then presented a **revoked** card under the same key on the
+    routine `access.decision.evaluate` permission and was answered
+    `{"granted": true, "code": "granted_by_override"}`. The cheapest permission in the module
+    read the authority of the most expensive one.
+
+    The prefix is written here rather than by the caller, so the two keyspaces cannot meet
+    however a till numbers its requests.
+    """
+    return f"{command}:{key}"
+
+
+def _repeat_mismatch(command: str, key: str) -> Conflict:
+    """A key reused for a *different* request is a conflict, not somebody else's answer.
+
+    The alternative -- answering from whichever row happened to carry the key -- is what a
+    reviewer found: a till reusing a per-shift counter presented a revoked card and was handed
+    the previous member's grant, and a responder reusing a panic-button counter was told a
+    second zone had been released when nothing had. A 409 naming the key is the only answer
+    that is true, and the realistic input (a counter that wrapped) is exactly the case where
+    silence is dangerous.
+    """
+    return Conflict(f"idempotency_key_already_used_for_a_different_{command}")
 
 
 def _record(
@@ -886,7 +1113,11 @@ def _record(
     # and `/access/decisions` is where somebody holding `access.decision.read_reason` reads
     # it. Found by the first HTTP test that asserted what a turnstile may show.
     return {"decision_id": decision_id, "granted": decision.granted,
-            "code": decision.code, "public_reason": decision.public_reason,
+            # **The public code, never the real one.** This payload goes to the device above
+            # the turnstile; `age_restricted` beside "please see the front desk" tells whoever
+            # is reading that screen that the person in front of them is a minor.
+            "code": policy.public_code(decision.code),
+            "public_reason": decision.public_reason,
             "reason_withheld": decision.masked,
             "policy_id": decision.policy_id, "policy_version": decision.policy_version,
             "device_mode": mode, "passback_scope": scope, "snapshot_id": snapshot_id,
@@ -914,12 +1145,21 @@ def override_access(
     except ValueError as e:
         raise InvalidRequest(str(e)) from None
     with tenant_scope(pool, tenant_id) as conn:
+        stored = _namespaced("override", key)
         prior = conn.execute(
-            "SELECT decision_id FROM plt01.acc_decisions WHERE idempotency_key = %s",
-            (key,)).fetchone()
+            "SELECT decision_id, granted, code, public_reason, point_id, person_id"
+            " FROM plt01.acc_decisions WHERE idempotency_key = %s", (stored,)).fetchone()
         if prior is not None:
-            return {"decision_id": str(prior[0]), "granted": True,
-                    "code": "granted_by_override", "repeated": True}
+            # **Answered from the row, not from the retry.** The first version returned a
+            # fabricated `{"granted": true, "code": "granted_by_override"}` without reading
+            # what had been recorded, so a staff member who reused a key was told an override
+            # had succeeded while the member was still refused and no door had been
+            # commanded. MOD-017's rule, verbatim.
+            if str(prior[4]) != point_id or str(prior[5]) != person_id:
+                raise _repeat_mismatch("override", key)
+            return {"decision_id": str(prior[0]), "granted": bool(prior[1]),
+                    "code": str(prior[2]), "public_reason": str(prior[3]),
+                    "repeated": True}
         point = _point(conn, point_id)
         if not zones.decides_entry(point["direction"]):
             raise Conflict("this_access_point_faces_out_and_decides_nothing")
@@ -928,12 +1168,19 @@ def override_access(
         decision = policy.override(reason=reason, policy=live)
         try:
             return _record(
-                conn, tenant_id, point, decision, key=key, credential_id=None,
+                conn, tenant_id, point, decision, key=stored, credential_id=None,
                 person_id=person_id, at=moment, actor_id=actor_id,
                 correlation_id=correlation_id, mode=mode,
-                scope=passback.claim(online=mode == "online"), occupancy_seen=None,
+                scope=passback.claim(online=True), occupancy_seen=None,
                 snapshot_id=posture.snapshot_id if posture else None,
                 override_by=actor_id, override_reason=reason.strip())
+        except errors.RaiseException as e:
+            # The coherence trigger refuses a decision at a point that is not active, and
+            # `granted_by_override` is not one of the codes it exempts. Every sibling command
+            # catches this; `override_access` did not, so a duty manager overriding at a
+            # retired lane was told the server was broken -- in the module where the next
+            # action is deciding whether to let somebody in by hand.
+            raise Conflict(str(e).strip().splitlines()[0]) from None
         except errors.ForeignKeyViolation:
             raise NotFound("person_not_found") from None
 
@@ -972,12 +1219,20 @@ def record_entry_exit(
     if source not in ("online", "offline"):
         raise InvalidRequest("an_event_is_online_or_offline")
     with tenant_scope(pool, tenant_id) as conn:
+        stored = _namespaced("event", key)
         prior = conn.execute(
-            "SELECT event_id, direction FROM plt01.acc_events WHERE idempotency_key = %s",
-            (key,)).fetchone()
+            "SELECT event_id, direction, point_id FROM plt01.acc_events"
+            " WHERE idempotency_key = %s", (stored,)).fetchone()
         if prior is not None:
+            if str(prior[2]) != point_id:
+                raise _repeat_mismatch("event", key)
+            point = _point(conn, point_id)
+            # The same shape as the first answer. A repeat that dropped `inside` and `detail`
+            # made a client branch on whether its own retry had fired.
             return {"event_id": str(prior[0]), "direction": str(prior[1]),
-                    "repeated": True}
+                    "inside": _inside(conn, point["zone_id"]),
+                    "repeated": True,
+                    "detail": occupancy.NEVER_A_MUSTER}
         point = _point(conn, point_id)
         credential_id: str | None = None
         person_id: str | None = None
@@ -996,7 +1251,7 @@ def record_entry_exit(
                 " RETURNING event_id",
                 (tenant_id, point_id, point["zone_id"], direction, credential_id,
                  person_id, decision_id, occurred_at, actor_id, correlation_id, source,
-                 local_sequence, key)).fetchone()
+                 local_sequence, stored)).fetchone()
         except errors.CheckViolation as e:
             raise InvalidRequest(_check_name(e)) from None
         except errors.RaiseException as e:
@@ -1073,17 +1328,32 @@ def emergency_unlock(
     if not reason.strip():
         raise InvalidRequest("an_emergency_unlock_states_why")
     with tenant_scope(pool, tenant_id) as conn:
+        stored = _namespaced("emergency", key)
         prior = conn.execute(
-            "SELECT unlock_id, points_released FROM plt01.acc_emergency_unlocks"
-            " WHERE idempotency_key = %s", (key,)).fetchone()
+            "SELECT unlock_id, points_released, zone_id FROM plt01.acc_emergency_unlocks"
+            " WHERE idempotency_key = %s", (stored,)).fetchone()
         if prior is not None:
-            return {"unlock_id": str(prior[0]), "points_released": int(prior[1]),
-                    "repeated": True}
+            # **The zone is compared, and the answer names it.** The first version matched on
+            # the key alone, so a responder who ordered a release for the north stair and
+            # then, under the same panic-button counter, for the south stair was told the
+            # south stair was open. It was shut, nothing had been written for it, and the
+            # response omitted the zone so the caller could not tell. Paragraph 4178, during
+            # an evacuation, with the harm all in one direction.
+            if str(prior[2]) != zone_id:
+                raise _repeat_mismatch("emergency", key)
+            return {"unlock_id": str(prior[0]), "zone_id": zone_id,
+                    "points_released": int(prior[1]), "repeated": True}
         zone = conn.execute(
             "SELECT status FROM plt01.acc_zones WHERE zone_id = %s FOR UPDATE",
             (zone_id,)).fetchone()
         if zone is None:
             raise NotFound("zone_not_found")
+        # The status was selected and discarded -- MOD-016's "a status selected and discarded
+        # is a control that does not exist". A retired zone has no active points, so the
+        # release would answer `points_released: 0` and read as a success during an
+        # evacuation. Saying which zone is retired is the useful answer.
+        if str(zone[0]) != "active":
+            raise Conflict(f"this_zone_is_{zone[0]}_and_releases_nothing")
         points = conn.execute(
             "SELECT point_id, device_id FROM plt01.acc_points"
             " WHERE zone_id = %s AND status = 'active' ORDER BY point_id",
@@ -1110,7 +1380,7 @@ def emergency_unlock(
             "  correlation_id, idempotency_key)"
             " VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING unlock_id",
             (tenant_id, zone_id, reason.strip(), len(released), moment, actor_id,
-             correlation_id, key)).fetchone()
+             correlation_id, stored)).fetchone()
         assert row is not None
         _append(conn, tenant_id, "access.emergency_unlocked", "access_zone", zone_id,
                 {"zone_id": zone_id, "unlock_id": str(row[0]),
@@ -1181,7 +1451,15 @@ def reconcile_offline_access(
         point = _point(conn, point_id)
         live = _live_policy(conn, point["zone_id"])
         window = 0 if live is None else live.anti_passback_seconds
-        posture, _mode = _posture(conn, point["device_id"], skew=timedelta(0), at=moment)
+        # **The snapshot is the one that covered the event, not the one the device holds
+        # now.** Reading the latest made the ordinary reconnect order launder everything: a
+        # reader comes back, syncs -- which is what reconnecting *is* -- and then somebody
+        # reconciles, so every decision it made on an expired snapshot reports `accepted`.
+        # A reviewer demonstrated both directions: an event reconciled before a sync was
+        # flagged `stale_snapshot` and the same event after a sync was `accepted`. The
+        # outcome this module added to close a "no writer" defect was defeated by the only
+        # order of operations the product has.
+        device_id = point["device_id"]
         rows = conn.execute(
             "SELECT event_id, credential_id, occurred_at, direction"
             " FROM plt01.acc_events"
@@ -1204,9 +1482,10 @@ def reconcile_offline_access(
                                        point_id=point_id, scope="controller_group"),
                         window_seconds=window):
                     outcome = "duplicate"
+            at_the_time = _posture_at(conn, device_id, when=occurred_at)
             if outcome == "accepted" and (
-                    posture is None or not offline.may_decide_offline(
-                        posture, at=occurred_at, risk=point["risk_class"])):
+                    at_the_time is None or not offline.may_decide_offline(
+                        at_the_time, at=occurred_at, risk=point["risk_class"])):
                 # **The outcome that had no writer.** `OUTCOMES` declared `stale_snapshot`
                 # and the dict counted it from zero for ever: an offline reader that decided
                 # on an expired snapshot, or on one minted before a revocation it never saw,
@@ -1245,15 +1524,25 @@ def publish_access_snapshot(
     moment = at or _now()
     with tenant_scope(pool, tenant_id) as conn:
         point = _point(conn, point_id)
+        # **The point's own state matters**, and this did not look at it: a snapshot
+        # published for a retired lane is an authorization for a door nobody is maintaining.
+        if point["status"] != "active":
+            raise Conflict(f"this_access_point_is_{point['status']}")
+        # **The ceiling and the write commit together.** They used to be two transactions --
+        # the check here, the publication through the pool -- so a reclassification landing
+        # between them issued a twelve-hour authorization for a zone that had just become
+        # high-risk. That is the whole of what a risk class buys, lost to a race nobody had
+        # to arrange. `publish_snapshot_on` is MOD-021's connection-taking core, split out
+        # for this.
         try:
             zones.check_snapshot_ttl(timedelta(minutes=ttl_minutes),
                                      risk=point["risk_class"])
         except ValueError as e:
             raise Conflict(str(e)) from None
-    published = devices.publish_snapshot(
-        pool, tenant_id, point["device_id"], content_digest=content_digest,
-        ttl_minutes=ttl_minutes, signature_ref=signature_ref, actor_id=actor_id,
-        correlation_id=correlation_id, at=moment)
+        published = devices.publish_snapshot_on(
+            conn, tenant_id, point["device_id"], content_digest=content_digest,
+            ttl_minutes=ttl_minutes, signature_ref=signature_ref, actor_id=actor_id,
+            correlation_id=correlation_id, at=moment)
     published["point_id"] = point_id
     published["zone_risk_class"] = point["risk_class"]
     return published
@@ -1261,6 +1550,7 @@ def publish_access_snapshot(
 
 def credential_status(
     pool: Pool, tenant_id: str, credential_id: str, *, at: datetime | None = None,
+    may_read_reason: bool = False,
 ) -> dict[str, Any]:
     """CredentialStatus. **What it is, never what it opens.**
 
@@ -1287,7 +1577,12 @@ def credential_status(
             "revocation_epoch": int(row[6]),
             "expires_at": None if row[5] is None else row[5].isoformat(),
             "revoked_at": None if row[7] is None else row[7].isoformat(),
-            "revoke_reason": row[8],
+            # **Prose a desk typed, so it follows the same permission as a decision's private
+            # half.** "She left it at the oncology clinic on Tuesday" is this module's own
+            # example of what goes in this column, and it was returned to the cheapest read
+            # there is. `reason_withheld` says a reason exists rather than implying none does.
+            "revoke_reason": row[8] if may_read_reason else None,
+            "reason_withheld": row[8] is not None and not may_read_reason,
             "detail": ("usable here means this credential still identifies its holder; "
                        "whether a door opens is a policy decision made elsewhere")}
 
@@ -1322,12 +1617,17 @@ def decision_history(
         {"decision_id": str(r[0]), "point_id": str(r[1]), "zone_id": str(r[2]),
          "credential_id": None if r[3] is None else str(r[3]),
          "person_id": None if r[4] is None else str(r[4]),
-         "granted": bool(r[5]), "code": str(r[6]), "public_reason": str(r[7]),
+         "granted": bool(r[5]),
+         # The real code is the fact, so it follows the private reason rather than the
+         # public one: both reviewers found that gating the sentence and not the code left
+         # paragraph 1944 satisfied in wording only.
+         "code": str(r[6]) if may_read_private else policy.public_code(str(r[6])),
          # **Absent rather than substituted.** The first version put the *public* text under
          # this key for a caller without the permission, so a consumer reading
          # `private_reason` got the discreet line and could not tell it from the real one --
          # which is how "the member was told the whole truth" ends up in a privacy report.
          # `None` is the honest answer, and `reason_withheld` says there is more to read.
+         "public_reason": str(r[7]),
          "private_reason": str(r[8]) if may_read_private else None,
          "reason_withheld": bool(r[9]) and not may_read_private,
          "policy_id": None if r[10] is None else str(r[10]),
@@ -1335,6 +1635,56 @@ def decision_history(
          "device_mode": str(r[12]), "passback_scope": str(r[13]),
          "decided_at": r[14].isoformat()} for r in rows],
         "private_reasons_included": may_read_private}
+
+
+def list_zones(pool: Pool, tenant_id: str, *, include_retired: bool = False,
+               limit: int = 200) -> dict[str, Any]:
+    """Every zone this tenant controls, with the counts a door board reads.
+
+    **Added for the Front Desk surface**, which had no way to reach a zone without already
+    knowing its id -- `zone_detail` existed and nothing enumerated. An operator looking at a
+    board of doors is the ordinary use of this module, and a read path that cannot be entered
+    is a read path nobody uses.
+
+    It carries the point counts rather than the points: a board shows how many readers a zone
+    has and whether any of them faces out, and the zone read is where the detail lives. The
+    occupancy is deliberately **not** here -- it is a sum over the event ledger per zone, and
+    a list route that ran it per row would be a slow query somebody would later cache, which
+    is the stored count this module refuses to keep.
+    """
+    if not 1 <= limit <= 500:
+        raise InvalidRequest("a_zone_list_returns_between_one_and_five_hundred")
+    with tenant_scope(pool, tenant_id) as conn:
+        rows = conn.execute(
+            "SELECT z.zone_id, z.location_id, z.zone_key, z.display_name, z.risk_class,"
+            "       z.status,"
+            "       count(p.point_id) FILTER (WHERE p.status = 'active') AS live_points,"
+            "       count(p.point_id) FILTER (WHERE p.status = 'active'"
+            "                                   AND p.direction IN ('entry', 'both'))"
+            "           AS entry_points,"
+            "       count(p.point_id) FILTER (WHERE p.status = 'active'"
+            "                                   AND p.direction IN ('exit', 'both'))"
+            "           AS exit_points,"
+            "       max(l.version) AS live_policy_version"
+            " FROM plt01.acc_zones z"
+            " LEFT JOIN plt01.acc_points p ON p.zone_id = z.zone_id"
+            " LEFT JOIN plt01.acc_policies l ON l.zone_id = z.zone_id"
+            "                               AND l.status = 'published'"
+            " WHERE (%s OR z.status = 'active')"
+            " GROUP BY z.zone_id, z.location_id, z.zone_key, z.display_name, z.risk_class,"
+            "          z.status"
+            " ORDER BY z.display_name LIMIT %s",
+            (include_retired, limit)).fetchall()
+    return {"zones": [
+        {"zone_id": str(r[0]), "location_id": str(r[1]), "zone_key": str(r[2]),
+         "display_name": str(r[3]), "risk_class": str(r[4]), "status": str(r[5]),
+         "live_points": int(r[6]), "entry_points": int(r[7]), "exit_points": int(r[8]),
+         # **`None` means no policy is live**, which is a zone that decides nothing rather
+         # than a zone with a permissive default. A board that showed a blank here would
+         # read as "no restrictions".
+         "live_policy_version": None if r[9] is None else int(r[9]),
+         "snapshot_ceiling_seconds": int(zones.snapshot_ceiling(str(r[4])).total_seconds())}
+        for r in rows]}
 
 
 def zone_detail(pool: Pool, tenant_id: str, zone_id: str) -> dict[str, Any]:

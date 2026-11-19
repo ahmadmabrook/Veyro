@@ -269,6 +269,67 @@ class ZoneAndPointTests(AccessApiTestCase):
         self.assertEqual(refused.status_code, 409, refused.text)
 
 
+class ZoneListTests(AccessApiTestCase):
+    """The door board, which is the read a front desk actually enters this module through."""
+
+    def test_a_zone_with_no_live_policy_says_so_rather_than_reading_as_unrestricted(self):
+        tenant_id = self.tenant()
+        location_id = self.location(tenant_id)
+        device_id = self.live_device(tenant_id, location_id)
+        zone_id = self.zone(tenant_id, location_id)
+        self.point(tenant_id, zone_id, device_id)
+        listed = self.client.get("/access/zones", headers=self.headers(tenant_id))
+        self.assertEqual(listed.status_code, 200, listed.text)
+        rows = {z["zone_id"]: z for z in listed.json()["zones"]}
+        self.assertIsNone(rows[zone_id]["live_policy_version"], listed.text)
+        self.assertEqual(rows[zone_id]["entry_points"], 1)
+        self.assertEqual(rows[zone_id]["exit_points"], 0)
+
+        self.policy(tenant_id, zone_id)
+        again = self.client.get("/access/zones", headers=self.headers(tenant_id))
+        self.assertEqual(
+            {z["zone_id"]: z for z in again.json()["zones"]}[zone_id]["live_policy_version"],
+            1, again.text)
+
+    def test_a_retired_zone_is_out_of_the_board_unless_asked_for(self):
+        tenant_id = self.tenant()
+        zone_id = self.zone(tenant_id, self.location(tenant_id))
+        retired = self.client.post(f"/access/zones/{zone_id}/retire", json={
+            "reason": "the room was knocked through", **self.correlation()},
+            headers=self.headers(tenant_id))
+        self.assertEqual(retired.status_code, 200, retired.text)
+        board = self.client.get("/access/zones", headers=self.headers(tenant_id))
+        self.assertNotIn(zone_id, [z["zone_id"] for z in board.json()["zones"]])
+        everything = self.client.get(
+            "/access/zones?include_retired=true", headers=self.headers(tenant_id))
+        self.assertIn(zone_id, [z["zone_id"] for z in everything.json()["zones"]])
+
+    def test_the_board_carries_the_risk_class_ceiling_it_is_read_against(self):
+        tenant_id = self.tenant()
+        location_id = self.location(tenant_id)
+        self.zone(tenant_id, location_id, risk_class="high_risk")
+        board = self.client.get("/access/zones", headers=self.headers(tenant_id))
+        high = [z for z in board.json()["zones"] if z["risk_class"] == "high_risk"]
+        self.assertTrue(high, board.text)
+        self.assertEqual(high[0]["snapshot_ceiling_seconds"], 2 * 3600)
+
+    def test_the_board_needs_the_read_permission(self):
+        tenant_id = self.tenant()
+        self.zone(tenant_id, self.location(tenant_id))
+        nobody = self.grant(tenant_id, [])
+        refused = self.client.get(
+            "/access/zones", headers=self.headers(tenant_id, nobody))
+        self.assertEqual(refused.status_code, 403, refused.text)
+
+    def test_another_tenants_zones_are_not_on_this_board(self):
+        first = self.tenant()
+        self.zone(first, self.location(first))
+        second = self.tenant()
+        board = self.client.get("/access/zones", headers=self.headers(second))
+        self.assertEqual(board.status_code, 200, board.text)
+        self.assertEqual(board.json()["zones"], [], board.text)
+
+
 class PolicyTests(AccessApiTestCase):
     def test_the_author_of_a_policy_cannot_publish_it(self):
         """MOD-017's contract-version argument in a building: these terms decide who gets
@@ -429,7 +490,11 @@ class PublicReasonTests(AccessApiTestCase):
         self.assertEqual(presented.status_code, 201, presented.text)
         body = presented.json()
         self.assertFalse(body["granted"])
-        self.assertEqual(body["code"], "no_entitlement")
+        # **The public code, not the real one.** Both reviewers found that the split gated
+        # the sentence and not the fact: `no_entitlement` beside "please see the front desk"
+        # tells whoever reads the screen above the turnstile that this named person has no
+        # membership that admits them.
+        self.assertEqual(body["code"], "see_front_desk")
         self.assertEqual(body["public_reason"], "please see the front desk")
         # And the response a reader gets carries no private half at all: this payload goes to
         # the device above the turnstile.
@@ -676,3 +741,321 @@ class GateTests(AccessApiTestCase):
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
+
+
+class ReviewRegressionTests(AccessApiTestCase):
+    """One test per blocking finding from the three independent reviews of MOD-022.
+
+    Named for the attacks rather than the fixes, because the fix is what changes and the
+    attack is what has to keep failing. Every one of these passed before the fix and fails
+    without it; the four absences the reviewers named -- no rotating credential, no
+    `both`-facing point, no reused idempotency key, no capacity behaviour -- are the reason
+    the defects shipped inside a green 31-test suite.
+    """
+
+    def rotating(self, floor: dict[str, Any], **overrides: Any) -> dict[str, Any]:
+        """A presentation of a rotating token, with a live window by default."""
+        now = datetime.now(UTC)
+        body = {
+            "point_id": floor["point_id"], "credential_value": floor["credential_value"],
+            "idempotency_key": str(uuid.uuid4()),
+            "rotation_counter": 1, "nonce": uuid.uuid4().hex,
+            "token_issued_at": now.isoformat(),
+            "token_expires_at": (now + timedelta(seconds=30)).isoformat(),
+            **self.correlation(),
+        }
+        body.update(overrides)
+        return body
+
+    def qr_floor(self) -> dict[str, Any]:
+        floor = self.floor()
+        person_id = self.person(floor["tenant_id"])
+        credential_id, value = self.credential(
+            floor["tenant_id"], person_id, kind="qr_rotating")
+        return {**floor, "person_id": person_id, "credential_id": credential_id,
+                "credential_value": value}
+
+    # ------------------------------------------------------------------ the credential kind
+
+    def test_a_reader_cannot_name_the_credential_kind_and_turn_off_its_controls(self):
+        """**A photographed QR replayed for ever.**
+
+        `kind` was a free-text body field and it decided which controls ran: the token
+        window, the clock refusal and the replay cache are each guarded on the credential
+        being a rotating one. A reviewer sent `{"kind": "nfc_card"}` with a month-old token
+        and was admitted, repeatedly, each time issuing MOD-021's unlock.
+        """
+        floor = self.qr_floor()
+        stale = datetime.now(UTC) - timedelta(days=30)
+        refused = self.client.post("/access/decisions", json=self.rotating(
+            floor, token_issued_at=stale.isoformat(),
+            token_expires_at=(stale + timedelta(seconds=30)).isoformat(),
+            kind="nfc_card"), headers=self.headers(floor["tenant_id"]))
+        # The body no longer declares `kind` at all, so an extra key is either ignored or
+        # refused -- what must not happen is a grant.
+        self.assertIn(refused.status_code, (201, 422), refused.text)
+        if refused.status_code == 201:
+            self.assertFalse(refused.json()["granted"], refused.text)
+            self.assertEqual(refused.json()["code"], "credential_window", refused.text)
+
+    def test_a_token_outside_its_window_is_refused(self):
+        floor = self.qr_floor()
+        stale = datetime.now(UTC) - timedelta(hours=1)
+        refused = self.client.post("/access/decisions", json=self.rotating(
+            floor, token_issued_at=stale.isoformat(),
+            token_expires_at=(stale + timedelta(seconds=30)).isoformat()),
+            headers=self.headers(floor["tenant_id"]))
+        self.assertEqual(refused.status_code, 201, refused.text)
+        self.assertEqual(refused.json()["code"], "credential_window", refused.text)
+
+    def test_a_replayed_token_is_refused_and_recorded_rather_than_answering_500(self):
+        """**The refusal paragraph 4183 calls the core of the design was unreachable.**
+
+        The replay insert caught its unique violation and carried on in a transaction
+        PostgreSQL had already aborted, so the next statement raised and the caller got a
+        500 -- and `credential_replayed` was a declared reason code no path could write.
+        """
+        floor = self.qr_floor()
+        body = self.rotating(floor)
+        first = self.client.post("/access/decisions", json=body,
+                                 headers=self.headers(floor["tenant_id"]))
+        self.assertEqual(first.status_code, 201, first.text)
+        self.assertTrue(first.json()["granted"], first.text)
+
+        again = self.client.post("/access/decisions", json={
+            **body, "idempotency_key": str(uuid.uuid4()), **self.correlation()},
+            headers=self.headers(floor["tenant_id"]))
+        self.assertEqual(again.status_code, 201, again.text)
+        self.assertFalse(again.json()["granted"], again.text)
+        self.assertEqual(again.json()["code"], "credential_replayed", again.text)
+
+        history = self.client.get(
+            f"/access/decisions?zone_id={floor['zone_id']}",
+            headers=self.headers(floor["tenant_id"]))
+        self.assertIn("credential_replayed",
+                      [d["code"] for d in history.json()["decisions"]], history.text)
+
+    # ------------------------------------------------------------------ idempotency
+
+    def test_a_reused_key_with_a_different_card_is_refused_not_answered(self):
+        """**A revoked card was answered `granted`** from the previous member's row."""
+        floor = self.floor()
+        other_person = self.person(floor["tenant_id"])
+        other_id, other_value = self.credential(floor["tenant_id"], other_person)
+        key = "till-shift-7"
+
+        first = self.client.post("/access/decisions", json={
+            "point_id": floor["point_id"], "credential_value": floor["credential_value"],
+            "idempotency_key": key, **self.correlation()},
+            headers=self.headers(floor["tenant_id"]))
+        self.assertEqual(first.status_code, 201, first.text)
+
+        self.client.post(f"/access/credentials/{other_id}/revoke", json={
+            "reason": "reported stolen", **self.correlation()},
+            headers=self.headers(floor["tenant_id"]))
+        reused = self.client.post("/access/decisions", json={
+            "point_id": floor["point_id"], "credential_value": other_value,
+            "idempotency_key": key, **self.correlation()},
+            headers=self.headers(floor["tenant_id"]))
+        self.assertEqual(reused.status_code, 409, reused.text)
+        self.assertNotIn("granted_by", reused.text)
+
+    def test_an_override_cannot_be_answered_from_an_ordinary_decisions_key(self):
+        """**The cheapest permission read the authority of the most expensive one.**
+
+        `acc_decisions.idempotency_key` is one column, so a presentation and an override
+        shared a namespace: an override made under a key, then a revoked card presented
+        under the same key on the routine permission, was answered `granted_by_override`.
+        """
+        floor = self.floor()
+        key = "shift-counter-12"
+        overridden = self.client.post("/access/decisions/override", json={
+            "point_id": floor["point_id"], "person_id": floor["person_id"],
+            "reason": "I know her", "idempotency_key": key, **self.correlation()},
+            headers=self.headers(floor["tenant_id"]))
+        self.assertEqual(overridden.status_code, 201, overridden.text)
+
+        self.client.post(f"/access/credentials/{floor['credential_id']}/revoke", json={
+            "reason": "reported stolen", **self.correlation()},
+            headers=self.headers(floor["tenant_id"]))
+        presented = self.client.post("/access/decisions", json={
+            "point_id": floor["point_id"], "credential_value": floor["credential_value"],
+            "idempotency_key": key, **self.correlation()},
+            headers=self.headers(floor["tenant_id"]))
+        self.assertEqual(presented.status_code, 201, presented.text)
+        self.assertFalse(presented.json()["granted"], presented.text)
+        self.assertEqual(presented.json()["code"], "credential_revoked", presented.text)
+
+    def test_an_override_retry_is_answered_from_what_was_recorded(self):
+        """It returned a fabricated success without reading the row, so a staff member was
+        told an override had happened while the member was still refused."""
+        floor = self.floor(requires_entitlement=True)
+        key = str(uuid.uuid4())
+        refused = self.client.post("/access/decisions", json={
+            "point_id": floor["point_id"], "credential_value": floor["credential_value"],
+            "idempotency_key": key, **self.correlation()},
+            headers=self.headers(floor["tenant_id"]))
+        self.assertFalse(refused.json()["granted"], refused.text)
+        # The same key, now on the override: different namespace, so this is a fresh act.
+        overridden = self.client.post("/access/decisions/override", json={
+            "point_id": floor["point_id"], "person_id": floor["person_id"],
+            "reason": "card left at home", "idempotency_key": key, **self.correlation()},
+            headers=self.headers(floor["tenant_id"]))
+        self.assertEqual(overridden.status_code, 201, overridden.text)
+        self.assertFalse(overridden.json().get("repeated"), overridden.text)
+        codes = [d["code"] for d in self.client.get(
+            f"/access/decisions?zone_id={floor['zone_id']}",
+            headers=self.headers(floor["tenant_id"])).json()["decisions"]]
+        self.assertIn("granted_by_override", codes)
+
+    def test_an_emergency_key_reused_for_another_zone_is_refused(self):
+        """**It reported the second zone released when nothing had been.** During a fire,
+        with the response omitting the zone so the caller could not tell."""
+        floor = self.floor()
+        second_zone = self.zone(floor["tenant_id"], floor["location_id"])
+        key = "incident-2026-11-18"
+        first = self.client.post("/access/emergency", json={
+            "zone_id": floor["zone_id"], "reason": "fire alarm, north stair",
+            "idempotency_key": key, **self.correlation()},
+            headers=self.headers(floor["tenant_id"]))
+        self.assertEqual(first.status_code, 201, first.text)
+
+        second = self.client.post("/access/emergency", json={
+            "zone_id": second_zone, "reason": "fire alarm, south stair",
+            "idempotency_key": key, **self.correlation()},
+            headers=self.headers(floor["tenant_id"]))
+        self.assertEqual(second.status_code, 409, second.text)
+
+    def test_an_emergency_repeat_names_the_zone_it_released(self):
+        floor = self.floor()
+        key = str(uuid.uuid4())
+        body = {"zone_id": floor["zone_id"], "reason": "fire alarm",
+                "idempotency_key": key, **self.correlation()}
+        self.client.post("/access/emergency", json=body,
+                         headers=self.headers(floor["tenant_id"]))
+        again = self.client.post("/access/emergency", json={**body, **self.correlation()},
+                                 headers=self.headers(floor["tenant_id"]))
+        self.assertEqual(again.status_code, 201, again.text)
+        self.assertTrue(again.json()["repeated"])
+        self.assertEqual(again.json()["zone_id"], floor["zone_id"], again.text)
+
+    # ------------------------------------------------------------------ egress and capacity
+
+    def test_a_both_facing_lane_decides_nothing_on_the_way_out(self):
+        """**Paragraph 4177, reached by wiring the ordinary hardware.**
+
+        A `both` lane is one turnstile that reads each way -- the arrangement that makes a
+        zone's occupancy `measured`. Every presentation at one was evaluated as an entry, so
+        a reviewer walked a member in and then refused them on the way out.
+        """
+        tenant_id = self.tenant()
+        location_id = self.location(tenant_id)
+        device_id = self.live_device(tenant_id, location_id)
+        zone_id = self.zone(tenant_id, location_id)
+        point_id = self.point(tenant_id, zone_id, device_id, direction="both")
+        self.policy(tenant_id, zone_id, anti_passback_seconds=600)
+        person_id = self.person(tenant_id)
+        _, value = self.credential(tenant_id, person_id)
+
+        entering = self.client.post("/access/decisions", json={
+            "point_id": point_id, "credential_value": value,
+            "idempotency_key": str(uuid.uuid4()), **self.correlation()},
+            headers=self.headers(tenant_id))
+        self.assertEqual(entering.status_code, 201, entering.text)
+        self.assertTrue(entering.json()["granted"], entering.text)
+
+        leaving = self.client.post("/access/decisions", json={
+            "point_id": point_id, "credential_value": value,
+            "reported_direction": "exit", "idempotency_key": str(uuid.uuid4()),
+            **self.correlation()}, headers=self.headers(tenant_id))
+        self.assertEqual(leaving.status_code, 201, leaving.text)
+        self.assertEqual(leaving.json()["code"], "point_not_an_entry", leaving.text)
+        # And no anti-passback refusal, which is what the member was given before.
+        self.assertNotEqual(leaving.json()["code"], "anti_passback")
+
+    def test_a_capacity_zone_with_one_reader_does_not_refuse_on_a_number_it_calls_advisory(self):
+        """**A studio with a capacity stopped working after that many lifetime entries.**
+
+        `_inside` counted every event the zone had ever seen and `decide` refused on it, with
+        no DELETE grant to bring it down -- so the only remedy was a new policy, which is two
+        acts by two people. Weaponisable from the weakest write permission in the module.
+        """
+        floor = self.floor(capacity=1)
+        headers = self.headers(floor["tenant_id"])
+        for _ in range(3):
+            recorded = self.client.post("/access/events", json={
+                "point_id": floor["point_id"], "direction": "entry",
+                "occurred_at": datetime.now(UTC).isoformat(), "source": "online",
+                "idempotency_key": str(uuid.uuid4()), **self.correlation()},
+                headers=headers)
+            self.assertEqual(recorded.status_code, 201, recorded.text)
+
+        presented = self.present(floor)
+        self.assertEqual(presented.status_code, 201, presented.text)
+        self.assertNotEqual(presented.json()["code"], "zone_at_capacity", presented.text)
+        self.assertTrue(presented.json()["granted"], presented.text)
+
+    # ------------------------------------------------------------------ the rest
+
+    def test_a_naive_timestamp_answers_422_rather_than_500(self):
+        """The commonest thing an embedded reader emits, 500ing both high-volume routes."""
+        floor = self.floor()
+        headers = self.headers(floor["tenant_id"])
+        naive = "2026-11-19T00:00:00"
+        refused = self.client.post("/access/events", json={
+            "point_id": floor["point_id"], "direction": "entry", "occurred_at": naive,
+            "source": "online", "idempotency_key": str(uuid.uuid4()), **self.correlation()},
+            headers=headers)
+        self.assertEqual(refused.status_code, 422, refused.text)
+
+        ancient = self.client.post("/access/decisions", json={
+            "point_id": floor["point_id"], "credential_value": floor["credential_value"],
+            "token_issued_at": "0001-01-01T00:00:00Z",
+            "idempotency_key": str(uuid.uuid4()), **self.correlation()}, headers=headers)
+        self.assertEqual(ancient.status_code, 422, ancient.text)
+
+    def test_an_override_at_a_retired_point_is_a_refusal_not_a_500(self):
+        floor = self.floor()
+        headers = self.headers(floor["tenant_id"])
+        retired = self.client.post(f"/access/points/{floor['point_id']}/retire", json={
+            "reason": "lane removed", **self.correlation()}, headers=headers)
+        self.assertEqual(retired.status_code, 200, retired.text)
+        refused = self.client.post("/access/decisions/override", json={
+            "point_id": floor["point_id"], "person_id": floor["person_id"],
+            "reason": "I know her", "idempotency_key": str(uuid.uuid4()),
+            **self.correlation()}, headers=headers)
+        self.assertEqual(refused.status_code, 409, refused.text)
+
+    def test_a_credential_read_needs_its_own_permission_and_withholds_the_reason(self):
+        """`access.zone.read` is a claim about zones, and the revocation reason is prose a
+        desk typed -- "she left it at the oncology clinic" is the module's own example."""
+        floor = self.floor()
+        self.client.post(f"/access/credentials/{floor['credential_id']}/revoke", json={
+            "reason": "left at the oncology clinic on Tuesday", **self.correlation()},
+            headers=self.headers(floor["tenant_id"]))
+
+        zones_only = self.grant(floor["tenant_id"], ["access.zone.read"])
+        refused = self.client.get(
+            f"/access/credentials/{floor['credential_id']}",
+            headers=self.headers(floor["tenant_id"], zones_only))
+        self.assertEqual(refused.status_code, 403, refused.text)
+
+        reader = self.grant(floor["tenant_id"], ["access.credential.read"])
+        allowed = self.client.get(
+            f"/access/credentials/{floor['credential_id']}",
+            headers=self.headers(floor["tenant_id"], reader))
+        self.assertEqual(allowed.status_code, 200, allowed.text)
+        self.assertIsNone(allowed.json()["revoke_reason"], allowed.text)
+        self.assertTrue(allowed.json()["reason_withheld"], allowed.text)
+        self.assertNotIn("oncology", allowed.text)
+
+    def test_the_restricted_code_does_not_reach_a_routine_decision_read(self):
+        floor = self.floor(requires_entitlement=True)
+        self.present(floor)
+        reader = self.grant(floor["tenant_id"], ["access.decision.read"])
+        narrow = self.client.get(
+            f"/access/decisions?zone_id={floor['zone_id']}",
+            headers=self.headers(floor["tenant_id"], reader))
+        self.assertEqual(narrow.status_code, 200, narrow.text)
+        self.assertNotIn("no_entitlement", narrow.text)
+        self.assertIn("see_front_desk", narrow.text)

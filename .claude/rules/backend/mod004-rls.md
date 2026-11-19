@@ -33,11 +33,11 @@ through an ADR so the lint, the migrations and the pool configuration keep agree
 ## Verification evidence
 
 `backend/tests/sql/isolation.sql` is the live half, run by `backend/scripts/verify_db.sh` and by
-CI. It carries 105 checks covering every track's tables -- MOD-004's hierarchy, MOD-005's `cfg_`,
+CI. It carries 111 checks covering every track's tables -- MOD-004's hierarchy, MOD-005's `cfg_`,
 MOD-015's `bil_`, MOD-007's and MOD-008's `iam`, MOD-009's `sec_`, MOD-010's `evt_`,
 MOD-011's `ops_`, MOD-012's `int_`, MOD-013's `ntf_`, MOD-014's `ppl_`, MOD-016's `cat_`,
 MOD-017's `mem_` and `fin_`, MOD-018's `led_`, MOD-019's `sch_`, MOD-020's `bkg_` and
-MOD-021's `dev_` -- and **every one has been
+MOD-021's `dev_` and MOD-022's `acc_` -- and **every one has been
 run against a deliberate mutation of the protection it guards and shown to fail**:
 
 ```bash
@@ -579,3 +579,95 @@ absolutely lived only in per-module lists; `has_table_privilege` cannot see a co
 `GRANT ... TO PUBLIC`, so `GRANT UPDATE (state) ON ... TO PUBLIC` was invisible to every
 check in the file; and a forbidden-column-name list is whack-a-mole, so it needs patterns for
 the *shape* beside the explicit names.
+
+
+**A probe asserts the sentence, not the exception class, and the fixture carries a row per
+branch.** MOD-022 has ten trigger functions and forty-four plpgsql branches, and the module
+shipped with probes for a handful: a reviewer replaced five of the ten functions with
+`BEGIN RETURN NEW; END` and the suite reported 109/109. Check 111 is one probe per branch, and
+three things make it evidence rather than decoration -- each the answer to a trap this file
+already records, met again in one module:
+
+  * **the message.** A branch guarding a lookup result is subsumed by any later branch whose
+    predicate is also satisfied by the lookup having failed, so a probe that counts any
+    `raise_exception` proves whichever branch replies. Each probe names the sentence it
+    expects and records a different one as a *confusion*, which fails the check.
+  * **the row.** A BEFORE trigger runs before every CHECK on the table, so a probe whose row
+    also violates a CHECK still passes with its branch deleted -- the CHECK answers instead.
+    Each row here is the committed seed's own row with exactly one field moved, which is the
+    same discipline the generated constraint cases use for the opposite reason.
+  * **the fixture.** A probe needs a row that *only* the branch under test refuses, and for a
+    one-way trigger that means a row in each state: a retired zone, a retired point, a revoked
+    credential, a reconciled event and a reviewed unlock, plus a second door that is probed
+    live and then retired because two branches need it both ways. The fixture statements run
+    inside the same block, in order, and a fixture that is itself refused is reported as such
+    rather than counted.
+
+**And a branch mutation has to be encoded, not flattened.** The sweep carries each mutation on
+one tab-separated line, and the first version replaced every newline in the function body with
+a space -- which turns each `--` comment into one that swallows the rest of the definition. All
+forty-four branch mutations were refused with "syntax error at end of input" and recorded as
+not-run: the harness reporting a gap it had created, which is the same false green as every
+other paragraph here arriving by a route none of them cover. Encode the newlines and decode
+them at the psql boundary.
+
+**A rate limit whose budget is not declared is not a rate limit, and the structural test has
+to be mutation-proven too.** MOD-022's evaluate route named a budget `ratelimit.BUDGETS` did
+not carry, and `decide` defaulted to allowing -- so the route read as limited and was not.
+`decide` refuses an undeclared key now, and a test walks `main.py` with `ast` and asserts every
+`rate_limit(limit_key=...)` names a declared one. A structural sweep that passes vacuously is
+the thing it exists to prevent, so that test was run against a deliberately undeclared budget
+and shown to fail before it was believed.
+
+
+**`check_violation` does not say which constraint refused the row, so a case that counts it
+proves whichever fires first.** This file records the "caught by a sibling" trap for MOD-012,
+MOD-013, MOD-014, MOD-016 and MOD-020, and every one of those was found by a mutation sweep
+afterwards -- which means the sweep is the only instrument and it runs when a person runs it.
+There is a structural answer and MOD-022 is the first module to use it:
+
+```sql
+EXCEPTION
+    WHEN check_violation THEN
+        GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+        IF offender = 'the_rule_under_test' THEN probe := probe + 1;
+        ELSE confused := array_append(confused, '... answered by ' || offender); END IF;
+```
+
+With that in place a case answered by a sibling fails **on a clean database**, in CI, rather
+than at the next sweep. It found four more the moment it was added, two of them in cases a
+careful reader had just written: a separation-of-duties case answered by the attribution CHECK
+beside it, and a `granted = (code = ANY ...)` case answered by the code domain -- because the
+shape reader moves the column the predicate *names*, and for a correspondence rule that column
+is usually the wrong one to move. The same applies to `unique_violation`, where
+`CONSTRAINT_NAME` is the index's own name.
+
+**And then the row has to be able to reach the rule.** Fourteen of MOD-022's generated cases
+were refused by a sibling because the sibling guards the same column from a different angle:
+an attribution trio fires before the ordering rule it sits beside, a pairing fires before
+either bound it permits, and a biconditional between a status and its timestamp fires before
+the attribution that depends on it. The fix is per rule and small -- set the companion columns
+the sibling demands -- but it is not derivable from the predicate under test, so it is written
+down beside the case and the diagnostics above are what prove it was written correctly.
+
+**A generated case block needs explicit begin and end markers.** Re-splicing a generator's
+output into `isolation.sql` means choosing where the generated region ends, and choosing it by
+reading the file deleted nineteen hand-written cases in one pass -- which nothing noticed,
+because the suite's own count assertion was regenerated in the same step. The generator prints
+`-- >>> GENERATED ... BEGIN` and `-- <<< ... END`, one splice script moves them, and it refuses
+rather than guessing if either marker is missing or doubled.
+
+**A mutation harness must restore the tree on a signal, not only on an exception.** `finally`
+does not run when the process is killed, and a web sweep stopped halfway left a deleted line in
+a page for an hour -- the mutation whose replacement is the empty string, so searching the tree
+for the mutated text could not find it. The only trace was the next run reporting "the anchor
+appears 0 times", and in between a browser suite went green against a page missing the thing
+one of its own tests is named after. Restore on SIGINT, SIGTERM and SIGHUP.
+
+**A generated index mutation must filter `contype`, because a foreign key names the index it
+reads.** `LEFT JOIN pg_constraint ON conindid = indexrelid` with no filter yields one row per
+dependent key, each telling the harness to drop that foreign key from the *index's* table --
+where it does not exist. Thirteen primary-key mutations were refused and recorded as not-run,
+which is the harness manufacturing the gap it then reports. The same goes for widening a
+numeric bound: the integer has to be the whole literal, or `'00:01:30'::interval` becomes
+`1000000:01:30'::interval` and the statement never runs.

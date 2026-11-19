@@ -167,7 +167,10 @@ CREATE TABLE plt01.acc_policies (
     CONSTRAINT acc_policies_opens_in_a_day
         CHECK (opens_minute IS NULL OR (opens_minute >= 0 AND opens_minute < 1440)),
     CONSTRAINT acc_policies_closes_in_a_day
-        CHECK (closes_minute IS NULL OR (closes_minute >= 0 AND closes_minute < 1440)),
+        -- **`<= 1440`, not `< 1440`.** The window is half-open -- `opens <= minute <
+        -- closes` -- so a 24-hour club needs a close *at* midnight, and the stricter bound
+        -- meant "always open" shut the zone for the last minute of every day.
+        CHECK (closes_minute IS NULL OR (closes_minute >= 0 AND closes_minute <= 1440)),
     -- **A window with both ends equal is not a window.** It reads as "open all day" to a
     -- careless reader and as "open for nothing" to `policy._within`, which wraps past
     -- midnight; neither is a thing anybody meant to configure.
@@ -185,8 +188,14 @@ CREATE TABLE plt01.acc_policies (
         CHECK (anti_passback_seconds >= 0 AND anti_passback_seconds <= 43200),
     CONSTRAINT acc_policies_capacity_sane
         CHECK (capacity IS NULL OR (capacity >= 0 AND capacity <= 1000000)),
+    -- **A draft retired in error has no publication, and that is legitimate.** The first
+    -- version required a publication date for anything that was not a draft, so the
+    -- `draft -> retired` edge the state machine admits could not be taken: the only way to
+    -- withdraw a mistaken draft was to record a publication that never happened -- which the
+    -- one-way trigger then froze for ever -- and the version number was burned either way.
+    -- MOD-018's unreachable-exit finding and MOD-020's declared-edge finding in one.
     CONSTRAINT acc_policies_published_is_published
-        CHECK (status = 'draft' OR published_at IS NOT NULL),
+        CHECK (status <> 'published' OR published_at IS NOT NULL),
     CONSTRAINT acc_policies_publication_attributed CHECK (
         (published_at IS NULL AND published_by IS NULL AND publish_correlation_id IS NULL)
         OR (published_at IS NOT NULL AND published_by IS NOT NULL
@@ -251,7 +260,10 @@ CREATE TABLE plt01.acc_credentials (
     CONSTRAINT acc_credentials_kind CHECK (kind IN (
         'qr_rotating', 'nfc_card', 'wallet_pass', 'physical_card', 'pin',
         'staff_assisted', 'biometric')),
-    CONSTRAINT acc_credentials_state CHECK (state IN ('active', 'revoked', 'expired')),
+    -- **No `expired`.** Expiry is derived from `expires_at`; nothing ever wrote the state,
+    -- and a declared value with no writer is MOD-020's defect. Found by a reviewer grepping
+    -- the writers of every member of every enumeration in the module.
+    CONSTRAINT acc_credentials_state CHECK (state IN ('active', 'revoked')),
     CONSTRAINT acc_credentials_digest_shape
         CHECK (credential_digest ~ '^[0-9a-f]{64}$'),
     CONSTRAINT acc_credentials_epoch_sane
@@ -308,6 +320,15 @@ CREATE TABLE plt01.acc_decisions (
     policy_id uuid,
     policy_version integer,
     snapshot_id uuid,
+    -- **Which way the member was walking.** Paragraph 4177's refusal lived in the trigger
+    -- below and covered `direction = 'exit'` only -- and `acc_points.direction` admits
+    -- `both`, the one-lane turnstile that reads each way and the arrangement a tenant is
+    -- pushed toward because it is what makes occupancy `measured`. So a `both` lane could
+    -- carry a full arrears refusal for a member on their way out, and the comment claiming
+    -- "no configuration that lets a decision be recorded against a door somebody is leaving
+    -- through" was false. The service now derives this; the column is what lets the database
+    -- hold the rule, which is where that comment says it is.
+    reported_direction text NOT NULL DEFAULT 'entry',
     device_mode text NOT NULL,
     passback_scope text NOT NULL,
     occupancy_seen integer,
@@ -330,10 +351,10 @@ CREATE TABLE plt01.acc_decisions (
     CONSTRAINT acc_decisions_code CHECK (code IN (
         'granted', 'granted_by_override', 'credential_unknown', 'credential_revoked',
         'credential_expired', 'credential_replayed', 'credential_window',
-        'reader_clock_unreliable', 'wrong_zone', 'outside_opening_hours', 'zone_closed',
+        'reader_clock_unreliable', 'outside_opening_hours', 'zone_closed',
         'membership_inactive', 'no_entitlement', 'outstanding_balance', 'age_restricted',
         'safety_hold', 'anti_passback', 'zone_at_capacity', 'device_untrusted',
-        'snapshot_stale', 'point_not_an_entry')),
+        'point_not_an_entry')),
     -- **The code decides whether the door opened**, so the boolean cannot disagree with it.
     -- Two columns that can contradict each other are MOD-018's reason for deriving a
     -- posting's side from its sign.
@@ -373,8 +394,21 @@ CREATE TABLE plt01.acc_decisions (
     -- `test_the_discreet_line_is_the_same_string_in_both_halves` is what stops the two
     -- drifting: a service that changed the wording would start writing rows this refuses, or
     -- worse, rows that read as unmasked while the member was told nothing.
+    -- **The flag follows the code, not only the text.** Tying `masked` to the literal said
+    -- nothing about *which* refusal it was, so a row could carry `code = 'safety_hold'` with
+    -- a public reason naming a cardiac event and `masked = false` -- permanent, since the
+    -- table has no UPDATE grant, and readable by every holder of the routine
+    -- `access.decision.read`. The restricted set is already a closed list two constraints up,
+    -- so the correspondence is available; the module puts its other Critical Control in a
+    -- trigger on the argument that a service can be bypassed, and this is the same argument.
+    CONSTRAINT acc_decisions_restricted_is_masked
+        CHECK (code NOT IN ('membership_inactive', 'no_entitlement', 'outstanding_balance',
+                            'age_restricted', 'safety_hold')
+               OR masked),
     CONSTRAINT acc_decisions_masked_is_the_discreet_line
         CHECK (masked = (public_reason = 'please see the front desk')),
+    CONSTRAINT acc_decisions_reported_direction
+        CHECK (reported_direction IN ('entry', 'exit')),
     CONSTRAINT acc_decisions_mode CHECK (device_mode IN ('online', 'offline', 'supervised')),
     CONSTRAINT acc_decisions_passback_scope
         CHECK (passback_scope IN ('global', 'controller_group')),
@@ -503,6 +537,12 @@ CREATE TABLE plt01.acc_replay_tokens (
     CONSTRAINT acc_replay_tokens_window CHECK (expires_at > seen_at),
     -- Ninety seconds is the token's thirty plus both reader tolerances; a longer window here
     -- is a table that holds evidence nothing could act on.
+    -- A bound measured between two columns the same writer supplies is not a bound: the
+    -- rules file records this for MOD-021, and the repair sits one migration earlier as
+    -- `dev_policy_snapshots_not_postdated`. Every other `acc_` table carries one; this did
+    -- not, so a row dated a decade ahead satisfied the window below.
+    CONSTRAINT acc_replay_tokens_not_postdated
+        CHECK (seen_at <= now() + interval '5 minutes'),
     CONSTRAINT acc_replay_tokens_window_bounded
         CHECK (expires_at - seen_at <= interval '90 seconds')
 );
@@ -753,7 +793,7 @@ SET search_path = pg_catalog, public
 AS $$
 BEGIN
     IF NEW.state <> OLD.state AND NOT (
-        OLD.state = 'active' AND NEW.state IN ('revoked', 'expired')
+        OLD.state = 'active' AND NEW.state = 'revoked'
     ) THEN
         RAISE EXCEPTION 'a credential does not move from % to %', OLD.state, NEW.state;
     END IF;
@@ -795,12 +835,14 @@ DECLARE
     point_zone uuid;
     point_direction text;
     point_status text;
+    point_device uuid;
+    snapshot_device uuid;
     credential_person uuid;
     policy_zone uuid;
     policy_status text;
 BEGIN
-    SELECT zone_id, direction, status
-      INTO point_zone, point_direction, point_status
+    SELECT zone_id, direction, status, device_id
+      INTO point_zone, point_direction, point_status, point_device
       FROM plt01.acc_points
      WHERE tenant_id = NEW.tenant_id AND point_id = NEW.point_id
      FOR UPDATE;
@@ -815,14 +857,37 @@ BEGIN
     -- application path, so there is no policy, no grace and no configuration that lets a
     -- decision be recorded against a door somebody is leaving through: the refusal is here,
     -- in the database, rather than in a service that could be bypassed.
-    IF point_direction = 'exit' AND NEW.code <> 'point_not_an_entry' THEN
+    IF (point_direction = 'exit' OR NEW.reported_direction = 'exit')
+       AND NEW.code <> 'point_not_an_entry' THEN
         RAISE EXCEPTION
-            'this access point faces out; egress is never conditioned on membership, '
-            'reachability or software authorization, so nothing decides here';
+            'nothing is decided on the way out; egress is never conditioned on membership, '
+            'reachability or software authorization, so no decision is recorded here';
     END IF;
-    IF point_status <> 'active' AND NEW.code NOT IN ('device_untrusted', 'snapshot_stale')
+    -- `snapshot_stale` was in this list and is gone with the code: a decision made on an
+    -- offline snapshot is not something this build can record, and the reconciliation flags
+    -- the *event* instead. The exemption outliving the code is how a deleted value comes back.
+    IF point_status <> 'active' AND NEW.code <> 'device_untrusted'
        THEN
         RAISE EXCEPTION 'this access point is %; it decides nothing', point_status;
+    END IF;
+    -- **The snapshot is related too.** The header above says a decision "names six things
+    -- and five of them could be unrelated to each other and to the door the member is
+    -- standing at. Every one is compared" -- and this one was not, so a decision could cite
+    -- a live snapshot belonging to a different door while having been made on an expired one
+    -- of its own. That is the record `reconcile_offline_access` and the `stale_snapshot`
+    -- outcome exist to judge, forgeable. The module's own standard, quoted in its header: a
+    -- pair of caller-supplied ids that nothing relates is two halves of a control.
+    IF NEW.snapshot_id IS NOT NULL THEN
+        SELECT device_id INTO snapshot_device FROM plt01.dev_policy_snapshots
+         WHERE tenant_id = NEW.tenant_id AND snapshot_id = NEW.snapshot_id;
+        IF snapshot_device IS NULL THEN
+            RAISE EXCEPTION 'this decision cites a policy snapshot that does not exist';
+        END IF;
+        IF snapshot_device <> point_device THEN
+            RAISE EXCEPTION
+                'this decision cites a snapshot belonging to another device; the bounded '
+                'authorization a reader decided under is the one its own door holds';
+        END IF;
     END IF;
     IF NEW.credential_id IS NOT NULL THEN
         SELECT person_id INTO credential_person FROM plt01.acc_credentials
@@ -1040,6 +1105,16 @@ ALTER TABLE plt01.dev_commands ADD CONSTRAINT dev_commands_emergency_window_is_f
     CHECK (action <> 'emergency_unlock'
            OR expires_at - issued_at <= interval '300 seconds');
 
+-- **MOD-021's trigger, re-defined here with its comments carried over.** The first version
+-- of this replacement kept the logic and dropped every explanatory paragraph, including the
+-- two that record MOD-021's own blocking review findings -- the `FOR UPDATE` lock and the
+-- `DISTINCT ON` that makes a failed re-test bite. `CLAUDE.md` says historical review
+-- outcomes are never rewritten, and a function whose commented copy lives in 0015 while the
+-- installed one is a stripped version a thousand lines later in another file is a copy that
+-- reads as current and is not.
+--
+-- Only one thing changes: `emergency_unlock` joins the actuating vocabulary, and it is not
+-- gated on the commissioning record. The paragraph below says why.
 CREATE OR REPLACE FUNCTION plt01.dev_command_is_within_capability()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -1050,6 +1125,12 @@ DECLARE
     device_state text;
     passing integer;
 BEGIN
+    -- **`FOR UPDATE`, not a plain read.** A trigger that reads a parent row to decide
+    -- whether a child may be written has to lock it, or two ordinary transactions at READ
+    -- COMMITTED each see the old value and both commit -- MOD-019's `FOR SHARE` finding one
+    -- notch weaker, because this took no lock at all. Here the race is a quarantine against
+    -- an unlock: the act that is meant to be a remote revoke, losing to the command it is
+    -- meant to stop.
     SELECT state INTO device_state FROM plt01.dev_devices
      WHERE tenant_id = NEW.tenant_id AND device_id = NEW.device_id
      FOR UPDATE;
@@ -1062,6 +1143,10 @@ BEGIN
     END IF;
     needs := CASE NEW.action
         WHEN 'unlock_momentary' THEN 'access.actuate'
+        -- MOD-022's zone release. Same capability, and deliberately **not** gated on the
+        -- commissioning record below: paragraph 4177 puts egress outside the Veyro
+        -- application path, so refusing to release a door because its fire-alarm test
+        -- failed is the fire code read backwards.
         WHEN 'emergency_unlock' THEN 'access.actuate'
         WHEN 'report_peripherals' THEN 'telemetry'
         ELSE NULL END;
@@ -1080,6 +1165,18 @@ BEGIN
             'this access point has no live hardware safety profile, so nothing here records '
             'how its egress behaves';
     END IF;
+    -- **And paragraph 4175 itself, which the first version did not read.** The branch above
+    -- asks only whether a profile row exists, and both its message and this file's header
+    -- claimed it was the commissioning gate -- so a door that reached `active` by any writer
+    -- other than `activate_device` opened on request with six of seven fire-code tests never
+    -- run, and a *failed* fire-alarm re-test changed nothing at the row. "A lookup that
+    -- proves something exists does not authorise what you do next", with a fire code as the
+    -- subject.
+    --
+    -- The latest answer per test is the one that counts, which is why this is `DISTINCT ON`
+    -- rather than an existence check: a door that passed in March, failed a re-test in June
+    -- and was never repaired has a passing row, and paragraph 4175's words are that a
+    -- *failed* test blocks opening it.
     IF NEW.action = 'unlock_momentary' THEN
         SELECT count(*) INTO passing FROM (
             SELECT DISTINCT ON (test_name) test_name, outcome

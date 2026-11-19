@@ -36,7 +36,12 @@ REASON_CODES: tuple[str, ...] = (
     "credential_window",
     "reader_clock_unreliable",
     #: Where and when.
-    "wrong_zone",
+    #:
+    #: **`wrong_zone` used to be here and is deliberately gone.** `acc_credentials` carries no
+    #: zone scope -- a credential identifies a person and a *policy* decides where they may
+    #: go -- so there was no control it could be the refusal for, and nothing in the module
+    #: ever wrote it. A reviewer grepped the writers of all twenty codes and found nineteen.
+    #: That is MOD-020's defect and this module's own stated rule, applied to itself.
     "outside_opening_hours",
     "zone_closed",
     #: Who they are to the club. **The three below are the restricted ones.**
@@ -75,7 +80,7 @@ REASON_CODES: tuple[str, ...] = (
 PUBLIC_SAFE: frozenset[str] = frozenset({
     "granted", "granted_by_override", "credential_unknown", "credential_revoked",
     "credential_expired", "credential_replayed", "credential_window",
-    "reader_clock_unreliable", "wrong_zone", "outside_opening_hours", "zone_closed",
+    "reader_clock_unreliable", "outside_opening_hours", "zone_closed",
     "anti_passback", "zone_at_capacity", "device_untrusted", "point_not_an_entry",
 })
 
@@ -83,6 +88,22 @@ PUBLIC_SAFE: frozenset[str] = frozenset({
 #: because four different polite messages are four different facts about somebody's account
 #: readable by whoever is behind them in the queue.
 DISCREET = "please see the front desk"
+
+#: The stable code a reader may be told for a restricted refusal.
+#:
+#: **Both reviewers found that the split gated the sentence and not the fact.** The public
+#: half was the discreet line and the `code` went out beside it -- to the device above the
+#: turnstile and to any holder of the routine `access.decision.read` -- and the code *is* the
+#: fact: `age_restricted` says this named person is a minor, `outstanding_balance` says they
+#: are in arrears, `membership_inactive` says they have stopped paying. Paragraph 1944 is
+#: about the information, not about the wording.
+#:
+#: Deleting the code is not available: paragraph 4157 requires stable reason codes "suitable
+#: for member/front-desk explanation", and a surface has to branch on something. So a
+#: restricted decision carries two codes -- this one outward, and the real one in the log
+#: behind `access.decision.read_reason`. `see_front_desk` is a stable code a kiosk can act on
+#: and says nothing about why.
+PUBLIC_RESTRICTED_CODE = "see_front_desk"
 
 #: The codes that mean the door opens.
 GRANTS: frozenset[str] = frozenset({"granted", "granted_by_override"})
@@ -144,6 +165,18 @@ class Decision:
 def check_code(code: str) -> None:
     if code not in REASON_CODES:
         raise AccessError(f"{code!r} is not an access reason code")
+
+
+def public_code(code: str) -> str:
+    """The code a reader and a routine log reader may be told.
+
+    Itself for anything in `PUBLIC_SAFE`; `see_front_desk` for the five that say something
+    about a member's account. Derived from the code rather than passed in, for the reason
+    `refuse` derives the public reason: a control that a call site can opt out of is one that
+    the next restricted code added will forget.
+    """
+    check_code(code)
+    return code if code in PUBLIC_SAFE else PUBLIC_RESTRICTED_CODE
 
 
 def refuse(code: str, private: str, *, public: str | None = None,

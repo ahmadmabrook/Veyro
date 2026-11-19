@@ -4128,7 +4128,7 @@ INSERT INTO plt01.int_installs
     (tenant_id, install_id, definition_key, definition_version, definition_snapshot,
      criticality, config, state, fallback_plan, reconciliation_plan, exit_plan, installed_by,
      correlation_id)
-VALUES (:'tenant_a', 'bbbbbbbb-1000-4000-8000-000000000001', 'acme.payments', 1,
+VALUES (:'tenant_a', '99999999-1000-4000-8000-000000000001', 'acme.payments', 1,
         '{"definition_key": "acme.payments", "version": 1}'::jsonb, 'critical',
         '{"merchant_id": "m-1"}'::jsonb, 'active', 'manual terminal', 'daily settlement file',
         'export and switch provider', :'actor', :'actor');
@@ -4136,24 +4136,24 @@ INSERT INTO plt01.int_connections
     (tenant_id, connection_id, install_id, external_account_ref, region, granted_scopes,
      state, authorized_at, authorized_by, validated_at, validated_by, validation_evidence,
      correlation_id)
-VALUES (:'tenant_a', 'bbbbbbbb-1000-4000-8000-000000000002',
-        'bbbbbbbb-1000-4000-8000-000000000001', 'acct_live_1', 'eu-west',
+VALUES (:'tenant_a', '99999999-1000-4000-8000-000000000002',
+        '99999999-1000-4000-8000-000000000001', 'acct_live_1', 'eu-west',
         ARRAY['payments.charge'], 'validated', now(), :'actor', now(), :'actor',
         'test charge accepted', :'actor');
 INSERT INTO plt01.int_credential_refs
     (tenant_id, credential_ref_id, connection_id, vault_ref, scopes, issued_at, expires_at,
      recorded_by, correlation_id)
 VALUES (:'tenant_a', '99999999-1000-4000-8000-000000000003',
-        'bbbbbbbb-1000-4000-8000-000000000002', 'vault://acme/live-1',
+        '99999999-1000-4000-8000-000000000002', 'vault://acme/live-1',
         ARRAY['payments.charge'], now(), now() + INTERVAL '90 days', :'actor', :'actor');
 INSERT INTO plt01.int_sync_cursors
     (tenant_id, cursor_id, connection_id, resource, position, observed_at)
 VALUES (:'tenant_a', '99999999-1000-4000-8000-000000000004',
-        'bbbbbbbb-1000-4000-8000-000000000002', 'settlements', 'cur-1', now());
+        '99999999-1000-4000-8000-000000000002', 'settlements', 'cur-1', now());
 INSERT INTO plt01.int_connector_runs
     (tenant_id, run_id, connection_id, resource, status, started_by, correlation_id)
 VALUES (:'tenant_a', '99999999-1000-4000-8000-000000000005',
-        'bbbbbbbb-1000-4000-8000-000000000002', 'settlements', 'running', :'actor', :'actor');
+        '99999999-1000-4000-8000-000000000002', 'settlements', 'running', :'actor', :'actor');
 COMMIT;
 
 -- Tenant B holds one install of its own, so a leaked predicate shows up as a count above the
@@ -4366,7 +4366,7 @@ BEGIN
             (tenant_id, install_id, external_account_ref, region, granted_scopes,
              correlation_id)
         VALUES ('11111111-1111-4111-8111-111111111111',
-                'bbbbbbbb-1000-4000-8000-000000000001', 'acct_x', 'eu-west',
+                '99999999-1000-4000-8000-000000000001', 'acct_x', 'eu-west',
                 ARRAY['payments.charge'], '33333333-3333-4333-8333-333333333333');
         RAISE EXCEPTION 'CHECK 50 FAILED: a connection was authorized with no tenant context';
     EXCEPTION
@@ -4377,7 +4377,7 @@ BEGIN
             (tenant_id, connection_id, vault_ref, scopes, issued_at, recorded_by,
              correlation_id)
         VALUES ('11111111-1111-4111-8111-111111111111',
-                'bbbbbbbb-1000-4000-8000-000000000002', 'vault://x',
+                '99999999-1000-4000-8000-000000000002', 'vault://x',
                 ARRAY['payments.charge'], now(), '33333333-3333-4333-8333-333333333333',
                 '33333333-3333-4333-8333-333333333333');
         RAISE EXCEPTION 'CHECK 50 FAILED: a credential reference was written with no context';
@@ -4418,7 +4418,7 @@ BEGIN
             (tenant_id, install_id, external_account_ref, region, granted_scopes,
              correlation_id)
         VALUES ('22222222-2222-4222-8222-222222222222',
-                'bbbbbbbb-1000-4000-8000-000000000001', 'acct_borrowed', 'eu-west',
+                '99999999-1000-4000-8000-000000000001', 'acct_borrowed', 'eu-west',
                 ARRAY['payments.charge'], '33333333-3333-4333-8333-333333333333');
         RAISE EXCEPTION 'CHECK 51 FAILED: a connection was hung off another tenant''s install';
     EXCEPTION
@@ -4429,7 +4429,7 @@ BEGIN
             (tenant_id, connection_id, vault_ref, scopes, issued_at, recorded_by,
              correlation_id)
         VALUES ('22222222-2222-4222-8222-222222222222',
-                'bbbbbbbb-1000-4000-8000-000000000002', 'vault://borrowed',
+                '99999999-1000-4000-8000-000000000002', 'vault://borrowed',
                 ARRAY['payments.charge'], now(), '33333333-3333-4333-8333-333333333333',
                 '33333333-3333-4333-8333-333333333333');
         RAISE EXCEPTION 'CHECK 51 FAILED: a credential was attached to another tenant''s '
@@ -4441,7 +4441,7 @@ BEGIN
         INSERT INTO plt01.int_connector_runs
             (tenant_id, connection_id, resource, started_by, correlation_id)
         VALUES ('22222222-2222-4222-8222-222222222222',
-                'bbbbbbbb-1000-4000-8000-000000000002', 'settlements',
+                '99999999-1000-4000-8000-000000000002', 'settlements',
                 '33333333-3333-4333-8333-333333333333',
                 '33333333-3333-4333-8333-333333333333');
         RAISE EXCEPTION 'CHECK 51 FAILED: a run was started on another tenant''s connection';
@@ -4452,7 +4452,7 @@ BEGIN
         INSERT INTO plt01.int_sync_cursors
             (tenant_id, connection_id, resource, position, observed_at)
         VALUES ('22222222-2222-4222-8222-222222222222',
-                'bbbbbbbb-1000-4000-8000-000000000002', 'settlements', 'cur-x', now());
+                '99999999-1000-4000-8000-000000000002', 'settlements', 'cur-x', now());
         RAISE EXCEPTION 'CHECK 51 FAILED: a cursor was set on another tenant''s connection';
     EXCEPTION
         WHEN foreign_key_violation THEN NULL;
@@ -4545,7 +4545,7 @@ BEGIN
             (tenant_id, connection_id, vault_ref, scopes, issued_at,
              supersedes_credential_ref_id, recorded_by, correlation_id)
         VALUES ('22222222-2222-4222-8222-222222222222',
-                'bbbbbbbb-1000-4000-8000-000000000002', 'vault://x',
+                '99999999-1000-4000-8000-000000000002', 'vault://x',
                 ARRAY['payments.charge'], now(), '99999999-1000-4000-8000-000000000003',
                 '33333333-3333-4333-8333-333333333333',
                 '33333333-3333-4333-8333-333333333333');
@@ -5071,7 +5071,7 @@ BEGIN
              granted_scopes, state, authorized_at, authorized_by, validated_at,
              validated_by, validation_evidence, revoked_at, revoked_by,
              revoke_reason, correlation_id)
-        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000001', 'acct_new', 'eu-west', ARRAY['payments.charge'], 'half_open', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333');
+        VALUES ('11111111-1111-4111-8111-111111111111', '99999999-1000-4000-8000-000000000001', 'acct_new', 'eu-west', ARRAY['payments.charge'], 'half_open', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333');
         RAISE EXCEPTION 'CHECK 54 FAILED: a connection took an unknown state';
     EXCEPTION
         WHEN check_violation THEN NULL;
@@ -5084,7 +5084,7 @@ BEGIN
              granted_scopes, state, authorized_at, authorized_by, validated_at,
              validated_by, validation_evidence, revoked_at, revoked_by,
              revoke_reason, correlation_id)
-        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000001', '  ', 'eu-west', ARRAY['payments.charge'], 'pending', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333');
+        VALUES ('11111111-1111-4111-8111-111111111111', '99999999-1000-4000-8000-000000000001', '  ', 'eu-west', ARRAY['payments.charge'], 'pending', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333');
         RAISE EXCEPTION 'CHECK 54 FAILED: a connection named a blank provider account';
     EXCEPTION
         WHEN check_violation THEN NULL;
@@ -5097,7 +5097,7 @@ BEGIN
              granted_scopes, state, authorized_at, authorized_by, validated_at,
              validated_by, validation_evidence, revoked_at, revoked_by,
              revoke_reason, correlation_id)
-        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000001', 'acct_new', 'EU West', ARRAY['payments.charge'], 'pending', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333');
+        VALUES ('11111111-1111-4111-8111-111111111111', '99999999-1000-4000-8000-000000000001', 'acct_new', 'EU West', ARRAY['payments.charge'], 'pending', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333');
         RAISE EXCEPTION 'CHECK 54 FAILED: a connection took a malformed region';
     EXCEPTION
         WHEN check_violation THEN NULL;
@@ -5110,7 +5110,7 @@ BEGIN
              granted_scopes, state, authorized_at, authorized_by, validated_at,
              validated_by, validation_evidence, revoked_at, revoked_by,
              revoke_reason, correlation_id)
-        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000001', 'acct_new', 'eu-west', ARRAY['payments.*'], 'pending', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333');
+        VALUES ('11111111-1111-4111-8111-111111111111', '99999999-1000-4000-8000-000000000001', 'acct_new', 'eu-west', ARRAY['payments.*'], 'pending', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333');
         RAISE EXCEPTION 'CHECK 54 FAILED: a wildcard scope was granted';
     EXCEPTION
         WHEN check_violation THEN NULL;
@@ -5123,7 +5123,7 @@ BEGIN
              granted_scopes, state, authorized_at, authorized_by, validated_at,
              validated_by, validation_evidence, revoked_at, revoked_by,
              revoke_reason, correlation_id)
-        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000001', 'acct_new', 'eu-west', ARRAY['payments.charge'], 'authorized', now(), NULL, NULL, NULL, NULL, NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333');
+        VALUES ('11111111-1111-4111-8111-111111111111', '99999999-1000-4000-8000-000000000001', 'acct_new', 'eu-west', ARRAY['payments.charge'], 'authorized', now(), NULL, NULL, NULL, NULL, NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333');
         RAISE EXCEPTION 'CHECK 54 FAILED: a connection was authorized by nobody';
     EXCEPTION
         WHEN check_violation THEN NULL;
@@ -5136,7 +5136,7 @@ BEGIN
              granted_scopes, state, authorized_at, authorized_by, validated_at,
              validated_by, validation_evidence, revoked_at, revoked_by,
              revoke_reason, correlation_id)
-        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000001', 'acct_new', 'eu-west', ARRAY['payments.charge'], 'validated', now(), '33333333-3333-4333-8333-333333333333', now(), '33333333-3333-4333-8333-333333333333', NULL, NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333');
+        VALUES ('11111111-1111-4111-8111-111111111111', '99999999-1000-4000-8000-000000000001', 'acct_new', 'eu-west', ARRAY['payments.charge'], 'validated', now(), '33333333-3333-4333-8333-333333333333', now(), '33333333-3333-4333-8333-333333333333', NULL, NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333');
         RAISE EXCEPTION 'CHECK 54 FAILED: a connection was validated with no evidence';
     EXCEPTION
         WHEN check_violation THEN NULL;
@@ -5149,7 +5149,7 @@ BEGIN
              granted_scopes, state, authorized_at, authorized_by, validated_at,
              validated_by, validation_evidence, revoked_at, revoked_by,
              revoke_reason, correlation_id)
-        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000001', 'acct_new', 'eu-west', ARRAY['payments.charge'], 'revoked', NULL, NULL, NULL, NULL, NULL, now(), '33333333-3333-4333-8333-333333333333', NULL, '33333333-3333-4333-8333-333333333333');
+        VALUES ('11111111-1111-4111-8111-111111111111', '99999999-1000-4000-8000-000000000001', 'acct_new', 'eu-west', ARRAY['payments.charge'], 'revoked', NULL, NULL, NULL, NULL, NULL, now(), '33333333-3333-4333-8333-333333333333', NULL, '33333333-3333-4333-8333-333333333333');
         RAISE EXCEPTION 'CHECK 54 FAILED: a connection was revoked for no stated reason';
     EXCEPTION
         WHEN check_violation THEN NULL;
@@ -5162,7 +5162,7 @@ BEGIN
              granted_scopes, state, authorized_at, authorized_by, validated_at,
              validated_by, validation_evidence, revoked_at, revoked_by,
              revoke_reason, correlation_id)
-        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000001', 'acct_new', 'eu-west', ARRAY['payments.charge'], 'revoked', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333');
+        VALUES ('11111111-1111-4111-8111-111111111111', '99999999-1000-4000-8000-000000000001', 'acct_new', 'eu-west', ARRAY['payments.charge'], 'revoked', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333');
         RAISE EXCEPTION 'CHECK 54 FAILED: a connection reads revoked with no revocation';
     EXCEPTION
         WHEN check_violation THEN NULL;
@@ -5175,7 +5175,7 @@ BEGIN
              granted_scopes, state, authorized_at, authorized_by, validated_at,
              validated_by, validation_evidence, revoked_at, revoked_by,
              revoke_reason, correlation_id)
-        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000001', 'acct_live_1', 'eu-west', ARRAY['payments.charge'], 'pending', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333');
+        VALUES ('11111111-1111-4111-8111-111111111111', '99999999-1000-4000-8000-000000000001', 'acct_live_1', 'eu-west', ARRAY['payments.charge'], 'pending', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333');
         RAISE EXCEPTION 'CHECK 54 FAILED: a second live connection took the same account';
     EXCEPTION
         WHEN unique_violation THEN NULL;
@@ -5198,7 +5198,7 @@ BEGIN
              expires_at, supersedes_credential_ref_id, retired_at, recorded_by,
              correlation_id)
         VALUES ('11111111-1111-4111-8111-111111111111', gen_random_uuid(),
-                'bbbbbbbb-1000-4000-8000-000000000002',
+                '99999999-1000-4000-8000-000000000002',
                 'raw-credential-material-not-a-locator', ARRAY['payments.charge'], now(), NULL,
                 NULL, now(), '33333333-3333-4333-8333-333333333333',
                 '33333333-3333-4333-8333-333333333333');
@@ -5212,7 +5212,7 @@ BEGIN
             (tenant_id, credential_ref_id, connection_id, vault_ref, scopes,
              issued_at, expires_at, supersedes_credential_ref_id, retired_at,
              recorded_by, correlation_id)
-        VALUES ('11111111-1111-4111-8111-111111111111', gen_random_uuid(), 'bbbbbbbb-1000-4000-8000-000000000002', '  ', ARRAY['payments.charge'], now(), NULL, NULL, now(), '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        VALUES ('11111111-1111-4111-8111-111111111111', gen_random_uuid(), '99999999-1000-4000-8000-000000000002', '  ', ARRAY['payments.charge'], now(), NULL, NULL, now(), '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
         RAISE EXCEPTION 'CHECK 54 FAILED: a credential reference named no vault location';
     EXCEPTION
         WHEN check_violation THEN NULL;
@@ -5224,7 +5224,7 @@ BEGIN
             (tenant_id, credential_ref_id, connection_id, vault_ref, scopes,
              issued_at, expires_at, supersedes_credential_ref_id, retired_at,
              recorded_by, correlation_id)
-        VALUES ('11111111-1111-4111-8111-111111111111', gen_random_uuid(), 'bbbbbbbb-1000-4000-8000-000000000002', 'vault://new', ARRAY['payments.charge'], now(), now() - INTERVAL '1 day', NULL, now(), '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        VALUES ('11111111-1111-4111-8111-111111111111', gen_random_uuid(), '99999999-1000-4000-8000-000000000002', 'vault://new', ARRAY['payments.charge'], now(), now() - INTERVAL '1 day', NULL, now(), '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
         RAISE EXCEPTION 'CHECK 54 FAILED: a credential expired before it was issued';
     EXCEPTION
         WHEN check_violation THEN NULL;
@@ -5236,7 +5236,7 @@ BEGIN
             (tenant_id, credential_ref_id, connection_id, vault_ref, scopes,
              issued_at, expires_at, supersedes_credential_ref_id, retired_at,
              recorded_by, correlation_id)
-        VALUES ('11111111-1111-4111-8111-111111111111', '99999999-1000-4000-8000-0000000000aa', 'bbbbbbbb-1000-4000-8000-000000000002', 'vault://new', ARRAY['payments.charge'], now(), NULL, '99999999-1000-4000-8000-0000000000aa', now(), '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        VALUES ('11111111-1111-4111-8111-111111111111', '99999999-1000-4000-8000-0000000000aa', '99999999-1000-4000-8000-000000000002', 'vault://new', ARRAY['payments.charge'], now(), NULL, '99999999-1000-4000-8000-0000000000aa', now(), '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
         RAISE EXCEPTION 'CHECK 54 FAILED: a credential reference superseded itself';
     EXCEPTION
         WHEN check_violation THEN NULL;
@@ -5248,7 +5248,7 @@ BEGIN
             (tenant_id, credential_ref_id, connection_id, vault_ref, scopes,
              issued_at, expires_at, supersedes_credential_ref_id, retired_at,
              recorded_by, correlation_id)
-        VALUES ('11111111-1111-4111-8111-111111111111', gen_random_uuid(), 'bbbbbbbb-1000-4000-8000-000000000002', 'vault://new', ARRAY['payments.*'], now(), NULL, NULL, now(), '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        VALUES ('11111111-1111-4111-8111-111111111111', gen_random_uuid(), '99999999-1000-4000-8000-000000000002', 'vault://new', ARRAY['payments.*'], now(), NULL, NULL, now(), '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
         RAISE EXCEPTION 'CHECK 54 FAILED: a wildcard scope was recorded on a credential reference';
     EXCEPTION
         WHEN check_violation THEN NULL;
@@ -5260,7 +5260,7 @@ BEGIN
             (tenant_id, credential_ref_id, connection_id, vault_ref, scopes,
              issued_at, expires_at, supersedes_credential_ref_id, retired_at,
              recorded_by, correlation_id)
-        VALUES ('11111111-1111-4111-8111-111111111111', gen_random_uuid(), 'bbbbbbbb-1000-4000-8000-000000000002', 'vault://new', ARRAY['payments.charge'], now(), NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        VALUES ('11111111-1111-4111-8111-111111111111', gen_random_uuid(), '99999999-1000-4000-8000-000000000002', 'vault://new', ARRAY['payments.charge'], now(), NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
         RAISE EXCEPTION 'CHECK 54 FAILED: a second live credential reference was written';
     EXCEPTION
         WHEN unique_violation THEN NULL;
@@ -5271,7 +5271,7 @@ BEGIN
         INSERT INTO plt01.int_sync_cursors
             (tenant_id, connection_id, resource, position, observed_at,
              conflict_policy, reset_at, reset_by, reset_reason)
-        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000002', 'Invoices!', 'c-1', now(), 'manual', NULL, NULL, NULL);
+        VALUES ('11111111-1111-4111-8111-111111111111', '99999999-1000-4000-8000-000000000002', 'Invoices!', 'c-1', now(), 'manual', NULL, NULL, NULL);
         RAISE EXCEPTION 'CHECK 54 FAILED: a cursor took a malformed resource';
     EXCEPTION
         WHEN check_violation THEN NULL;
@@ -5282,7 +5282,7 @@ BEGIN
         INSERT INTO plt01.int_sync_cursors
             (tenant_id, connection_id, resource, position, observed_at,
              conflict_policy, reset_at, reset_by, reset_reason)
-        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000002', 'invoices', '  ', now(), 'manual', NULL, NULL, NULL);
+        VALUES ('11111111-1111-4111-8111-111111111111', '99999999-1000-4000-8000-000000000002', 'invoices', '  ', now(), 'manual', NULL, NULL, NULL);
         RAISE EXCEPTION 'CHECK 54 FAILED: a cursor was written with a blank position';
     EXCEPTION
         WHEN check_violation THEN NULL;
@@ -5293,7 +5293,7 @@ BEGIN
         INSERT INTO plt01.int_sync_cursors
             (tenant_id, connection_id, resource, position, observed_at,
              conflict_policy, reset_at, reset_by, reset_reason)
-        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000002', 'invoices', 'c-1', now(), 'newest_wins', NULL, NULL, NULL);
+        VALUES ('11111111-1111-4111-8111-111111111111', '99999999-1000-4000-8000-000000000002', 'invoices', 'c-1', now(), 'newest_wins', NULL, NULL, NULL);
         RAISE EXCEPTION 'CHECK 54 FAILED: a cursor took an unknown conflict policy';
     EXCEPTION
         WHEN check_violation THEN NULL;
@@ -5304,7 +5304,7 @@ BEGIN
         INSERT INTO plt01.int_sync_cursors
             (tenant_id, connection_id, resource, position, observed_at,
              conflict_policy, reset_at, reset_by, reset_reason)
-        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000002', 'invoices', 'c-1', now(), 'manual', now(), NULL, NULL);
+        VALUES ('11111111-1111-4111-8111-111111111111', '99999999-1000-4000-8000-000000000002', 'invoices', 'c-1', now(), 'manual', now(), NULL, NULL);
         RAISE EXCEPTION 'CHECK 54 FAILED: a cursor was reset by nobody';
     EXCEPTION
         WHEN check_violation THEN NULL;
@@ -5315,7 +5315,7 @@ BEGIN
         INSERT INTO plt01.int_sync_cursors
             (tenant_id, connection_id, resource, position, observed_at,
              conflict_policy, reset_at, reset_by, reset_reason)
-        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000002', 'settlements', 'c-1', now(), 'manual', NULL, NULL, NULL);
+        VALUES ('11111111-1111-4111-8111-111111111111', '99999999-1000-4000-8000-000000000002', 'settlements', 'c-1', now(), 'manual', NULL, NULL, NULL);
         RAISE EXCEPTION 'CHECK 54 FAILED: a second cursor took the same resource';
     EXCEPTION
         WHEN unique_violation THEN NULL;
@@ -5330,7 +5330,7 @@ BEGIN
             (tenant_id, connection_id, resource, status, attempts, max_attempts,
              records_read, records_written, conflicts, last_error, finished_at,
              settled_by, settle_correlation_id, started_by, correlation_id)
-        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000002', 'invoices', 'wedged', 1, 5, 0, 0, 0, 'boom', now(), '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        VALUES ('11111111-1111-4111-8111-111111111111', '99999999-1000-4000-8000-000000000002', 'invoices', 'wedged', 1, 5, 0, 0, 0, 'boom', now(), '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
         RAISE EXCEPTION 'CHECK 54 FAILED: a run took an unknown status';
     EXCEPTION
         WHEN check_violation THEN NULL;
@@ -5342,7 +5342,7 @@ BEGIN
             (tenant_id, connection_id, resource, status, attempts, max_attempts,
              records_read, records_written, conflicts, last_error, finished_at,
              settled_by, settle_correlation_id, started_by, correlation_id)
-        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000002', 'Settlements!', 'running', 1, 5, 0, 0, 0, NULL, NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        VALUES ('11111111-1111-4111-8111-111111111111', '99999999-1000-4000-8000-000000000002', 'Settlements!', 'running', 1, 5, 0, 0, 0, NULL, NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
         RAISE EXCEPTION 'CHECK 54 FAILED: a run named a malformed resource';
     EXCEPTION
         WHEN check_violation THEN NULL;
@@ -5354,7 +5354,7 @@ BEGIN
             (tenant_id, connection_id, resource, status, attempts, max_attempts,
              records_read, records_written, conflicts, last_error, finished_at,
              settled_by, settle_correlation_id, started_by, correlation_id)
-        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000002', 'invoices', 'failed', 6, 5, 0, 0, 0, 'boom', now(), '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        VALUES ('11111111-1111-4111-8111-111111111111', '99999999-1000-4000-8000-000000000002', 'invoices', 'failed', 6, 5, 0, 0, 0, 'boom', now(), '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
         RAISE EXCEPTION 'CHECK 54 FAILED: a run exceeded its own attempt budget';
     EXCEPTION
         WHEN check_violation THEN NULL;
@@ -5366,7 +5366,7 @@ BEGIN
             (tenant_id, connection_id, resource, status, attempts, max_attempts,
              records_read, records_written, conflicts, last_error, finished_at,
              settled_by, settle_correlation_id, started_by, correlation_id)
-        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000002', 'invoices', 'running', 1, 5, -1, 0, 0, NULL, NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        VALUES ('11111111-1111-4111-8111-111111111111', '99999999-1000-4000-8000-000000000002', 'invoices', 'running', 1, 5, -1, 0, 0, NULL, NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
         RAISE EXCEPTION 'CHECK 54 FAILED: a run recorded a negative record count';
     EXCEPTION
         WHEN check_violation THEN NULL;
@@ -5378,7 +5378,7 @@ BEGIN
             (tenant_id, connection_id, resource, status, attempts, max_attempts,
              records_read, records_written, conflicts, last_error, finished_at,
              settled_by, settle_correlation_id, started_by, correlation_id)
-        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000002', 'invoices', 'failed', 1, 5, 0, 0, 0, NULL, now(), '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        VALUES ('11111111-1111-4111-8111-111111111111', '99999999-1000-4000-8000-000000000002', 'invoices', 'failed', 1, 5, 0, 0, 0, NULL, now(), '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
         RAISE EXCEPTION 'CHECK 54 FAILED: a run failed with nothing recorded about why';
     EXCEPTION
         WHEN check_violation THEN NULL;
@@ -5392,7 +5392,7 @@ BEGIN
         INSERT INTO plt01.int_connector_runs
             (tenant_id, connection_id, resource, status, started_by, correlation_id)
         VALUES ('11111111-1111-4111-8111-111111111111',
-                'bbbbbbbb-1000-4000-8000-000000000002', 'settlements', 'running',
+                '99999999-1000-4000-8000-000000000002', 'settlements', 'running',
                 '33333333-3333-4333-8333-333333333333',
                 '33333333-3333-4333-8333-333333333333');
         RAISE EXCEPTION 'CHECK 54 FAILED: a second run started on a resource already syncing';
@@ -5406,7 +5406,7 @@ BEGIN
             (tenant_id, connection_id, resource, status, last_error, finished_at,
              started_by, correlation_id)
         VALUES ('11111111-1111-4111-8111-111111111111',
-                'bbbbbbbb-1000-4000-8000-000000000002', 'invoices', 'succeeded', NULL, now(),
+                '99999999-1000-4000-8000-000000000002', 'invoices', 'succeeded', NULL, now(),
                 '33333333-3333-4333-8333-333333333333',
                 '33333333-3333-4333-8333-333333333333');
         RAISE EXCEPTION 'CHECK 54 FAILED: a run was settled by nobody';
@@ -5419,7 +5419,7 @@ BEGIN
             (tenant_id, connection_id, resource, status, finished_at, settled_by,
              started_by, correlation_id)
         VALUES ('11111111-1111-4111-8111-111111111111',
-                'bbbbbbbb-1000-4000-8000-000000000002', 'invoices', 'succeeded', now(),
+                '99999999-1000-4000-8000-000000000002', 'invoices', 'succeeded', now(),
                 '33333333-3333-4333-8333-333333333333',
                 '33333333-3333-4333-8333-333333333333',
                 '33333333-3333-4333-8333-333333333333');
@@ -5462,7 +5462,7 @@ BEGIN
             (tenant_id, connection_id, resource, status, attempts, max_attempts,
              records_read, records_written, conflicts, last_error, finished_at,
              settled_by, settle_correlation_id, started_by, correlation_id)
-        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000002', 'invoices', 'running', 1, 5, 0, 0, 0, NULL, now(), NULL, NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        VALUES ('11111111-1111-4111-8111-111111111111', '99999999-1000-4000-8000-000000000002', 'invoices', 'running', 1, 5, 0, 0, 0, NULL, now(), NULL, NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
         RAISE EXCEPTION 'CHECK 54 FAILED: a run reads running and finished at once';
     EXCEPTION
         WHEN check_violation THEN NULL;
@@ -7896,18 +7896,47 @@ BEGIN
         RAISE EXCEPTION
             'CHECK 61 FAILED: a plt01 primary key does not lead with tenant_id: %', wrong;
     END IF;
-    -- And the forbidden column names, schema-wide: a card number, a bank identifier or a
-    -- cached balance under a name no module prefix covers.
+    -- And the forbidden column names, schema-wide: a card number, a bank identifier, a
+    -- credential in the clear or a cached count, under a name no module prefix covers.
+    --
+    -- **Patterns, not only an exact list**, which is what the rules file says a
+    -- forbidden-name sweep needs and what this one did not have. A reviewer created
+    -- `plt01.member_cards (credential_value text, qr_token_plain text)` and
+    -- `plt01.zone_tallies (inside_now integer, people_inside integer)` -- both with correct
+    -- RLS, the approved policy and a tenant key -- and the suite reported every check
+    -- passing. That is the fifth and sixth time an absence has escaped on a name here, after
+    -- `member_contacts`, `ledger_running_balances`, `class_rosters` and `edge_credentials`,
+    -- and it defeated two claims at once: MOD-022's "no column holds a credential in the
+    -- clear" (paragraph 4161's pseudonymous hashes) and "occupancy derived rather than
+    -- stored" (paragraph 4180).
+    --
+    -- The patterns are deliberately about *shape*. A column whose name says it holds a
+    -- credential, a token or a secret is refused unless it says it holds a digest, a
+    -- reference or an identifier; a column whose name counts people or occupancy is refused
+    -- outright, because every count in this build is a sum over the rows that justify it.
+    -- `*_count` generally is not banned -- `points_released` and `records_read` are honest
+    -- tallies of work done -- so the ban names the thing that must stay derived.
     SELECT string_agg(c.relname || '.' || a.attname, ', ' ORDER BY c.relname) INTO wrong
     FROM pg_class c
     JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped
     WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind IN ('r', 'p')
-      AND a.attname IN ('card_number', 'pan', 'cvv', 'cvc', 'iban',
-                        'account_number_raw', 'sort_code', 'routing_number',
-                        'secret', 'password', 'private_key');
+      AND (a.attname IN ('card_number', 'pan', 'cvv', 'cvc', 'iban',
+                         'account_number_raw', 'sort_code', 'routing_number',
+                         'secret', 'password', 'private_key')
+           OR (a.attname ~ '(credential|token|secret|passcode|pin_code|key_material|cert_body|private_key)'
+               AND a.attname !~ '(digest|hash|_ref$|_id$|_key$|_refs$|fingerprint)')
+           -- **A count of people that a writer can move.** `acc_decisions.occupancy_seen` is
+           -- what one decision observed, on a table with no UPDATE grant for any runtime
+           -- role -- evidence of what the door was told, which re-deriving would answer a
+           -- different question. What must not exist is a tally somebody can rewrite, which
+           -- is the one that drifts from the events it came from.
+           OR (a.attname ~ '(occupan|people_inside|inside_now|inside_count|head_count|headcount|members_inside|present_count)'
+               AND (has_column_privilege('veyro_cp_app', c.oid, a.attname, 'UPDATE')
+                    OR has_column_privilege('veyro_cp_worker', c.oid, a.attname, 'UPDATE'))));
     IF wrong IS NOT NULL THEN
         RAISE EXCEPTION
-            'CHECK 61 FAILED: a plt01 column invites a secret or a card number: %', wrong;
+            'CHECK 61 FAILED: a plt01 column invites a secret, a credential in the clear or '
+            'a stored occupancy: %', wrong;
     END IF;
 END $$;
 
@@ -43287,7 +43316,7 @@ BEGIN
         ('dev_certificate_is_one_way d25f6bf74455308ecf0b2c48c7f69cc8'),
         ('dev_certificate_replaces_its_own_device 7c55a1c6644d9a153ce5e2282d97eef4'),
         ('dev_command_is_one_way 299058f89d291e12f132ff362ef39b3a'),
-        ('dev_command_is_within_capability 3950669fb5e08ca4d8fc389421913134'),
+        ('dev_command_is_within_capability dad503b203308d8ac3aba5ef6bbd9110'),
         ('dev_commissioning_is_an_access_point f7490904a2d186563b7c5467cc9ad083'),
         ('dev_device_capability_is_declared af716d762393827ff5abba33f7bfde88'),
         ('dev_device_is_one_way 8504de54fd9a895bbde457044ec4a24a'),
@@ -43342,8 +43371,8 @@ END $$;
 --     so a check running as one role proves nothing about the other and passes vacuously for
 --     half the roles it claims to cover.
 --
--- 8 tables, 127 columns, 82 NOT NULLs, 72 column grants,
--- 27 foreign keys.
+-- 8 tables, 128 columns, 83 NOT NULLs,
+-- 72 column grants, 27 foreign keys.
 DO $$
 DECLARE
     wrong text;
@@ -43392,6 +43421,7 @@ BEGIN
         ('acc_decisions.policy_version'),
         ('acc_decisions.private_reason'),
         ('acc_decisions.public_reason'),
+        ('acc_decisions.reported_direction'),
         ('acc_decisions.snapshot_id'),
         ('acc_decisions.tenant_id'),
         ('acc_decisions.zone_id'),
@@ -43520,6 +43550,7 @@ BEGIN
         ('acc_decisions.point_id'),
         ('acc_decisions.private_reason'),
         ('acc_decisions.public_reason'),
+        ('acc_decisions.reported_direction'),
         ('acc_decisions.tenant_id'),
         ('acc_decisions.zone_id'),
         ('acc_emergency_unlocks.correlation_id'),
@@ -43740,7 +43771,7 @@ END $$;
 -- says it still bites, and one without the other is how vacuous evidence happens. A legitimate
 -- schema change fails this until it is regenerated, which is the moment a human reads the diff.
 --
--- 73 checks, 25 indexes, 10 triggers, 10 bodies.
+-- 76 checks, 25 indexes, 10 triggers, 10 bodies.
 DO $$
 DECLARE
     wrong text;
@@ -43753,8 +43784,8 @@ BEGIN
         ('acc_credentials_not_postdated CHECK ((issued_at <= (now() + ''00:05:00''::interval)))'),
         ('acc_credentials_revocation_attributed CHECK ((((revoked_at IS NULL) AND (revoked_by IS NULL) AND (revoke_reason IS NULL) AND (revoke_correlation_id IS NULL)) OR ((revoked_at IS NOT NULL) AND (revoked_by IS NOT NULL) AND (COALESCE(revoke_reason, ''''::text) ~ ''[^[:space:]]''::text) AND (revoke_correlation_id IS NOT NULL))))'),
         ('acc_credentials_revoked_is_revoked CHECK (((state = ''revoked''::text) = (revoked_at IS NOT NULL)))'),
-        ('acc_credentials_state CHECK ((state = ANY (ARRAY[''active''::text, ''revoked''::text, ''expired''::text])))'),
-        ('acc_decisions_code CHECK ((code = ANY (ARRAY[''granted''::text, ''granted_by_override''::text, ''credential_unknown''::text, ''credential_revoked''::text, ''credential_expired''::text, ''credential_replayed''::text, ''credential_window''::text, ''reader_clock_unreliable''::text, ''wrong_zone''::text, ''outside_opening_hours''::text, ''zone_closed''::text, ''membership_inactive''::text, ''no_entitlement''::text, ''outstanding_balance''::text, ''age_restricted''::text, ''safety_hold''::text, ''anti_passback''::text, ''zone_at_capacity''::text, ''device_untrusted''::text, ''snapshot_stale''::text, ''point_not_an_entry''::text])))'),
+        ('acc_credentials_state CHECK ((state = ANY (ARRAY[''active''::text, ''revoked''::text])))'),
+        ('acc_decisions_code CHECK ((code = ANY (ARRAY[''granted''::text, ''granted_by_override''::text, ''credential_unknown''::text, ''credential_revoked''::text, ''credential_expired''::text, ''credential_replayed''::text, ''credential_window''::text, ''reader_clock_unreliable''::text, ''outside_opening_hours''::text, ''zone_closed''::text, ''membership_inactive''::text, ''no_entitlement''::text, ''outstanding_balance''::text, ''age_restricted''::text, ''safety_hold''::text, ''anti_passback''::text, ''zone_at_capacity''::text, ''device_untrusted''::text, ''point_not_an_entry''::text])))'),
         ('acc_decisions_grant_names_a_person CHECK (((NOT granted) OR (person_id IS NOT NULL)))'),
         ('acc_decisions_granted_matches_code CHECK ((granted = (code = ANY (ARRAY[''granted''::text, ''granted_by_override''::text]))))'),
         ('acc_decisions_key_bounded CHECK ((length(idempotency_key) <= 200))'),
@@ -43770,6 +43801,8 @@ BEGIN
         ('acc_decisions_policy_version_sane CHECK (((policy_version IS NULL) OR ((policy_version >= 1) AND (policy_version <= 100000))))'),
         ('acc_decisions_reasons_bounded CHECK (((length(public_reason) <= 200) AND (length(private_reason) <= 500)))'),
         ('acc_decisions_reasons_not_blank CHECK (((public_reason ~ ''[^[:space:]]''::text) AND (private_reason ~ ''[^[:space:]]''::text)))'),
+        ('acc_decisions_reported_direction CHECK ((reported_direction = ANY (ARRAY[''entry''::text, ''exit''::text])))'),
+        ('acc_decisions_restricted_is_masked CHECK (((code <> ALL (ARRAY[''membership_inactive''::text, ''no_entitlement''::text, ''outstanding_balance''::text, ''age_restricted''::text, ''safety_hold''::text])) OR masked))'),
         ('acc_emergency_unlocks_key_bounded CHECK ((length(idempotency_key) <= 200))'),
         ('acc_emergency_unlocks_key_not_blank CHECK ((idempotency_key ~ ''[^[:space:]]''::text))'),
         ('acc_emergency_unlocks_not_postdated CHECK ((ordered_at <= (now() + ''00:05:00''::interval)))'),
@@ -43797,19 +43830,20 @@ BEGIN
         ('acc_policies_age_sane CHECK (((min_age_years IS NULL) OR ((min_age_years >= 0) AND (min_age_years <= 120))))'),
         ('acc_policies_balance_sane CHECK (((max_balance_minor IS NULL) OR ((max_balance_minor >= 0) AND (max_balance_minor <= ''1000000000000''::bigint))))'),
         ('acc_policies_capacity_sane CHECK (((capacity IS NULL) OR ((capacity >= 0) AND (capacity <= 1000000))))'),
-        ('acc_policies_closes_in_a_day CHECK (((closes_minute IS NULL) OR ((closes_minute >= 0) AND (closes_minute < 1440))))'),
+        ('acc_policies_closes_in_a_day CHECK (((closes_minute IS NULL) OR ((closes_minute >= 0) AND (closes_minute <= 1440))))'),
         ('acc_policies_hours_differ CHECK (((opens_minute IS NULL) OR (opens_minute <> closes_minute)))'),
         ('acc_policies_hours_paired CHECK (((opens_minute IS NULL) = (closes_minute IS NULL)))'),
         ('acc_policies_opens_in_a_day CHECK (((opens_minute IS NULL) OR ((opens_minute >= 0) AND (opens_minute < 1440))))'),
         ('acc_policies_passback_sane CHECK (((anti_passback_seconds >= 0) AND (anti_passback_seconds <= 43200)))'),
         ('acc_policies_publication_attributed CHECK ((((published_at IS NULL) AND (published_by IS NULL) AND (publish_correlation_id IS NULL)) OR ((published_at IS NOT NULL) AND (published_by IS NOT NULL) AND (publish_correlation_id IS NOT NULL))))'),
-        ('acc_policies_published_is_published CHECK (((status = ''draft''::text) OR (published_at IS NOT NULL)))'),
+        ('acc_policies_published_is_published CHECK (((status <> ''published''::text) OR (published_at IS NOT NULL)))'),
         ('acc_policies_publisher_is_not_author CHECK (((published_by IS NULL) OR (published_by <> created_by)))'),
         ('acc_policies_retired_is_retired CHECK (((status = ''retired''::text) = (retired_at IS NOT NULL)))'),
         ('acc_policies_retirement_attributed CHECK ((((retired_at IS NULL) AND (retired_by IS NULL) AND (retire_reason IS NULL) AND (retire_correlation_id IS NULL)) OR ((retired_at IS NOT NULL) AND (retired_by IS NOT NULL) AND (COALESCE(retire_reason, ''''::text) ~ ''[^[:space:]]''::text) AND (retire_correlation_id IS NOT NULL))))'),
         ('acc_policies_status CHECK ((status = ANY (ARRAY[''draft''::text, ''published''::text, ''retired''::text])))'),
         ('acc_policies_version_positive CHECK (((version >= 1) AND (version <= 100000)))'),
         ('acc_replay_tokens_key_shape CHECK ((token_key ~ ''^[0-9a-f]{64}$''::text))'),
+        ('acc_replay_tokens_not_postdated CHECK ((seen_at <= (now() + ''00:05:00''::interval)))'),
         ('acc_replay_tokens_window CHECK ((expires_at > seen_at))'),
         ('acc_replay_tokens_window_bounded CHECK (((expires_at - seen_at) <= ''00:01:30''::interval))'),
         ('acc_zones_key_shape CHECK ((zone_key ~ ''^[a-z][a-z0-9._-]{1,47}$''::text))'),
@@ -43902,8 +43936,8 @@ BEGIN
     -- balance trigger had five branches and four probes, and a reviewer deleted the
     -- mixed-currency one with the suite reporting 84/84.
     WITH expected(rule) AS (VALUES
-        ('acc_credential_is_one_way 850b5062bf8091bd173112f8fd22548e'),
-        ('acc_decision_is_coherent 045e951ae3fcb4a5c22c121fdba2a096'),
+        ('acc_credential_is_one_way cf342e58bbc9de7c58f4e5a63a930991'),
+        ('acc_decision_is_coherent a61e6a9e6fc25ddc0dcff7ff1a1affe0'),
         ('acc_decision_is_final 5b94b834081a8790af09516291cf85e0'),
         ('acc_emergency_is_one_way a28339df3a38d99a3c39a8d69809c658'),
         ('acc_event_is_coherent a9fc6d6d5098515324f8ae8c1eb76bcc'),
@@ -43951,7 +43985,6 @@ BEGIN
         RAISE EXCEPTION 'CHECK 107 FAILED: a MOD-022 trigger is disabled: %', wrong;
     END IF;
 END $$;
-
 
 
 -- MOD-022's own seed, committed so the checks below read the same rows.
@@ -44288,11 +44321,120 @@ BEGIN
             'CHECK 109 FAILED: a decision was recorded at an exit-facing access point';
     EXCEPTION WHEN raise_exception THEN
         IF SQLERRM LIKE 'CHECK 109 FAILED%' THEN RAISE; END IF;
-        IF SQLERRM NOT LIKE '%faces out%' THEN
+        IF SQLERRM NOT LIKE '%on the way out%' THEN
             RAISE EXCEPTION
                 'CHECK 109 FAILED: the exit case was refused by something else: %', SQLERRM;
         END IF;
         probe := probe + 1;
+    END;
+
+    -- The other half, which is the finding: a `both` lane is one turnstile that reads each
+    -- way, and the refusal used to look only at the *point's* facing. So a member on their
+    -- way out through the lane they came in by could be refused on arrears, which is
+    -- paragraph 4177 defeated by the ordinary hardware.
+    BEGIN
+        INSERT INTO plt01.acc_points
+            (tenant_id, point_id, zone_id, device_id, direction, display_name, status,
+             created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                '88888888-2000-4000-8000-0000000000b1',
+                '88888888-1000-4000-8000-000000000001',
+                '77777777-2000-4000-8000-000000000005', 'both', 'Both-ways turnstile',
+                'active', '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        INSERT INTO plt01.acc_decisions
+            (tenant_id, decision_id, point_id, zone_id, credential_id, person_id, granted,
+             code, public_reason, private_reason, masked, policy_id, policy_version,
+             reported_direction, device_mode, passback_scope, decided_by, correlation_id,
+             idempotency_key)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                '88888888-5000-4000-8000-0000000000b1',
+                '88888888-2000-4000-8000-0000000000b1',
+                '88888888-1000-4000-8000-000000000001',
+                '88888888-4000-4000-8000-000000000001',
+                'bbbbbbbb-1000-4000-8000-000000000001', false, 'outstanding_balance',
+                'please see the front desk', 'this member owes 4500', true,
+                '88888888-3000-4000-8000-000000000001', 1, 'exit', 'online', 'global',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333', 'case-both-exit');
+        RAISE EXCEPTION
+            'CHECK 109 FAILED: a both-facing lane refused a member on the way out';
+    EXCEPTION WHEN raise_exception THEN
+        IF SQLERRM LIKE 'CHECK 109 FAILED%' THEN RAISE; END IF;
+        IF SQLERRM NOT LIKE '%on the way out%' THEN
+            RAISE EXCEPTION
+                'CHECK 109 FAILED: the both-lane exit case was refused by something else: %',
+                SQLERRM;
+        END IF;
+        probe := probe + 1;
+    END;
+
+    -- **A decision cites its own door's snapshot.** The header says six things are named and
+    -- every one is compared; this one was not, so the record of which bounded authorization
+    -- a reader decided under was forgeable against any other door's.
+    BEGIN
+        INSERT INTO plt01.dev_policy_snapshots
+            (tenant_id, device_id, revocation_epoch, content_digest, issued_at, expires_at,
+             issued_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                '77777777-2000-4000-8000-000000000004', 0, repeat('d', 64),
+                now(), now() + interval '1 hour',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        INSERT INTO plt01.acc_decisions
+            (tenant_id, decision_id, point_id, zone_id, credential_id, person_id, granted,
+             code, public_reason, private_reason, masked, policy_id, policy_version,
+             snapshot_id, device_mode, passback_scope, decided_by, correlation_id,
+             idempotency_key)
+        SELECT '11111111-1111-4111-8111-111111111111',
+               '88888888-5000-4000-8000-0000000000b2',
+               '88888888-2000-4000-8000-000000000001',
+               '88888888-1000-4000-8000-000000000001',
+               '88888888-4000-4000-8000-000000000001',
+               'bbbbbbbb-1000-4000-8000-000000000001', true, 'granted', 'welcome',
+               'every check passed', false,
+               '88888888-3000-4000-8000-000000000001', 1,
+               s.snapshot_id, 'offline', 'controller_group',
+               '33333333-3333-4333-8333-333333333333',
+               '33333333-3333-4333-8333-333333333333', 'case-foreign-snapshot'
+          FROM plt01.dev_policy_snapshots s
+         WHERE s.device_id = '77777777-2000-4000-8000-000000000004'
+         ORDER BY s.issued_at DESC LIMIT 1;
+        RAISE EXCEPTION
+            'CHECK 109 FAILED: a decision cited a snapshot belonging to another device';
+    EXCEPTION WHEN raise_exception THEN
+        IF SQLERRM LIKE 'CHECK 109 FAILED%' THEN RAISE; END IF;
+        IF SQLERRM NOT LIKE '%another device%' THEN
+            RAISE EXCEPTION
+                'CHECK 109 FAILED: the foreign-snapshot case was refused by something else: %',
+                SQLERRM;
+        END IF;
+        probe := probe + 1;
+    END;
+
+    -- **A restricted code is masked, by the schema.** Tying `masked` to the discreet line
+    -- said nothing about which refusal it was, so a row could name a cardiac event in its
+    -- public half and record that nothing had been withheld -- permanently, on a table with
+    -- no UPDATE grant, readable by the routine decision read.
+    BEGIN
+        INSERT INTO plt01.acc_decisions
+            (tenant_id, decision_id, point_id, zone_id, credential_id, person_id, granted,
+             code, public_reason, private_reason, masked, policy_id, policy_version,
+             device_mode, passback_scope, decided_by, correlation_id, idempotency_key)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                '88888888-5000-4000-8000-0000000000b3',
+                '88888888-2000-4000-8000-000000000001',
+                '88888888-1000-4000-8000-000000000001',
+                '88888888-4000-4000-8000-000000000001',
+                'bbbbbbbb-1000-4000-8000-000000000001', false, 'safety_hold',
+                'medical hold: cardiac event on 3 Nov',
+                'medical hold: cardiac event on 3 Nov', false,
+                '88888888-3000-4000-8000-000000000001', 1, 'online', 'global',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333', 'case-restricted-unmasked');
+        RAISE EXCEPTION
+            'CHECK 109 FAILED: a restricted refusal was recorded as having masked nothing';
+    EXCEPTION WHEN check_violation THEN probe := probe + 1;
     END;
 
     -- -------------------------------------------------- the decision cites its own holder
@@ -44517,11 +44659,3042 @@ BEGIN
     EXCEPTION WHEN check_violation THEN probe := probe + 1;
     END;
 
-    IF probe <> 16 THEN
-        RAISE EXCEPTION 'CHECK 109 FAILED: ran % of 16 MOD-022 rule cases', probe;
+    IF probe <> 19 THEN
+        RAISE EXCEPTION 'CHECK 109 FAILED: ran % of 19 MOD-022 rule cases', probe;
     END IF;
 END $$;
 
 ROLLBACK;
 
-\echo 'tenant isolation: 109/109 checks passed'
+
+-- ------------------------------------------- 110. every MOD-022 rule has a case behind it
+-- **This module shipped with seven cases for ninety-eight rules, and that was the largest
+-- finding against it.** An independent reviewer dropped all 73 `acc_` CHECK constraints
+-- individually and watched the behavioural block catch seven; dropped all 25 indexes and keys
+-- and watched it catch none; and replaced five of the ten trigger functions with
+-- `BEGIN RETURN NEW; END` while the suite reported 109/109. MOD-019 ran 770 schema mutations,
+-- MOD-020 580 and MOD-021 810; this module ran none, and its "20/20 mutations caught" was a
+-- Python sweep over the decision modules, which is a different half of the system.
+--
+-- Check 107 pins the *text* of every rule, which catches a drop and an edit in CI. That is
+-- not the same thing and its own preamble says so: "a pin says the rule is still written down
+-- and only a case says it still bites, and one without the other is how vacuous evidence
+-- happens." These are the cases.
+--
+-- **Generated from the catalogue and then validated by breaking each rule.**
+-- `tests/sql/generate_access_cases.py` takes a row the committed seed already proved valid
+-- and changes exactly one column so the row violates exactly the rule under test -- which is
+-- what stops a case passing because a sibling fired first. `tests/sql/sweep_access.sh` then
+-- drops each rule in turn and runs **this block alone** as the judge, because running the
+-- whole file would report every drop as caught by check 107's pin and prove nothing.
+--
+-- 84 generated, 16 for the unique rules, 26 written by hand: 19 where the predicate relates
+-- a flag to a set rather than a column to a literal, and 7 mirrors for the other side of each
+-- biconditional.
+--
+-- **The generator emits one case per *weakening*, not one per constraint**, and that was a
+-- repair rather than a design: the first version took the first shape it recognised in a
+-- predicate, so `x >= 0 AND x <= 1000000` got a case for the floor and none for the ceiling.
+-- A weakening sweep -- one conjunct removed, one side of a biconditional, a widened bound --
+-- then found seventeen bounds and conjuncts with no case behind them and seven biconditionals
+-- proven in one direction only, which is the rules file's "a case proves the constraint it
+-- names only in the direction it exercises" measured instead of argued.
+BEGIN;
+DO $$
+DECLARE
+    probe int := 0;
+    -- **Collected, not raised on the first.** A case answered by a trigger rather than by
+    -- the rule it names is the "two controls refuse the same row" trap, and stopping at the
+    -- first one hides every case after it -- which is the failure mode the rules file
+    -- records for MOD-019, where one bad probe gated three others.
+    confused text[] := ARRAY[]::text[];
+    -- The constraint that actually refused a row, read from the diagnostics. Counting
+    -- `check_violation` alone proves whichever rule fires first.
+    offender text;
+BEGIN
+    PERFORM set_config('app.tenant_id', '11111111-1111-4111-8111-111111111111', true);
+
+    -- >>> GENERATED CHECK CASES BEGIN -- do not edit between the markers
+    -- GENERATED by tests/sql/generate_access_cases.py and validated by
+    -- tests/sql/sweep_access.sh. Each case takes a row the seed proved valid and
+    -- changes exactly one column, so the rule it names is the only one it breaks.
+    -- acc_credentials_digest_shape
+    BEGIN
+        INSERT INTO plt01.acc_credentials (tenant_id, credential_id, person_id, kind, credential_digest, state, revocation_epoch, issued_at, issued_by, correlation_id, expires_at, revoked_at, revoked_by, revoke_reason, revoke_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0001-4000-8000-0000000000ff'::uuid, 'bbbbbbbb-1000-4000-8000-000000000001'::uuid, 'nfc_card'::text, '!! NOT A VALID VALUE !!', 'active'::text, '0'::integer, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, NULL, NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_credentials_digest_shape admitted a row with a bad credential_digest shape';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_credentials_digest_shape' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_credentials_digest_shape (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_credentials_digest_shape (answered by a trigger)');
+    END;
+    -- acc_credentials_epoch_sane
+    BEGIN
+        INSERT INTO plt01.acc_credentials (tenant_id, credential_id, person_id, kind, credential_digest, state, revocation_epoch, issued_at, issued_by, correlation_id, expires_at, revoked_at, revoked_by, revoke_reason, revoke_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0002-4000-8000-0000000000ff'::uuid, 'bbbbbbbb-1000-4000-8000-000000000001'::uuid, 'nfc_card'::text, lpad('2', 64, 'e'), 'active'::text, -1, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, NULL, NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_credentials_epoch_sane admitted a row with a bad revocation_epoch below-the-floor';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_credentials_epoch_sane' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_credentials_epoch_sane (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_credentials_epoch_sane (answered by a trigger)');
+    END;
+    -- acc_credentials_epoch_sane
+    BEGIN
+        INSERT INTO plt01.acc_credentials (tenant_id, credential_id, person_id, kind, credential_digest, state, revocation_epoch, issued_at, issued_by, correlation_id, expires_at, revoked_at, revoked_by, revoke_reason, revoke_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0003-4000-8000-0000000000ff'::uuid, 'bbbbbbbb-1000-4000-8000-000000000001'::uuid, 'nfc_card'::text, lpad('3', 64, 'e'), 'active'::text, 2000000001, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, NULL, NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_credentials_epoch_sane admitted a row with a bad revocation_epoch above-the-ceiling';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_credentials_epoch_sane' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_credentials_epoch_sane (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_credentials_epoch_sane (answered by a trigger)');
+    END;
+    -- acc_credentials_kind
+    BEGIN
+        INSERT INTO plt01.acc_credentials (tenant_id, credential_id, person_id, kind, credential_digest, state, revocation_epoch, issued_at, issued_by, correlation_id, expires_at, revoked_at, revoked_by, revoke_reason, revoke_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0004-4000-8000-0000000000ff'::uuid, 'bbbbbbbb-1000-4000-8000-000000000001'::uuid, 'not-a-declared-value', lpad('4', 64, 'e'), 'active'::text, '0'::integer, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, NULL, NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_credentials_kind admitted a row with a bad kind domain';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_credentials_kind' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_credentials_kind (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_credentials_kind (answered by a trigger)');
+    END;
+    -- acc_credentials_not_postdated
+    BEGIN
+        INSERT INTO plt01.acc_credentials (tenant_id, credential_id, person_id, kind, credential_digest, state, revocation_epoch, issued_at, issued_by, correlation_id, expires_at, revoked_at, revoked_by, revoke_reason, revoke_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0005-4000-8000-0000000000ff'::uuid, 'bbbbbbbb-1000-4000-8000-000000000001'::uuid, 'nfc_card'::text, lpad('5', 64, 'e'), 'active'::text, '0'::integer, now() + interval '1 year', '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, NULL, NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_credentials_not_postdated admitted a row with a bad issued_at';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_credentials_not_postdated' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_credentials_not_postdated (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_credentials_not_postdated (answered by a trigger)');
+    END;
+    -- acc_credentials_revocation_attributed
+    BEGIN
+        INSERT INTO plt01.acc_credentials (tenant_id, credential_id, person_id, kind, credential_digest, state, revocation_epoch, issued_at, issued_by, correlation_id, expires_at, revoked_at, revoked_by, revoke_reason, revoke_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0006-4000-8000-0000000000ff'::uuid, 'bbbbbbbb-1000-4000-8000-000000000001'::uuid, 'nfc_card'::text, lpad('6', 64, 'e'), 'active'::text, '0'::integer, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, NULL, now(), NULL, NULL, NULL);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_credentials_revocation_attributed admitted a row with a bad revoked_at, revoked_by, revoke_reason';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_credentials_revocation_attributed' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_credentials_revocation_attributed (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_credentials_revocation_attributed (answered by a trigger)');
+    END;
+    -- acc_credentials_revoked_is_revoked
+    BEGIN
+        INSERT INTO plt01.acc_credentials (tenant_id, credential_id, person_id, kind, credential_digest, state, revocation_epoch, issued_at, issued_by, correlation_id, expires_at, revoked_at, revoked_by, revoke_reason, revoke_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0007-4000-8000-0000000000ff'::uuid, 'bbbbbbbb-1000-4000-8000-000000000001'::uuid, 'nfc_card'::text, lpad('7', 64, 'e'), 'revoked', '0'::integer, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, NULL, NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_credentials_revoked_is_revoked admitted a row with a bad state, revoked_at';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_credentials_revoked_is_revoked' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_credentials_revoked_is_revoked (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_credentials_revoked_is_revoked (answered by a trigger)');
+    END;
+    -- acc_credentials_state
+    BEGIN
+        INSERT INTO plt01.acc_credentials (tenant_id, credential_id, person_id, kind, credential_digest, state, revocation_epoch, issued_at, issued_by, correlation_id, expires_at, revoked_at, revoked_by, revoke_reason, revoke_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0008-4000-8000-0000000000ff'::uuid, 'bbbbbbbb-1000-4000-8000-000000000001'::uuid, 'nfc_card'::text, lpad('8', 64, 'e'), 'not-a-declared-value', '0'::integer, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, NULL, NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_credentials_state admitted a row with a bad state domain';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_credentials_state' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_credentials_state (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_credentials_state (answered by a trigger)');
+    END;
+    -- acc_decisions_code
+    BEGIN
+        INSERT INTO plt01.acc_decisions (tenant_id, decision_id, point_id, zone_id, credential_id, person_id, granted, code, public_reason, private_reason, masked, policy_id, policy_version, snapshot_id, reported_direction, device_mode, passback_scope, occupancy_seen, override_reason, overridden_by, decided_at, decided_by, correlation_id, idempotency_key)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0009-4000-8000-0000000000ff'::uuid, '88888888-2000-4000-8000-000000000001'::uuid, '88888888-1000-4000-8000-000000000001'::uuid, '88888888-4000-4000-8000-000000000001'::uuid, 'bbbbbbbb-1000-4000-8000-000000000001'::uuid, false, 'not-a-declared-value', 'please see the front desk', 'every check passed'::text, true, '88888888-3000-4000-8000-000000000001'::uuid, '1'::integer, NULL, 'entry'::text, 'online'::text, 'global'::text, NULL, NULL, NULL, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, 'generated-case-9');
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_decisions_code admitted a row with a bad code domain';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_decisions_code' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_decisions_code (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_decisions_code (answered by a trigger)');
+    END;
+    -- acc_decisions_granted_matches_code
+    BEGIN
+        INSERT INTO plt01.acc_decisions (tenant_id, decision_id, point_id, zone_id, credential_id, person_id, granted, code, public_reason, private_reason, masked, policy_id, policy_version, snapshot_id, reported_direction, device_mode, passback_scope, occupancy_seen, override_reason, overridden_by, decided_at, decided_by, correlation_id, idempotency_key)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0010-4000-8000-0000000000ff'::uuid, '88888888-2000-4000-8000-000000000001'::uuid, '88888888-1000-4000-8000-000000000001'::uuid, '88888888-4000-4000-8000-000000000001'::uuid, 'bbbbbbbb-1000-4000-8000-000000000001'::uuid, true, 'outstanding_balance', 'please see the front desk', 'every check passed'::text, true, '88888888-3000-4000-8000-000000000001'::uuid, '1'::integer, NULL, 'entry'::text, 'online'::text, 'global'::text, NULL, NULL, NULL, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, 'generated-case-10');
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_decisions_granted_matches_code admitted a row with a bad granted, code, masked, public_reason';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_decisions_granted_matches_code' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_decisions_granted_matches_code (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_decisions_granted_matches_code (answered by a trigger)');
+    END;
+    -- acc_decisions_key_bounded
+    BEGIN
+        INSERT INTO plt01.acc_decisions (tenant_id, decision_id, point_id, zone_id, credential_id, person_id, granted, code, public_reason, private_reason, masked, policy_id, policy_version, snapshot_id, reported_direction, device_mode, passback_scope, occupancy_seen, override_reason, overridden_by, decided_at, decided_by, correlation_id, idempotency_key)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0011-4000-8000-0000000000ff'::uuid, '88888888-2000-4000-8000-000000000001'::uuid, '88888888-1000-4000-8000-000000000001'::uuid, '88888888-4000-4000-8000-000000000001'::uuid, 'bbbbbbbb-1000-4000-8000-000000000001'::uuid, 't'::boolean, 'granted'::text, 'welcome'::text, 'every check passed'::text, 'f'::boolean, '88888888-3000-4000-8000-000000000001'::uuid, '1'::integer, NULL, 'entry'::text, 'online'::text, 'global'::text, NULL, NULL, NULL, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, repeat('x', 201));
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_decisions_key_bounded admitted a row with a bad idempotency_key too-long';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_decisions_key_bounded' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_decisions_key_bounded (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_decisions_key_bounded (answered by a trigger)');
+    END;
+    -- acc_decisions_key_not_blank
+    BEGIN
+        INSERT INTO plt01.acc_decisions (tenant_id, decision_id, point_id, zone_id, credential_id, person_id, granted, code, public_reason, private_reason, masked, policy_id, policy_version, snapshot_id, reported_direction, device_mode, passback_scope, occupancy_seen, override_reason, overridden_by, decided_at, decided_by, correlation_id, idempotency_key)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0012-4000-8000-0000000000ff'::uuid, '88888888-2000-4000-8000-000000000001'::uuid, '88888888-1000-4000-8000-000000000001'::uuid, '88888888-4000-4000-8000-000000000001'::uuid, 'bbbbbbbb-1000-4000-8000-000000000001'::uuid, 't'::boolean, 'granted'::text, 'welcome'::text, 'every check passed'::text, 'f'::boolean, '88888888-3000-4000-8000-000000000001'::uuid, '1'::integer, NULL, 'entry'::text, 'online'::text, 'global'::text, NULL, NULL, NULL, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, E'\t');
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_decisions_key_not_blank admitted a row with a bad idempotency_key blank';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_decisions_key_not_blank' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_decisions_key_not_blank (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_decisions_key_not_blank (answered by a trigger)');
+    END;
+    -- acc_decisions_mode
+    BEGIN
+        INSERT INTO plt01.acc_decisions (tenant_id, decision_id, point_id, zone_id, credential_id, person_id, granted, code, public_reason, private_reason, masked, policy_id, policy_version, snapshot_id, reported_direction, device_mode, passback_scope, occupancy_seen, override_reason, overridden_by, decided_at, decided_by, correlation_id, idempotency_key)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0013-4000-8000-0000000000ff'::uuid, '88888888-2000-4000-8000-000000000001'::uuid, '88888888-1000-4000-8000-000000000001'::uuid, '88888888-4000-4000-8000-000000000001'::uuid, 'bbbbbbbb-1000-4000-8000-000000000001'::uuid, 't'::boolean, 'granted'::text, 'welcome'::text, 'every check passed'::text, 'f'::boolean, '88888888-3000-4000-8000-000000000001'::uuid, '1'::integer, NULL, 'entry'::text, 'not-a-declared-value', 'global'::text, NULL, NULL, NULL, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, 'generated-case-13');
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_decisions_mode admitted a row with a bad device_mode domain';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_decisions_mode' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_decisions_mode (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_decisions_mode (answered by a trigger)');
+    END;
+    -- acc_decisions_not_postdated
+    BEGIN
+        INSERT INTO plt01.acc_decisions (tenant_id, decision_id, point_id, zone_id, credential_id, person_id, granted, code, public_reason, private_reason, masked, policy_id, policy_version, snapshot_id, reported_direction, device_mode, passback_scope, occupancy_seen, override_reason, overridden_by, decided_at, decided_by, correlation_id, idempotency_key)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0014-4000-8000-0000000000ff'::uuid, '88888888-2000-4000-8000-000000000001'::uuid, '88888888-1000-4000-8000-000000000001'::uuid, '88888888-4000-4000-8000-000000000001'::uuid, 'bbbbbbbb-1000-4000-8000-000000000001'::uuid, 't'::boolean, 'granted'::text, 'welcome'::text, 'every check passed'::text, 'f'::boolean, '88888888-3000-4000-8000-000000000001'::uuid, '1'::integer, NULL, 'entry'::text, 'online'::text, 'global'::text, NULL, NULL, NULL, now() + interval '1 year', '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, 'generated-case-14');
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_decisions_not_postdated admitted a row with a bad decided_at';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_decisions_not_postdated' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_decisions_not_postdated (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_decisions_not_postdated (answered by a trigger)');
+    END;
+    -- acc_decisions_occupancy_sane
+    BEGIN
+        INSERT INTO plt01.acc_decisions (tenant_id, decision_id, point_id, zone_id, credential_id, person_id, granted, code, public_reason, private_reason, masked, policy_id, policy_version, snapshot_id, reported_direction, device_mode, passback_scope, occupancy_seen, override_reason, overridden_by, decided_at, decided_by, correlation_id, idempotency_key)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0015-4000-8000-0000000000ff'::uuid, '88888888-2000-4000-8000-000000000001'::uuid, '88888888-1000-4000-8000-000000000001'::uuid, '88888888-4000-4000-8000-000000000001'::uuid, 'bbbbbbbb-1000-4000-8000-000000000001'::uuid, 't'::boolean, 'granted'::text, 'welcome'::text, 'every check passed'::text, 'f'::boolean, '88888888-3000-4000-8000-000000000001'::uuid, '1'::integer, NULL, 'entry'::text, 'online'::text, 'global'::text, -1, NULL, NULL, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, 'generated-case-15');
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_decisions_occupancy_sane admitted a row with a bad occupancy_seen below-the-floor';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_decisions_occupancy_sane' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_decisions_occupancy_sane (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_decisions_occupancy_sane (answered by a trigger)');
+    END;
+    -- acc_decisions_occupancy_sane
+    BEGIN
+        INSERT INTO plt01.acc_decisions (tenant_id, decision_id, point_id, zone_id, credential_id, person_id, granted, code, public_reason, private_reason, masked, policy_id, policy_version, snapshot_id, reported_direction, device_mode, passback_scope, occupancy_seen, override_reason, overridden_by, decided_at, decided_by, correlation_id, idempotency_key)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0016-4000-8000-0000000000ff'::uuid, '88888888-2000-4000-8000-000000000001'::uuid, '88888888-1000-4000-8000-000000000001'::uuid, '88888888-4000-4000-8000-000000000001'::uuid, 'bbbbbbbb-1000-4000-8000-000000000001'::uuid, 't'::boolean, 'granted'::text, 'welcome'::text, 'every check passed'::text, 'f'::boolean, '88888888-3000-4000-8000-000000000001'::uuid, '1'::integer, NULL, 'entry'::text, 'online'::text, 'global'::text, 1000001, NULL, NULL, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, 'generated-case-16');
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_decisions_occupancy_sane admitted a row with a bad occupancy_seen above-the-ceiling';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_decisions_occupancy_sane' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_decisions_occupancy_sane (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_decisions_occupancy_sane (answered by a trigger)');
+    END;
+    -- acc_decisions_override_reason_bounded
+    BEGIN
+        INSERT INTO plt01.acc_decisions (tenant_id, decision_id, point_id, zone_id, credential_id, person_id, granted, code, public_reason, private_reason, masked, policy_id, policy_version, snapshot_id, reported_direction, device_mode, passback_scope, occupancy_seen, override_reason, overridden_by, decided_at, decided_by, correlation_id, idempotency_key)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0017-4000-8000-0000000000ff'::uuid, '88888888-2000-4000-8000-000000000001'::uuid, '88888888-1000-4000-8000-000000000001'::uuid, '88888888-4000-4000-8000-000000000001'::uuid, 'bbbbbbbb-1000-4000-8000-000000000001'::uuid, true, 'granted_by_override', 'welcome', 'every check passed'::text, false, NULL, NULL, NULL, 'entry'::text, 'online'::text, 'global'::text, NULL, repeat('x', 501), '33333333-3333-4333-8333-333333333333'::uuid, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, 'generated-case-17');
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_decisions_override_reason_bounded admitted a row with a bad override_reason too-long';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_decisions_override_reason_bounded' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_decisions_override_reason_bounded (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_decisions_override_reason_bounded (answered by a trigger)');
+    END;
+    -- acc_decisions_passback_scope
+    BEGIN
+        INSERT INTO plt01.acc_decisions (tenant_id, decision_id, point_id, zone_id, credential_id, person_id, granted, code, public_reason, private_reason, masked, policy_id, policy_version, snapshot_id, reported_direction, device_mode, passback_scope, occupancy_seen, override_reason, overridden_by, decided_at, decided_by, correlation_id, idempotency_key)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0018-4000-8000-0000000000ff'::uuid, '88888888-2000-4000-8000-000000000001'::uuid, '88888888-1000-4000-8000-000000000001'::uuid, '88888888-4000-4000-8000-000000000001'::uuid, 'bbbbbbbb-1000-4000-8000-000000000001'::uuid, 't'::boolean, 'granted'::text, 'welcome'::text, 'every check passed'::text, 'f'::boolean, '88888888-3000-4000-8000-000000000001'::uuid, '1'::integer, NULL, 'entry'::text, 'online'::text, 'not-a-declared-value', NULL, NULL, NULL, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, 'generated-case-18');
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_decisions_passback_scope admitted a row with a bad passback_scope domain';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_decisions_passback_scope' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_decisions_passback_scope (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_decisions_passback_scope (answered by a trigger)');
+    END;
+    -- acc_decisions_policy_cited_whole
+    BEGIN
+        INSERT INTO plt01.acc_decisions (tenant_id, decision_id, point_id, zone_id, credential_id, person_id, granted, code, public_reason, private_reason, masked, policy_id, policy_version, snapshot_id, reported_direction, device_mode, passback_scope, occupancy_seen, override_reason, overridden_by, decided_at, decided_by, correlation_id, idempotency_key)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0019-4000-8000-0000000000ff'::uuid, '88888888-2000-4000-8000-000000000001'::uuid, '88888888-1000-4000-8000-000000000001'::uuid, '88888888-4000-4000-8000-000000000001'::uuid, 'bbbbbbbb-1000-4000-8000-000000000001'::uuid, 't'::boolean, 'granted'::text, 'welcome'::text, 'every check passed'::text, 'f'::boolean, '88888888-3000-4000-8000-000000000001'::uuid, NULL, NULL, 'entry'::text, 'online'::text, 'global'::text, NULL, NULL, NULL, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, 'generated-case-19');
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_decisions_policy_cited_whole admitted a row with a bad policy_version';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_decisions_policy_cited_whole' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_decisions_policy_cited_whole (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_decisions_policy_cited_whole (answered by a trigger)');
+    END;
+    -- acc_decisions_policy_version_sane
+    BEGIN
+        INSERT INTO plt01.acc_decisions (tenant_id, decision_id, point_id, zone_id, credential_id, person_id, granted, code, public_reason, private_reason, masked, policy_id, policy_version, snapshot_id, reported_direction, device_mode, passback_scope, occupancy_seen, override_reason, overridden_by, decided_at, decided_by, correlation_id, idempotency_key)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0020-4000-8000-0000000000ff'::uuid, '88888888-2000-4000-8000-000000000001'::uuid, '88888888-1000-4000-8000-000000000001'::uuid, '88888888-4000-4000-8000-000000000001'::uuid, 'bbbbbbbb-1000-4000-8000-000000000001'::uuid, 't'::boolean, 'granted'::text, 'welcome'::text, 'every check passed'::text, 'f'::boolean, '88888888-3000-4000-8000-000000000001'::uuid, 0, NULL, 'entry'::text, 'online'::text, 'global'::text, NULL, NULL, NULL, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, 'generated-case-20');
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_decisions_policy_version_sane admitted a row with a bad policy_version below-the-floor';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_decisions_policy_version_sane' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_decisions_policy_version_sane (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_decisions_policy_version_sane (answered by a trigger)');
+    END;
+    -- acc_decisions_policy_version_sane
+    BEGIN
+        INSERT INTO plt01.acc_decisions (tenant_id, decision_id, point_id, zone_id, credential_id, person_id, granted, code, public_reason, private_reason, masked, policy_id, policy_version, snapshot_id, reported_direction, device_mode, passback_scope, occupancy_seen, override_reason, overridden_by, decided_at, decided_by, correlation_id, idempotency_key)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0021-4000-8000-0000000000ff'::uuid, '88888888-2000-4000-8000-000000000001'::uuid, '88888888-1000-4000-8000-000000000001'::uuid, '88888888-4000-4000-8000-000000000001'::uuid, 'bbbbbbbb-1000-4000-8000-000000000001'::uuid, 't'::boolean, 'granted'::text, 'welcome'::text, 'every check passed'::text, 'f'::boolean, '88888888-3000-4000-8000-000000000001'::uuid, 100001, NULL, 'entry'::text, 'online'::text, 'global'::text, NULL, NULL, NULL, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, 'generated-case-21');
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_decisions_policy_version_sane admitted a row with a bad policy_version above-the-ceiling';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_decisions_policy_version_sane' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_decisions_policy_version_sane (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_decisions_policy_version_sane (answered by a trigger)');
+    END;
+    -- acc_decisions_reasons_bounded
+    BEGIN
+        INSERT INTO plt01.acc_decisions (tenant_id, decision_id, point_id, zone_id, credential_id, person_id, granted, code, public_reason, private_reason, masked, policy_id, policy_version, snapshot_id, reported_direction, device_mode, passback_scope, occupancy_seen, override_reason, overridden_by, decided_at, decided_by, correlation_id, idempotency_key)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0022-4000-8000-0000000000ff'::uuid, '88888888-2000-4000-8000-000000000001'::uuid, '88888888-1000-4000-8000-000000000001'::uuid, '88888888-4000-4000-8000-000000000001'::uuid, 'bbbbbbbb-1000-4000-8000-000000000001'::uuid, 't'::boolean, 'granted'::text, repeat('x', 201), 'every check passed'::text, 'f'::boolean, '88888888-3000-4000-8000-000000000001'::uuid, '1'::integer, NULL, 'entry'::text, 'online'::text, 'global'::text, NULL, NULL, NULL, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, 'generated-case-22');
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_decisions_reasons_bounded admitted a row with a bad public_reason too-long';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_decisions_reasons_bounded' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_decisions_reasons_bounded (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_decisions_reasons_bounded (answered by a trigger)');
+    END;
+    -- acc_decisions_reasons_bounded
+    BEGIN
+        INSERT INTO plt01.acc_decisions (tenant_id, decision_id, point_id, zone_id, credential_id, person_id, granted, code, public_reason, private_reason, masked, policy_id, policy_version, snapshot_id, reported_direction, device_mode, passback_scope, occupancy_seen, override_reason, overridden_by, decided_at, decided_by, correlation_id, idempotency_key)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0023-4000-8000-0000000000ff'::uuid, '88888888-2000-4000-8000-000000000001'::uuid, '88888888-1000-4000-8000-000000000001'::uuid, '88888888-4000-4000-8000-000000000001'::uuid, 'bbbbbbbb-1000-4000-8000-000000000001'::uuid, 't'::boolean, 'granted'::text, 'welcome'::text, repeat('x', 501), 'f'::boolean, '88888888-3000-4000-8000-000000000001'::uuid, '1'::integer, NULL, 'entry'::text, 'online'::text, 'global'::text, NULL, NULL, NULL, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, 'generated-case-23');
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_decisions_reasons_bounded admitted a row with a bad private_reason too-long';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_decisions_reasons_bounded' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_decisions_reasons_bounded (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_decisions_reasons_bounded (answered by a trigger)');
+    END;
+    -- acc_decisions_reasons_not_blank
+    BEGIN
+        INSERT INTO plt01.acc_decisions (tenant_id, decision_id, point_id, zone_id, credential_id, person_id, granted, code, public_reason, private_reason, masked, policy_id, policy_version, snapshot_id, reported_direction, device_mode, passback_scope, occupancy_seen, override_reason, overridden_by, decided_at, decided_by, correlation_id, idempotency_key)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0024-4000-8000-0000000000ff'::uuid, '88888888-2000-4000-8000-000000000001'::uuid, '88888888-1000-4000-8000-000000000001'::uuid, '88888888-4000-4000-8000-000000000001'::uuid, 'bbbbbbbb-1000-4000-8000-000000000001'::uuid, 't'::boolean, 'granted'::text, E'\t', 'every check passed'::text, 'f'::boolean, '88888888-3000-4000-8000-000000000001'::uuid, '1'::integer, NULL, 'entry'::text, 'online'::text, 'global'::text, NULL, NULL, NULL, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, 'generated-case-24');
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_decisions_reasons_not_blank admitted a row with a bad public_reason blank';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_decisions_reasons_not_blank' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_decisions_reasons_not_blank (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_decisions_reasons_not_blank (answered by a trigger)');
+    END;
+    -- acc_decisions_reasons_not_blank
+    BEGIN
+        INSERT INTO plt01.acc_decisions (tenant_id, decision_id, point_id, zone_id, credential_id, person_id, granted, code, public_reason, private_reason, masked, policy_id, policy_version, snapshot_id, reported_direction, device_mode, passback_scope, occupancy_seen, override_reason, overridden_by, decided_at, decided_by, correlation_id, idempotency_key)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0025-4000-8000-0000000000ff'::uuid, '88888888-2000-4000-8000-000000000001'::uuid, '88888888-1000-4000-8000-000000000001'::uuid, '88888888-4000-4000-8000-000000000001'::uuid, 'bbbbbbbb-1000-4000-8000-000000000001'::uuid, 't'::boolean, 'granted'::text, 'welcome'::text, E'\t', 'f'::boolean, '88888888-3000-4000-8000-000000000001'::uuid, '1'::integer, NULL, 'entry'::text, 'online'::text, 'global'::text, NULL, NULL, NULL, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, 'generated-case-25');
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_decisions_reasons_not_blank admitted a row with a bad private_reason blank';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_decisions_reasons_not_blank' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_decisions_reasons_not_blank (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_decisions_reasons_not_blank (answered by a trigger)');
+    END;
+    -- acc_decisions_reported_direction
+    BEGIN
+        INSERT INTO plt01.acc_decisions (tenant_id, decision_id, point_id, zone_id, credential_id, person_id, granted, code, public_reason, private_reason, masked, policy_id, policy_version, snapshot_id, reported_direction, device_mode, passback_scope, occupancy_seen, override_reason, overridden_by, decided_at, decided_by, correlation_id, idempotency_key)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0026-4000-8000-0000000000ff'::uuid, '88888888-2000-4000-8000-000000000001'::uuid, '88888888-1000-4000-8000-000000000001'::uuid, '88888888-4000-4000-8000-000000000001'::uuid, 'bbbbbbbb-1000-4000-8000-000000000001'::uuid, 't'::boolean, 'granted'::text, 'welcome'::text, 'every check passed'::text, 'f'::boolean, '88888888-3000-4000-8000-000000000001'::uuid, '1'::integer, NULL, 'not-a-declared-value', 'online'::text, 'global'::text, NULL, NULL, NULL, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, 'generated-case-26');
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_decisions_reported_direction admitted a row with a bad reported_direction domain';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_decisions_reported_direction' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_decisions_reported_direction (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_decisions_reported_direction (answered by a trigger)');
+    END;
+    -- acc_emergency_unlocks_key_bounded
+    BEGIN
+        INSERT INTO plt01.acc_emergency_unlocks (tenant_id, unlock_id, zone_id, reason, points_released, ordered_at, ordered_by, correlation_id, idempotency_key, reviewed_at, reviewed_by, review_note, review_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0027-4000-8000-0000000000ff'::uuid, '88888888-1000-4000-8000-000000000001'::uuid, 'fire alarm, north stair'::text, '2'::integer, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, repeat('x', 201), NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_emergency_unlocks_key_bounded admitted a row with a bad idempotency_key too-long';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_emergency_unlocks_key_bounded' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_emergency_unlocks_key_bounded (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_emergency_unlocks_key_bounded (answered by a trigger)');
+    END;
+    -- acc_emergency_unlocks_key_not_blank
+    BEGIN
+        INSERT INTO plt01.acc_emergency_unlocks (tenant_id, unlock_id, zone_id, reason, points_released, ordered_at, ordered_by, correlation_id, idempotency_key, reviewed_at, reviewed_by, review_note, review_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0028-4000-8000-0000000000ff'::uuid, '88888888-1000-4000-8000-000000000001'::uuid, 'fire alarm, north stair'::text, '2'::integer, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, E'\t', NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_emergency_unlocks_key_not_blank admitted a row with a bad idempotency_key blank';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_emergency_unlocks_key_not_blank' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_emergency_unlocks_key_not_blank (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_emergency_unlocks_key_not_blank (answered by a trigger)');
+    END;
+    -- acc_emergency_unlocks_not_postdated
+    BEGIN
+        INSERT INTO plt01.acc_emergency_unlocks (tenant_id, unlock_id, zone_id, reason, points_released, ordered_at, ordered_by, correlation_id, idempotency_key, reviewed_at, reviewed_by, review_note, review_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0029-4000-8000-0000000000ff'::uuid, '88888888-1000-4000-8000-000000000001'::uuid, 'fire alarm, north stair'::text, '2'::integer, now() + interval '1 year', '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, 'generated-case-29', NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_emergency_unlocks_not_postdated admitted a row with a bad ordered_at';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_emergency_unlocks_not_postdated' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_emergency_unlocks_not_postdated (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_emergency_unlocks_not_postdated (answered by a trigger)');
+    END;
+    -- acc_emergency_unlocks_reason_bounded
+    BEGIN
+        INSERT INTO plt01.acc_emergency_unlocks (tenant_id, unlock_id, zone_id, reason, points_released, ordered_at, ordered_by, correlation_id, idempotency_key, reviewed_at, reviewed_by, review_note, review_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0030-4000-8000-0000000000ff'::uuid, '88888888-1000-4000-8000-000000000001'::uuid, repeat('x', 501), '2'::integer, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, 'generated-case-30', NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_emergency_unlocks_reason_bounded admitted a row with a bad reason too-long';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_emergency_unlocks_reason_bounded' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_emergency_unlocks_reason_bounded (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_emergency_unlocks_reason_bounded (answered by a trigger)');
+    END;
+    -- acc_emergency_unlocks_reason_not_blank
+    BEGIN
+        INSERT INTO plt01.acc_emergency_unlocks (tenant_id, unlock_id, zone_id, reason, points_released, ordered_at, ordered_by, correlation_id, idempotency_key, reviewed_at, reviewed_by, review_note, review_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0031-4000-8000-0000000000ff'::uuid, '88888888-1000-4000-8000-000000000001'::uuid, E'\t', '2'::integer, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, 'generated-case-31', NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_emergency_unlocks_reason_not_blank admitted a row with a bad reason blank';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_emergency_unlocks_reason_not_blank' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_emergency_unlocks_reason_not_blank (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_emergency_unlocks_reason_not_blank (answered by a trigger)');
+    END;
+    -- acc_emergency_unlocks_released_sane
+    BEGIN
+        INSERT INTO plt01.acc_emergency_unlocks (tenant_id, unlock_id, zone_id, reason, points_released, ordered_at, ordered_by, correlation_id, idempotency_key, reviewed_at, reviewed_by, review_note, review_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0032-4000-8000-0000000000ff'::uuid, '88888888-1000-4000-8000-000000000001'::uuid, 'fire alarm, north stair'::text, -1, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, 'generated-case-32', NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_emergency_unlocks_released_sane admitted a row with a bad points_released below-the-floor';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_emergency_unlocks_released_sane' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_emergency_unlocks_released_sane (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_emergency_unlocks_released_sane (answered by a trigger)');
+    END;
+    -- acc_emergency_unlocks_released_sane
+    BEGIN
+        INSERT INTO plt01.acc_emergency_unlocks (tenant_id, unlock_id, zone_id, reason, points_released, ordered_at, ordered_by, correlation_id, idempotency_key, reviewed_at, reviewed_by, review_note, review_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0033-4000-8000-0000000000ff'::uuid, '88888888-1000-4000-8000-000000000001'::uuid, 'fire alarm, north stair'::text, 10001, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, 'generated-case-33', NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_emergency_unlocks_released_sane admitted a row with a bad points_released above-the-ceiling';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_emergency_unlocks_released_sane' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_emergency_unlocks_released_sane (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_emergency_unlocks_released_sane (answered by a trigger)');
+    END;
+    -- acc_emergency_unlocks_review_after_order
+    BEGIN
+        INSERT INTO plt01.acc_emergency_unlocks (tenant_id, unlock_id, zone_id, reason, points_released, ordered_at, ordered_by, correlation_id, idempotency_key, reviewed_at, reviewed_by, review_note, review_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0034-4000-8000-0000000000ff'::uuid, '88888888-1000-4000-8000-000000000001'::uuid, 'fire alarm, north stair'::text, '2'::integer, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, 'generated-case-34', '2026-11-19 01:24:58.677534+00'::timestamp with time zone - interval '1 hour', '44444444-4444-4444-8444-444444444444'::uuid, 'the alarm was genuine', '33333333-3333-4333-8333-333333333333'::uuid);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_emergency_unlocks_review_after_order admitted a row with a bad reviewed_at';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_emergency_unlocks_review_after_order' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_emergency_unlocks_review_after_order (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_emergency_unlocks_review_after_order (answered by a trigger)');
+    END;
+    -- acc_emergency_unlocks_review_attributed
+    BEGIN
+        INSERT INTO plt01.acc_emergency_unlocks (tenant_id, unlock_id, zone_id, reason, points_released, ordered_at, ordered_by, correlation_id, idempotency_key, reviewed_at, reviewed_by, review_note, review_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0035-4000-8000-0000000000ff'::uuid, '88888888-1000-4000-8000-000000000001'::uuid, 'fire alarm, north stair'::text, '2'::integer, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, 'generated-case-35', now(), NULL, NULL, NULL);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_emergency_unlocks_review_attributed admitted a row with a bad reviewed_at, reviewed_by, review_note';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_emergency_unlocks_review_attributed' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_emergency_unlocks_review_attributed (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_emergency_unlocks_review_attributed (answered by a trigger)');
+    END;
+    -- acc_emergency_unlocks_reviewer_is_not_orderer
+    BEGIN
+        INSERT INTO plt01.acc_emergency_unlocks (tenant_id, unlock_id, zone_id, reason, points_released, ordered_at, ordered_by, correlation_id, idempotency_key, reviewed_at, reviewed_by, review_note, review_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0036-4000-8000-0000000000ff'::uuid, '88888888-1000-4000-8000-000000000001'::uuid, 'fire alarm, north stair'::text, '2'::integer, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, 'generated-case-36', now(), '33333333-3333-4333-8333-333333333333'::uuid, 'the alarm was genuine', '33333333-3333-4333-8333-333333333333'::uuid);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_emergency_unlocks_reviewer_is_not_orderer admitted a row with a bad reviewed_by';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_emergency_unlocks_reviewer_is_not_orderer' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_emergency_unlocks_reviewer_is_not_orderer (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_emergency_unlocks_reviewer_is_not_orderer (answered by a trigger)');
+    END;
+    -- acc_events_key_bounded
+    BEGIN
+        INSERT INTO plt01.acc_events (tenant_id, event_id, point_id, zone_id, direction, credential_id, person_id, decision_id, occurred_at, recorded_at, recorded_by, correlation_id, source, local_sequence, idempotency_key, reconciled_outcome, reconciled_at, reconciled_by, reconcile_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0037-4000-8000-0000000000ff'::uuid, '88888888-2000-4000-8000-000000000001'::uuid, '88888888-1000-4000-8000-000000000001'::uuid, 'entry'::text, '88888888-4000-4000-8000-000000000001'::uuid, 'bbbbbbbb-1000-4000-8000-000000000001'::uuid, '88888888-5000-4000-8000-000000000001'::uuid, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, 'online'::text, NULL, repeat('x', 201), NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_events_key_bounded admitted a row with a bad idempotency_key too-long';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_events_key_bounded' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_events_key_bounded (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_events_key_bounded (answered by a trigger)');
+    END;
+    -- acc_events_key_not_blank
+    BEGIN
+        INSERT INTO plt01.acc_events (tenant_id, event_id, point_id, zone_id, direction, credential_id, person_id, decision_id, occurred_at, recorded_at, recorded_by, correlation_id, source, local_sequence, idempotency_key, reconciled_outcome, reconciled_at, reconciled_by, reconcile_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0038-4000-8000-0000000000ff'::uuid, '88888888-2000-4000-8000-000000000001'::uuid, '88888888-1000-4000-8000-000000000001'::uuid, 'entry'::text, '88888888-4000-4000-8000-000000000001'::uuid, 'bbbbbbbb-1000-4000-8000-000000000001'::uuid, '88888888-5000-4000-8000-000000000001'::uuid, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, 'online'::text, NULL, E'\t', NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_events_key_not_blank admitted a row with a bad idempotency_key blank';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_events_key_not_blank' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_events_key_not_blank (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_events_key_not_blank (answered by a trigger)');
+    END;
+    -- acc_events_not_postdated
+    BEGIN
+        INSERT INTO plt01.acc_events (tenant_id, event_id, point_id, zone_id, direction, credential_id, person_id, decision_id, occurred_at, recorded_at, recorded_by, correlation_id, source, local_sequence, idempotency_key, reconciled_outcome, reconciled_at, reconciled_by, reconcile_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0039-4000-8000-0000000000ff'::uuid, '88888888-2000-4000-8000-000000000001'::uuid, '88888888-1000-4000-8000-000000000001'::uuid, 'entry'::text, '88888888-4000-4000-8000-000000000001'::uuid, 'bbbbbbbb-1000-4000-8000-000000000001'::uuid, '88888888-5000-4000-8000-000000000001'::uuid, now() + interval '1 year', '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, 'online'::text, NULL, 'generated-case-39', NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_events_not_postdated admitted a row with a bad occurred_at';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_events_not_postdated' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_events_not_postdated (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_events_not_postdated (answered by a trigger)');
+    END;
+    -- acc_events_reconciled_outcome
+    BEGIN
+        INSERT INTO plt01.acc_events (tenant_id, event_id, point_id, zone_id, direction, credential_id, person_id, decision_id, occurred_at, recorded_at, recorded_by, correlation_id, source, local_sequence, idempotency_key, reconciled_outcome, reconciled_at, reconciled_by, reconcile_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0040-4000-8000-0000000000ff'::uuid, '88888888-2000-4000-8000-000000000001'::uuid, '88888888-1000-4000-8000-000000000001'::uuid, 'entry'::text, '88888888-4000-4000-8000-000000000001'::uuid, 'bbbbbbbb-1000-4000-8000-000000000001'::uuid, '88888888-5000-4000-8000-000000000001'::uuid, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, 'online'::text, NULL, 'generated-case-40', 'not-a-declared-value', now(), '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_events_reconciled_outcome admitted a row with a bad reconciled_outcome domain';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_events_reconciled_outcome' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_events_reconciled_outcome (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_events_reconciled_outcome (answered by a trigger)');
+    END;
+    -- acc_events_reconciliation_attributed
+    BEGIN
+        INSERT INTO plt01.acc_events (tenant_id, event_id, point_id, zone_id, direction, credential_id, person_id, decision_id, occurred_at, recorded_at, recorded_by, correlation_id, source, local_sequence, idempotency_key, reconciled_outcome, reconciled_at, reconciled_by, reconcile_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0041-4000-8000-0000000000ff'::uuid, '88888888-2000-4000-8000-000000000001'::uuid, '88888888-1000-4000-8000-000000000001'::uuid, 'entry'::text, '88888888-4000-4000-8000-000000000001'::uuid, 'bbbbbbbb-1000-4000-8000-000000000001'::uuid, '88888888-5000-4000-8000-000000000001'::uuid, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, 'online'::text, NULL, 'generated-case-41', 'accepted', now(), NULL, '33333333-3333-4333-8333-333333333333'::uuid);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_events_reconciliation_attributed admitted a row with a bad reconciled_outcome, reconciled_at, reconciled_by, reconcile_correlation_id';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_events_reconciliation_attributed' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_events_reconciliation_attributed (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_events_reconciliation_attributed (answered by a trigger)');
+    END;
+    -- acc_events_sequence_matches_source
+    BEGIN
+        INSERT INTO plt01.acc_events (tenant_id, event_id, point_id, zone_id, direction, credential_id, person_id, decision_id, occurred_at, recorded_at, recorded_by, correlation_id, source, local_sequence, idempotency_key, reconciled_outcome, reconciled_at, reconciled_by, reconcile_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0042-4000-8000-0000000000ff'::uuid, '88888888-2000-4000-8000-000000000001'::uuid, '88888888-1000-4000-8000-000000000001'::uuid, 'entry'::text, '88888888-4000-4000-8000-000000000001'::uuid, 'bbbbbbbb-1000-4000-8000-000000000001'::uuid, '88888888-5000-4000-8000-000000000001'::uuid, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, 'offline', NULL, 'generated-case-42', NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_events_sequence_matches_source admitted a row with a bad source, local_sequence';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_events_sequence_matches_source' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_events_sequence_matches_source (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_events_sequence_matches_source (answered by a trigger)');
+    END;
+    -- acc_events_sequence_sane
+    BEGIN
+        INSERT INTO plt01.acc_events (tenant_id, event_id, point_id, zone_id, direction, credential_id, person_id, decision_id, occurred_at, recorded_at, recorded_by, correlation_id, source, local_sequence, idempotency_key, reconciled_outcome, reconciled_at, reconciled_by, reconcile_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0043-4000-8000-0000000000ff'::uuid, '88888888-2000-4000-8000-000000000001'::uuid, '88888888-1000-4000-8000-000000000001'::uuid, 'entry'::text, '88888888-4000-4000-8000-000000000001'::uuid, 'bbbbbbbb-1000-4000-8000-000000000001'::uuid, '88888888-5000-4000-8000-000000000001'::uuid, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, 'offline', -1, 'generated-case-43', NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_events_sequence_sane admitted a row with a bad local_sequence below-the-floor';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_events_sequence_sane' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_events_sequence_sane (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_events_sequence_sane (answered by a trigger)');
+    END;
+    -- acc_events_sequence_sane
+    BEGIN
+        INSERT INTO plt01.acc_events (tenant_id, event_id, point_id, zone_id, direction, credential_id, person_id, decision_id, occurred_at, recorded_at, recorded_by, correlation_id, source, local_sequence, idempotency_key, reconciled_outcome, reconciled_at, reconciled_by, reconcile_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0044-4000-8000-0000000000ff'::uuid, '88888888-2000-4000-8000-000000000001'::uuid, '88888888-1000-4000-8000-000000000001'::uuid, 'entry'::text, '88888888-4000-4000-8000-000000000001'::uuid, 'bbbbbbbb-1000-4000-8000-000000000001'::uuid, '88888888-5000-4000-8000-000000000001'::uuid, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, 'offline', 9000000000000001, 'generated-case-44', NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_events_sequence_sane admitted a row with a bad local_sequence above-the-ceiling';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_events_sequence_sane' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_events_sequence_sane (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_events_sequence_sane (answered by a trigger)');
+    END;
+    -- acc_events_source
+    BEGIN
+        INSERT INTO plt01.acc_events (tenant_id, event_id, point_id, zone_id, direction, credential_id, person_id, decision_id, occurred_at, recorded_at, recorded_by, correlation_id, source, local_sequence, idempotency_key, reconciled_outcome, reconciled_at, reconciled_by, reconcile_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0045-4000-8000-0000000000ff'::uuid, '88888888-2000-4000-8000-000000000001'::uuid, '88888888-1000-4000-8000-000000000001'::uuid, 'entry'::text, '88888888-4000-4000-8000-000000000001'::uuid, 'bbbbbbbb-1000-4000-8000-000000000001'::uuid, '88888888-5000-4000-8000-000000000001'::uuid, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, 'not-a-declared-value', NULL, 'generated-case-45', NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_events_source admitted a row with a bad source domain';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_events_source' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_events_source (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_events_source (answered by a trigger)');
+    END;
+    -- acc_points_direction
+    BEGIN
+        INSERT INTO plt01.acc_points (tenant_id, point_id, zone_id, device_id, direction, display_name, status, created_at, created_by, correlation_id, retired_at, retired_by, retire_reason, retire_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0046-4000-8000-0000000000ff'::uuid, '88888888-1000-4000-8000-000000000001'::uuid, '77777777-2000-4000-8000-000000000005'::uuid, 'not-a-declared-value', 'North turnstile'::text, 'active'::text, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_points_direction admitted a row with a bad direction domain';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_points_direction' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_points_direction (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_points_direction (answered by a trigger)');
+    END;
+    -- acc_points_name_bounded
+    BEGIN
+        INSERT INTO plt01.acc_points (tenant_id, point_id, zone_id, device_id, direction, display_name, status, created_at, created_by, correlation_id, retired_at, retired_by, retire_reason, retire_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0047-4000-8000-0000000000ff'::uuid, '88888888-1000-4000-8000-000000000001'::uuid, '77777777-2000-4000-8000-000000000005'::uuid, 'entry'::text, repeat('x', 121), 'active'::text, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_points_name_bounded admitted a row with a bad display_name too-long';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_points_name_bounded' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_points_name_bounded (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_points_name_bounded (answered by a trigger)');
+    END;
+    -- acc_points_name_not_blank
+    BEGIN
+        INSERT INTO plt01.acc_points (tenant_id, point_id, zone_id, device_id, direction, display_name, status, created_at, created_by, correlation_id, retired_at, retired_by, retire_reason, retire_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0048-4000-8000-0000000000ff'::uuid, '88888888-1000-4000-8000-000000000001'::uuid, '77777777-2000-4000-8000-000000000005'::uuid, 'entry'::text, E'\t', 'active'::text, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_points_name_not_blank admitted a row with a bad display_name blank';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_points_name_not_blank' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_points_name_not_blank (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_points_name_not_blank (answered by a trigger)');
+    END;
+    -- acc_points_retired_is_retired
+    BEGIN
+        INSERT INTO plt01.acc_points (tenant_id, point_id, zone_id, device_id, direction, display_name, status, created_at, created_by, correlation_id, retired_at, retired_by, retire_reason, retire_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0049-4000-8000-0000000000ff'::uuid, '88888888-1000-4000-8000-000000000001'::uuid, '77777777-2000-4000-8000-000000000005'::uuid, 'entry'::text, 'North turnstile'::text, 'retired', '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_points_retired_is_retired admitted a row with a bad status, retired_at';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_points_retired_is_retired' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_points_retired_is_retired (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_points_retired_is_retired (answered by a trigger)');
+    END;
+    -- acc_points_retirement_attributed
+    BEGIN
+        INSERT INTO plt01.acc_points (tenant_id, point_id, zone_id, device_id, direction, display_name, status, created_at, created_by, correlation_id, retired_at, retired_by, retire_reason, retire_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0050-4000-8000-0000000000ff'::uuid, '88888888-1000-4000-8000-000000000001'::uuid, '77777777-2000-4000-8000-000000000005'::uuid, 'entry'::text, 'North turnstile'::text, 'retired', '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, now(), NULL, NULL, NULL);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_points_retirement_attributed admitted a row with a bad retired_at, retired_by, retire_reason';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_points_retirement_attributed' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_points_retirement_attributed (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_points_retirement_attributed (answered by a trigger)');
+    END;
+    -- acc_points_status
+    BEGIN
+        INSERT INTO plt01.acc_points (tenant_id, point_id, zone_id, device_id, direction, display_name, status, created_at, created_by, correlation_id, retired_at, retired_by, retire_reason, retire_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0051-4000-8000-0000000000ff'::uuid, '88888888-1000-4000-8000-000000000001'::uuid, '77777777-2000-4000-8000-000000000005'::uuid, 'entry'::text, 'North turnstile'::text, 'not-a-declared-value', '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_points_status admitted a row with a bad status domain';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_points_status' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_points_status (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_points_status (answered by a trigger)');
+    END;
+    -- acc_policies_age_sane
+    BEGIN
+        INSERT INTO plt01.acc_policies (tenant_id, policy_id, zone_id, version, status, opens_minute, closes_minute, requires_entitlement, max_balance_minor, min_age_years, anti_passback_seconds, capacity, created_at, created_by, correlation_id, published_at, published_by, publish_correlation_id, retired_at, retired_by, retire_reason, retire_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0052-4000-8000-0000000000ff'::uuid, '88888888-1000-4000-8000-000000000002'::uuid, 152, 'draft'::text, NULL, NULL, 't'::boolean, NULL, -1, '0'::integer, NULL, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_policies_age_sane admitted a row with a bad min_age_years below-the-floor';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_policies_age_sane' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_policies_age_sane (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_policies_age_sane (answered by a trigger)');
+    END;
+    -- acc_policies_age_sane
+    BEGIN
+        INSERT INTO plt01.acc_policies (tenant_id, policy_id, zone_id, version, status, opens_minute, closes_minute, requires_entitlement, max_balance_minor, min_age_years, anti_passback_seconds, capacity, created_at, created_by, correlation_id, published_at, published_by, publish_correlation_id, retired_at, retired_by, retire_reason, retire_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0053-4000-8000-0000000000ff'::uuid, '88888888-1000-4000-8000-000000000002'::uuid, 153, 'draft'::text, NULL, NULL, 't'::boolean, NULL, 121, '0'::integer, NULL, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_policies_age_sane admitted a row with a bad min_age_years above-the-ceiling';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_policies_age_sane' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_policies_age_sane (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_policies_age_sane (answered by a trigger)');
+    END;
+    -- acc_policies_balance_sane
+    BEGIN
+        INSERT INTO plt01.acc_policies (tenant_id, policy_id, zone_id, version, status, opens_minute, closes_minute, requires_entitlement, max_balance_minor, min_age_years, anti_passback_seconds, capacity, created_at, created_by, correlation_id, published_at, published_by, publish_correlation_id, retired_at, retired_by, retire_reason, retire_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0054-4000-8000-0000000000ff'::uuid, '88888888-1000-4000-8000-000000000002'::uuid, 154, 'draft'::text, NULL, NULL, 't'::boolean, -1, NULL, '0'::integer, NULL, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_policies_balance_sane admitted a row with a bad max_balance_minor below-the-floor';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_policies_balance_sane' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_policies_balance_sane (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_policies_balance_sane (answered by a trigger)');
+    END;
+    -- acc_policies_balance_sane
+    BEGIN
+        INSERT INTO plt01.acc_policies (tenant_id, policy_id, zone_id, version, status, opens_minute, closes_minute, requires_entitlement, max_balance_minor, min_age_years, anti_passback_seconds, capacity, created_at, created_by, correlation_id, published_at, published_by, publish_correlation_id, retired_at, retired_by, retire_reason, retire_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0055-4000-8000-0000000000ff'::uuid, '88888888-1000-4000-8000-000000000002'::uuid, 155, 'draft'::text, NULL, NULL, 't'::boolean, 1000000000001, NULL, '0'::integer, NULL, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_policies_balance_sane admitted a row with a bad max_balance_minor above-the-ceiling';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_policies_balance_sane' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_policies_balance_sane (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_policies_balance_sane (answered by a trigger)');
+    END;
+    -- acc_policies_capacity_sane
+    BEGIN
+        INSERT INTO plt01.acc_policies (tenant_id, policy_id, zone_id, version, status, opens_minute, closes_minute, requires_entitlement, max_balance_minor, min_age_years, anti_passback_seconds, capacity, created_at, created_by, correlation_id, published_at, published_by, publish_correlation_id, retired_at, retired_by, retire_reason, retire_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0056-4000-8000-0000000000ff'::uuid, '88888888-1000-4000-8000-000000000002'::uuid, 156, 'draft'::text, NULL, NULL, 't'::boolean, NULL, NULL, '0'::integer, -1, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_policies_capacity_sane admitted a row with a bad capacity below-the-floor';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_policies_capacity_sane' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_policies_capacity_sane (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_policies_capacity_sane (answered by a trigger)');
+    END;
+    -- acc_policies_capacity_sane
+    BEGIN
+        INSERT INTO plt01.acc_policies (tenant_id, policy_id, zone_id, version, status, opens_minute, closes_minute, requires_entitlement, max_balance_minor, min_age_years, anti_passback_seconds, capacity, created_at, created_by, correlation_id, published_at, published_by, publish_correlation_id, retired_at, retired_by, retire_reason, retire_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0057-4000-8000-0000000000ff'::uuid, '88888888-1000-4000-8000-000000000002'::uuid, 157, 'draft'::text, NULL, NULL, 't'::boolean, NULL, NULL, '0'::integer, 1000001, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_policies_capacity_sane admitted a row with a bad capacity above-the-ceiling';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_policies_capacity_sane' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_policies_capacity_sane (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_policies_capacity_sane (answered by a trigger)');
+    END;
+    -- acc_policies_closes_in_a_day
+    BEGIN
+        INSERT INTO plt01.acc_policies (tenant_id, policy_id, zone_id, version, status, opens_minute, closes_minute, requires_entitlement, max_balance_minor, min_age_years, anti_passback_seconds, capacity, created_at, created_by, correlation_id, published_at, published_by, publish_correlation_id, retired_at, retired_by, retire_reason, retire_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0058-4000-8000-0000000000ff'::uuid, '88888888-1000-4000-8000-000000000002'::uuid, 158, 'draft'::text, 0, -1, 't'::boolean, NULL, NULL, '0'::integer, NULL, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_policies_closes_in_a_day admitted a row with a bad closes_minute below-the-floor';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_policies_closes_in_a_day' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_policies_closes_in_a_day (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_policies_closes_in_a_day (answered by a trigger)');
+    END;
+    -- acc_policies_closes_in_a_day
+    BEGIN
+        INSERT INTO plt01.acc_policies (tenant_id, policy_id, zone_id, version, status, opens_minute, closes_minute, requires_entitlement, max_balance_minor, min_age_years, anti_passback_seconds, capacity, created_at, created_by, correlation_id, published_at, published_by, publish_correlation_id, retired_at, retired_by, retire_reason, retire_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0059-4000-8000-0000000000ff'::uuid, '88888888-1000-4000-8000-000000000002'::uuid, 159, 'draft'::text, 0, 1441, 't'::boolean, NULL, NULL, '0'::integer, NULL, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_policies_closes_in_a_day admitted a row with a bad closes_minute above-the-ceiling';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_policies_closes_in_a_day' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_policies_closes_in_a_day (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_policies_closes_in_a_day (answered by a trigger)');
+    END;
+    -- acc_policies_hours_differ
+    BEGIN
+        INSERT INTO plt01.acc_policies (tenant_id, policy_id, zone_id, version, status, opens_minute, closes_minute, requires_entitlement, max_balance_minor, min_age_years, anti_passback_seconds, capacity, created_at, created_by, correlation_id, published_at, published_by, publish_correlation_id, retired_at, retired_by, retire_reason, retire_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0060-4000-8000-0000000000ff'::uuid, '88888888-1000-4000-8000-000000000002'::uuid, 160, 'draft'::text, 600, 600, 't'::boolean, NULL, NULL, '0'::integer, NULL, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_policies_hours_differ admitted a row with a bad opens_minute, closes_minute';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_policies_hours_differ' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_policies_hours_differ (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_policies_hours_differ (answered by a trigger)');
+    END;
+    -- acc_policies_hours_paired
+    BEGIN
+        INSERT INTO plt01.acc_policies (tenant_id, policy_id, zone_id, version, status, opens_minute, closes_minute, requires_entitlement, max_balance_minor, min_age_years, anti_passback_seconds, capacity, created_at, created_by, correlation_id, published_at, published_by, publish_correlation_id, retired_at, retired_by, retire_reason, retire_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0061-4000-8000-0000000000ff'::uuid, '88888888-1000-4000-8000-000000000002'::uuid, 161, 'draft'::text, 600, NULL, 't'::boolean, NULL, NULL, '0'::integer, NULL, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_policies_hours_paired admitted a row with a bad opens_minute, closes_minute';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_policies_hours_paired' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_policies_hours_paired (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_policies_hours_paired (answered by a trigger)');
+    END;
+    -- acc_policies_opens_in_a_day
+    BEGIN
+        INSERT INTO plt01.acc_policies (tenant_id, policy_id, zone_id, version, status, opens_minute, closes_minute, requires_entitlement, max_balance_minor, min_age_years, anti_passback_seconds, capacity, created_at, created_by, correlation_id, published_at, published_by, publish_correlation_id, retired_at, retired_by, retire_reason, retire_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0062-4000-8000-0000000000ff'::uuid, '88888888-1000-4000-8000-000000000002'::uuid, 162, 'draft'::text, -1, 1200, 't'::boolean, NULL, NULL, '0'::integer, NULL, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_policies_opens_in_a_day admitted a row with a bad opens_minute below-the-floor';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_policies_opens_in_a_day' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_policies_opens_in_a_day (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_policies_opens_in_a_day (answered by a trigger)');
+    END;
+    -- acc_policies_opens_in_a_day
+    BEGIN
+        INSERT INTO plt01.acc_policies (tenant_id, policy_id, zone_id, version, status, opens_minute, closes_minute, requires_entitlement, max_balance_minor, min_age_years, anti_passback_seconds, capacity, created_at, created_by, correlation_id, published_at, published_by, publish_correlation_id, retired_at, retired_by, retire_reason, retire_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0063-4000-8000-0000000000ff'::uuid, '88888888-1000-4000-8000-000000000002'::uuid, 163, 'draft'::text, 1440, 1200, 't'::boolean, NULL, NULL, '0'::integer, NULL, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_policies_opens_in_a_day admitted a row with a bad opens_minute at-the-ceiling';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_policies_opens_in_a_day' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_policies_opens_in_a_day (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_policies_opens_in_a_day (answered by a trigger)');
+    END;
+    -- acc_policies_passback_sane
+    BEGIN
+        INSERT INTO plt01.acc_policies (tenant_id, policy_id, zone_id, version, status, opens_minute, closes_minute, requires_entitlement, max_balance_minor, min_age_years, anti_passback_seconds, capacity, created_at, created_by, correlation_id, published_at, published_by, publish_correlation_id, retired_at, retired_by, retire_reason, retire_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0064-4000-8000-0000000000ff'::uuid, '88888888-1000-4000-8000-000000000002'::uuid, 164, 'draft'::text, NULL, NULL, 't'::boolean, NULL, NULL, -1, NULL, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_policies_passback_sane admitted a row with a bad anti_passback_seconds below-the-floor';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_policies_passback_sane' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_policies_passback_sane (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_policies_passback_sane (answered by a trigger)');
+    END;
+    -- acc_policies_passback_sane
+    BEGIN
+        INSERT INTO plt01.acc_policies (tenant_id, policy_id, zone_id, version, status, opens_minute, closes_minute, requires_entitlement, max_balance_minor, min_age_years, anti_passback_seconds, capacity, created_at, created_by, correlation_id, published_at, published_by, publish_correlation_id, retired_at, retired_by, retire_reason, retire_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0065-4000-8000-0000000000ff'::uuid, '88888888-1000-4000-8000-000000000002'::uuid, 165, 'draft'::text, NULL, NULL, 't'::boolean, NULL, NULL, 43201, NULL, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_policies_passback_sane admitted a row with a bad anti_passback_seconds above-the-ceiling';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_policies_passback_sane' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_policies_passback_sane (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_policies_passback_sane (answered by a trigger)');
+    END;
+    -- acc_policies_publication_attributed
+    BEGIN
+        INSERT INTO plt01.acc_policies (tenant_id, policy_id, zone_id, version, status, opens_minute, closes_minute, requires_entitlement, max_balance_minor, min_age_years, anti_passback_seconds, capacity, created_at, created_by, correlation_id, published_at, published_by, publish_correlation_id, retired_at, retired_by, retire_reason, retire_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0066-4000-8000-0000000000ff'::uuid, '88888888-1000-4000-8000-000000000002'::uuid, 166, 'draft'::text, NULL, NULL, 't'::boolean, NULL, NULL, '0'::integer, NULL, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, now(), NULL, NULL, NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_policies_publication_attributed admitted a row with a bad published_at, published_by, publish_correlation_id';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_policies_publication_attributed' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_policies_publication_attributed (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_policies_publication_attributed (answered by a trigger)');
+    END;
+    -- acc_policies_published_is_published
+    BEGIN
+        INSERT INTO plt01.acc_policies (tenant_id, policy_id, zone_id, version, status, opens_minute, closes_minute, requires_entitlement, max_balance_minor, min_age_years, anti_passback_seconds, capacity, created_at, created_by, correlation_id, published_at, published_by, publish_correlation_id, retired_at, retired_by, retire_reason, retire_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0067-4000-8000-0000000000ff'::uuid, '88888888-1000-4000-8000-000000000002'::uuid, 167, 'published', NULL, NULL, 't'::boolean, NULL, NULL, '0'::integer, NULL, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_policies_published_is_published admitted a row with a bad status, published_at';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_policies_published_is_published' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_policies_published_is_published (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_policies_published_is_published (answered by a trigger)');
+    END;
+    -- acc_policies_publisher_is_not_author
+    BEGIN
+        INSERT INTO plt01.acc_policies (tenant_id, policy_id, zone_id, version, status, opens_minute, closes_minute, requires_entitlement, max_balance_minor, min_age_years, anti_passback_seconds, capacity, created_at, created_by, correlation_id, published_at, published_by, publish_correlation_id, retired_at, retired_by, retire_reason, retire_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0068-4000-8000-0000000000ff'::uuid, '88888888-1000-4000-8000-000000000002'::uuid, 168, 'draft'::text, NULL, NULL, 't'::boolean, NULL, NULL, '0'::integer, NULL, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, now(), '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_policies_publisher_is_not_author admitted a row with a bad published_by';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_policies_publisher_is_not_author' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_policies_publisher_is_not_author (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_policies_publisher_is_not_author (answered by a trigger)');
+    END;
+    -- acc_policies_retired_is_retired
+    BEGIN
+        INSERT INTO plt01.acc_policies (tenant_id, policy_id, zone_id, version, status, opens_minute, closes_minute, requires_entitlement, max_balance_minor, min_age_years, anti_passback_seconds, capacity, created_at, created_by, correlation_id, published_at, published_by, publish_correlation_id, retired_at, retired_by, retire_reason, retire_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0069-4000-8000-0000000000ff'::uuid, '88888888-1000-4000-8000-000000000002'::uuid, 169, 'retired', NULL, NULL, 't'::boolean, NULL, NULL, '0'::integer, NULL, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_policies_retired_is_retired admitted a row with a bad status, retired_at';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_policies_retired_is_retired' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_policies_retired_is_retired (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_policies_retired_is_retired (answered by a trigger)');
+    END;
+    -- acc_policies_retirement_attributed
+    BEGIN
+        INSERT INTO plt01.acc_policies (tenant_id, policy_id, zone_id, version, status, opens_minute, closes_minute, requires_entitlement, max_balance_minor, min_age_years, anti_passback_seconds, capacity, created_at, created_by, correlation_id, published_at, published_by, publish_correlation_id, retired_at, retired_by, retire_reason, retire_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0070-4000-8000-0000000000ff'::uuid, '88888888-1000-4000-8000-000000000002'::uuid, 170, 'retired', NULL, NULL, 't'::boolean, NULL, NULL, '0'::integer, NULL, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, NULL, NULL, NULL, now(), NULL, NULL, NULL);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_policies_retirement_attributed admitted a row with a bad retired_at, retired_by, retire_reason';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_policies_retirement_attributed' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_policies_retirement_attributed (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_policies_retirement_attributed (answered by a trigger)');
+    END;
+    -- acc_policies_status
+    BEGIN
+        INSERT INTO plt01.acc_policies (tenant_id, policy_id, zone_id, version, status, opens_minute, closes_minute, requires_entitlement, max_balance_minor, min_age_years, anti_passback_seconds, capacity, created_at, created_by, correlation_id, published_at, published_by, publish_correlation_id, retired_at, retired_by, retire_reason, retire_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0071-4000-8000-0000000000ff'::uuid, '88888888-1000-4000-8000-000000000002'::uuid, 171, 'not-a-declared-value', NULL, NULL, 't'::boolean, NULL, NULL, '0'::integer, NULL, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_policies_status admitted a row with a bad status domain';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_policies_status' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_policies_status (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_policies_status (answered by a trigger)');
+    END;
+    -- acc_policies_version_positive
+    BEGIN
+        INSERT INTO plt01.acc_policies (tenant_id, policy_id, zone_id, version, status, opens_minute, closes_minute, requires_entitlement, max_balance_minor, min_age_years, anti_passback_seconds, capacity, created_at, created_by, correlation_id, published_at, published_by, publish_correlation_id, retired_at, retired_by, retire_reason, retire_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0072-4000-8000-0000000000ff'::uuid, '88888888-1000-4000-8000-000000000002'::uuid, 0, 'draft'::text, NULL, NULL, 't'::boolean, NULL, NULL, '0'::integer, NULL, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_policies_version_positive admitted a row with a bad version below-the-floor';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_policies_version_positive' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_policies_version_positive (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_policies_version_positive (answered by a trigger)');
+    END;
+    -- acc_policies_version_positive
+    BEGIN
+        INSERT INTO plt01.acc_policies (tenant_id, policy_id, zone_id, version, status, opens_minute, closes_minute, requires_entitlement, max_balance_minor, min_age_years, anti_passback_seconds, capacity, created_at, created_by, correlation_id, published_at, published_by, publish_correlation_id, retired_at, retired_by, retire_reason, retire_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0073-4000-8000-0000000000ff'::uuid, '88888888-1000-4000-8000-000000000002'::uuid, 100001, 'draft'::text, NULL, NULL, 't'::boolean, NULL, NULL, '0'::integer, NULL, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_policies_version_positive admitted a row with a bad version above-the-ceiling';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_policies_version_positive' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_policies_version_positive (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_policies_version_positive (answered by a trigger)');
+    END;
+    -- acc_replay_tokens_key_shape
+    BEGIN
+        INSERT INTO plt01.acc_replay_tokens (tenant_id, token_key, credential_id, point_id, seen_at, expires_at, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '!! NOT A VALID VALUE !!', '88888888-4000-4000-8000-000000000002'::uuid, '88888888-2000-4000-8000-000000000001'::uuid, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '2026-11-19 01:26:28.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_replay_tokens_key_shape admitted a row with a bad token_key shape';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_replay_tokens_key_shape' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_replay_tokens_key_shape (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_replay_tokens_key_shape (answered by a trigger)');
+    END;
+    -- acc_replay_tokens_not_postdated
+    BEGIN
+        INSERT INTO plt01.acc_replay_tokens (tenant_id, token_key, credential_id, point_id, seen_at, expires_at, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, lpad('4b', 64, 'e'), '88888888-4000-4000-8000-000000000002'::uuid, '88888888-2000-4000-8000-000000000001'::uuid, now() + interval '1 year', now() + interval '1 year' + interval '90 seconds', '33333333-3333-4333-8333-333333333333'::uuid);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_replay_tokens_not_postdated admitted a row with a bad seen_at';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_replay_tokens_not_postdated' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_replay_tokens_not_postdated (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_replay_tokens_not_postdated (answered by a trigger)');
+    END;
+    -- acc_replay_tokens_window
+    BEGIN
+        INSERT INTO plt01.acc_replay_tokens (tenant_id, token_key, credential_id, point_id, seen_at, expires_at, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, lpad('4c', 64, 'e'), '88888888-4000-4000-8000-000000000002'::uuid, '88888888-2000-4000-8000-000000000001'::uuid, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '2026-11-19 01:24:58.677534+00'::timestamp with time zone - interval '1 second', '33333333-3333-4333-8333-333333333333'::uuid);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_replay_tokens_window admitted a row with a bad expires_at';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_replay_tokens_window' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_replay_tokens_window (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_replay_tokens_window (answered by a trigger)');
+    END;
+    -- acc_replay_tokens_window_bounded
+    BEGIN
+        INSERT INTO plt01.acc_replay_tokens (tenant_id, token_key, credential_id, point_id, seen_at, expires_at, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, lpad('4d', 64, 'e'), '88888888-4000-4000-8000-000000000002'::uuid, '88888888-2000-4000-8000-000000000001'::uuid, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '2026-11-19 01:24:58.677534+00'::timestamp with time zone + interval '1 year', '33333333-3333-4333-8333-333333333333'::uuid);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_replay_tokens_window_bounded admitted a row with a bad expires_at';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_replay_tokens_window_bounded' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_replay_tokens_window_bounded (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_replay_tokens_window_bounded (answered by a trigger)');
+    END;
+    -- acc_zones_key_shape
+    BEGIN
+        INSERT INTO plt01.acc_zones (tenant_id, zone_id, location_id, zone_key, display_name, risk_class, status, created_at, created_by, correlation_id, retired_at, retired_by, retire_reason, retire_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0078-4000-8000-0000000000ff'::uuid, 'eeeeeeee-1000-4000-8000-000000000001'::uuid, '!! NOT A VALID VALUE !!', 'Main floor'::text, 'standard'::text, 'active'::text, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_zones_key_shape admitted a row with a bad zone_key shape';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_zones_key_shape' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_zones_key_shape (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_zones_key_shape (answered by a trigger)');
+    END;
+    -- acc_zones_name_bounded
+    BEGIN
+        INSERT INTO plt01.acc_zones (tenant_id, zone_id, location_id, zone_key, display_name, risk_class, status, created_at, created_by, correlation_id, retired_at, retired_by, retire_reason, retire_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0079-4000-8000-0000000000ff'::uuid, 'eeeeeeee-1000-4000-8000-000000000001'::uuid, 'generated-case-79', repeat('x', 121), 'standard'::text, 'active'::text, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_zones_name_bounded admitted a row with a bad display_name too-long';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_zones_name_bounded' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_zones_name_bounded (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_zones_name_bounded (answered by a trigger)');
+    END;
+    -- acc_zones_name_not_blank
+    BEGIN
+        INSERT INTO plt01.acc_zones (tenant_id, zone_id, location_id, zone_key, display_name, risk_class, status, created_at, created_by, correlation_id, retired_at, retired_by, retire_reason, retire_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0080-4000-8000-0000000000ff'::uuid, 'eeeeeeee-1000-4000-8000-000000000001'::uuid, 'generated-case-80', E'\t', 'standard'::text, 'active'::text, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_zones_name_not_blank admitted a row with a bad display_name blank';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_zones_name_not_blank' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_zones_name_not_blank (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_zones_name_not_blank (answered by a trigger)');
+    END;
+    -- acc_zones_retired_is_retired
+    BEGIN
+        INSERT INTO plt01.acc_zones (tenant_id, zone_id, location_id, zone_key, display_name, risk_class, status, created_at, created_by, correlation_id, retired_at, retired_by, retire_reason, retire_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0081-4000-8000-0000000000ff'::uuid, 'eeeeeeee-1000-4000-8000-000000000001'::uuid, 'generated-case-81', 'Main floor'::text, 'standard'::text, 'retired', '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_zones_retired_is_retired admitted a row with a bad status, retired_at';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_zones_retired_is_retired' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_zones_retired_is_retired (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_zones_retired_is_retired (answered by a trigger)');
+    END;
+    -- acc_zones_retirement_attributed
+    BEGIN
+        INSERT INTO plt01.acc_zones (tenant_id, zone_id, location_id, zone_key, display_name, risk_class, status, created_at, created_by, correlation_id, retired_at, retired_by, retire_reason, retire_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0082-4000-8000-0000000000ff'::uuid, 'eeeeeeee-1000-4000-8000-000000000001'::uuid, 'generated-case-82', 'Main floor'::text, 'standard'::text, 'retired', '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, now(), NULL, NULL, NULL);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_zones_retirement_attributed admitted a row with a bad retired_at, retired_by, retire_reason';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_zones_retirement_attributed' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_zones_retirement_attributed (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_zones_retirement_attributed (answered by a trigger)');
+    END;
+    -- acc_zones_risk_class
+    BEGIN
+        INSERT INTO plt01.acc_zones (tenant_id, zone_id, location_id, zone_key, display_name, risk_class, status, created_at, created_by, correlation_id, retired_at, retired_by, retire_reason, retire_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0083-4000-8000-0000000000ff'::uuid, 'eeeeeeee-1000-4000-8000-000000000001'::uuid, 'generated-case-83', 'Main floor'::text, 'not-a-declared-value', 'active'::text, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_zones_risk_class admitted a row with a bad risk_class domain';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_zones_risk_class' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_zones_risk_class (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_zones_risk_class (answered by a trigger)');
+    END;
+    -- acc_zones_status
+    BEGIN
+        INSERT INTO plt01.acc_zones (tenant_id, zone_id, location_id, zone_key, display_name, risk_class, status, created_at, created_by, correlation_id, retired_at, retired_by, retire_reason, retire_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0084-4000-8000-0000000000ff'::uuid, 'eeeeeeee-1000-4000-8000-000000000001'::uuid, 'generated-case-84', 'Main floor'::text, 'standard'::text, 'not-a-declared-value', '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_zones_status admitted a row with a bad status domain';
+    EXCEPTION
+        WHEN check_violation THEN
+            -- **Which constraint refused it, not merely that one did.** `check_violation`
+            -- is the same exception for every CHECK on the table, so counting it proves
+            -- whichever fires first -- the trap `.claude/rules/backend/mod004-rls.md`
+            -- records three modules in a row for, and which fourteen of these cases were
+            -- in until the sweep showed their drops going uncaught.
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_zones_status' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_zones_status (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_zones_status (answered by a trigger)');
+    END;
+    -- <<< GENERATED CHECK CASES END
+
+    -- ------------------------------------------- cases the generator cannot write
+    -- **Five predicates relate a flag to a set, or two columns to each other through a
+    -- literal, and a generator that guessed at those would produce a case that passes for
+    -- the wrong reason.** Each one below sets every *other* column so that the row violates
+    -- exactly the rule it names -- which is the discipline the generated cases get for free
+    -- by starting from a row the committed seed already proved valid.
+
+    -- acc_credentials_expiry_after_issue
+    BEGIN
+        INSERT INTO plt01.acc_credentials
+            (tenant_id, credential_id, person_id, kind, credential_digest, state,
+             revocation_epoch, issued_at, issued_by, correlation_id, expires_at)
+        VALUES ('11111111-1111-4111-8111-111111111111', '88888888-0910-4000-8000-0000000000ff',
+                'bbbbbbbb-1000-4000-8000-000000000001', 'nfc_card', lpad('910', 64, 'e'),
+                'active', 0, now(), '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333', now() - interval '1 day');
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_credentials_expiry_after_issue admitted a credential that '
+            'expired before it was issued';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_credentials_expiry_after_issue' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_credentials_expiry_after_issue (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_credentials_expiry_after_issue (a trigger)');
+    END;
+
+    -- acc_decisions_grant_names_a_person. The policy is cited so that the coherence
+    -- trigger's "a granted decision cites the policy version it satisfied" branch, which
+    -- runs first, has nothing to say about the row.
+    BEGIN
+        INSERT INTO plt01.acc_decisions
+            (tenant_id, decision_id, point_id, zone_id, granted, code, public_reason,
+             private_reason, masked, policy_id, policy_version, reported_direction,
+             device_mode, passback_scope, decided_by, correlation_id, idempotency_key)
+        VALUES ('11111111-1111-4111-8111-111111111111', '88888888-0911-4000-8000-0000000000ff',
+                '88888888-2000-4000-8000-000000000001', '88888888-1000-4000-8000-000000000001',
+                true, 'granted', 'welcome', 'every check passed', false,
+                '88888888-3000-4000-8000-000000000001', 1, 'entry', 'online', 'global',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333', 'hand-grant-names-a-person');
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_decisions_grant_names_a_person admitted a grant naming '
+            'nobody';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_decisions_grant_names_a_person' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_decisions_grant_names_a_person (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_decisions_grant_names_a_person (a trigger)');
+    END;
+
+    -- acc_decisions_masked_is_the_discreet_line: masked, and saying something else.
+    BEGIN
+        INSERT INTO plt01.acc_decisions
+            (tenant_id, decision_id, point_id, zone_id, granted, code, public_reason,
+             private_reason, masked, reported_direction, device_mode, passback_scope,
+             decided_by, correlation_id, idempotency_key)
+        VALUES ('11111111-1111-4111-8111-111111111111', '88888888-0912-4000-8000-0000000000ff',
+                '88888888-2000-4000-8000-000000000001', '88888888-1000-4000-8000-000000000001',
+                false, 'credential_unknown', 'this card is not one of ours',
+                'no credential matched the digest', true, 'entry', 'online', 'global',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333', 'hand-masked-is-discreet');
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_decisions_masked_is_the_discreet_line admitted a masked '
+            'decision that says something else out loud';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_decisions_masked_is_the_discreet_line' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_decisions_masked_is_the_discreet_line (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_decisions_masked_is_the_discreet_line (a trigger)');
+    END;
+
+    -- acc_decisions_masked_is_the_discreet_line, the other side: the discreet line, not
+    -- marked as masked. A biconditional needs a case per side, and this one is a column
+    -- against a literal rather than two booleans, so the weakening generator cannot see it.
+    BEGIN
+        INSERT INTO plt01.acc_decisions
+            (tenant_id, decision_id, point_id, zone_id, granted, code, public_reason,
+             private_reason, masked, reported_direction, device_mode, passback_scope,
+             decided_by, correlation_id, idempotency_key)
+        VALUES ('11111111-1111-4111-8111-111111111111', '88888888-0913-4000-8000-0000000000ff',
+                '88888888-2000-4000-8000-000000000001', '88888888-1000-4000-8000-000000000001',
+                false, 'credential_unknown', 'please see the front desk',
+                'no credential matched the digest', false, 'entry', 'online', 'global',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333', 'hand-discreet-not-masked');
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_decisions_masked_is_the_discreet_line admitted the '
+            'discreet line on a decision that is not masked';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_decisions_masked_is_the_discreet_line' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_decisions_masked_is_the_discreet_line~mirror (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_decisions_masked_is_the_discreet_line~mirror (a trigger)');
+    END;
+
+    -- acc_decisions_override_attributed: an override with nobody's name on it.
+    BEGIN
+        INSERT INTO plt01.acc_decisions
+            (tenant_id, decision_id, point_id, zone_id, person_id, granted, code,
+             public_reason, private_reason, masked, reported_direction, device_mode,
+             passback_scope, decided_by, correlation_id, idempotency_key)
+        VALUES ('11111111-1111-4111-8111-111111111111', '88888888-0914-4000-8000-0000000000ff',
+                '88888888-2000-4000-8000-000000000001', '88888888-1000-4000-8000-000000000001',
+                'bbbbbbbb-1000-4000-8000-000000000001', true, 'granted_by_override',
+                'welcome', 'a manager let this member in', false, 'entry', 'online',
+                'global', '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333', 'hand-override-unattributed');
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_decisions_override_attributed admitted an override with '
+            'no reason and nobody who ordered it';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_decisions_override_attributed' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_decisions_override_attributed (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_decisions_override_attributed (a trigger)');
+    END;
+
+    -- acc_decisions_override_attributed, the other side: an override reason on a decision
+    -- that was not an override, which would read as a staff override in every report.
+    BEGIN
+        INSERT INTO plt01.acc_decisions
+            (tenant_id, decision_id, point_id, zone_id, person_id, granted, code,
+             public_reason, private_reason, masked, policy_id, policy_version,
+             override_reason, overridden_by, reported_direction, device_mode,
+             passback_scope, decided_by, correlation_id, idempotency_key)
+        VALUES ('11111111-1111-4111-8111-111111111111', '88888888-0915-4000-8000-0000000000ff',
+                '88888888-2000-4000-8000-000000000001', '88888888-1000-4000-8000-000000000001',
+                'bbbbbbbb-1000-4000-8000-000000000001', true, 'granted',
+                'welcome', 'every check passed', false,
+                '88888888-3000-4000-8000-000000000001', 1,
+                'a manager let this member in', '33333333-3333-4333-8333-333333333333',
+                'entry', 'online', 'global', '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333', 'hand-override-on-a-grant');
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_decisions_override_attributed admitted an override reason '
+            'on an ordinary grant';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_decisions_override_attributed' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_decisions_override_attributed~mirror (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_decisions_override_attributed~mirror (a trigger)');
+    END;
+
+    -- acc_decisions_restricted_is_masked: a refusal that names the reason out loud.
+    BEGIN
+        INSERT INTO plt01.acc_decisions
+            (tenant_id, decision_id, point_id, zone_id, credential_id, person_id, granted,
+             code, public_reason, private_reason, masked, reported_direction, device_mode,
+             passback_scope, decided_by, correlation_id, idempotency_key)
+        VALUES ('11111111-1111-4111-8111-111111111111', '88888888-0916-4000-8000-0000000000ff',
+                '88888888-2000-4000-8000-000000000001', '88888888-1000-4000-8000-000000000001',
+                '88888888-4000-4000-8000-000000000001', 'bbbbbbbb-1000-4000-8000-000000000001',
+                false, 'no_entitlement', 'your membership does not include this area',
+                'no live grant for this zone', false, 'entry', 'online', 'global',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333', 'hand-restricted-unmasked');
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_decisions_restricted_is_masked admitted a restricted code '
+            'with the reason in the clear';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_decisions_restricted_is_masked' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_decisions_restricted_is_masked (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_decisions_restricted_is_masked (a trigger)');
+    END;
+
+    -- acc_events_direction, which needs a reader that faces both ways.
+    --
+    -- **The generator cannot write this one and the reason is worth keeping.**
+    -- `acc_event_is_coherent` refuses any direction the event's own access point does not
+    -- face, and that is true of every value outside the domain at every point in the
+    -- committed seed -- so a generated case is answered by the trigger and proves it instead.
+    -- A point facing `both` skips that branch, and there is none in the seed. So the case
+    -- creates one on the spare actuating device, inside its own block: the refusal that
+    -- follows rolls both statements back, which is also why this is safe to do here.
+    BEGIN
+        INSERT INTO plt01.acc_points
+            (tenant_id, point_id, zone_id, device_id, direction, display_name, status,
+             created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', '88888888-0920-4000-8000-0000000000ff',
+                '88888888-1000-4000-8000-000000000001',
+                '77777777-2000-4000-8000-000000000005', 'both', 'Both-way turnstile',
+                'active', '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        INSERT INTO plt01.acc_events
+            (tenant_id, event_id, point_id, zone_id, direction, occurred_at, recorded_by,
+             correlation_id, source, idempotency_key)
+        VALUES ('11111111-1111-4111-8111-111111111111', '88888888-0921-4000-8000-0000000000ff',
+                '88888888-0920-4000-8000-0000000000ff',
+                '88888888-1000-4000-8000-000000000001', 'not-a-declared-value', now(),
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333', 'online', 'hand-events-direction');
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_events_direction admitted an undeclared direction';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_events_direction' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_events_direction (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_events_direction (a trigger)');
+    END;
+
+    -- ------------------------------------------- the other side of each biconditional
+    -- **A biconditional needs a case per side, and a generated case only ever covers one.**
+    -- `(A) = (B)` is the commonest shape in these schemas, and the pairing family in
+    -- `generate_access_cases.py` breaks it in exactly one direction: it sets one column and
+    -- clears the other. A weakening sweep replaced each of these seven with the implication
+    -- the generated case still violates, and all seven passed -- so "a status and the moment
+    -- it was entered agree" was half enforced and half unproven. These are the seven mirrors,
+    -- each a row the *other* implication admits.
+    --
+    -- Every one carries its sibling attribution trio as well, because a timestamp set alone
+    -- trips the all-or-none attribution CHECK first and the case then proves that instead.
+
+    -- acc_credentials_revoked_is_revoked, the other way: revoked at a time, still active.
+    BEGIN
+        INSERT INTO plt01.acc_credentials
+            (tenant_id, credential_id, person_id, kind, credential_digest, state,
+             revocation_epoch, issued_by, correlation_id, revoked_at, revoked_by,
+             revoke_reason, revoke_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', '88888888-0900-4000-8000-0000000000ff',
+                'bbbbbbbb-1000-4000-8000-000000000001', 'nfc_card', lpad('900', 64, 'e'),
+                'active', 0, '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333', now(),
+                '33333333-3333-4333-8333-333333333333', 'the card was lost',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_credentials_revoked_is_revoked admitted an active '
+            'credential with a revocation time';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_credentials_revoked_is_revoked' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_credentials_revoked_is_revoked~mirror (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_credentials_revoked_is_revoked~mirror (a trigger)');
+    END;
+
+    -- acc_zones_retired_is_retired, the other way: a retirement recorded on a live zone.
+    BEGIN
+        INSERT INTO plt01.acc_zones
+            (tenant_id, zone_id, location_id, zone_key, display_name, risk_class, status,
+             created_by, correlation_id, retired_at, retired_by, retire_reason,
+             retire_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', '88888888-0901-4000-8000-0000000000ff',
+                'eeeeeeee-1000-4000-8000-000000000001', 'mirror-zone', 'Mirror zone',
+                'standard', 'active', '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333', now(),
+                '33333333-3333-4333-8333-333333333333', 'decommissioned',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_zones_retired_is_retired admitted a live zone with a '
+            'retirement time';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_zones_retired_is_retired' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_zones_retired_is_retired~mirror (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_zones_retired_is_retired~mirror (a trigger)');
+    END;
+
+    -- acc_points_retired_is_retired, the other way. Device 5 is the seed's spare actuator,
+    -- so `acc_point_is_an_actuator` passes and the CHECK is the only thing left to refuse.
+    BEGIN
+        INSERT INTO plt01.acc_points
+            (tenant_id, point_id, zone_id, device_id, direction, display_name, status,
+             created_by, correlation_id, retired_at, retired_by, retire_reason,
+             retire_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', '88888888-0902-4000-8000-0000000000ff',
+                '88888888-1000-4000-8000-000000000001', '77777777-2000-4000-8000-000000000005',
+                'entry', 'Mirror point', 'active', '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333', now(),
+                '33333333-3333-4333-8333-333333333333', 'the reader was removed',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_points_retired_is_retired admitted a live point with a '
+            'retirement time';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_points_retired_is_retired' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_points_retired_is_retired~mirror (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_points_retired_is_retired~mirror (a trigger)');
+    END;
+
+    -- acc_policies_retired_is_retired, the other way. Left in draft, so the publication
+    -- attribution and the two-party rule beside it have nothing to say about the row.
+    BEGIN
+        INSERT INTO plt01.acc_policies
+            (tenant_id, policy_id, zone_id, version, status, requires_entitlement,
+             anti_passback_seconds, created_by, correlation_id, retired_at, retired_by,
+             retire_reason, retire_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', '88888888-0903-4000-8000-0000000000ff',
+                '88888888-1000-4000-8000-000000000001', 900, 'draft', true, 0,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333', now(),
+                '33333333-3333-4333-8333-333333333333', 'superseded',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_policies_retired_is_retired admitted a draft with a '
+            'retirement time';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_policies_retired_is_retired' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_policies_retired_is_retired~mirror (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_policies_retired_is_retired~mirror (a trigger)');
+    END;
+
+    -- acc_policies_hours_paired, the other way: a closing minute with no opening one.
+    BEGIN
+        INSERT INTO plt01.acc_policies
+            (tenant_id, policy_id, zone_id, version, status, requires_entitlement,
+             anti_passback_seconds, opens_minute, closes_minute, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', '88888888-0904-4000-8000-0000000000ff',
+                '88888888-1000-4000-8000-000000000001', 901, 'draft', true, 0,
+                NULL, 600, '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_policies_hours_paired admitted a closing time with no '
+            'opening one';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_policies_hours_paired' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_policies_hours_paired~mirror (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_policies_hours_paired~mirror (a trigger)');
+    END;
+
+    -- acc_decisions_policy_cited_whole, the other way: a version number citing no policy.
+    BEGIN
+        INSERT INTO plt01.acc_decisions
+            (tenant_id, decision_id, point_id, zone_id, granted, code, public_reason,
+             private_reason, masked, policy_id, policy_version, reported_direction,
+             device_mode, passback_scope, decided_by, correlation_id, idempotency_key)
+        VALUES ('11111111-1111-4111-8111-111111111111', '88888888-0905-4000-8000-0000000000ff',
+                '88888888-2000-4000-8000-000000000001', '88888888-1000-4000-8000-000000000001',
+                false, 'outstanding_balance', 'please see the front desk',
+                'this member owes 4500 in minor units', true, NULL, 1, 'entry', 'online',
+                'global', '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333', 'mirror-policy-cited-whole');
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_decisions_policy_cited_whole admitted a version with no '
+            'policy';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_decisions_policy_cited_whole' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_decisions_policy_cited_whole~mirror (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_decisions_policy_cited_whole~mirror (a trigger)');
+    END;
+
+    -- acc_events_sequence_matches_source, the other way: an online event carrying the local
+    -- sequence number only an offline reader has.
+    BEGIN
+        INSERT INTO plt01.acc_events
+            (tenant_id, event_id, point_id, zone_id, direction, credential_id, person_id,
+             decision_id, occurred_at, recorded_by, correlation_id, source, local_sequence,
+             idempotency_key)
+        VALUES ('11111111-1111-4111-8111-111111111111', '88888888-0906-4000-8000-0000000000ff',
+                '88888888-2000-4000-8000-000000000001', '88888888-1000-4000-8000-000000000001',
+                'entry', '88888888-4000-4000-8000-000000000001',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                '88888888-5000-4000-8000-000000000001', now(),
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333', 'online', 5,
+                'mirror-sequence-matches-source');
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_events_sequence_matches_source admitted an online event '
+            'with a local sequence';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_events_sequence_matches_source' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_events_sequence_matches_source~mirror (answered by ' || offender || ')');
+            END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_events_sequence_matches_source~mirror (a trigger)');
+    END;
+
+    -- ------------------------------------------------- the unique rules
+    -- **Every one of these had no case at all**, which a reviewer found by dropping all
+    -- twenty-five indexes and watching the suite catch none -- including
+    -- `acc_replay_tokens_pkey`, which the migration calls "the deduplication *is* the
+    -- constraint" and which is paragraph 4183's whole anti-replay mechanism. MOD-010's
+    -- review found the same shape for a delivery key, and this file records it.
+    --
+    -- A unique rule's case is a duplicate, and isolating it means freshening the columns of
+    -- every *other* unique rule on the same table: re-inserting a row verbatim violates all
+    -- of them at once and proves whichever the planner reached first.
+
+    -- >>> GENERATED UNIQUE CASES BEGIN -- do not edit between the markers
+    -- acc_credentials_pkey on (tenant_id, credential_id)
+    BEGIN
+        INSERT INTO plt01.acc_credentials (tenant_id, credential_id, person_id, kind, credential_digest, state, revocation_epoch, issued_at, issued_by, correlation_id, expires_at, revoked_at, revoked_by, revoke_reason, revoke_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-4000-4000-8000-000000000001'::uuid, 'bbbbbbbb-1000-4000-8000-000000000001'::uuid, 'nfc_card'::text, lpad('55', 64, 'e'), 'active'::text, '0'::integer, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, NULL, NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_credentials_pkey admitted a duplicate';
+    EXCEPTION
+        WHEN unique_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_credentials_pkey' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_credentials_pkey (answered by ' || offender || ')');
+            END IF;
+        WHEN check_violation OR raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_credentials_pkey (answered by another rule)');
+    END;
+    -- acc_credentials_tenant_id_credential_digest_key on (tenant_id, credential_digest)
+    BEGIN
+        INSERT INTO plt01.acc_credentials (tenant_id, credential_id, person_id, kind, credential_digest, state, revocation_epoch, issued_at, issued_by, correlation_id, expires_at, revoked_at, revoked_by, revoke_reason, revoke_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0086-4000-8000-0000000000ff'::uuid, 'bbbbbbbb-1000-4000-8000-000000000001'::uuid, 'nfc_card'::text, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'::text, 'active'::text, '0'::integer, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, NULL, NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_credentials_tenant_id_credential_digest_key admitted a duplicate';
+    EXCEPTION
+        WHEN unique_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_credentials_tenant_id_credential_digest_key' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_credentials_tenant_id_credential_digest_key (answered by ' || offender || ')');
+            END IF;
+        WHEN check_violation OR raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_credentials_tenant_id_credential_digest_key (answered by another rule)');
+    END;
+    -- acc_decisions_pkey on (tenant_id, decision_id)
+    BEGIN
+        INSERT INTO plt01.acc_decisions (tenant_id, decision_id, point_id, zone_id, credential_id, person_id, granted, code, public_reason, private_reason, masked, policy_id, policy_version, snapshot_id, reported_direction, device_mode, passback_scope, occupancy_seen, override_reason, overridden_by, decided_at, decided_by, correlation_id, idempotency_key)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-5000-4000-8000-000000000001'::uuid, '88888888-2000-4000-8000-000000000001'::uuid, '88888888-1000-4000-8000-000000000001'::uuid, '88888888-4000-4000-8000-000000000001'::uuid, 'bbbbbbbb-1000-4000-8000-000000000001'::uuid, 't'::boolean, 'granted'::text, 'welcome'::text, 'every check passed'::text, 'f'::boolean, '88888888-3000-4000-8000-000000000001'::uuid, '1'::integer, NULL, 'entry'::text, 'online'::text, 'global'::text, NULL, NULL, NULL, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, 'generated-case-87');
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_decisions_pkey admitted a duplicate';
+    EXCEPTION
+        WHEN unique_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_decisions_pkey' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_decisions_pkey (answered by ' || offender || ')');
+            END IF;
+        WHEN check_violation OR raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_decisions_pkey (answered by another rule)');
+    END;
+    -- acc_decisions_tenant_id_idempotency_key_key on (tenant_id, idempotency_key)
+    BEGIN
+        INSERT INTO plt01.acc_decisions (tenant_id, decision_id, point_id, zone_id, credential_id, person_id, granted, code, public_reason, private_reason, masked, policy_id, policy_version, snapshot_id, reported_direction, device_mode, passback_scope, occupancy_seen, override_reason, overridden_by, decided_at, decided_by, correlation_id, idempotency_key)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0088-4000-8000-0000000000ff'::uuid, '88888888-2000-4000-8000-000000000001'::uuid, '88888888-1000-4000-8000-000000000001'::uuid, '88888888-4000-4000-8000-000000000001'::uuid, 'bbbbbbbb-1000-4000-8000-000000000001'::uuid, 't'::boolean, 'granted'::text, 'welcome'::text, 'every check passed'::text, 'f'::boolean, '88888888-3000-4000-8000-000000000001'::uuid, '1'::integer, NULL, 'entry'::text, 'online'::text, 'global'::text, NULL, NULL, NULL, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, 'seed-decision-1'::text);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_decisions_tenant_id_idempotency_key_key admitted a duplicate';
+    EXCEPTION
+        WHEN unique_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_decisions_tenant_id_idempotency_key_key' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_decisions_tenant_id_idempotency_key_key (answered by ' || offender || ')');
+            END IF;
+        WHEN check_violation OR raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_decisions_tenant_id_idempotency_key_key (answered by another rule)');
+    END;
+    -- acc_emergency_unlocks_pkey on (tenant_id, unlock_id)
+    BEGIN
+        INSERT INTO plt01.acc_emergency_unlocks (tenant_id, unlock_id, zone_id, reason, points_released, ordered_at, ordered_by, correlation_id, idempotency_key, reviewed_at, reviewed_by, review_note, review_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-7000-4000-8000-000000000001'::uuid, '88888888-1000-4000-8000-000000000001'::uuid, 'fire alarm, north stair'::text, '2'::integer, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, 'generated-case-89', NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_emergency_unlocks_pkey admitted a duplicate';
+    EXCEPTION
+        WHEN unique_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_emergency_unlocks_pkey' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_emergency_unlocks_pkey (answered by ' || offender || ')');
+            END IF;
+        WHEN check_violation OR raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_emergency_unlocks_pkey (answered by another rule)');
+    END;
+    -- acc_emergency_unlocks_tenant_id_idempotency_key_key on (tenant_id, idempotency_key)
+    BEGIN
+        INSERT INTO plt01.acc_emergency_unlocks (tenant_id, unlock_id, zone_id, reason, points_released, ordered_at, ordered_by, correlation_id, idempotency_key, reviewed_at, reviewed_by, review_note, review_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0090-4000-8000-0000000000ff'::uuid, '88888888-1000-4000-8000-000000000001'::uuid, 'fire alarm, north stair'::text, '2'::integer, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, 'seed-unlock-1'::text, NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_emergency_unlocks_tenant_id_idempotency_key_key admitted a duplicate';
+    EXCEPTION
+        WHEN unique_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_emergency_unlocks_tenant_id_idempotency_key_key' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_emergency_unlocks_tenant_id_idempotency_key_key (answered by ' || offender || ')');
+            END IF;
+        WHEN check_violation OR raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_emergency_unlocks_tenant_id_idempotency_key_key (answered by another rule)');
+    END;
+    -- acc_events_pkey on (tenant_id, event_id)
+    BEGIN
+        INSERT INTO plt01.acc_events (tenant_id, event_id, point_id, zone_id, direction, credential_id, person_id, decision_id, occurred_at, recorded_at, recorded_by, correlation_id, source, local_sequence, idempotency_key, reconciled_outcome, reconciled_at, reconciled_by, reconcile_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-6000-4000-8000-000000000001'::uuid, '88888888-2000-4000-8000-000000000001'::uuid, '88888888-1000-4000-8000-000000000001'::uuid, 'entry'::text, '88888888-4000-4000-8000-000000000001'::uuid, 'bbbbbbbb-1000-4000-8000-000000000001'::uuid, '88888888-5000-4000-8000-000000000001'::uuid, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, 'online'::text, NULL, 'generated-case-91', NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_events_pkey admitted a duplicate';
+    EXCEPTION
+        WHEN unique_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_events_pkey' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_events_pkey (answered by ' || offender || ')');
+            END IF;
+        WHEN check_violation OR raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_events_pkey (answered by another rule)');
+    END;
+    -- acc_events_tenant_id_idempotency_key_key on (tenant_id, idempotency_key)
+    BEGIN
+        INSERT INTO plt01.acc_events (tenant_id, event_id, point_id, zone_id, direction, credential_id, person_id, decision_id, occurred_at, recorded_at, recorded_by, correlation_id, source, local_sequence, idempotency_key, reconciled_outcome, reconciled_at, reconciled_by, reconcile_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0092-4000-8000-0000000000ff'::uuid, '88888888-2000-4000-8000-000000000001'::uuid, '88888888-1000-4000-8000-000000000001'::uuid, 'entry'::text, '88888888-4000-4000-8000-000000000001'::uuid, 'bbbbbbbb-1000-4000-8000-000000000001'::uuid, '88888888-5000-4000-8000-000000000001'::uuid, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, 'online'::text, NULL, 'seed-event-1'::text, NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_events_tenant_id_idempotency_key_key admitted a duplicate';
+    EXCEPTION
+        WHEN unique_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_events_tenant_id_idempotency_key_key' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_events_tenant_id_idempotency_key_key (answered by ' || offender || ')');
+            END IF;
+        WHEN check_violation OR raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_events_tenant_id_idempotency_key_key (answered by another rule)');
+    END;
+    -- acc_points_pkey on (tenant_id, point_id)
+    BEGIN
+        INSERT INTO plt01.acc_points (tenant_id, point_id, zone_id, device_id, direction, display_name, status, created_at, created_by, correlation_id, retired_at, retired_by, retire_reason, retire_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-2000-4000-8000-000000000001'::uuid, '88888888-1000-4000-8000-000000000001'::uuid, '77777777-2000-4000-8000-000000000005'::uuid, 'entry'::text, 'North turnstile'::text, 'active'::text, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_points_pkey admitted a duplicate';
+    EXCEPTION
+        WHEN unique_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_points_pkey' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_points_pkey (answered by ' || offender || ')');
+            END IF;
+        WHEN check_violation OR raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_points_pkey (answered by another rule)');
+    END;
+    -- acc_points_tenant_id_device_id_key on (tenant_id, device_id)
+    BEGIN
+        INSERT INTO plt01.acc_points (tenant_id, point_id, zone_id, device_id, direction, display_name, status, created_at, created_by, correlation_id, retired_at, retired_by, retire_reason, retire_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0094-4000-8000-0000000000ff'::uuid, '88888888-1000-4000-8000-000000000001'::uuid, '77777777-2000-4000-8000-000000000001'::uuid, 'entry'::text, 'North turnstile'::text, 'active'::text, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_points_tenant_id_device_id_key admitted a duplicate';
+    EXCEPTION
+        WHEN unique_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_points_tenant_id_device_id_key' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_points_tenant_id_device_id_key (answered by ' || offender || ')');
+            END IF;
+        WHEN check_violation OR raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_points_tenant_id_device_id_key (answered by another rule)');
+    END;
+    -- acc_policies_one_live_per_zone on (tenant_id, zone_id)
+    BEGIN
+        INSERT INTO plt01.acc_policies (tenant_id, policy_id, zone_id, version, status, opens_minute, closes_minute, requires_entitlement, max_balance_minor, min_age_years, anti_passback_seconds, capacity, created_at, created_by, correlation_id, published_at, published_by, publish_correlation_id, retired_at, retired_by, retire_reason, retire_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0095-4000-8000-0000000000ff'::uuid, '88888888-1000-4000-8000-000000000001'::uuid, 195, 'published', NULL, NULL, 't'::boolean, NULL, NULL, '0'::integer, NULL, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, now(), '44444444-4444-4444-8444-444444444444'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_policies_one_live_per_zone admitted a duplicate';
+    EXCEPTION
+        WHEN unique_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_policies_one_live_per_zone' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_policies_one_live_per_zone (answered by ' || offender || ')');
+            END IF;
+        WHEN check_violation OR raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_policies_one_live_per_zone (answered by another rule)');
+    END;
+    -- acc_policies_pkey on (tenant_id, policy_id)
+    BEGIN
+        INSERT INTO plt01.acc_policies (tenant_id, policy_id, zone_id, version, status, opens_minute, closes_minute, requires_entitlement, max_balance_minor, min_age_years, anti_passback_seconds, capacity, created_at, created_by, correlation_id, published_at, published_by, publish_correlation_id, retired_at, retired_by, retire_reason, retire_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-3000-4000-8000-000000000002'::uuid, '88888888-1000-4000-8000-000000000002'::uuid, 196, 'draft'::text, NULL, NULL, 't'::boolean, NULL, NULL, '0'::integer, NULL, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_policies_pkey admitted a duplicate';
+    EXCEPTION
+        WHEN unique_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_policies_pkey' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_policies_pkey (answered by ' || offender || ')');
+            END IF;
+        WHEN check_violation OR raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_policies_pkey (answered by another rule)');
+    END;
+    -- acc_policies_tenant_id_zone_id_version_key on (tenant_id, zone_id, version)
+    BEGIN
+        INSERT INTO plt01.acc_policies (tenant_id, policy_id, zone_id, version, status, opens_minute, closes_minute, requires_entitlement, max_balance_minor, min_age_years, anti_passback_seconds, capacity, created_at, created_by, correlation_id, published_at, published_by, publish_correlation_id, retired_at, retired_by, retire_reason, retire_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0097-4000-8000-0000000000ff'::uuid, '88888888-1000-4000-8000-000000000002'::uuid, '1'::integer, 'draft'::text, NULL, NULL, 't'::boolean, NULL, NULL, '0'::integer, NULL, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_policies_tenant_id_zone_id_version_key admitted a duplicate';
+    EXCEPTION
+        WHEN unique_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_policies_tenant_id_zone_id_version_key' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_policies_tenant_id_zone_id_version_key (answered by ' || offender || ')');
+            END IF;
+        WHEN check_violation OR raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_policies_tenant_id_zone_id_version_key (answered by another rule)');
+    END;
+    -- acc_replay_tokens_pkey on (tenant_id, token_key)
+    BEGIN
+        INSERT INTO plt01.acc_replay_tokens (tenant_id, token_key, credential_id, point_id, seen_at, expires_at, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc'::text, '88888888-4000-4000-8000-000000000002'::uuid, '88888888-2000-4000-8000-000000000001'::uuid, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '2026-11-19 01:26:28.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_replay_tokens_pkey admitted a duplicate';
+    EXCEPTION
+        WHEN unique_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_replay_tokens_pkey' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_replay_tokens_pkey (answered by ' || offender || ')');
+            END IF;
+        WHEN check_violation OR raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_replay_tokens_pkey (answered by another rule)');
+    END;
+    -- acc_zones_pkey on (tenant_id, zone_id)
+    BEGIN
+        INSERT INTO plt01.acc_zones (tenant_id, zone_id, location_id, zone_key, display_name, risk_class, status, created_at, created_by, correlation_id, retired_at, retired_by, retire_reason, retire_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-1000-4000-8000-000000000001'::uuid, 'eeeeeeee-1000-4000-8000-000000000001'::uuid, 'generated-case-99', 'Main floor'::text, 'standard'::text, 'active'::text, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_zones_pkey admitted a duplicate';
+    EXCEPTION
+        WHEN unique_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_zones_pkey' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_zones_pkey (answered by ' || offender || ')');
+            END IF;
+        WHEN check_violation OR raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_zones_pkey (answered by another rule)');
+    END;
+    -- acc_zones_tenant_id_zone_key_key on (tenant_id, zone_key)
+    BEGIN
+        INSERT INTO plt01.acc_zones (tenant_id, zone_id, location_id, zone_key, display_name, risk_class, status, created_at, created_by, correlation_id, retired_at, retired_by, retire_reason, retire_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111'::uuid, '88888888-0100-4000-8000-0000000000ff'::uuid, 'eeeeeeee-1000-4000-8000-000000000001'::uuid, 'main-floor'::text, 'Main floor'::text, 'standard'::text, 'active'::text, '2026-11-19 01:24:58.677534+00'::timestamp with time zone, '33333333-3333-4333-8333-333333333333'::uuid, '33333333-3333-4333-8333-333333333333'::uuid, NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: acc_zones_tenant_id_zone_key_key admitted a duplicate';
+    EXCEPTION
+        WHEN unique_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'acc_zones_tenant_id_zone_key_key' THEN
+                probe := probe + 1;
+            ELSE
+                confused := array_append(
+                    confused, 'acc_zones_tenant_id_zone_key_key (answered by ' || offender || ')');
+            END IF;
+        WHEN check_violation OR raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 110 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'acc_zones_tenant_id_zone_key_key (answered by another rule)');
+    END;
+    -- <<< GENERATED UNIQUE CASES END
+
+    IF array_length(confused, 1) IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 110 FAILED: these cases were answered by a trigger rather than by the '
+            'rule they name, so they prove the wrong control: %',
+            array_to_string(confused, ', ');
+    END IF;
+    IF probe <> 115 THEN
+        RAISE EXCEPTION 'CHECK 110 FAILED: ran % of 115 MOD-022 rule cases', probe;
+    END IF;
+END $$;
+ROLLBACK;
+
+-- ------------------------------------------- 111. every MOD-022 trigger branch is probed
+-- **A plpgsql branch is invisible to a generated constraint sweep.** `DROP CONSTRAINT`
+-- reaches nothing in a trigger function, so the mutation is `CREATE OR REPLACE FUNCTION`
+-- with one `RAISE` neutralised -- and MOD-018's review used exactly that to delete a
+-- balance rule with the suite reporting 84/84. This module has ten trigger functions and
+-- forty-four branches; before this block it had probes for a handful of them, and the
+-- reviewer's own sweep replaced five of the ten functions with `BEGIN RETURN NEW; END`
+-- while the suite stayed green.
+--
+-- Three rules from `.claude/rules/backend/mod004-rls.md` shape every probe here:
+--
+--   * **assert the message, not the exception class.** A `NOT EXISTS` branch is satisfied
+--     by a parent that does not exist, so it answers for the branch above it; MOD-021 had
+--     three droppable in silence for that reason. Every probe below names the sentence it
+--     expects, and a different one is a confusion rather than a catch.
+--   * **the row has to be one every other control admits.** A BEFORE trigger runs before
+--     the CHECKs, so a probe whose row also violates a CHECK still passes with its branch
+--     deleted -- the CHECK fires instead. Each decision and event below is the committed
+--     seed's own row with exactly one field moved.
+--   * **satisfy every earlier branch of the same function.** The hardest version of the
+--     same trap: MOD-020's appeal trigger answered its own later branch's probe. So the
+--     fixture carries a second door, a draft policy in the live zone, a revoked
+--     credential, a reconciled event and a reviewed unlock -- and the second door is
+--     probed live and then retired, because two branches need it in both states.
+--
+-- A probe is a statement and the sentence that must refuse it; the ten `setup` statements
+-- in between must succeed, and a failure in one of those is reported as such rather than
+-- counted.
+BEGIN;
+DO $$
+DECLARE
+    probe int := 0;
+    confused text[] := ARRAY[]::text[];
+    one text[];
+    declared int;
+    cases text[][] := ARRAY[
+        ARRAY['setup', 'UPDATE plt01.acc_zones SET status = ''retired'', retired_at = now(), retired_by = ''33333333-3333-4333-8333-333333333333'', retire_reason = ''the plant room was decommissioned'', retire_correlation_id = ''33333333-3333-4333-8333-333333333333'' WHERE zone_id = ''88888888-1000-4000-8000-000000000002''', ''],
+        ARRAY['acc_zone_is_one_way#1', 'UPDATE plt01.acc_zones SET status = ''active'' WHERE zone_id = ''88888888-1000-4000-8000-000000000002''', 'a zone does not move from retired to active'],
+        ARRAY['acc_zone_is_one_way#2', 'UPDATE plt01.acc_zones SET zone_key = ''moved-floor'' WHERE zone_id = ''88888888-1000-4000-8000-000000000001''', 'a zone keeps its building and its key'],
+        ARRAY['acc_zone_is_one_way#3', 'UPDATE plt01.acc_zones SET risk_class = ''standard'' WHERE zone_id = ''88888888-1000-4000-8000-000000000002''', 'a high-risk zone is not re-classified in place'],
+        ARRAY['acc_zone_is_one_way#4', 'UPDATE plt01.acc_zones SET retired_at = now() + interval ''1 day'' WHERE zone_id = ''88888888-1000-4000-8000-000000000002''', 'who retired this zone, and when, is recorded once'],
+        ARRAY['setup', 'UPDATE plt01.acc_points SET status = ''retired'', retired_at = now(), retired_by = ''33333333-3333-4333-8333-333333333333'', retire_reason = ''the reader was removed'', retire_correlation_id = ''33333333-3333-4333-8333-333333333333'' WHERE point_id = ''88888888-2000-4000-8000-000000000002''', ''],
+        ARRAY['acc_point_is_one_way#1', 'UPDATE plt01.acc_points SET status = ''active'' WHERE point_id = ''88888888-2000-4000-8000-000000000002''', 'an access point does not move from retired to active'],
+        ARRAY['acc_point_is_one_way#2', 'UPDATE plt01.acc_points SET direction = ''exit'' WHERE point_id = ''88888888-2000-4000-8000-000000000001''', 'an access point keeps its zone, its device and the way it faces'],
+        ARRAY['acc_point_is_one_way#3', 'UPDATE plt01.acc_points SET retired_by = ''44444444-4444-4444-8444-444444444444'' WHERE point_id = ''88888888-2000-4000-8000-000000000002''', 'who retired this access point, and when, is recorded once'],
+        ARRAY['acc_point_is_an_actuator#1', 'INSERT INTO plt01.acc_points (tenant_id, point_id, zone_id, device_id, direction, display_name, status, created_by, correlation_id) VALUES (''11111111-1111-4111-8111-111111111111'', ''88888888-2000-4000-8000-0000000000f1'', ''88888888-1000-4000-8000-000000000001'', ''00000000-0000-4000-8000-0000000000ff'', ''entry'', ''Probe point'', ''active'', ''33333333-3333-4333-8333-333333333333'', ''33333333-3333-4333-8333-333333333333'')', 'this access point cites a device that does not exist'],
+        ARRAY['acc_point_is_an_actuator#2', 'INSERT INTO plt01.acc_points (tenant_id, point_id, zone_id, device_id, direction, display_name, status, created_by, correlation_id) VALUES (''11111111-1111-4111-8111-111111111111'', ''88888888-2000-4000-8000-0000000000f2'', ''88888888-1000-4000-8000-000000000001'', ''77777777-2000-4000-8000-000000000003'', ''entry'', ''Probe point'', ''active'', ''33333333-3333-4333-8333-333333333333'', ''33333333-3333-4333-8333-333333333333'')', 'this device moves no barrier'],
+        ARRAY['acc_point_is_an_actuator#3', 'INSERT INTO plt01.acc_points (tenant_id, point_id, zone_id, device_id, direction, display_name, status, created_by, correlation_id) VALUES (''11111111-1111-4111-8111-111111111111'', ''88888888-2000-4000-8000-0000000000f3'', ''88888888-1000-4000-8000-000000000001'', ''77777777-2000-4000-8000-000000000002'', ''entry'', ''Probe point'', ''active'', ''33333333-3333-4333-8333-333333333333'', ''33333333-3333-4333-8333-333333333333'')', 'this device is registered, so it is not in service'],
+        ARRAY['acc_policy_is_one_way#1', 'UPDATE plt01.acc_policies SET status = ''draft'' WHERE policy_id = ''88888888-3000-4000-8000-000000000001''', 'an access policy does not move from published to draft'],
+        ARRAY['acc_policy_is_one_way#2', 'UPDATE plt01.acc_policies SET capacity = 5 WHERE policy_id = ''88888888-3000-4000-8000-000000000001''', 'this policy is published and its terms are what decisions cite'],
+        ARRAY['acc_policy_is_one_way#3', 'UPDATE plt01.acc_policies SET version = 2 WHERE policy_id = ''88888888-3000-4000-8000-000000000002''', 'an access policy keeps its zone and its version number'],
+        ARRAY['acc_policy_is_one_way#4', 'UPDATE plt01.acc_policies SET published_by = ''33333333-3333-4333-8333-333333333333'' WHERE policy_id = ''88888888-3000-4000-8000-000000000001''', 'who published this access policy, and when, is recorded once'],
+        ARRAY['setup', 'UPDATE plt01.acc_credentials SET state = ''revoked'', revoked_at = now(), revoked_by = ''33333333-3333-4333-8333-333333333333'', revoke_reason = ''the card was lost'', revoke_correlation_id = ''33333333-3333-4333-8333-333333333333'', revocation_epoch = 1 WHERE credential_id = ''88888888-4000-4000-8000-000000000002''', ''],
+        ARRAY['acc_credential_is_one_way#1', 'UPDATE plt01.acc_credentials SET state = ''active'' WHERE credential_id = ''88888888-4000-4000-8000-000000000002''', 'a credential does not move from revoked to active'],
+        ARRAY['acc_credential_is_one_way#2', 'UPDATE plt01.acc_credentials SET person_id = ''bbbbbbbb-1000-4000-8000-000000000002'' WHERE credential_id = ''88888888-4000-4000-8000-000000000001''', 'a credential keeps its holder, its kind and what it is'],
+        ARRAY['acc_credential_is_one_way#3', 'UPDATE plt01.acc_credentials SET revocation_epoch = -1 WHERE credential_id = ''88888888-4000-4000-8000-000000000001''', 'a revocation epoch does not go backwards'],
+        ARRAY['acc_credential_is_one_way#4', 'UPDATE plt01.acc_credentials SET expires_at = now() + interval ''1 year'' WHERE credential_id = ''88888888-4000-4000-8000-000000000002''', 'this credential is revoked and does not change again'],
+        ARRAY['setup', 'INSERT INTO plt01.acc_points (tenant_id, point_id, zone_id, device_id, direction, display_name, status, created_by, correlation_id) VALUES (''11111111-1111-4111-8111-111111111111'', ''88888888-2000-4000-8000-00000000000b'', ''88888888-1000-4000-8000-000000000001'', ''77777777-2000-4000-8000-000000000005'', ''entry'', ''West turnstile'', ''active'', ''33333333-3333-4333-8333-333333333333'', ''33333333-3333-4333-8333-333333333333'')', ''],
+        ARRAY['setup', 'INSERT INTO plt01.acc_policies (tenant_id, policy_id, zone_id, version, status, requires_entitlement, anti_passback_seconds, created_by, correlation_id) VALUES (''11111111-1111-4111-8111-111111111111'', ''88888888-3000-4000-8000-00000000000b'', ''88888888-1000-4000-8000-000000000001'', 2, ''draft'', true, 0, ''33333333-3333-4333-8333-333333333333'', ''33333333-3333-4333-8333-333333333333'')', ''],
+        ARRAY['acc_decision_is_coherent#1', 'INSERT INTO plt01.acc_decisions (tenant_id, decision_id, point_id, zone_id, credential_id, person_id, granted, code, public_reason, private_reason, masked, policy_id, policy_version, snapshot_id, reported_direction, device_mode, passback_scope, decided_by, correlation_id, idempotency_key) VALUES (''11111111-1111-4111-8111-111111111111'', ''88888888-5000-4000-8000-0000000000f1'', ''00000000-0000-4000-8000-0000000000ff'', ''88888888-1000-4000-8000-000000000001'', NULL, NULL, false, ''outstanding_balance'', ''please see the front desk'', ''this member owes 4500 in minor units'', true, NULL, NULL, NULL, ''entry'', ''online'', ''global'', ''33333333-3333-4333-8333-333333333333'', ''33333333-3333-4333-8333-333333333333'', ''probe-d1'')', 'this decision cites an access point that does not exist'],
+        ARRAY['acc_decision_is_coherent#2', 'INSERT INTO plt01.acc_decisions (tenant_id, decision_id, point_id, zone_id, credential_id, person_id, granted, code, public_reason, private_reason, masked, policy_id, policy_version, snapshot_id, reported_direction, device_mode, passback_scope, decided_by, correlation_id, idempotency_key) VALUES (''11111111-1111-4111-8111-111111111111'', ''88888888-5000-4000-8000-0000000000f2'', ''88888888-2000-4000-8000-000000000001'', ''88888888-1000-4000-8000-000000000002'', NULL, NULL, false, ''outstanding_balance'', ''please see the front desk'', ''this member owes 4500 in minor units'', true, NULL, NULL, NULL, ''entry'', ''online'', ''global'', ''33333333-3333-4333-8333-333333333333'', ''33333333-3333-4333-8333-333333333333'', ''probe-d2'')', 'this decision names a zone that is not the one its access point stands at'],
+        ARRAY['acc_decision_is_coherent#3', 'INSERT INTO plt01.acc_decisions (tenant_id, decision_id, point_id, zone_id, credential_id, person_id, granted, code, public_reason, private_reason, masked, policy_id, policy_version, snapshot_id, reported_direction, device_mode, passback_scope, decided_by, correlation_id, idempotency_key) VALUES (''11111111-1111-4111-8111-111111111111'', ''88888888-5000-4000-8000-0000000000f3'', ''88888888-2000-4000-8000-000000000002'', ''88888888-1000-4000-8000-000000000001'', NULL, NULL, false, ''outstanding_balance'', ''please see the front desk'', ''this member owes 4500 in minor units'', true, NULL, NULL, NULL, ''entry'', ''online'', ''global'', ''33333333-3333-4333-8333-333333333333'', ''33333333-3333-4333-8333-333333333333'', ''probe-d3'')', 'nothing is decided on the way out'],
+        ARRAY['acc_decision_is_coherent#5', 'INSERT INTO plt01.acc_decisions (tenant_id, decision_id, point_id, zone_id, credential_id, person_id, granted, code, public_reason, private_reason, masked, policy_id, policy_version, snapshot_id, reported_direction, device_mode, passback_scope, decided_by, correlation_id, idempotency_key) VALUES (''11111111-1111-4111-8111-111111111111'', ''88888888-5000-4000-8000-0000000000f5'', ''88888888-2000-4000-8000-000000000001'', ''88888888-1000-4000-8000-000000000001'', NULL, NULL, false, ''outstanding_balance'', ''please see the front desk'', ''this member owes 4500 in minor units'', true, NULL, NULL, ''00000000-0000-4000-8000-0000000000ff'', ''entry'', ''online'', ''global'', ''33333333-3333-4333-8333-333333333333'', ''33333333-3333-4333-8333-333333333333'', ''probe-d5'')', 'this decision cites a policy snapshot that does not exist'],
+        ARRAY['acc_decision_is_coherent#6', 'INSERT INTO plt01.acc_decisions (tenant_id, decision_id, point_id, zone_id, credential_id, person_id, granted, code, public_reason, private_reason, masked, policy_id, policy_version, snapshot_id, reported_direction, device_mode, passback_scope, decided_by, correlation_id, idempotency_key) VALUES (''11111111-1111-4111-8111-111111111111'', ''88888888-5000-4000-8000-0000000000f6'', ''88888888-2000-4000-8000-00000000000b'', ''88888888-1000-4000-8000-000000000001'', NULL, NULL, false, ''outstanding_balance'', ''please see the front desk'', ''this member owes 4500 in minor units'', true, NULL, NULL, ''77777777-8000-4000-8000-000000000001'', ''entry'', ''online'', ''global'', ''33333333-3333-4333-8333-333333333333'', ''33333333-3333-4333-8333-333333333333'', ''probe-d6'')', 'this decision cites a snapshot belonging to another device'],
+        ARRAY['acc_decision_is_coherent#7', 'INSERT INTO plt01.acc_decisions (tenant_id, decision_id, point_id, zone_id, credential_id, person_id, granted, code, public_reason, private_reason, masked, policy_id, policy_version, snapshot_id, reported_direction, device_mode, passback_scope, decided_by, correlation_id, idempotency_key) VALUES (''11111111-1111-4111-8111-111111111111'', ''88888888-5000-4000-8000-0000000000f7'', ''88888888-2000-4000-8000-000000000001'', ''88888888-1000-4000-8000-000000000001'', ''00000000-0000-4000-8000-0000000000ff'', NULL, false, ''outstanding_balance'', ''please see the front desk'', ''this member owes 4500 in minor units'', true, NULL, NULL, NULL, ''entry'', ''online'', ''global'', ''33333333-3333-4333-8333-333333333333'', ''33333333-3333-4333-8333-333333333333'', ''probe-d7'')', 'this decision cites a credential that does not exist'],
+        ARRAY['acc_decision_is_coherent#8', 'INSERT INTO plt01.acc_decisions (tenant_id, decision_id, point_id, zone_id, credential_id, person_id, granted, code, public_reason, private_reason, masked, policy_id, policy_version, snapshot_id, reported_direction, device_mode, passback_scope, decided_by, correlation_id, idempotency_key) VALUES (''11111111-1111-4111-8111-111111111111'', ''88888888-5000-4000-8000-0000000000f8'', ''88888888-2000-4000-8000-000000000001'', ''88888888-1000-4000-8000-000000000001'', ''88888888-4000-4000-8000-000000000001'', ''bbbbbbbb-1000-4000-8000-000000000002'', false, ''outstanding_balance'', ''please see the front desk'', ''this member owes 4500 in minor units'', true, NULL, NULL, NULL, ''entry'', ''online'', ''global'', ''33333333-3333-4333-8333-333333333333'', ''33333333-3333-4333-8333-333333333333'', ''probe-d8'')', 'this decision names a person who does not hold the credential it cites'],
+        ARRAY['acc_decision_is_coherent#9', 'INSERT INTO plt01.acc_decisions (tenant_id, decision_id, point_id, zone_id, credential_id, person_id, granted, code, public_reason, private_reason, masked, policy_id, policy_version, snapshot_id, reported_direction, device_mode, passback_scope, decided_by, correlation_id, idempotency_key) VALUES (''11111111-1111-4111-8111-111111111111'', ''88888888-5000-4000-8000-0000000000f9'', ''88888888-2000-4000-8000-000000000001'', ''88888888-1000-4000-8000-000000000001'', NULL, NULL, false, ''outstanding_balance'', ''please see the front desk'', ''this member owes 4500 in minor units'', true, ''00000000-0000-4000-8000-0000000000ff'', 1, NULL, ''entry'', ''online'', ''global'', ''33333333-3333-4333-8333-333333333333'', ''33333333-3333-4333-8333-333333333333'', ''probe-d9'')', 'this decision cites a policy that does not exist'],
+        ARRAY['acc_decision_is_coherent#10', 'INSERT INTO plt01.acc_decisions (tenant_id, decision_id, point_id, zone_id, credential_id, person_id, granted, code, public_reason, private_reason, masked, policy_id, policy_version, snapshot_id, reported_direction, device_mode, passback_scope, decided_by, correlation_id, idempotency_key) VALUES (''11111111-1111-4111-8111-111111111111'', ''88888888-5000-4000-8000-0000000000fa'', ''88888888-2000-4000-8000-000000000001'', ''88888888-1000-4000-8000-000000000001'', NULL, NULL, false, ''outstanding_balance'', ''please see the front desk'', ''this member owes 4500 in minor units'', true, ''88888888-3000-4000-8000-000000000002'', 1, NULL, ''entry'', ''online'', ''global'', ''33333333-3333-4333-8333-333333333333'', ''33333333-3333-4333-8333-333333333333'', ''probe-d10'')', 'this decision cites a policy belonging to another zone'],
+        ARRAY['acc_decision_is_coherent#11', 'INSERT INTO plt01.acc_decisions (tenant_id, decision_id, point_id, zone_id, credential_id, person_id, granted, code, public_reason, private_reason, masked, policy_id, policy_version, snapshot_id, reported_direction, device_mode, passback_scope, decided_by, correlation_id, idempotency_key) VALUES (''11111111-1111-4111-8111-111111111111'', ''88888888-5000-4000-8000-0000000000fb'', ''88888888-2000-4000-8000-000000000001'', ''88888888-1000-4000-8000-000000000001'', NULL, NULL, false, ''outstanding_balance'', ''please see the front desk'', ''this member owes 4500 in minor units'', true, ''88888888-3000-4000-8000-00000000000b'', 2, NULL, ''entry'', ''online'', ''global'', ''33333333-3333-4333-8333-333333333333'', ''33333333-3333-4333-8333-333333333333'', ''probe-d11'')', 'this decision cites a policy nobody published'],
+        ARRAY['acc_decision_is_coherent#12', 'INSERT INTO plt01.acc_decisions (tenant_id, decision_id, point_id, zone_id, credential_id, person_id, granted, code, public_reason, private_reason, masked, policy_id, policy_version, snapshot_id, reported_direction, device_mode, passback_scope, decided_by, correlation_id, idempotency_key) VALUES (''11111111-1111-4111-8111-111111111111'', ''88888888-5000-4000-8000-0000000000fc'', ''88888888-2000-4000-8000-000000000001'', ''88888888-1000-4000-8000-000000000001'', NULL, ''bbbbbbbb-1000-4000-8000-000000000001'', true, ''granted'', ''welcome'', ''every check passed'', false, NULL, NULL, NULL, ''entry'', ''online'', ''global'', ''33333333-3333-4333-8333-333333333333'', ''33333333-3333-4333-8333-333333333333'', ''probe-d12'')', 'a granted decision cites the policy version it satisfied'],
+        ARRAY['acc_event_is_coherent#1', 'INSERT INTO plt01.acc_events (tenant_id, event_id, point_id, zone_id, direction, credential_id, person_id, decision_id, occurred_at, recorded_by, correlation_id, source, idempotency_key) VALUES (''11111111-1111-4111-8111-111111111111'', ''88888888-6000-4000-8000-0000000000f1'', ''00000000-0000-4000-8000-0000000000ff'', ''88888888-1000-4000-8000-000000000001'', ''entry'', NULL, NULL, NULL, now(), ''33333333-3333-4333-8333-333333333333'', ''33333333-3333-4333-8333-333333333333'', ''online'', ''probe-e1'')', 'this access event cites an access point that does not exist'],
+        ARRAY['acc_event_is_coherent#2', 'INSERT INTO plt01.acc_events (tenant_id, event_id, point_id, zone_id, direction, credential_id, person_id, decision_id, occurred_at, recorded_by, correlation_id, source, idempotency_key) VALUES (''11111111-1111-4111-8111-111111111111'', ''88888888-6000-4000-8000-0000000000f2'', ''88888888-2000-4000-8000-000000000001'', ''88888888-1000-4000-8000-000000000002'', ''entry'', NULL, NULL, NULL, now(), ''33333333-3333-4333-8333-333333333333'', ''33333333-3333-4333-8333-333333333333'', ''online'', ''probe-e2'')', 'this access event names a zone that is not the one its point stands at'],
+        ARRAY['acc_event_is_coherent#3', 'INSERT INTO plt01.acc_events (tenant_id, event_id, point_id, zone_id, direction, credential_id, person_id, decision_id, occurred_at, recorded_by, correlation_id, source, idempotency_key) VALUES (''11111111-1111-4111-8111-111111111111'', ''88888888-6000-4000-8000-0000000000f3'', ''88888888-2000-4000-8000-000000000001'', ''88888888-1000-4000-8000-000000000001'', ''exit'', NULL, NULL, NULL, now(), ''33333333-3333-4333-8333-333333333333'', ''33333333-3333-4333-8333-333333333333'', ''online'', ''probe-e3'')', 'this access point faces entry, so it did not see an exit'],
+        ARRAY['acc_event_is_coherent#4', 'INSERT INTO plt01.acc_events (tenant_id, event_id, point_id, zone_id, direction, credential_id, person_id, decision_id, occurred_at, recorded_by, correlation_id, source, idempotency_key) VALUES (''11111111-1111-4111-8111-111111111111'', ''88888888-6000-4000-8000-0000000000f4'', ''88888888-2000-4000-8000-000000000001'', ''88888888-1000-4000-8000-000000000001'', ''entry'', ''00000000-0000-4000-8000-0000000000ff'', NULL, NULL, now(), ''33333333-3333-4333-8333-333333333333'', ''33333333-3333-4333-8333-333333333333'', ''online'', ''probe-e4'')', 'this access event cites a credential that does not exist'],
+        ARRAY['acc_event_is_coherent#5', 'INSERT INTO plt01.acc_events (tenant_id, event_id, point_id, zone_id, direction, credential_id, person_id, decision_id, occurred_at, recorded_by, correlation_id, source, idempotency_key) VALUES (''11111111-1111-4111-8111-111111111111'', ''88888888-6000-4000-8000-0000000000f5'', ''88888888-2000-4000-8000-000000000001'', ''88888888-1000-4000-8000-000000000001'', ''entry'', ''88888888-4000-4000-8000-000000000001'', ''bbbbbbbb-1000-4000-8000-000000000002'', NULL, now(), ''33333333-3333-4333-8333-333333333333'', ''33333333-3333-4333-8333-333333333333'', ''online'', ''probe-e5'')', 'this access event names a person who does not hold the credential it cites'],
+        ARRAY['acc_event_is_coherent#6', 'INSERT INTO plt01.acc_events (tenant_id, event_id, point_id, zone_id, direction, credential_id, person_id, decision_id, occurred_at, recorded_by, correlation_id, source, idempotency_key) VALUES (''11111111-1111-4111-8111-111111111111'', ''88888888-6000-4000-8000-0000000000f6'', ''88888888-2000-4000-8000-000000000001'', ''88888888-1000-4000-8000-000000000001'', ''entry'', NULL, NULL, ''00000000-0000-4000-8000-0000000000ff'', now(), ''33333333-3333-4333-8333-333333333333'', ''33333333-3333-4333-8333-333333333333'', ''online'', ''probe-e6'')', 'this access event cites a decision that does not exist'],
+        ARRAY['acc_event_is_coherent#7', 'INSERT INTO plt01.acc_events (tenant_id, event_id, point_id, zone_id, direction, credential_id, person_id, decision_id, occurred_at, recorded_by, correlation_id, source, idempotency_key) VALUES (''11111111-1111-4111-8111-111111111111'', ''88888888-6000-4000-8000-0000000000f7'', ''88888888-2000-4000-8000-00000000000b'', ''88888888-1000-4000-8000-000000000001'', ''entry'', NULL, NULL, ''88888888-5000-4000-8000-000000000001'', now(), ''33333333-3333-4333-8333-333333333333'', ''33333333-3333-4333-8333-333333333333'', ''online'', ''probe-e7'')', 'this access event cites a decision made at another access point'],
+        ARRAY['acc_event_is_coherent#8', 'INSERT INTO plt01.acc_events (tenant_id, event_id, point_id, zone_id, direction, credential_id, person_id, decision_id, occurred_at, recorded_by, correlation_id, source, idempotency_key) VALUES (''11111111-1111-4111-8111-111111111111'', ''88888888-6000-4000-8000-0000000000f8'', ''88888888-2000-4000-8000-000000000001'', ''88888888-1000-4000-8000-000000000001'', ''entry'', NULL, ''bbbbbbbb-1000-4000-8000-000000000002'', ''88888888-5000-4000-8000-000000000001'', now(), ''33333333-3333-4333-8333-333333333333'', ''33333333-3333-4333-8333-333333333333'', ''online'', ''probe-e8'')', 'this access event cites a decision about somebody else'],
+        ARRAY['acc_event_is_coherent#9', 'INSERT INTO plt01.acc_events (tenant_id, event_id, point_id, zone_id, direction, credential_id, person_id, decision_id, occurred_at, recorded_by, correlation_id, source, idempotency_key) VALUES (''11111111-1111-4111-8111-111111111111'', ''88888888-6000-4000-8000-0000000000f9'', ''88888888-2000-4000-8000-000000000001'', ''88888888-1000-4000-8000-000000000001'', ''entry'', NULL, ''bbbbbbbb-1000-4000-8000-000000000001'', ''88888888-5000-4000-8000-000000000002'', now(), ''33333333-3333-4333-8333-333333333333'', ''33333333-3333-4333-8333-333333333333'', ''online'', ''probe-e9'')', 'this entry cites a decision that refused it'],
+        ARRAY['setup', 'UPDATE plt01.acc_points SET status = ''retired'', retired_at = now(), retired_by = ''33333333-3333-4333-8333-333333333333'', retire_reason = ''the west turnstile was removed'', retire_correlation_id = ''33333333-3333-4333-8333-333333333333'' WHERE point_id = ''88888888-2000-4000-8000-00000000000b''', ''],
+        ARRAY['acc_decision_is_coherent#4', 'INSERT INTO plt01.acc_decisions (tenant_id, decision_id, point_id, zone_id, credential_id, person_id, granted, code, public_reason, private_reason, masked, policy_id, policy_version, snapshot_id, reported_direction, device_mode, passback_scope, decided_by, correlation_id, idempotency_key) VALUES (''11111111-1111-4111-8111-111111111111'', ''88888888-5000-4000-8000-0000000000f4'', ''88888888-2000-4000-8000-00000000000b'', ''88888888-1000-4000-8000-000000000001'', NULL, NULL, false, ''outstanding_balance'', ''please see the front desk'', ''this member owes 4500 in minor units'', true, NULL, NULL, NULL, ''entry'', ''online'', ''global'', ''33333333-3333-4333-8333-333333333333'', ''33333333-3333-4333-8333-333333333333'', ''probe-d4'')', 'this access point is retired; it decides nothing'],
+        ARRAY['acc_decision_is_final#1', 'UPDATE plt01.acc_decisions SET private_reason = ''on reflection, fine'' WHERE decision_id = ''88888888-5000-4000-8000-000000000002''', 'an access decision is what was decided at the door'],
+        ARRAY['setup', 'UPDATE plt01.acc_events SET reconciled_outcome = ''accepted'', reconciled_at = now(), reconciled_by = ''33333333-3333-4333-8333-333333333333'', reconcile_correlation_id = ''33333333-3333-4333-8333-333333333333'' WHERE event_id = ''88888888-6000-4000-8000-000000000001''', ''],
+        ARRAY['acc_event_is_one_way#1', 'UPDATE plt01.acc_events SET direction = ''exit'' WHERE event_id = ''88888888-6000-4000-8000-000000000001''', 'an access event is what a reader saw'],
+        ARRAY['acc_event_is_one_way#2', 'UPDATE plt01.acc_events SET reconciled_outcome = ''duplicate'' WHERE event_id = ''88888888-6000-4000-8000-000000000001''', 'this event was reconciled on'],
+        ARRAY['setup', 'UPDATE plt01.acc_emergency_unlocks SET reviewed_at = now(), reviewed_by = ''44444444-4444-4444-8444-444444444444'', review_note = ''the alarm was genuine'', review_correlation_id = ''33333333-3333-4333-8333-333333333333'' WHERE unlock_id = ''88888888-7000-4000-8000-000000000001''', ''],
+        ARRAY['acc_emergency_is_one_way#1', 'UPDATE plt01.acc_emergency_unlocks SET reason = ''a drill, not a fire'' WHERE unlock_id = ''88888888-7000-4000-8000-000000000001''', 'what was released, where, why and by whom is what an emergency unlock is'],
+        ARRAY['acc_emergency_is_one_way#2', 'UPDATE plt01.acc_emergency_unlocks SET review_note = ''on reflection, a drill'' WHERE unlock_id = ''88888888-7000-4000-8000-000000000001''', 'this emergency unlock was reviewed on']
+    ];
+BEGIN
+    PERFORM set_config('app.tenant_id', '11111111-1111-4111-8111-111111111111', true);
+    FOREACH one SLICE 1 IN ARRAY cases LOOP
+        IF one[3] = '' THEN
+            -- A fixture statement. It must work, or every probe after it proves nothing.
+            BEGIN
+                EXECUTE one[2];
+            EXCEPTION WHEN others THEN
+                RAISE EXCEPTION
+                    'CHECK 111 FAILED: the fixture for % was refused (%): %',
+                    one[1], sqlstate, sqlerrm;
+            END;
+        ELSE
+            BEGIN
+                EXECUTE one[2];
+                RAISE EXCEPTION
+                    'CHECK 111 FAILED: % admitted the row it exists to refuse', one[1];
+            EXCEPTION
+                WHEN raise_exception THEN
+                    IF sqlerrm LIKE 'CHECK 111 FAILED%' THEN RAISE; END IF;
+                    IF position(one[3] in sqlerrm) = 0 THEN
+                        -- Another branch of the same function answered, which is the trap
+                        -- this block is written against: the probe proves whichever
+                        -- control replies, so it has to say which.
+                        confused := array_append(
+                            confused, one[1] || ' (answered: ' || sqlerrm || ')');
+                    ELSE
+                        probe := probe + 1;
+                    END IF;
+                WHEN others THEN
+                    -- A key or a CHECK refused it instead. Recorded, never counted: that
+                    -- is the false green the whole discipline exists to prevent.
+                    confused := array_append(
+                        confused, one[1] || ' (answered by ' || sqlstate || ': '
+                                  || sqlerrm || ')');
+            END;
+        END IF;
+    END LOOP;
+
+    IF array_length(confused, 1) IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 111 FAILED: these branch probes were answered by something other than '
+            'the branch they name, so they prove the wrong control: %',
+            array_to_string(confused, ' | ');
+    END IF;
+    IF probe <> 44 THEN
+        RAISE EXCEPTION 'CHECK 111 FAILED: ran % of 44 MOD-022 trigger-branch probes',
+            probe;
+    END IF;
+    -- **And the count is compared against the catalogue, not just against itself.** A probe
+    -- count asserted as a literal notices a probe that stops firing and says nothing about a
+    -- branch somebody adds later -- which is the per-table-list failure this file records for
+    -- grants, policies and constraints, one level in. Counting the `RAISE` statements in the
+    -- module's own trigger functions means a new refusal with no probe fails here.
+    SELECT sum((length(prosrc) - length(replace(prosrc, 'RAISE EXCEPTION', '')))
+               / length('RAISE EXCEPTION'))
+      INTO declared
+      FROM pg_proc
+     WHERE pronamespace = 'plt01'::regnamespace AND proname LIKE 'acc\_%';
+    IF declared <> probe THEN
+        RAISE EXCEPTION
+            'CHECK 111 FAILED: MOD-022 trigger functions raise % refusals and this block '
+            'probes %: a branch was added or removed without its probe', declared, probe;
+    END IF;
+END $$;
+ROLLBACK;
+
+\echo 'tenant isolation: 111/111 checks passed'

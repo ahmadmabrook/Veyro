@@ -33,7 +33,7 @@ import hashlib
 import re
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from datetime import time as clock_time
 from time import time
 from typing import Annotated, Any, Literal
@@ -42,7 +42,7 @@ from uuid import uuid4
 from fastapi import Depends, FastAPI, Header, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field
 
 from app import db
 from app.access import service as access
@@ -2546,6 +2546,24 @@ class SweepBody(BaseModel):
 # person through.
 
 
+#: **Every datetime a caller sends is bounded here, not in psycopg.**
+#:
+#: A naive timestamp -- no zone offset, which is what an embedded reader usually emits -- made
+#: `at < presented.issued_at` raise `TypeError`, and a year-1 one made the arithmetic raise
+#: `OverflowError`. Neither is `ValueError`, which is what the service catches, so both reached
+#: the caller as a **500** on the two highest-volume routes in the module: the decision and the
+#: event. The offline-queue path was unusable for that wire format.
+#:
+#: This is the repository's own rule -- "bound it at the boundary, or psycopg does it with a
+#: 500" -- which `AccessPolicyBody` cites for its integers and which nothing applied to the
+#: timestamps beside them. `AwareDatetime` refuses a naive value at the boundary with a 422
+#: naming the field; the year bound keeps the arithmetic inside what `date` can represent.
+ReaderMoment = Annotated[
+    AwareDatetime,
+    Field(ge=datetime(2000, 1, 1, tzinfo=UTC), le=datetime(2100, 1, 1, tzinfo=UTC)),
+]
+
+
 class ZoneBody(BaseModel):
     location_id: str
     zone_key: str = Field(min_length=1, max_length=80)
@@ -2579,7 +2597,11 @@ class AccessPolicyBody(BaseModel):
 
     zone_id: str
     opens_minute: int | None = Field(default=None, ge=0, le=1439)
-    closes_minute: int | None = Field(default=None, ge=0, le=1439)
+    # **1440, not 1439.** The window is half-open -- `opens <= minute < closes` -- so a
+    # 24-hour club needs a close *at* midnight, and capping both ends at 1439 meant the only
+    # way to express "always open" shut the zone for the last minute of every day. A
+    # fence-post error in the one setting a gym that never closes has to use.
+    closes_minute: int | None = Field(default=None, ge=0, le=1440)
     requires_entitlement: bool = True
     max_balance_minor: int | None = Field(default=None, ge=0, le=10**12)
     min_age_years: int | None = Field(default=None, ge=0, le=120)
@@ -2595,29 +2617,49 @@ class IssueCredentialBody(BaseModel):
     person_id: str
     kind: str = Field(min_length=1, max_length=40)
     credential_value: str = Field(min_length=1, max_length=512)
-    expires_at: datetime | None = None
+    expires_at: ReaderMoment | None = None
     correlation_id: str
 
 
 class EvaluateAccessBody(BaseModel):
     """What a reader saw. **Nothing in here decides anything.**
 
-    `signature_verified` is the reader's claim and it is treated as one: the service refuses
-    a kind whose own rules need a signature this build cannot check, rather than believing the
-    flag. `reader_clock_skew_seconds` is bounded because a reader that says its clock is a
-    year out would otherwise make a rotating credential valid for a year.
+    **There is no `signature_verified` and no `kind`.** The first carried the reader's claim
+    that it had checked a WebAuthn-style signature; nothing read it and nothing could, since
+    this build has no key vault -- a field that claims to record an assertion and records none
+    is worse than no field. The second decided which controls ran at all and is now read from
+    the enrolment.
+
+    `reader_clock_at` is the reader's own clock, which the server subtracts from its own to
+    get the skew. It used to be the skew, which is a number a device chooses about itself.
     """
 
     point_id: str
     credential_value: str = Field(min_length=1, max_length=512)
     idempotency_key: str = Field(min_length=1, max_length=200)
-    kind: str | None = Field(default=None, max_length=40)
+    # **Which way the member is walking**, at a lane that reads both. Taking it from the
+    # reader is safe because lying is self-defeating: a presentation claiming `exit` is not a
+    # decision and issues no unlock, so the only thing a false `exit` achieves is a door that
+    # stays shut. Without it, a `both` lane evaluated every presentation as an entry and could
+    # refuse a member on the way out -- paragraph 4177, reached by wiring the ordinary
+    # hardware.
+    reported_direction: Literal["entry", "exit"] = "entry"
+    # **No `kind`.** It was here and it decided which controls ran: `check_clock`,
+    # `check_presentation` and the replay cache are each guarded on the credential being a
+    # rotating one, so a reader sending `{"kind": "nfc_card"}` with a captured QR token
+    # turned off paragraph 4183's whole validation and replayed it for ever. The kind is a
+    # fact about the enrolment and the service reads it from the binding.
     rotation_counter: int | None = Field(default=None, ge=0, le=2**31 - 1)
     nonce: str | None = Field(default=None, max_length=200)
-    token_issued_at: datetime | None = None
-    token_expires_at: datetime | None = None
-    signature_verified: bool = False
-    reader_clock_skew_seconds: int = Field(default=0, ge=-300, le=300)
+    token_issued_at: ReaderMoment | None = None
+    token_expires_at: ReaderMoment | None = None
+    # **The reader's own clock, from which the server computes the skew.** It used to be the
+    # skew itself, which is a number the device chooses about itself -- so paragraph 4162's
+    # refusal was defeated by a device claiming zero, while `offline.mode_for`'s docstring
+    # said "a device that reports its own mode reports the mode it would like to be in" and
+    # derived the posture from exactly that claim. A clock is a fact the server can subtract
+    # from its own; a skew is an assertion.
+    reader_clock_at: ReaderMoment | None = None
     correlation_id: str
 
 
@@ -2642,7 +2684,7 @@ class EntryExitBody(BaseModel):
 
     point_id: str
     direction: str = Field(min_length=1, max_length=20)
-    occurred_at: datetime
+    occurred_at: ReaderMoment
     source: str = Field(min_length=1, max_length=20)
     credential_value: str | None = Field(default=None, max_length=512)
     decision_id: str | None = None
@@ -7688,10 +7730,16 @@ def create_app(
 
         A route answering "which doors would this card open" is a reconnaissance tool: it
         turns one found card into a map of a building. The zones are not in the answer.
+
+        **The revocation reason follows the same permission as a decision's private half.**
+        It is prose somebody at a desk types -- "she left it at the oncology clinic on
+        Tuesday" is the module's own example of what goes there -- and it was returned on the
+        cheapest read in the module.
         """
-        permit(session, "access.zone.read")
+        permit(session, "access.credential.read")
         return access.credential_status(
-            tenant_pool, tenant_id, require_uuid(credential_id, "credential_id"))
+            tenant_pool, tenant_id, require_uuid(credential_id, "credential_id"),
+            may_read_reason="access.decision.read_reason" in held_permissions(session))
 
     @app.post("/access/decisions", status_code=201)
     def evaluate_access(
@@ -7708,10 +7756,10 @@ def create_app(
         return access.evaluate_access(
             tenant_pool, tenant_id, point_id=require_uuid(body.point_id, "point_id"),
             credential_value=body.credential_value, idempotency_key=body.idempotency_key,
-            kind=body.kind, rotation_counter=body.rotation_counter, nonce=body.nonce,
+            reported_direction=body.reported_direction,
+            rotation_counter=body.rotation_counter, nonce=body.nonce,
             token_issued_at=body.token_issued_at, token_expires_at=body.token_expires_at,
-            signature_verified=body.signature_verified,
-            reader_clock_skew_seconds=body.reader_clock_skew_seconds,
+            reader_clock_at=body.reader_clock_at,
             actor_id=session["identity_id"], correlation_id=body.correlation_id)
 
     @app.post("/access/decisions/override", status_code=201)
@@ -7812,6 +7860,22 @@ def create_app(
         return access.review_emergency_unlock(
             tenant_pool, tenant_id, require_uuid(unlock_id, "unlock_id"), note=body.note,
             actor_id=session["identity_id"], correlation_id=body.correlation_id)
+
+    @app.get("/access/zones")
+    def list_access_zones(
+        tenant_id: TenantId, session: Session, include_retired: bool = False,
+        limit: int = 200,
+    ) -> dict[str, Any]:
+        """The door board: every zone, how many readers it has and whether a policy is live.
+
+        A zone with `live_policy_version: null` decides nothing -- it is not a zone with a
+        permissive default, and a board that rendered the gap as blank would read as "no
+        restrictions".
+        """
+        permit(session, "access.zone.read")
+        return access.list_zones(
+            tenant_pool, tenant_id, include_retired=include_retired,
+            limit=max(1, min(limit, 500)))
 
     @app.get("/access/zones/{zone_id}")
     def read_access_zone(

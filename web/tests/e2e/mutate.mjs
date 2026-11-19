@@ -9,7 +9,12 @@
  *
  * Each mutation edits a source file, runs only the test that names that protection, and expects
  * a FAILURE. A mutation whose test still passes is reported as a gap. The file is restored
- * afterwards whatever happens, including on a crash.
+ * afterwards whatever happens, including on a crash **and on a signal** -- the `finally` does
+ * not run when the process is killed, and a sweep stopped halfway left a deleted line in
+ * `access/[zoneId]/page.tsx` for an hour. What made it expensive to find is that the mutation
+ * whose `to` is the empty string is a *deletion*, so searching the tree for the mutated text
+ * cannot detect it: the next run of that one mutation reported "the anchor appears 0 times",
+ * which is the only trace there was.
  *
  *   node tests/e2e/mutate.mjs            # all of them
  *   node tests/e2e/mutate.mjs focus      # only mutations whose id contains "focus"
@@ -28,6 +33,10 @@ const web = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
  * `file` is relative to `web/`. `from` must appear exactly once -- a mutation that matched
  * nothing, or matched twice, is reported rather than run, because "the statement did not apply"
  * recorded as a catch is the false green this whole exercise exists to prevent.
+ *
+ * `runner` is `"playwright"` unless stated. `"vitest"` is for a protection whose test is a
+ * component test rather than a browser one -- the device-label parity, where the whole point
+ * of the test is that it needs no browser and no fixture.
  */
 const MUTATIONS = [
   {
@@ -58,8 +67,8 @@ const MUTATIONS = [
     id: "field-errors",
     why: "an empty submission must name every missing field",
     file: "src/app/login/actions.ts",
-    from: "  if (missing.tenant || missing.identifier || missing.password) {\n    return { error: null, missing, ...echo };\n  }",
-    to: "  if (missing.tenant || missing.identifier || missing.password) {\n    return { error: null, missing: { tenant: false, identifier: false, password: false }, ...echo };\n  }",
+    from: "  if (missing.tenant || missing.identifier || missing.password || missing.recovery) {\n    return { error: null, missing, ...echo };\n  }",
+    to: "  if (missing.tenant || missing.identifier || missing.password || missing.recovery) {\n    return { error: null, missing: { tenant: false, identifier: false, password: false, recovery: false }, ...echo };\n  }",
     grep: "names every missing field",
   },
   {
@@ -119,6 +128,46 @@ const MUTATIONS = [
     grep: "names every missing field",
   },
   {
+    id: "muster-disclaimer",
+    why: "paragraph 4180's disclaimer must be on every occupancy read",
+    file: "src/app/access/[zoneId]/page.tsx",
+    from: "      <Alert tone=\"info\">{occupancy.detail}</Alert>",
+    to: "",
+    grep: "disclaimer next to the number",
+  },
+  {
+    id: "access-gaps-hidden",
+    why: "a zone must say what it cannot do rather than reading as fully capable",
+    file: "src/app/access/[zoneId]/page.tsx",
+    from: "        {zone.access_gaps.length > 0 ? (",
+    to: "        {false ? (",
+    grep: "names what the zone cannot do",
+  },
+  {
+    id: "no-policy-reads-blank",
+    why: "a zone with no live policy must say so, not render an empty cell",
+    file: "src/app/access/page.tsx",
+    from: "                  {zone.live_policy_version === null ? (",
+    to: "                  {false ? (",
+    grep: "says in words when a zone has no live policy",
+  },
+  {
+    id: "withheld-unmarked",
+    why: "a discreet line must be marked as withheld, or it reads as the real reason",
+    file: "src/app/access/[zoneId]/page.tsx",
+    from: "        {decision.public_reason === DISCREET || isRestricted(decision.code) ? (",
+    to: "        {false ? (",
+    grep: "shows the discreet line the member saw",
+  },
+  {
+    id: "bidi-clock-range",
+    why: "a clock range inside Arabic text must carry its own direction",
+    file: "src/app/access/[zoneId]/page.tsx",
+    from: "        <span className=\"data\" dir=\"ltr\">\n          {hhmm(policy.opens_minute)}",
+    to: "        <span className=\"data\">\n          {hhmm(policy.opens_minute)}",
+    grep: "mirrors in Arabic",
+  },
+  {
     id: "signed-in-redirect",
     why: "a signed-in caller must not be served the sign-in form again",
     file: "src/app/login/page.tsx",
@@ -126,10 +175,39 @@ const MUTATIONS = [
     to: "",
     grep: "already-signed-in caller",
   },
+  {
+    id: "device-label-parity",
+    why: "the fixture's device label must equal the app's, or every sign-in is challenged and "
+      + "the suite spends a single-use recovery code per run",
+    file: "tests/e2e/device.mjs",
+    from: 'return `web:${createHash("sha256")',
+    to: 'return `browser:${createHash("sha256")',
+    runner: "vitest",
+    grep: "device label",
+  },
 ];
 
 const only = process.argv[2];
 const chosen = only ? MUTATIONS.filter((m) => m.id.includes(only)) : MUTATIONS;
+
+// Whatever is currently mutated, so a signal can put it back. One entry at a time, because
+// the sweep is serial.
+const inFlight = new Map();
+function restoreEverything() {
+  for (const [path, text] of inFlight) writeFileSync(path, text);
+  inFlight.clear();
+}
+for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
+  process.on(signal, () => {
+    restoreEverything();
+    console.log(`\n${signal}: restored the tree and stopped`);
+    process.exit(130);
+  });
+}
+process.on("uncaughtException", (error) => {
+  restoreEverything();
+  throw error;
+});
 
 let caught = 0;
 const gaps = [];
@@ -145,15 +223,18 @@ for (const mutation of chosen) {
     continue;
   }
 
+  inFlight.set(path, original);
   writeFileSync(path, original.replace(mutation.from, mutation.to));
   try {
-    const run = spawnSync(
-      "npx",
-      ["playwright", "test", "--grep", mutation.grep, "--reporter", "line"],
-      { cwd: web, encoding: "utf8", timeout: 180_000 },
-    );
+    const run = mutation.runner === "vitest"
+      ? spawnSync("npx", ["vitest", "run", "-t", mutation.grep],
+                  { cwd: web, encoding: "utf8", timeout: 180_000 })
+      : spawnSync("npx",
+                  ["playwright", "test", "--grep", mutation.grep, "--reporter", "line"],
+                  { cwd: web, encoding: "utf8", timeout: 180_000 });
     const output = `${run.stdout ?? ""}${run.stderr ?? ""}`;
-    const ranSomething = !/No tests found/.test(output);
+    const ranSomething = !/No tests found|No test files found/.test(output)
+      && !/Tests {2}no tests/.test(output);
     if (!ranSomething) {
       notRun.push(`${mutation.id}: --grep "${mutation.grep}" matched no test`);
       console.log(`SKIP  ${mutation.id} (grep matched no test)`);
@@ -166,6 +247,7 @@ for (const mutation of chosen) {
     }
   } finally {
     writeFileSync(path, original);
+    inFlight.delete(path);
   }
 }
 

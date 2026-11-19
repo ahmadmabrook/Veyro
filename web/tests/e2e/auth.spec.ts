@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
 import { fixture } from "./fixture-env";
+import { signIn } from "./sign-in";
 
 /**
  * Sign-in, against the real backend.
@@ -15,6 +16,23 @@ import { fixture } from "./fixture-env";
 const creds = fixture();
 
 /**
+ * An address no identity has, for the tests whose point is a refusal.
+ *
+ * **A suite that locks its own account fails for a reason that has nothing to do with the
+ * product.** MOD-007 locks an identity after a few failed passwords, and the two tests below
+ * send a wrong one deliberately -- so across a few runs, or one interrupted run, the identity
+ * every other test signs in with was locked, and four tests failed with "those details were
+ * not accepted" on a password that was correct.
+ *
+ * Substituting an unknown address is sound precisely because of the property these tests
+ * assert: MOD-007's review made every refusal identical, costing one scrypt and answering the
+ * same 401, so that a locked account, a wrong password and an address nobody has registered
+ * are indistinguishable. If that ever stopped being true, these tests would start failing --
+ * which is the right outcome.
+ */
+const unknown = `nobody+${Date.now()}@veyro.invalid`;
+
+/**
  * The form's own alert, not any element with `role="alert"`.
  *
  * Next renders `#__next-route-announcer__` with `role="alert"` on every page so route changes
@@ -23,15 +41,6 @@ const creds = fixture();
  */
 function formAlert(page: Page) {
   return page.locator("form").getByRole("alert");
-}
-
-async function signIn(page: Page) {
-  await page.goto("/login");
-  await page.getByLabel("Tenant ID").fill(creds.tenantId);
-  await page.getByLabel("Email or phone").fill(creds.email);
-  await page.getByLabel("Password").fill(creds.password);
-  await page.getByRole("button", { name: "Sign in" }).click();
-  await page.waitForURL("/");
 }
 
 test.describe("sign-in", () => {
@@ -65,7 +74,7 @@ test.describe("sign-in", () => {
   }) => {
     await page.goto("/login");
     await page.getByLabel("Tenant ID").fill(creds.tenantId);
-    await page.getByLabel("Email or phone").fill(creds.email);
+    await page.getByLabel("Email or phone").fill(unknown);
     await page.getByLabel("Password").fill("deliberately-wrong");
     await page.getByRole("button", { name: "Sign in" }).click();
 
@@ -83,13 +92,13 @@ test.describe("sign-in", () => {
   }) => {
     await page.goto("/login");
     await page.getByLabel("Tenant ID").fill(creds.tenantId);
-    await page.getByLabel("Email or phone").fill(creds.email);
+    await page.getByLabel("Email or phone").fill(unknown);
     await page.getByLabel("Password").fill("deliberately-wrong");
     await page.getByRole("button", { name: "Sign in" }).click();
     await expect(formAlert(page)).toBeVisible();
 
     await expect(page.getByLabel("Tenant ID")).toHaveValue(creds.tenantId);
-    await expect(page.getByLabel("Email or phone")).toHaveValue(creds.email);
+    await expect(page.getByLabel("Email or phone")).toHaveValue(unknown);
     await expect(page.getByLabel("Password")).toHaveValue("");
   });
 

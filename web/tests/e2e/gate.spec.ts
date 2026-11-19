@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
 import { fixture } from "./fixture-env";
+import { assuranceLevel, signIn } from "./sign-in";
 
 /**
  * What the interface renders is what the gate answered.
@@ -18,15 +19,6 @@ import { fixture } from "./fixture-env";
 
 const creds = fixture();
 
-async function signIn(page: Page) {
-  await page.goto("/login");
-  await page.getByLabel("Tenant ID").fill(creds.tenantId);
-  await page.getByLabel("Email or phone").fill(creds.email);
-  await page.getByLabel("Password").fill(creds.password);
-  await page.getByRole("button", { name: "Sign in" }).click();
-  await page.waitForURL("/");
-}
-
 /** The gate cell for one action, read out of the permissions table. */
 function verdictFor(page: Page, action: string) {
   return page.getByRole("row").filter({ hasText: action }).getByRole("cell").nth(1);
@@ -42,14 +34,25 @@ test.describe("gate-driven rendering", () => {
     await expect(verdictFor(page, "finance.ledger.read")).toHaveText("Allowed");
   });
 
-  test("a financial action on a password-only session asks for a stronger sign-in", async ({
+  test("a financial action is gated on the session's assurance, not on the role", async ({
     page,
   }) => {
-    // The fixture holds `tenant_admin`, which holds everything -- so this cell is not about the
-    // permission at all. `catalog.action_class` marks an unlock `financial`, which needs AAL 2,
-    // and the session opened with a password alone. "A grant is not a session", MOD-014's rule.
+    // **The assertion is read from the session, not assumed.** The fixture holds
+    // `tenant_admin`, which holds everything -- so this cell is not about the permission at
+    // all. `catalog.action_class` marks an unlock `financial`, which needs assurance level 2;
+    // a password-only sign-in is level 1 and a sign-in that answered MOD-007's device
+    // challenge with a recovery code is level 2. Both happen in a normal run, depending on
+    // whether this browser has been seen before, so a test that hard-coded either answer
+    // would be a coin flip. What must hold is the *relationship*, which is MOD-014's rule
+    // that a grant is not a session.
+    const aal = await assuranceLevel(page);
     await expect(verdictFor(page, "devices.command.unlock")).toHaveText(
-      "Needs a stronger sign-in",
+      aal >= 2 ? "Allowed" : "Needs a stronger sign-in",
+    );
+    // And the control that does not move: `support.session.start` is privileged, which maps
+    // to level 3, which needs a hardware factor MOD-007 cannot verify at any assurance.
+    await expect(verdictFor(page, "support.session.start")).toHaveText(
+      "Not available in this build",
     );
   });
 

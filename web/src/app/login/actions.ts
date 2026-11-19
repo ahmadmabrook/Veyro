@@ -29,6 +29,7 @@
  * that puts them anywhere else.
  */
 
+
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
@@ -37,6 +38,8 @@ import { ApiError, SESSION_COOKIE, TENANT_COOKIE, api, correlationId } from "@/l
 // The state shape lives in `state.ts`: a `"use server"` module may export async functions and
 // nothing else, so a constant declared here reaches the client as `undefined`. The file says
 // what that cost.
+import { browserFingerprint } from "@/lib/device";
+
 import type { SignInState } from "./state";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -49,17 +52,25 @@ export async function signIn(
   const identifier = String(form.get("identifier") ?? "").trim();
   const password = String(form.get("password") ?? "");
 
+  // A challenge in flight: the second act of the same sign-in, so the same action handles it
+  // rather than a second route. The password is not re-sent -- MOD-007 already took it, and
+  // a form that asked for it again would be training people to retype a password after a
+  // security prompt, which is the shape a phishing page copies.
+  const challenge = String(form.get("challenge") ?? "").trim();
+  const recoveryCode = String(form.get("recovery_code") ?? "").trim();
+
   const missing = {
     tenant: tenantId.length === 0,
     identifier: identifier.length === 0,
-    password: password.length === 0,
+    password: challenge ? false : password.length === 0,
+    recovery: challenge ? recoveryCode.length === 0 : false,
   };
   // **The password is never echoed back**, so a refused attempt clears it and only it. The
   // other two are returned because retyping a tenant UUID to fix a typo in a password is the
   // kind of friction that makes people paste credentials into the wrong field.
-  const echo = { tenantId, identifier };
+  const echo = { tenantId, identifier, challenge: challenge || null };
 
-  if (missing.tenant || missing.identifier || missing.password) {
+  if (missing.tenant || missing.identifier || missing.password || missing.recovery) {
     return { error: null, missing, ...echo };
   }
   // The backend shape-checks `X-Veyro-Tenant` and answers 422 for a malformed one. Catching it
@@ -73,25 +84,50 @@ export async function signIn(
   let token: string | undefined;
   let state: SignInState | null = null;
   try {
-    const result = await api<{ token?: string; aal?: number }>("/auth/login", {
-      method: "POST",
-      authenticated: false,
-      tenantId,
-      body: {
-        identifier,
-        password,
-        correlation_id: correlationId(),
-        // A per-attempt label, not a fingerprint this app computes. MOD-007 records the device
-        // and a server action has nothing honest to say about the browser, so it says that.
-        device_fingerprint: `web-${correlationId()}`,
-        device_label: "Veyro web",
-      },
-    });
-    // A challenged login is not a failure and not a session. MOD-007 returns a challenge the
-    // caller has to answer, and `/auth/challenge` exists to answer it -- so the reader is told
-    // what is needed rather than shown a refusal for a sign-in that could still succeed.
+    // One response type for both acts, so narrowing is not needed to read the nonce: a
+    // union of two object shapes makes `result.challenge` `{}` on the branch that does not
+    // declare it, which is a type error standing in for a real question -- which of the two
+    // calls can return a challenge. Both can: `/auth/challenge` re-challenges a wrong code.
+    type LoginAnswer = { token?: string; challenge?: string; aal?: number };
+    const result: LoginAnswer = challenge
+      ? await api<LoginAnswer>("/auth/challenge", {
+          method: "POST",
+          authenticated: false,
+          tenantId,
+          body: {
+            identifier,
+            challenge,
+            recovery_code: recoveryCode,
+            correlation_id: correlationId(),
+          },
+        })
+      : await api<LoginAnswer>("/auth/login", {
+          method: "POST",
+          authenticated: false,
+          tenantId,
+          body: {
+            identifier,
+            password,
+            correlation_id: correlationId(),
+            // **One fingerprint per browser, not per attempt.** A fresh value on every
+            // submission makes every sign-in look like a new device, so MOD-007 challenges
+            // every one -- which trains people to spend a recovery code to get in and burns
+            // the budget that exists for a real lockout. It is derived from the tenant and
+            // the identifier so it is stable without this app storing anything about the
+            // reader, and it is honest about what it is: a label, not a measurement.
+            device_fingerprint: browserFingerprint(tenantId, identifier),
+            device_label: "Veyro web",
+          },
+        });
+    // A challenged login is not a failure and not a session: MOD-007 wants a second factor
+    // before it trusts a device it has not seen. The form asks for one and posts it back.
     if (!result.token) {
-      state = { error: "login.challenge", missing, ...echo };
+      state = {
+        error: "login.challenge",
+        missing,
+        ...echo,
+        challenge: result.challenge ?? challenge ?? null,
+      };
     } else {
       token = result.token;
     }
