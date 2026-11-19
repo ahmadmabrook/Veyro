@@ -683,9 +683,23 @@ Known gaps, deliberate:
   including guardian identifiers, while `member.health.read` beside it is `biometric_sensitive`.
   Defensible -- consent state is what a kiosk checks before letting somebody train -- and worth
   revisiting when a read path applies `Decision.mask`.
-- **Id validation is MOD-009-wide, not repository-wide.** `require_uuid` guards every privacy
-  route; `POST /brands` and its siblings still answer 500 to a malformed id. Same one-line fix,
-  not done here because it is not this module.
+- **Id validation is repository-wide now, and a sweep is what keeps it so.**
+  `tests/test_id_validation.py` reads `main.py` with `ast` and requires every id a route takes
+  -- in its body, its path or its query string -- to reach a validator or be declared in
+  `NOT_A_UUID` with the column that proves it is not a uuid. Both directions, so a stale
+  exemption fails too. Twenty-seven routes
+  and forty fields were unwrapped when it was written, across MOD-004, MOD-005, MOD-007,
+  MOD-008, MOD-015 and MOD-018. **A body is only half the request**: the first version
+  swept `body.*_id` and nothing else, so it reported the request path clean while fifteen
+  routes answered 500 to a malformed id in a path segment or a query string -- and
+  `owned` counts as a validator without being a shape check, because it refuses anything
+  that is not the session's own identity with a 404 and a malformed value can never equal
+  a real uuid. **Its first version reported zero**: it matched field names against validator
+  calls across the whole file, so a field wrapped in one route read as wrapped in all of them
+  -- `organization_id` is wrapped in `/legal-entities`, which made `POST /brands` look safe --
+  and it visited only module-level functions, so every route, nested inside `create_app`, was
+  invisible. A structural check that passes vacuously is the thing it exists to prevent, which
+  is why it was run against a deliberately unwrapped guard before it was believed.
 - **No outbox and no published events**, as in MOD-005, MOD-015 and MOD-008.
 
 **MOD-010 (DAT-01 domain events, event bus and operational timeline) -- implemented, gated and

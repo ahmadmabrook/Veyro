@@ -2930,7 +2930,8 @@ def create_app(
     @app.post("/platform/tenants/{tenant_id}/{action}")
     def transition(tenant_id: str, action: str, body: TransitionBody) -> dict[str, Any]:
         tenant = service.transition_tenant(
-            platform_pool, tenant_id, action, body.actor_id, body.correlation_id,
+            platform_pool, tenant_id, action,
+            require_uuid(body.actor_id, "actor_id"), body.correlation_id,
             body.expected_version,
         )
         return tenant.as_dict()
@@ -2961,7 +2962,9 @@ def create_app(
     @app.post("/brands", status_code=201)
     def add_brand(tenant_id: TenantId, session: Session, body: BrandBody) -> dict[str, Any]:
         permit(session, "tenancy.brand.write")
-        return service.create_brand(tenant_pool, tenant_id, body.organization_id, body.brand_name)
+        return service.create_brand(
+            tenant_pool, tenant_id,
+            require_uuid(body.organization_id, "organization_id"), body.brand_name)
 
     @app.post("/legal-entities", status_code=201)
     def add_legal_entity(
@@ -2996,7 +2999,8 @@ def create_app(
     def add_location(tenant_id: TenantId, session: Session, body: LocationBody) -> dict[str, Any]:
         permit(session, "tenancy.location.write")
         return service.create_location(
-            tenant_pool, tenant_id, body.brand_id, body.location_name, body.timezone
+            tenant_pool, tenant_id, require_uuid(body.brand_id, "brand_id"),
+            body.location_name, body.timezone
         )
 
     @app.get("/locations")
@@ -3034,8 +3038,10 @@ def create_app(
         return config.publish_config_version(
             tenant_pool, tenant_id, config_key=body.config_key, scope_type=body.scope_type,
             value=body.value, published_by=body.published_by,
-            correlation_id=body.correlation_id, brand_id=body.brand_id,
-            location_id=body.location_id, expected_version=body.expected_version,
+            correlation_id=body.correlation_id,
+            brand_id=optional_uuid(body.brand_id, "brand_id"),
+            location_id=optional_uuid(body.location_id, "location_id"),
+            expected_version=body.expected_version,
         )
 
     @app.get("/config/values/{config_key}/history")
@@ -3055,8 +3061,9 @@ def create_app(
         return config.rollback_config(
             tenant_pool, tenant_id, config_key=config_key, scope_type=body.scope_type,
             to_version=body.to_version, published_by=body.published_by,
-            correlation_id=body.correlation_id, brand_id=body.brand_id,
-            location_id=body.location_id,
+            correlation_id=body.correlation_id,
+            brand_id=optional_uuid(body.brand_id, "brand_id"),
+            location_id=optional_uuid(body.location_id, "location_id"),
         )
 
     @app.get("/config/resolved")
@@ -3068,7 +3075,9 @@ def create_app(
     ) -> dict[str, Any]:
         permit(session, "config.definition.read")
         return config.resolve_config(
-            tenant_pool, tenant_id, brand_id=brand_id, location_id=location_id
+            tenant_pool, tenant_id,
+            brand_id=optional_uuid(brand_id, "brand_id"),
+            location_id=optional_uuid(location_id, "location_id"),
         )
 
     @app.post("/config/preview")
@@ -3076,7 +3085,9 @@ def create_app(
         permit(session, "config.definition.read")
         return config.preview_config(
             tenant_pool, tenant_id, config_key=body.config_key, value=body.value,
-            scope_type=body.scope_type, brand_id=body.brand_id, location_id=body.location_id,
+            scope_type=body.scope_type,
+            brand_id=optional_uuid(body.brand_id, "brand_id"),
+            location_id=optional_uuid(body.location_id, "location_id"),
         )
 
     @app.put("/flags/{flag_key}")
@@ -3169,7 +3180,8 @@ def create_app(
         permit(session, "config.flag.read")
         return config.bundle(
             tenant_pool, tenant_id, subject_id=subject_id, context=context,
-            brand_id=brand_id, location_id=location_id,
+            brand_id=optional_uuid(brand_id, "brand_id"),
+            location_id=optional_uuid(location_id, "location_id"),
         )
 
     # --------------------------------------------------- MOD-015 plans and billing
@@ -3205,7 +3217,7 @@ def create_app(
         permit(session, "billing.subscription.write", body.correlation_id)
         return billing.start_subscription(
             tenant_pool, platform_pool, tenant_id, plan_code=body.plan_code,
-            plan_version=body.plan_version, actor_id=body.actor_id,
+            plan_version=body.plan_version, actor_id=require_uuid(body.actor_id, "actor_id"),
             correlation_id=body.correlation_id, start_on=body.start_on,
             partner_code=body.partner_code, revenue_share_bp=body.revenue_share_bp,
         )
@@ -3226,7 +3238,8 @@ def create_app(
     ) -> dict[str, Any]:
         permit(session, "billing.subscription.write", body.correlation_id)
         return billing.transition_subscription(
-            tenant_pool, tenant_id, command=body.command, actor_id=body.actor_id,
+            tenant_pool, tenant_id, command=body.command,
+            actor_id=require_uuid(body.actor_id, "actor_id"),
             correlation_id=body.correlation_id, reason=body.reason,
             expected_version=body.expected_version,
         )
@@ -3240,7 +3253,7 @@ def create_app(
         permit(session, "billing.subscription.write", body.correlation_id)
         return billing.change_plan(
             tenant_pool, platform_pool, tenant_id, plan_code=body.plan_code,
-            plan_version=body.plan_version, actor_id=body.actor_id,
+            plan_version=body.plan_version, actor_id=require_uuid(body.actor_id, "actor_id"),
             correlation_id=body.correlation_id, effective_on=body.effective_on,
             in_use=body.in_use, acknowledge_reductions=body.acknowledge_reductions,
         )
@@ -3298,9 +3311,9 @@ def create_app(
         permit(session, "billing.usage.record", body.correlation_id)
         return billing.record_usage(
             tenant_pool, tenant_id, meter_code=body.meter_code, quantity=body.quantity,
-            idempotency_key=body.idempotency_key, actor_id=body.actor_id,
+            idempotency_key=body.idempotency_key, actor_id=require_uuid(body.actor_id, "actor_id"),
             correlation_id=body.correlation_id, occurred_at=body.occurred_at,
-            corrects_record_id=body.corrects_record_id,
+            corrects_record_id=optional_uuid(body.corrects_record_id, "corrects_record_id"),
         )
 
     @app.get("/usage/{meter_code}")
@@ -3312,7 +3325,7 @@ def create_app(
     def issue_invoice(tenant_id: TenantId, session: Session, body: InvoiceBody) -> dict[str, Any]:
         permit(session, "billing.invoice.issue", body.correlation_id)
         return billing.issue_invoice(
-            tenant_pool, tenant_id, actor_id=body.actor_id,
+            tenant_pool, tenant_id, actor_id=require_uuid(body.actor_id, "actor_id"),
             correlation_id=body.correlation_id, tax_rate_bp=body.tax_rate_bp,
         )
 
@@ -3324,7 +3337,8 @@ def create_app(
     @app.get("/invoices/{invoice_id}")
     def get_one_invoice(tenant_id: TenantId, session: Session, invoice_id: str) -> dict[str, Any]:
         permit(session, "billing.invoice.read")
-        return billing.get_invoice(tenant_pool, tenant_id, invoice_id)
+        return billing.get_invoice(
+            tenant_pool, tenant_id, require_uuid(invoice_id, "invoice_id"))
 
     @app.post("/invoices/{invoice_id}/credit-notes", status_code=201)
     def credit_invoice(
@@ -3332,8 +3346,11 @@ def create_app(
     ) -> dict[str, Any]:
         permit(session, "billing.credit_note.issue", body.correlation_id)
         return billing.issue_credit_note(
-            tenant_pool, tenant_id, invoice_id=invoice_id, amount_minor=body.amount_minor,
-            reason=body.reason, actor_id=body.actor_id, correlation_id=body.correlation_id,
+            tenant_pool, tenant_id,
+            invoice_id=require_uuid(invoice_id, "invoice_id"),
+            amount_minor=body.amount_minor,
+            reason=body.reason, actor_id=require_uuid(body.actor_id, "actor_id"),
+            correlation_id=body.correlation_id,
         )
 
     # --------------------------------------------------- MOD-007 identity and sessions
@@ -3351,7 +3368,7 @@ def create_app(
         return identity.register_identity(
             identity_pool, tenant_id, display_name=body.display_name,
             correlation_id=body.correlation_id, email=body.email, phone=body.phone,
-            password=body.password, person_id=body.person_id,
+            password=body.password, person_id=optional_uuid(body.person_id, "person_id"),
         )
 
     @app.post("/identities/{identity_id}/password")
@@ -3463,7 +3480,8 @@ def create_app(
         tenant_id: TenantId, session: Session, session_id: str, body: RevokeBody
     ) -> dict[str, Any]:
         return identity.revoke_session(
-            identity_pool, tenant_id, session_id=session_id,
+            identity_pool, tenant_id,
+            session_id=require_uuid(session_id, "session_id"),
             identity_id=session["identity_id"], correlation_id=body.correlation_id,
             reason=body.reason,
         )
@@ -3481,7 +3499,8 @@ def create_app(
         tenant_id: TenantId, session: Session, device_id: str, body: RevokeBody
     ) -> dict[str, Any]:
         return identity.revoke_device(
-            identity_pool, tenant_id, device_id=device_id,
+            identity_pool, tenant_id,
+            device_id=require_uuid(device_id, "device_id"),
             identity_id=session["identity_id"], correlation_id=body.correlation_id,
             reason=body.reason,
         )
@@ -3491,7 +3510,8 @@ def create_app(
         tenant_id: TenantId, session: Session, device_id: str, body: CorrelationBody
     ) -> dict[str, Any]:
         return identity.trust_device(
-            identity_pool, tenant_id, device_id=device_id,
+            identity_pool, tenant_id,
+            device_id=require_uuid(device_id, "device_id"),
             identity_id=session["identity_id"], correlation_id=body.correlation_id,
         )
 
@@ -3520,7 +3540,8 @@ def create_app(
         tenant_id: TenantId, session: Session, passkey_id: str, body: AssertionBody
     ) -> dict[str, Any]:
         return identity.record_passkey_assertion(
-            identity_pool, tenant_id, passkey_id=passkey_id,
+            identity_pool, tenant_id,
+            passkey_id=require_uuid(passkey_id, "passkey_id"),
             identity_id=session["identity_id"], sign_count=body.sign_count,
             correlation_id=body.correlation_id,
         )
@@ -3593,10 +3614,14 @@ def create_app(
     ) -> dict[str, Any]:
         permit(session, "authz.assignment.write", body.correlation_id)
         return authz.assign_role(
-            identity_pool, tenant_id, identity_id=body.identity_id, role_key=body.role_key,
+            identity_pool, tenant_id,
+            identity_id=require_uuid(body.identity_id, "identity_id"),
+            role_key=body.role_key,
             granted_by=session["identity_id"], correlation_id=body.correlation_id,
-            scope_type=body.scope_type, brand_id=body.brand_id,
-            location_id=body.location_id, expires_at=body.expires_at,
+            scope_type=body.scope_type,
+            brand_id=optional_uuid(body.brand_id, "brand_id"),
+            location_id=optional_uuid(body.location_id, "location_id"),
+            expires_at=body.expires_at,
         )
 
     @app.get("/authz/assignments/{identity_id}")
@@ -3604,7 +3629,9 @@ def create_app(
         tenant_id: TenantId, session: Session, identity_id: str, correlation_id: str
     ) -> list[dict[str, Any]]:
         permit(session, "authz.role.read", correlation_id)
-        return authz.list_assignments(identity_pool, tenant_id, identity_id=identity_id)
+        return authz.list_assignments(
+            identity_pool, tenant_id,
+            identity_id=require_uuid(identity_id, "identity_id"))
 
     @app.post("/authz/assignments/{assignment_id}/revoke")
     def revoke_assignment(
@@ -3612,7 +3639,8 @@ def create_app(
     ) -> dict[str, Any]:
         permit(session, "authz.assignment.write", body.correlation_id)
         return authz.revoke_assignment(
-            identity_pool, tenant_id, assignment_id=assignment_id,
+            identity_pool, tenant_id,
+            assignment_id=require_uuid(assignment_id, "assignment_id"),
             correlation_id=body.correlation_id, actor_identity_id=session["identity_id"],
         )
 
@@ -3647,9 +3675,12 @@ def create_app(
         """
         permit(session, "authz.role.read", correlation_id)
         return authz.effective_permissions(
-            identity_pool, tenant_id, identity_id=identity_id,
-            scope=authz.resolve_scope(tenant_pool, tenant_id, brand_id=brand_id,
-                                      location_id=location_id),
+            identity_pool, tenant_id,
+            identity_id=require_uuid(identity_id, "identity_id"),
+            scope=authz.resolve_scope(
+                tenant_pool, tenant_id,
+                brand_id=optional_uuid(brand_id, "brand_id"),
+                location_id=optional_uuid(location_id, "location_id")),
         )
 
     @app.get("/authz/check")
@@ -3661,8 +3692,10 @@ def create_app(
         decided = authz.check(
             identity_pool, tenant_id, identity_id=session["identity_id"],
             session_aal=session["aal"], action=action, correlation_id=correlation_id,
-            scope=authz.resolve_scope(tenant_pool, tenant_id, brand_id=brand_id,
-                                      location_id=location_id),
+            scope=authz.resolve_scope(
+                tenant_pool, tenant_id,
+                brand_id=optional_uuid(brand_id, "brand_id"),
+                location_id=optional_uuid(location_id, "location_id")),
             record_denial=False,
         )
         return {"action": action, "allowed": decided.allowed, "reason": decided.reason,
@@ -3710,7 +3743,8 @@ def create_app(
     ) -> dict[str, Any]:
         permit(session, "authz.approval.decide", body.correlation_id)
         return authz.decide_approval(
-            identity_pool, tenant_id, request_id=request_id,
+            identity_pool, tenant_id,
+            request_id=require_uuid(request_id, "request_id"),
             decided_by=session["identity_id"], decision=body.decision,
             correlation_id=body.correlation_id, reason=body.reason,
         )
@@ -3745,7 +3779,8 @@ def create_app(
     ) -> dict[str, Any]:
         permit(session, "authz.access_review.conduct", body.correlation_id)
         return authz.decide_review_item(
-            identity_pool, tenant_id, item_id=item_id, decision=body.decision,
+            identity_pool, tenant_id,
+            item_id=require_uuid(item_id, "item_id"), decision=body.decision,
             decided_by=session["identity_id"], correlation_id=body.correlation_id,
             note=body.note,
         )
@@ -3756,7 +3791,8 @@ def create_app(
     ) -> dict[str, Any]:
         permit(session, "authz.access_review.conduct", body.correlation_id)
         return authz.complete_access_review(
-            identity_pool, tenant_id, review_id=review_id,
+            identity_pool, tenant_id,
+            review_id=require_uuid(review_id, "review_id"),
             correlation_id=body.correlation_id, actor_identity_id=session["identity_id"],
         )
 
