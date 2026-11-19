@@ -19,7 +19,7 @@
     "test:watch": "vitest",
     "e2e": "playwright test",
     "audit:ci": "npm audit --audit-level=high",
-    "verify": "npm run tokens:check && npm run lint && npm run test:foundation && npm run typecheck && npm test",
+    "verify": "npm run tokens:check && npm run lint && npm run test:foundation && npm run typecheck && npm test && echo 'verify: every check passed'",
     "api": "node tests/e2e/serve.mjs",
     "fixture": "node tests/e2e/fixture.mjs",
     "e2e:mutate": "node tests/e2e/mutate.mjs"

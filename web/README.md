@@ -215,6 +215,13 @@ client component reading `usePathname()`. The second is 15 lines and costs only 
 JavaScript is off; the links are anchors and work regardless, and the sign-in path, the one
 with credentials in it, has no client runtime at all.
 
+**`npm run verify` prints a line when it passes, because a tail without one looks the same
+either way.** A chained script exits non-zero when a step fails, and a reader skimming the last
+few lines of a long run sees a plausible duration whether or not the step before it failed --
+which is exactly how an untranslated message key (`"#"` is the same string in both locales, and
+the catalogue guard correctly calls that untranslated) reached a red CI after a local run that
+read as green. The check was working; the reading was not.
+
 **Three times now a test has had a green that depends on how many times it has been run, and
 the shape is one rule.** MOD-007 and MOD-011 keep budgets per identity, and a test that spends
 one spends it for every later run against the same fixture:
