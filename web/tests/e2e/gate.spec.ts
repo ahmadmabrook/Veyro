@@ -1,7 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { fixture } from "./fixture-env";
-import { assuranceLevel, signIn } from "./sign-in";
+import { assuranceLevel, useOwnerSession } from "./sign-in";
 
 /**
  * What the interface renders is what the gate answered.
@@ -17,8 +16,6 @@ import { assuranceLevel, signIn } from "./sign-in";
  * that stubbed the gate would keep passing while the product stopped agreeing with it.
  */
 
-const creds = fixture();
-
 /** The gate cell for one action, read out of the permissions table. */
 function verdictFor(page: Page, action: string) {
   return page.getByRole("row").filter({ hasText: action }).getByRole("cell").nth(1);
@@ -26,7 +23,7 @@ function verdictFor(page: Page, action: string) {
 
 test.describe("gate-driven rendering", () => {
   test.beforeEach(async ({ page }) => {
-    await signIn(page);
+    await useOwnerSession(page);
   });
 
   test("an allowed action reads as allowed", async ({ page }) => {

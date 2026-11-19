@@ -2,7 +2,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 
 import { fixture } from "./fixture-env";
-import { assuranceLevel, signIn } from "./sign-in";
+import { assuranceLevel, useOwnerSession } from "./sign-in";
 
 /**
  * The MOD-022 surfaces, against the real access plane.
@@ -23,7 +23,7 @@ const WCAG = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"];
 
 test.describe("the door board", () => {
   test.beforeEach(async ({ page }) => {
-    await signIn(page);
+    await useOwnerSession(page);
   });
 
   test("lists the seeded zone with its risk class and its readers", async ({ page }) => {
@@ -53,8 +53,13 @@ test.describe("the door board", () => {
   test("the board is reachable from the landing page only when the gate allows it", async ({
     page,
   }) => {
-    await expect(page.getByRole("link", { name: "Doors" })).toBeVisible();
-    await page.getByRole("link", { name: "Doors" }).click();
+    // **In the navigation, which is the only place a section link lives now.** The landing
+    // page used to carry its own, gated on `access.decision.evaluate` -- a different
+    // permission from the one `/access` needs, so a session holding evaluate and not
+    // `access.zone.read` was offered a link to a page that refuses it.
+    const nav = page.getByRole("navigation", { name: "Sections" });
+    await expect(nav.getByRole("link", { name: "Doors" })).toBeVisible();
+    await nav.getByRole("link", { name: "Doors" }).click();
     await page.waitForURL("/access");
     await expect(page.getByRole("heading", { name: "Doors" })).toBeVisible();
   });
@@ -62,7 +67,7 @@ test.describe("the door board", () => {
 
 test.describe("a zone", () => {
   test.beforeEach(async ({ page }) => {
-    await signIn(page);
+    await useOwnerSession(page);
     await page.goto(`/access/${creds.zoneId}`);
   });
 

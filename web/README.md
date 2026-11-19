@@ -10,16 +10,17 @@ Console (15).
 ## State
 
 A running Next.js application: sign-in against MOD-007 including the device challenge it
-raises, an admin landing page whose every control's visibility comes from MOD-008's gate,
-MOD-022's door board and zone detail, Arabic/English with full RTL, a dark theme, and four
-layers of tests that have each been shown to fail when the thing they guard is removed.
+raises, an admin landing page whose every control's visibility comes from MOD-008's gate, a
+section navigation filtered by that same gate, MOD-004's organization hierarchy, MOD-022's
+door board and zone detail, Arabic/English with full RTL, a dark theme, and four layers of
+tests that have each been shown to fail when the thing they guard is removed.
 
 | Layer | What it proves | Count | Command |
 |---|---|---|---|
 | Foundation (`tests/unit/`) | Tokens, contrast, type, theme coverage, backend parity. No dependencies, no DOM. | 57 | `npm run test:foundation` |
-| Component (`tests/component/`) | Control semantics, the message catalogue, the sign-in form's four states and the device-label parity, in jsdom. | 28 | `npm test` |
-| End-to-end (`tests/e2e/*.spec.ts`) | A real browser against a real backend, including 10 axe runs across both locales and both themes, and the no-JavaScript sign-in replay. | 45 | `npm run e2e` |
-| Mutation sweep (`tests/e2e/mutate.mjs`) | Each protection above, broken on purpose, is caught by the test that names it. | 18/18 | `npm run e2e:mutate` |
+| Component (`tests/component/`) | Control semantics, the message catalogue, the sign-in form's four states, the device-label parity and the hierarchy composer, in jsdom. | 31 | `npm test` |
+| End-to-end (`tests/e2e/*.spec.ts`) | A real browser against a real backend, including 12 axe runs across both locales and both themes, the no-JavaScript sign-in replay, and a surface driven as a session that may not read it. | 53 + 2 setup | `npm run e2e` |
+| Mutation sweep (`tests/e2e/mutate.mjs`) | Each protection above, broken on purpose, is caught by the test that names it. | 22/22 | `npm run e2e:mutate` |
 
 ### Running it
 
@@ -194,6 +195,47 @@ only trace was the next run reporting "the anchor appears 0 times", and in betwe
 run went green against a page that was missing the thing one of its tests is named after.
 `mutate.mjs` now restores the file it is holding on SIGINT, SIGTERM and SIGHUP.
 
+**The navigation is filtered by the gate, and the test for that needs a weaker session.**
+The fixture's owner holds all 202 permissions, so signing in as the owner proves only the
+allowed half of any gate -- a navigation that ignored the gate entirely would pass every
+assertion a run as the owner can make. The fixture already created a second identity for
+MOD-022's two-party policy publication, holding `access.zone.read` and not
+`tenancy.organization.read`; it now confirms that identity's browser device too and writes its
+credentials beside the owner's, and `organization.spec.ts` signs in as it to assert the entry
+is **absent** rather than disabled, and that the page answers "not permitted" rather than an
+empty tree. A disabled entry is a promise that something could be unlocked, and for a
+`privileged` action in this build nothing can.
+
+**`aria-current` is the one thing in the app that needs client JavaScript.** A server layout
+does not know the pathname, so marking the current section means either every page repeating
+the nav with its own `active` prop -- a control spread across every caller -- or one small
+client component reading `usePathname()`. The second is 15 lines and costs only the marker when
+JavaScript is off; the links are anchors and work regardless, and the sign-in path, the one
+with credentials in it, has no client runtime at all.
+
+**The suite signs in twice per run, and that is a rate-limit fix rather than a speed one.**
+MOD-011's limiter allows 30 logins per minute per subject -- a real product control, bounding
+the volume MOD-007's lockout cannot see -- and a `beforeEach` that signs in puts a hard cap on
+how many tests the suite may contain. It crossed that cap at 53: the owner's thirty-first login
+inside the window was refused, the sign-in helper waited for a page it was never going to get,
+and the failure named a 30-second timeout rather than a limit. **A suite that cannot grow past
+thirty tests is a problem for every surface still to be built**, so `auth.setup.ts` signs in
+once as the owner and once as the reader, saves the cookies under `playwright/.auth`
+(gitignored, it is a live session), and the specs adopt one. `signIn` is still what
+`auth.spec.ts` and the no-JavaScript replay use, because those are about the form.
+
+**And the browser specs were not typechecked at all.** `tsconfig.json` excluded `tests/e2e`,
+so the only TypeScript in the repository nobody checked was the suite that drives the product
+-- and a spec calling a helper it had not imported passed `npm run typecheck` and would have
+surfaced at run time as a missing heading. They are in scope now; one real error came out of it.
+
+**The hierarchy composer is unit-tested because its interesting inputs cannot be provisioned.**
+A location whose brand is missing from the brand list is a read that raced a write or a
+tenant-isolation question, and there is no way to ask the API for one -- so a browser suite can
+only ever see the well-formed case. `composeTree` keeps an orphan and marks it rather than
+dropping it, because a site that vanishes from the only page listing sites is the worse
+failure, and `tests/component/organization-tree.test.ts` is what holds that.
+
 ## Findings raised against the sources
 
 **`ai.600`'s published contrast ratios do not match its published hex.** `ds.json`'s CONTRAST
@@ -209,9 +251,9 @@ other 8 of 9 tokens recompute to the printed hundredth on all three surfaces.
 
 ## What this does not yet cover
 
-- **Four screens of a hundred and seventy.** `contracts/ui/screen-contracts.yaml` lists 170 V1
-  screens across five surfaces; what exists is sign-in, an admin landing page and MOD-022's
-  door board and zone detail. The foundation, the controls, the gate wiring and the four test
+- **Six screens of a hundred and seventy.** `contracts/ui/screen-contracts.yaml` lists 170 V1
+  screens across five surfaces; what exists is sign-in, an admin landing page, MOD-004's
+  organization hierarchy and MOD-022's door board and zone detail. The foundation, the controls, the gate wiring and the four test
   layers are built to carry the rest, and the per-module work is wiring each one's gate, its
   masked fields and its failure states the way MOD-022's are.
 - **`color.action.pressed` has no dark value**, declared in `ds.json`'s `DARK_GAPS`. The source
@@ -234,7 +276,11 @@ other 8 of 9 tokens recompute to the printed hundredth on all three surfaces.
   as belonging elsewhere: no italics, containers sized for Arabic, numerals as a tenant setting
   and bidi isolation. The last two live in `src/i18n/conventions.mjs`; the first two are a
   component and review obligation.
-- **The EIP's "screen contract lint" does not exist.** The other gate it names — a
+- **The EIP's "screen contract lint" does not exist.** The ordinary ESLint gate does now:
+  `next lint` was removed in Next 16 and ESLint 10 ignores `.eslintrc.json`, so `npm run lint`
+  answered "Invalid project directory provided, no such directory: .../lint" and nothing called
+  it. `eslint.config.mjs` is the flat-config migration, its first run found four unused imports
+  and variables, and it is in `npm run verify` and in CI. The other gate it names — a
   localization/RTL resource and accessibility gate exercised in E2E — now runs in
   `.github/workflows/veyro-foundation-ci.yml`'s `web` job, which builds the database, starts
   the backend, installs Chromium and runs the browser suite against the real API. A mocked

@@ -285,6 +285,15 @@ async function seedAccess(tenantId, token, ownerEmail) {
   const publisherToken = await stepUp(
     tenantId, secondToken, secondSession.identity_id, secondPassword);
 
+  // **A second, deliberately weaker browser session.** This identity holds
+  // `access.zone.read` and not `tenancy.organization.read`, which is what lets a spec prove
+  // that the navigation is filtered per item rather than all-or-nothing -- the owner holds
+  // every permission in the catalogue and so can prove only the allowed half. Its device is
+  // confirmed here for the same reason the owner's is: the label is per identity, so this is
+  // a different device to MOD-007.
+  await confirmWebDevice(
+    tenantId, secondSession.identity_id, publisherToken, secondEmail, secondPassword);
+
   await call(`/fleet/types/${type.type_id}/publish`, {
     method: "POST", ...as(publisherToken), body: { correlation_id: cid() },
   });
@@ -395,6 +404,8 @@ async function seedAccess(tenantId, token, ownerEmail) {
   });
 
   return {
+    publisherEmail: secondEmail,
+    publisherPassword: secondPassword,
     locationId: location.location_id,
     zoneId: zone.zone_id,
     pointId: point.point_id,
@@ -423,6 +434,8 @@ if (invokedDirectly) {
       `VEYRO_E2E_RECOVERY_CODE=${fixture.recoveryCode}`,
       `VEYRO_E2E_ZONE_ID=${fixture.zoneId}`,
       `VEYRO_E2E_POINT_ID=${fixture.pointId}`,
+      `VEYRO_E2E_READER_EMAIL=${fixture.publisherEmail}`,
+      `VEYRO_E2E_READER_PASSWORD=${fixture.publisherPassword}`,
       "",
     ].join("\n"),
     { mode: 0o600 },

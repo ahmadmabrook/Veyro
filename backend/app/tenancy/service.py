@@ -426,6 +426,27 @@ def brand_of_location(pool: Pool, tenant_id: str, location_id: str) -> str | Non
     return str(row[0]) if row is not None else None
 
 
+def list_brands(pool: Pool, tenant_id: str) -> list[dict[str, Any]]:
+    """Every brand in the tenant, with the organization it belongs to.
+
+    **The middle tier of the hierarchy had a writer and no reader.** `create_brand` has existed
+    since MOD-004 and nothing could list what it wrote, so a brand id was knowable only by
+    having just created one or by reading a location that cites it -- which makes the tier
+    unusable from any surface and is the same shape as a column implying a control nobody
+    implemented. MOD-022's zone board needs the brand name beside the location, which is how
+    the gap surfaced.
+    """
+    with tenant_scope(pool, tenant_id) as conn:
+        rows = conn.execute(
+            "SELECT brand_id, organization_id, brand_name FROM plt01.brands"
+            " ORDER BY created_at"
+        ).fetchall()
+    return [
+        {"brand_id": str(r[0]), "organization_id": str(r[1]), "brand_name": r[2]}
+        for r in rows
+    ]
+
+
 def list_locations(pool: Pool, tenant_id: str) -> list[dict[str, Any]]:
     with tenant_scope(pool, tenant_id) as conn:
         rows = conn.execute(

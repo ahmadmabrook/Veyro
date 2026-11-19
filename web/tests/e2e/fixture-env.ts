@@ -23,6 +23,13 @@ export type Fixture = {
   recoveryCode: string;
   zoneId: string;
   pointId: string;
+  /**
+   * A second identity holding `access.zone.read` and **not**
+   * `tenancy.organization.read` -- the one the gated-navigation tests need, because the
+   * owner holds every permission in the catalogue and can prove only the allowed half.
+   */
+  readerEmail: string;
+  readerPassword: string;
 };
 
 const FILENAME = ".env.e2e.local";
@@ -63,6 +70,8 @@ export function fixture(): Fixture {
     "VEYRO_E2E_RECOVERY_CODE",
     "VEYRO_E2E_ZONE_ID",
     "VEYRO_E2E_POINT_ID",
+    "VEYRO_E2E_READER_EMAIL",
+    "VEYRO_E2E_READER_PASSWORD",
   ] as const;
   for (const key of required) {
     if (!env[key]) throw new Error(`${key} missing from ${FILENAME} -- re-run fixture.mjs`);
@@ -75,5 +84,7 @@ export function fixture(): Fixture {
     recoveryCode: env.VEYRO_E2E_RECOVERY_CODE!,
     zoneId: env.VEYRO_E2E_ZONE_ID!,
     pointId: env.VEYRO_E2E_POINT_ID!,
+    readerEmail: env.VEYRO_E2E_READER_EMAIL!,
+    readerPassword: env.VEYRO_E2E_READER_PASSWORD!,
   };
 }

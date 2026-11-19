@@ -10,7 +10,7 @@
     "dev": "next dev -p 3000",
     "build": "next build",
     "start": "next start -p 3000",
-    "lint": "next lint",
+    "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "tokens": "node src/design/generate.mjs",
     "tokens:check": "node src/design/generate.mjs --check",
@@ -19,7 +19,7 @@
     "test:watch": "vitest",
     "e2e": "playwright test",
     "audit:ci": "npm audit --audit-level=high",
-    "verify": "npm run tokens:check && npm run test:foundation && npm run typecheck && npm test",
+    "verify": "npm run tokens:check && npm run lint && npm run test:foundation && npm run typecheck && npm test",
     "api": "node tests/e2e/serve.mjs",
     "fixture": "node tests/e2e/fixture.mjs",
     "e2e:mutate": "node tests/e2e/mutate.mjs"

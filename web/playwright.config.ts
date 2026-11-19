@@ -21,9 +21,10 @@ import { defineConfig, devices } from "@playwright/test";
  */
 export default defineConfig({
   testDir: "./tests/e2e",
-  testMatch: /.*\.spec\.ts$/,
-  // Serial: the fixture is one tenant and the specs sign in and out of it. Parallel workers
-  // would race each other's cookies for no gain at this size.
+  testMatch: /.*\.(spec|setup)\.ts$/,
+  // Serial: one tenant, one saved session per role, and specs that sign out. Parallel
+  // workers would race each other's cookies for no gain at this size -- and the login
+  // budget is per subject, so parallel sign-ins would spend it faster rather than slower.
   fullyParallel: false,
   workers: 1,
   forbidOnly: !!process.env.CI,
@@ -36,7 +37,23 @@ export default defineConfig({
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
   },
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  projects: [
+    // **One login per run, saved as a cookie.** MOD-011's limiter allows 30 logins per
+    // minute per subject, so a suite whose every test signs in has a cap on how many tests
+    // it may contain -- and it crossed that cap at 53, where the failure read as a timeout
+    // rather than as a refusal. `auth.setup.ts` signs in twice (the owner and a weaker
+    // reader) and the specs adopt the cookie.
+    { name: "setup", testMatch: /.*\.setup\.ts/, use: { ...devices["Desktop Chrome"] } },
+    {
+      name: "chromium",
+      // The top-level `testMatch` has to admit the setup files for the project above to
+      // find them, which means this project matches them too -- and ran both sign-ins a
+      // second time, spending the login budget this arrangement exists to protect.
+      testIgnore: /.*\.setup\.ts/,
+      use: { ...devices["Desktop Chrome"] },
+      dependencies: ["setup"],
+    },
+  ],
   webServer: {
     // In CI the suite drives the **production** build, which is what gets deployed: a dev
     // server differs in bundling, error handling and caching, and a gate that only ever saw

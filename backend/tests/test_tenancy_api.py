@@ -193,6 +193,33 @@ class TenancyApiTests(GatedApiTestCase):
         self.assertEqual(location.status_code, 201, location.text)
         listed = self.client.get("/locations", headers=headers).json()
         self.assertEqual([row["location_name"] for row in listed], ["Laugavegur"])
+        # **The middle tier is readable too, which it was not.** `create_brand` has existed
+        # since MOD-004 and nothing could list what it wrote, so the only way to learn a
+        # brand id was to have just created one -- and a surface that shows a location's
+        # brand had nowhere to get the name. Same permission as its siblings.
+        brands = self.client.get("/brands", headers=headers)
+        self.assertEqual(brands.status_code, 200, brands.text)
+        self.assertEqual(
+            [(row["brand_name"], row["organization_id"]) for row in brands.json()],
+            [("Acme City", organization["organization_id"])],
+        )
+
+    def test_another_tenants_brands_are_invisible(self) -> None:
+        first, second = self.active_tenant(), self.active_tenant()
+        organization = self.client.post(
+            "/organizations", headers=self.headers(first),
+            json={"legal_name": "Acme ehf", "country_code": "IS"},
+        ).json()
+        self.client.post(
+            "/brands", headers=self.headers(first),
+            json={"organization_id": organization["organization_id"], "brand_name": "Acme City"},
+        )
+        self.assertEqual(
+            [row["brand_name"] for row in
+             self.client.get("/brands", headers=self.headers(first)).json()],
+            ["Acme City"],
+        )
+        self.assertEqual(self.client.get("/brands", headers=self.headers(second)).json(), [])
 
     def test_a_missing_or_malformed_tenant_header_is_refused(self) -> None:
         self.assertEqual(self.client.get("/organizations").status_code, 422)

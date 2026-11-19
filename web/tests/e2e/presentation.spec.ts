@@ -1,8 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 
-import { fixture } from "./fixture-env";
-import { signIn } from "./sign-in";
+import { useOwnerSession } from "./sign-in";
 
 /**
  * Language, direction, theme and accessibility -- on every combination, because the defects
@@ -13,8 +12,6 @@ import { signIn } from "./sign-in";
  * guardrail G4 makes system-owned precisely so "a tenant cannot ship an unnavigable product" --
  * was dark navy on near-black. Light mode was perfect throughout.
  */
-
-const creds = fixture();
 
 const WCAG = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"];
 
@@ -49,7 +46,7 @@ test.describe("presentation", () => {
   });
 
   test("the layout mirrors in Arabic without a direction-specific rule", async ({ page }) => {
-    await signIn(page);
+    await useOwnerSession(page);
     const before = await page.getByRole("heading", { name: "Veyro Admin" }).boundingBox();
 
     await page.getByRole("button", { name: "العربية" }).click();
@@ -65,7 +62,7 @@ test.describe("presentation", () => {
   });
 
   test("the dark theme remaps the field, the accent and the focus ring", async ({ page }) => {
-    await signIn(page);
+    await useOwnerSession(page);
     await page.getByRole("button", { name: "Dark" }).click();
     await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
 
@@ -148,7 +145,7 @@ test.describe("presentation", () => {
       });
 
       test(`no accessibility violations: admin, ${locale}, ${theme}`, async ({ page }) => {
-        await signIn(page);
+        await useOwnerSession(page);
         if (locale === "ar") await page.getByRole("button", { name: "العربية" }).click();
         await page.evaluate((value) => {
           document.cookie = `veyro_theme=${value}; path=/`;

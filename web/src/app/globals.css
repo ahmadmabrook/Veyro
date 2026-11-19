@@ -167,3 +167,47 @@ a {
  * pairing from the CI allow-list. It is not offered as a utility class for that reason: a
  * class named `.tertiary` would get used on a sunken surface eventually.
  */
+
+/**
+ * The section navigation.
+ *
+ * **Logical properties only, so Arabic mirrors with no rule of its own.** The border sits on
+ * the block end and the padding is `inline`, which `dir="rtl"` flips without this file
+ * knowing that Arabic exists. The current section is marked with a border on the block end
+ * rather than a colour alone, because colour is not a distinction a reader with low vision or
+ * a monochrome display can rely on -- WCAG 1.4.1.
+ */
+.app-nav {
+  border-block-end: 1px solid var(--color-border-subtle);
+  padding: 0 var(--space-4);
+}
+
+.app-nav ul {
+  display: flex;
+  gap: var(--space-5);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  flex-wrap: wrap;
+}
+
+.nav-link {
+  display: inline-block;
+  /* A 44px target: the DS's minimum for every density mode, met by padding rather than by a
+     height, so a long label in Arabic grows the row instead of being clipped. */
+  padding: var(--space-3) var(--space-1);
+  min-height: 44px;
+  color: var(--color-text-secondary);
+  text-decoration: none;
+  border-block-end: 2px solid transparent;
+}
+
+.nav-link:hover {
+  color: var(--color-text-primary);
+}
+
+.nav-link[aria-current="page"] {
+  color: var(--color-text-primary);
+  border-block-end-color: var(--color-action-default);
+  font-weight: var(--type-label-weight);
+}

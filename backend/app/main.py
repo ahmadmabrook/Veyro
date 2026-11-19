@@ -2985,6 +2985,12 @@ def create_app(
         permit(session, "tenancy.organization.read")
         return service.list_legal_entities(tenant_pool, tenant_id)
 
+    @app.get("/brands")
+    def get_brands(tenant_id: TenantId, session: Session) -> list[dict[str, Any]]:
+        """The tier that had a writer and no reader. Same permission as its siblings."""
+        permit(session, "tenancy.organization.read")
+        return service.list_brands(tenant_pool, tenant_id)
+
     @app.post("/locations", status_code=201)
     def add_location(tenant_id: TenantId, session: Session, body: LocationBody) -> dict[str, Any]:
         permit(session, "tenancy.location.write")

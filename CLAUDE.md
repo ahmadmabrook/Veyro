@@ -72,7 +72,10 @@ tools/                  governance and lint tooling (see "Tooling that still ear
 web/                    the Next.js operator surface (see "The web app")
   src/design/           ds.json is the design system; generate.mjs emits the CSS tokens and
                         refuses an unresolved dark reference
-  src/lib/              api.ts is the only place a request reaches the backend
+  src/lib/              api.ts is the only place a request reaches the backend; device.ts is
+                        the device label the fixture has to agree with
+  src/components/       nav.tsx filters the sections by the gate; nav-link.tsx is the only
+                        client component in the app, and it exists for one ARIA attribute
   tests/unit/           Node's own test runner, no dependencies
   tests/component/      Vitest and Testing Library
   tests/e2e/            Playwright, against a real uvicorn and a real database
@@ -3167,10 +3170,22 @@ Action and a form rather than a fetch (the first version was a client component,
 un-hydrated page did a native GET that put the password in the query string -- the defect is
 recorded at the top of `src/app/login/actions.ts`); MOD-007's device challenge answered in the
 same form, with the password field *removed* once a challenge is in flight; English and Arabic
-with real RTL, switched by a form rather than an `onChange`; a light and dark theme; and
-MOD-022's door board and zone detail, which read the real routes and render the public code,
-the policy terms, the advisory occupancy with paragraph 4180's disclaimer, the access points,
-the gaps the module discloses about itself and the decision log with its public/private split.
+with real RTL, switched by a form rather than an `onChange`; a light and dark theme; a section
+navigation whose every entry is present exactly when the gate allows the page behind it;
+MOD-004's hierarchy -- the organization, its brands, its sites with the timezone MOD-019 reads
+every rota window in, and the legal entity MOD-017 numbers invoices per; and MOD-022's door
+board and zone detail, which read the real routes and render the public code, the policy
+terms, the advisory occupancy with paragraph 4180's disclaimer, the access points, the gaps
+the module discloses about itself and the decision log with its public/private split.
+
+**The navigation is the first surface with a test that needs a weaker session.** The fixture's
+owner holds all 202 permissions, so signing in as the owner proves only the allowed half of any
+gate -- a navigation that ignored the gate entirely would pass every assertion. The fixture
+already created a second identity for MOD-022's two-party policy publication, holding
+`access.zone.read` and not `tenancy.organization.read`; it now confirms that identity's browser
+device too and exports its credentials, and one spec signs in as it to assert the Organization
+entry is **absent** rather than disabled and that the page itself answers "not permitted"
+rather than an empty tree. The same shape will be needed by every surface from here on.
 
 How it is proved, in four layers that answer different questions:
 
@@ -3191,15 +3206,32 @@ How it is proved, in four layers that answer different questions:
   goes red. A green browser suite proves nothing about a page nobody asserted, and this is
   what found a test that passed with the recovery-code field deleted.
 
+**Two things about the suite itself are worth carrying forward.** It signs in twice per run
+rather than once per test, because MOD-011's limiter allows 30 logins a minute per subject --
+so a `beforeEach` that signs in caps how many tests the suite may contain, and it hit that cap
+at 53 with a failure that read as a timeout rather than as a refusal. And `tsconfig.json`
+excluded `tests/e2e`, so the only TypeScript in the repository nobody typechecked was the
+suite that drives the product: a spec calling a helper it had not imported passed
+`npm run typecheck`. Both are the same shape as a vacuous test -- a check that cannot run, or
+cannot grow.
+
 Both jobs run in CI (`.github/workflows/veyro-foundation-ci.yml`), and the web job builds the
 database, starts the backend, installs Chromium and runs the browser suite rather than
 mocking the API -- a mocked backend would have passed every one of the defects the real one
 caught.
 
-Known gaps: the surface covers MOD-022 and the sign-in only. The other seventeen implemented
-modules have no screens yet, which is the bulk of the remaining work; there is no mobile
-client and no edge agent; and nothing here is deployed anywhere, which is deliberate while the
-platform plane is unauthenticated.
+**And the linter had never run.** `next lint` was removed in Next 16 and ESLint 10 ignores
+`.eslintrc.json`, so `npm run lint` answered "Invalid project directory provided, no such
+directory: web/lint" and nothing in CI called it -- a check that cannot run is a check nobody
+has, which is the same shape as a test that passes vacuously. The flat config in
+`web/eslint.config.mjs` is the migration; its first run found four unused imports and
+variables, and it is in `npm run verify` and in the CI job now.
+
+Known gaps: the surface covers the sign-in, MOD-004 and MOD-022. The other sixteen implemented
+modules have no screens yet, which is the bulk of the remaining work; every `tenancy.*.write`
+is a stepped-up financial permission and none of those forms is built, so the hierarchy is
+read-only; there is no mobile client and no edge agent; and nothing here is deployed anywhere,
+which is deliberate while the platform plane is unauthenticated.
 
 
 **Next.** The standard for a finished module is now the whole stack, not the backend: owner

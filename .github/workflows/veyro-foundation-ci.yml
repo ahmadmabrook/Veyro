@@ -229,6 +229,15 @@ jobs:
       # The generator is the authority and a hand-edited artefact must fail rather than ship.
       # Same trade as MOD-019's definition pin: a legitimate change fails until it is
       # regenerated, which is the moment a human reads the diff.
+      # **The linter could not run before this step existed.** `next lint` was removed in
+      # Next 16 and ESLint 10 ignores `.eslintrc.json`, so `npm run lint` answered "Invalid
+      # project directory provided, no such directory: .../lint" and nothing called it. The
+      # flat config in `web/eslint.config.mjs` is the migration, and its first run found four
+      # unused imports and variables.
+      - name: Lint the web sources
+        working-directory: web
+        run: npm run lint
+
       - name: Design tokens are generated, not hand-edited
         working-directory: web
         run: npm run tokens:check

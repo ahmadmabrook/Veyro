@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 
+import { AppNav, type NavItem } from "@/components/nav";
 import { LocaleSwitch } from "@/components/locale-switch";
 import { t } from "@/i18n/locale";
+import { currentSession, gate } from "@/lib/api";
 import { presentation } from "@/lib/preferences";
 
 import "./globals.css";
@@ -27,6 +29,25 @@ export default async function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   const { locale, dir, theme } = await presentation();
 
+  // **The navigation is built here because every page has one, and it is asked rather than
+  // assumed.** A signed-out reader gets none: `currentSession()` answers null for a visitor
+  // with no tenant cookie, which is the ordinary state of the sign-in page.
+  const session = await currentSession();
+  let items: NavItem[] = [];
+  if (session) {
+    const [organization, access] = await Promise.all([
+      gate("tenancy.organization.read"),
+      gate("access.zone.read"),
+    ]);
+    items = [
+      // The overview is this session's own page -- what it is and what it may do -- so it
+      // needs no permission beyond having signed in.
+      { href: "/", label: "nav.overview", allowed: true },
+      { href: "/organization", label: "nav.organization", allowed: organization.allowed },
+      { href: "/access", label: "nav.access", allowed: access.allowed },
+    ];
+  }
+
   return (
     <html lang={locale} dir={dir} data-theme={theme}>
       <body>
@@ -47,6 +68,7 @@ export default async function RootLayout({
         >
           <LocaleSwitch locale={locale} theme={theme} />
         </div>
+        <AppNav locale={locale} items={items} />
         <main id="main">{children}</main>
       </body>
     </html>
