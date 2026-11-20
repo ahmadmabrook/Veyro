@@ -3968,9 +3968,34 @@ a recovery code, and five wrong ones lock the recovery path with nothing in the 
 reset it. So the reissue test signs in as an identity nobody else touches. **The rule is the
 one already written down**: a test that consumes a product budget provisions its own.
 
+**The design canvases render, so the comparison is mechanical.** `support.js` is a design
+runtime: it resolves every `{{ }}` placeholder and `sc-for` loop against React 18, so a
+canvas can be opened in a browser and a screen put beside its own approved drawing.
+`web/tests/visual/visual.mjs` does that, and it **classifies rather than lists**, which is the
+whole difficulty. The canvases are a sequence and the later ones correct the earlier ones: the
+HF Command Center draws its page title at 24px where `TYPE_SCALE` fixes `type.h1` at 26, and
+sets 27 small-text elements in `#85807a` where the `CONTRAST` matrix rates that "FAIL under
+18.66px on every surface". A raw diff produces findings whose correction would undo the design
+system, so an unmatched declaration is a **deviation** only when the token tables sanction it
+and is otherwise reported as prototype drift or as a pairing the contrast matrix bars. Thirty-
+nine raw differences on ADM-CC-01 became sixteen worth reading, and three of those were real:
+the attention queue has two row heights and this had one, staffing escalated to `critical`
+where the canvas draws `info`, and the collections breakdown printed a legal entity's UUID
+where a name belonged.
+
+**TestSprite is the independent layer**, and `qa/testsprite/plans.mjs` generates four journeys
+from the live fixture. Its value is that it has not read this repository: a Playwright spec and
+the page it tests were written by the same hand on the same day. All four pass; one found a
+real defect first -- every name on `/members` reads "Name withheld" at AAL 1 and the step-up
+that lifts it was offered on a member's *record* only, so the tester clicked the marker looking
+for a way through and there was none. Two bounds: a run signs in with the fixture's synthetic
+credentials through a tunnel, and **a created test carries that tenant's id for ever**, so
+re-running the fixture invalidates every test already created.
+
 Known gaps: the surface covers the sign-in, the step-up, the account page, MOD-004, MOD-005,
 MOD-007, MOD-008, MOD-009, MOD-010, MOD-011, MOD-012, MOD-013, MOD-014, MOD-016, MOD-017,
-MOD-018, MOD-019, MOD-021 and MOD-022, plus MOD-020's roster on a session. MOD-015 is the one
+MOD-018, MOD-019, MOD-021 and MOD-022, plus MOD-020's roster on a session, ADM-RPT-01/02/03
+under `/reports` and ADM-PAY-07's wallet on a member's billing tab. MOD-015 is the one
 implemented module with no screen at all, which is the bulk of the remaining work; MOD-019's
 own surface is read-only -- publishing a schedule, substituting an instructor and cancelling a
 session are all built on the server and none has a form, which is the same gap the hierarchy
@@ -3995,9 +4020,19 @@ The first is the screens the eighteen built modules do not have. `web/` covers t
 step-up, the account page, MOD-004, MOD-005, MOD-007, MOD-008, MOD-009, MOD-010, MOD-011,
 MOD-012, MOD-013, MOD-014, MOD-016, MOD-017, MOD-018, MOD-019, MOD-020's roster, MOD-021 and
 MOD-022 -- so **MOD-015 is the only implemented module with no screen at all**;
-`contracts/ui/screen-contracts.yaml` names the rest, and
-the work is per module rather than per screen because each one needs its gate, its masked
-fields and its failure states wired the way those are. The second is the modules themselves: MOD-023 (Coach Workspace, which
+`contracts/ui/screen-contracts.yaml` names the rest.
+
+**Of the 59 specified Admin screens with no route, the ones with reads behind them are what to
+build next**: ADM-STF-01/02 (staff list and profile) need a staff listing route -- `POST
+/people/{id}/staff-profile` exists with no reader, which is this build's recurring "a writer
+with no reader" shape -- and ADM-RPT-04's attendance chart needs an hourly read over the access
+events, which nothing provides. ADM-RPT-05's export gate, ADM-STF-03's invitation and every
+`tenancy.*`/`catalog.*`/`finance.*` form are blocked on the same thing: each is a stepped-up
+financial write with no form in this app, and a button that answered 403 is worse than its
+absence. The rest need modules this repository does not have (CRM, automation, tasks, search).
+
+Within those, the work is per module rather than per screen, because each one needs its gate,
+its masked fields and its failure states wired the way those are. The second is the modules themselves: MOD-023 (Coach Workspace, which
 needs MOD-014 and MOD-008, both built) is the next eligible one, and MOD-006 is the Compose
 Multiplatform qualification, which is a client-side proof the server plane does not need and
 the mobile half does.

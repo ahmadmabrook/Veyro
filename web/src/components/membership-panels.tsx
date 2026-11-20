@@ -2,14 +2,20 @@ import Link from "next/link";
 
 import { Banner } from "@/components/ds/banner";
 import { MoneyValue } from "@/components/ds/money-value";
-import { formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
+import { fill, formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
 import { gateAll, failureMessage } from "@/lib/api";
+import {
+  kindName,
+  kindWord,
+  nextExpiry,
+  readWallets,
+  type WalletStatement,
+} from "@/lib/wallet";
 import {
   listAccounts,
   listGrants,
   listInvoices,
   listMemberships,
-  money,
   outstandingMinor,
   remaining,
   type BillingAccount,
@@ -66,10 +72,11 @@ export async function MembershipPanels({
 }) {
   const text = (key: MessageKey) => t(locale, key);
   // One round trip rather than three; see `member-metrics.tsx` for why that matters.
-  const [records, entitlements, finance] = await gateAll([
+  const [records, entitlements, finance, wallet] = await gateAll([
     "membership.record.read",
     "membership.entitlement.read",
     "finance.account.read",
+    "finance.wallet.read",
   ] as const);
 
   const show = (block: "membership" | "billing") => only === undefined || only === block;
@@ -97,6 +104,15 @@ export async function MembershipPanels({
           locale={locale}
         >
           <Grants personId={personId} locale={locale} />
+        </Block>
+      </section>
+      ) : null}
+
+      {show("billing") ? (
+      <section className="page-section">
+        <h2 style={{ margin: 0 }}>{text("wallet.title")}</h2>
+        <Block allowed={wallet.allowed} reachable={wallet.reachable} locale={locale}>
+          <Wallet personId={personId} locale={locale} />
         </Block>
       </section>
       ) : null}
@@ -299,6 +315,181 @@ async function Grants({ personId, locale }: { personId: string; locale: Locale }
           {text("membership.unswept")}
         </p>
       ) : null}
+    </>
+  );
+}
+
+/**
+ * ADM-PAY-07 · WALLET & CREDITS, on the member whose wallet it is.
+ *
+ * **Four balances, not one**, which is paragraph 1686 and MOD-018 calls it a Critical
+ * Control: a member holding 50.00 they paid in and 10.00 the tenant gave away holds two
+ * different things, and only the first is money the tenant owes. The canvas draws a single
+ * balance; summing them here would erase the distinction that decides whether a refund is
+ * even possible, so the total leads and the kinds sit under it.
+ *
+ * **Each entry names its origin**, which is the canvas's own rule: *"Always labelled credit,
+ * never a negative balance. Each entry names its origin — a cancelled class, an
+ * overpayment, a goodwill gesture — because unexplained credit is indistinguishable from an
+ * error."* The origin is the tenant's own prose on the entry, and a routine tenant-wide
+ * reader sees it -- the disclosure MOD-018 records for this read, and the place
+ * `Decision.mask` would apply if this path asked the gate for one.
+ *
+ * **A lapsed entry is shown, marked.** `wallet_statement` returns it rather than dropping
+ * it because "where did my 10.00 go" is the question a member actually asks, and a
+ * statement that silently omitted the expiry cannot answer it.
+ *
+ * **There is no Top up and no Add credit.** The canvas draws both; both are writes, and
+ * `finance.wallet.credit` is a stepped-up financial permission with no form in this build.
+ * A button that answered 403 is worse than the gap -- ADM-MEM-05's rule.
+ */
+async function Wallet({ personId, locale }: { personId: string; locale: Locale }) {
+  const text = (key: MessageKey) => t(locale, key);
+  let wallets: WalletStatement[];
+  try {
+    wallets = (await readWallets(personId)).wallets;
+  } catch (error) {
+    return <Failed error={error} locale={locale} />;
+  }
+
+  // **A member with no wallet is not a failure and not an empty table.** Most members never
+  // hold credit, and "this member holds none" is a fact somebody can act on; a blank panel
+  // reads as a figure that failed to load.
+  if (wallets.length === 0) {
+    return <Banner severity="info">{text("wallet.none")}</Banner>;
+  }
+  return (
+    <>
+      {wallets.map((statement) => (
+        <WalletCurrency key={statement.currency} statement={statement} locale={locale} />
+      ))}
+      <p className="muted" style={{ margin: 0, fontSize: "var(--type-caption-size)" }}>
+        {text("wallet.originWhy")}
+      </p>
+      <p className="muted" style={{ margin: 0, fontSize: "var(--type-caption-size)" }}>
+        {text("wallet.noWrites")}
+      </p>
+    </>
+  );
+}
+
+/** One wallet: a balance, what expires, and every movement that made it. */
+function WalletCurrency({
+  statement,
+  locale,
+}: {
+  statement: WalletStatement;
+  locale: Locale;
+}) {
+  const text = (key: MessageKey) => t(locale, key);
+  const expiry = nextExpiry(statement);
+  const kinds = Object.entries(statement.balances).filter(([, minor]) => minor !== 0);
+
+  return (
+    <>
+      <dl className="facts">
+        <dt className="muted">{text("wallet.balance")}</dt>
+        <dd style={{ margin: 0 }}>
+          <MoneyValue kind="aggregate" amountMinor={statement.spendable_minor}
+            currency={statement.currency} />
+        </dd>
+        <dt className="muted">{text("wallet.refundable")}</dt>
+        <dd style={{ margin: 0 }}>
+          <MoneyValue kind="aggregate" amountMinor={statement.refundable_minor}
+            currency={statement.currency} />
+          <div className="muted" style={caption}>{text("wallet.refundableWhy")}</div>
+        </dd>
+        {expiry === null ? null : (
+          <>
+            <dt className="muted">{text("wallet.expiring")}</dt>
+            <dd style={{ margin: 0 }}>
+              <MoneyValue kind="aggregate" amountMinor={expiry.amountMinor}
+                currency={statement.currency} />
+              {" \u00b7 "}
+              {text("wallet.expires")}{" "}
+              <span className="data" dir="ltr">{expiry.on}</span>
+            </dd>
+          </>
+        )}
+      </dl>
+
+      {kinds.length < 2 ? null : (
+        <dl className="facts">
+          {kinds.map(([kind, minor]) => {
+            const named = kindName(kind);
+            return (
+              <div key={kind} style={{ display: "contents" }}>
+                <dt className="muted">
+                  {named ? text(named) : <span className="data" dir="ltr">{kind}</span>}
+                </dt>
+                <dd style={{ margin: 0 }}>
+                  <MoneyValue kind="aggregate" amountMinor={minor}
+                    currency={statement.currency} />
+                </dd>
+              </div>
+            );
+          })}
+        </dl>
+      )}
+
+      {statement.lines.length === 0 ? (
+        <Banner severity="info">{text("wallet.noMovements")}</Banner>
+      ) : (
+        <table style={{ borderCollapse: "collapse", width: "100%" }}>
+          <caption className="ds-visually-hidden">{text("wallet.title")}</caption>
+          <thead>
+            <tr>
+              <th style={head}>{text("wallet.date")}</th>
+              <th style={head}>{text("wallet.movement")}</th>
+              <th style={head}>{text("wallet.amount")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {statement.lines.map((line, index) => (
+              <tr key={`${line.at}-${index}`}>
+                <td style={cell}>
+                  <span className="data" dir="ltr">{line.at.slice(0, 10)}</span>
+                </td>
+                <td style={cell}>
+                  {line.reason}
+                  <div className="muted" style={caption}>
+                    {/* **A credit's kind is where it came from; a debit's is which pocket it
+                        came out of.** The same word cannot do both: "Given away" over a
+                        spend reads as though the gym gave away a protein bar. */}
+                    {line.amount_minor < 0
+                      ? fill(locale, "wallet.spentFrom", {
+                          kind: kindWord(line.value_kind) === null
+                            ? line.value_kind
+                            : text(kindWord(line.value_kind) as MessageKey),
+                        })
+                      : kindName(line.value_kind) === null
+                        ? line.value_kind
+                        : text(kindName(line.value_kind) as MessageKey)}
+                    {line.expires_on === null ? null : (
+                      <>
+                        {" \u00b7 "}
+                        {line.lapsed ? text("wallet.lapsed") : text("wallet.expires")}{" "}
+                        <span className="data" dir="ltr">{line.expires_on}</span>
+                      </>
+                    )}
+                  </div>
+                </td>
+                <td style={cell}>
+                  {/* **Signed on one axis**, which is the payments ledger's rule applied to a
+                      wallet: a spend is a different sign, never a credit of a different
+                      colour. `MoneyValue` carries the magnitude and the sign leads it, so a
+                      column of movements still adds up by eye. */}
+                  <span className="data" dir="ltr">
+                    {line.amount_minor < 0 ? "\u2212" : "+"}
+                  </span>
+                  <MoneyValue kind="aggregate" amountMinor={Math.abs(line.amount_minor)}
+                    currency={statement.currency} />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
     </>
   );
 }

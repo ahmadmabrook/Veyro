@@ -1,0 +1,181 @@
+/**
+ * The TestSprite plans for the Admin UI, generated from the live fixture.
+ *
+ * **Generated rather than committed, because one field in them rotates.** The fixture's
+ * identity and password are constants in `web/tests/e2e/fixture.mjs` -- `admin@veyro.invalid`
+ * at an invalid TLD, with a throwaway password for a tenant that is recreated from scratch on
+ * every run -- but the tenant id is a fresh uuid each time, and the sign-in form asks for it.
+ * A plan with last week's tenant id in it is a test that fails for a reason that has nothing
+ * to do with the product.
+ *
+ * So this reads `web/.env.e2e.local` (mode 600, gitignored) and writes the plans into a
+ * scratch directory. What is committed is this file and whatever result the run produced.
+ *
+ * **A test created from a plan carries that tenant id for ever**, because a plan is static
+ * text on TestSprite's side. So re-running the fixture invalidates every test already
+ * created: they will reach the sign-in form and be refused by a tenant that no longer
+ * exists, which looks exactly like a product defect. Regenerate and `--create` again after
+ * any fixture run, and run the new ids.
+ *
+ * **What TestSprite is for here, and what it is not.** The owner's directive makes it a
+ * mandatory independent layer, and the value is exactly that it is independent: these plans
+ * are written in English against what a person would do, and the agent that executes them
+ * has never seen this repository's selectors, its fixture or its assumptions. A Playwright
+ * spec and the page it tests were written by the same hand on the same day. It does not
+ * replace the browser suite, the component tests or the visual comparison -- a TestSprite
+ * pass says a journey works, not that a screen matches its canvas.
+ *
+ *   node qa/testsprite/plans.mjs            # write the plans
+ *   node qa/testsprite/plans.mjs --create   # and create them in the project
+ *
+ * **Two of the first four runs failed and one of them was a real finding.** The masked-field
+ * journey asserted that the member's own name was readable; it is not, because an identity
+ * field needs a stepped-up session and a name is one -- so the plan was wrong about the
+ * product. What the tester did next is the finding: it clicked the withheld marker looking
+ * for a way through, and on the members *list* there was none. The remedy existed only on a
+ * member's record. That is the value of a layer that has not read this repository.
+ *
+ * Then, with the app running on :3000:
+ *
+ *   testsprite test run <id> --local 3000 --wait
+ *
+ * `--local` opens a tunnel for the run and points the runner at this machine's loopback.
+ * The project's own target URL is `https://example.com` -- IANA's reserved documentation
+ * domain, a deliberate placeholder -- because a project needs a publicly resolvable URL and
+ * every run here overrides it with the tunnel. A run that forgot `--local` reaches a page
+ * that is nobody's.
+ */
+
+import { execFileSync } from "node:child_process";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+
+const PROJECT = process.env.TESTSPRITE_PROJECT_ID ?? "6aad5672-2129-465b-950b-0b8e276c7300";
+const ROOT = new URL("../../", import.meta.url).pathname;
+const OUT = process.env.PLANS_OUT ?? "/tmp/claude-501/veyro-testsprite";
+
+const env = Object.fromEntries(
+  readFileSync(join(ROOT, "web/.env.e2e.local"), "utf8")
+    .split("\n")
+    .filter((line) => line.includes("=") && !line.startsWith("#"))
+    .map((line) => [line.slice(0, line.indexOf("=")), line.slice(line.indexOf("=") + 1)]),
+);
+
+const signIn = [
+  {
+    type: "action",
+    description:
+      `Navigate to /login. Fill the field labelled "Tenant ID" with ` +
+      `${env.VEYRO_E2E_TENANT_ID}, the field labelled "Email or phone" with ` +
+      `${env.VEYRO_E2E_EMAIL}, and the field labelled "Password" with ` +
+      `${env.VEYRO_E2E_PASSWORD}. Click the "Sign in" button.`,
+  },
+];
+
+/**
+ * The four journeys, chosen for what they prove that the in-repo suites cannot.
+ *
+ * Each one is a question a person would ask of the product, written without naming a CSS
+ * class: the point of an independent layer is that it reads what is on the screen.
+ */
+const PLANS = [
+  {
+    name: "Signing in reaches the Command Center, not a session diagnostic",
+    description:
+      "The owner's directive opened with this screen being the wrong screen. It is a queue " +
+      "of things needing attention with four figures above it, and it must not be a page " +
+      "about the session.",
+    priority: "p1",
+    planSteps: [
+      ...signIn,
+      {
+        type: "assertion",
+        description:
+          "Verify the page that loads after signing in has a heading about things needing " +
+          "attention this morning, shows four labelled figures across the top (collected, " +
+          "active members, visits today and lead conversion), and lists items to act on " +
+          "with categories such as MONEY, COMPLIANCE, RETENTION and STAFFING. Verify it " +
+          "does NOT show a list of the current session's permissions or session details.",
+      },
+    ],
+  },
+  {
+    name: "A report this session cannot open is absent, not locked",
+    description:
+      "ADM-RPT-01's gate: 'A Club Manager opening this screen sees four reports, not six. " +
+      "The two financial ones are absent -- not listed and locked.'",
+    priority: "p1",
+    planSteps: [
+      ...signIn,
+      { type: "action", description: 'Open the "Reports" entry in the left navigation.' },
+      {
+        type: "assertion",
+        description:
+          "Verify the page lists reports as links with a one-line description each, and " +
+          "that none of them is shown greyed out, disabled or marked as locked. Verify a " +
+          "separate section names reports the design lists that this build cannot produce " +
+          "— attendance, coaching, leads and tax — each with a stated reason.",
+      },
+    ],
+  },
+  {
+    name: "The revenue report separates collected from invoiced",
+    description:
+      "ADM-RPT-02's whole argument: a report showing one number labelled 'revenue' is why " +
+      "operators cannot reconcile their own books.",
+    priority: "p1",
+    planSteps: [
+      ...signIn,
+      { type: "action", description: 'Navigate to /reports and open the "Revenue" report.' },
+      {
+        type: "assertion",
+        description:
+          "Verify the report shows four separate money figures labelled COLLECTED, " +
+          "INVOICED, OUTSTANDING and REFUNDED, and that collected and invoiced are not the " +
+          "same number. Verify there is a table breaking revenue down by source whose rows " +
+          "name parts of the business (for example Memberships) and whose Total row equals " +
+          "the sum of the rows above it.",
+      },
+    ],
+  },
+  {
+    name: "A withheld field on a member's record is marked, never blank",
+    description:
+      "MOD-014 applies the gate's masked-field list and this surface renders it. An empty " +
+      "cell is indistinguishable from 'there was nothing here', which is the one reading " +
+      "that is always wrong.",
+    priority: "p1",
+    planSteps: [
+      ...signIn,
+      { type: "action", description: "Navigate to /members and open the first member in the list." },
+      {
+        type: "assertion",
+        description:
+          "Verify that any field the page is withholding is shown as withheld with a stated " +
+          "reason — for example that it needs a stronger sign-in, or that nobody in this " +
+          "build can read it — rather than being left blank or omitted. Members' names are " +
+          "themselves withheld on this session and that is correct, so verify the page " +
+          "offers a link to sign in more strongly rather than leaving the reader with no " +
+          "way through.",
+      },
+    ],
+  },
+];
+
+mkdirSync(OUT, { recursive: true });
+const written = PLANS.map((plan, index) => {
+  const file = join(OUT, `veyro-admin-${index + 1}.plan.json`);
+  writeFileSync(file, `${JSON.stringify({ projectId: PROJECT, type: "frontend", ...plan }, null, 2)}\n`);
+  return { file, name: plan.name };
+});
+
+for (const { file, name } of written) console.log(`${file}  ${name}`);
+
+if (process.argv.includes("--create")) {
+  for (const { file, name } of written) {
+    const out = execFileSync("testsprite", ["test", "create", "--plan-from", file], {
+      encoding: "utf8",
+    });
+    console.log(`created: ${name}\n${out.trim()}`);
+  }
+}

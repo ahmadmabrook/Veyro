@@ -166,6 +166,60 @@ test.describe("the membership blocks on a member's page", () => {
       .toBeLessThan(billed.reduce((sum, n) => sum + n, 0));
   });
 
+  test("the wallet counts cash and given-away value apart", async ({ page }) => {
+    // ADM-PAY-07, and paragraph 1686 -- which MOD-018 calls a Critical Control: a member
+    // holding cash they paid in and value the tenant gave away holds two different things,
+    // and only the first is money the tenant owes. A screen that summed them would erase
+    // the distinction that decides whether a refund is even possible.
+    await page.goto(BILLING_TAB);
+    const wallet = page.locator("section").filter({ hasText: "Wallet and credits" }).first();
+    // **Match the money token, do not strip the punctuation.** A `dd` here carries the
+    // figure *and* the sentence explaining it, and stripping everything but digits and dots
+    // leaves the sentence's full stops behind: "10.00" becomes "10.00.." and parses as NaN.
+    const value = async (label: string) => {
+      const text = ((await wallet.getByRole("term").filter({ hasText: label }).first()
+        .locator("xpath=following-sibling::dd[1]").textContent()) ?? "").trim();
+      const found = /(\d+(?:\.\d+)?)/.exec(text.replace(/\s+/g, ""));
+      return found === null ? Number.NaN : Number(found[1]);
+    };
+    const balance = await value("Balance");
+    const refundable = await value("Refundable");
+    expect(balance, "the fixture seeds cash and a promotional credit").toBeGreaterThan(0);
+    expect(refundable, "given-away value is spendable and never refundable")
+      .toBeLessThan(balance);
+  });
+
+  test("every movement names its origin, and a spend names the pocket it came from", async ({
+    page,
+  }) => {
+    // The canvas's own rule: "Always labelled credit, never a negative balance. Each entry
+    // names its origin -- a cancelled class, an overpayment, a goodwill gesture -- because
+    // unexplained credit is indistinguishable from an error."
+    await page.goto(BILLING_TAB);
+    const wallet = page.locator("section").filter({ hasText: "Wallet and credits" }).first();
+    await expect(wallet).toContainText("Top-up at the desk");
+    await expect(wallet).toContainText("Class cancelled");
+
+    // **A credit's kind is where it came from; a debit's is which pocket it came out of.**
+    // The same word cannot do both: "Given away" under a spend reads as though the gym gave
+    // away a protein bar, which is what this rendered before somebody looked at it.
+    const spend = wallet.getByRole("row").filter({ hasText: "Water and a protein bar" });
+    await expect(spend).toContainText(/spent from/);
+    await expect(spend).not.toContainText(/^Given away$/);
+    // A spend is a different sign on the same axis, never a credit of a different colour.
+    await expect(spend).toContainText("\u2212");
+  });
+
+  test("offers no top-up and no add-credit, because both are stepped-up writes", async ({
+    page,
+  }) => {
+    await page.goto(BILLING_TAB);
+    const wallet = page.locator("section").filter({ hasText: "Wallet and credits" }).first();
+    await expect(wallet.getByRole("button", { name: /top up/i })).toHaveCount(0);
+    await expect(wallet.getByRole("button", { name: /add credit/i })).toHaveCount(0);
+    await expect(wallet).toContainText("stepped-up financial permission");
+  });
+
   test("says the blocks are composed here rather than joined on the server", async ({
     page,
   }) => {

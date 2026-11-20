@@ -839,11 +839,103 @@ feature added.
   because revenue is earned at issue and clearing moves only on payment — with the exact
   postings proved against a real database on the backend.
 
-## TestSprite
+## TestSprite — the independent layer, and what it found
 
 The CLI is installed and authenticated against the owner's own workspace (Starter, 400
 credits a month, local tunnel available), and this repository already carries one run under
-`qa/testsprite/` from 2026-10-15. It is the independent layer the directive requires, and
-what it can reach is bounded by one thing worth stating: a frontend run reaches this machine
-through a tunnel and signs in with the fixture's synthetic credentials for a throwaway local
-tenant, which every fixture run rotates.
+`qa/testsprite/` from 2026-10-15. `qa/testsprite/plans.mjs` generates four journeys from the
+live fixture and creates them; `testsprite test run <id> --local 3000` opens a tunnel for a
+run and points the cloud runner at this machine's loopback.
+
+**The value is that it has not read this repository.** A Playwright spec and the page it
+tests were written by the same hand on the same day, against the same assumptions; these
+plans are English sentences about what a person would do, and the agent executing them has
+never seen a selector, a fixture or an argument from this codebase. It does not replace the
+browser suite, the component tests or the visual comparison — a TestSprite pass says a
+journey works, not that a screen matches its canvas.
+
+| Journey | Result |
+| --- | --- |
+| Signing in reaches the Command Center, not a session diagnostic | passed 6/6 |
+| A report this session cannot open is absent, not locked | passed |
+| The revenue report separates collected from invoiced | passed 8/8 |
+| A withheld field is marked, never blank | found a defect (below), then passed |
+
+**The finding, and it is a good one.** The fourth plan asserted that the member's own name
+was readable. It is not — an identity field needs a stepped-up session and a name is one, so
+every row of `/members` reads "Name withheld". The plan was wrong about the product. What
+the tester did next is the finding: **it clicked the withheld marker looking for a way
+through, and on the list there was none.** The step-up that lifts the mask was offered on a
+member's *record* only, so a reader of the list saw a withheld name against every member with
+nothing on the page to act on. The offer is on the list now, pointing back at the list.
+
+The other failure was mine: a run was in flight while the production bundle was being
+rebuilt under it. Re-run clean, it passes.
+
+**Two bounds worth stating.** A frontend run reaches this machine through a tunnel and signs
+in with the fixture's synthetic credentials — `admin@veyro.invalid`, a constant in
+`fixture.mjs`, for a throwaway local tenant. And a test created from a plan carries that
+tenant's id for ever, because a plan is static text on TestSprite's side: **re-running the
+fixture invalidates every test already created**, which then fails at a sign-in form for a
+tenant that no longer exists and looks exactly like a product defect. Regenerate and create
+again after any fixture run.
+
+## ADM-PAY-07 — wallet and credits
+
+Built onto the member's billing tab, over a new `GET /ledger/wallets/{id}/statements`.
+
+**The read beside it takes a currency and a member's record does not have one.** A wallet is
+one row per (person, currency); a till settling a sale knows which currency it is in, and a
+screen does not. A page that guessed — the tenant's first billing account, say — would show
+one wallet and silently omit the rest, and a member holding value in a currency it did not
+ask about would be told they hold nothing. A person with no wallet gets an empty list rather
+than a 404, because this read is asked what somebody *holds* and "nothing" is a true answer.
+
+**Four balances, not the canvas's one.** Paragraph 1686, which MOD-018 calls a Critical
+Control: a member holding cash they paid in and value the tenant gave away holds two
+different things, and only the first is money the tenant owes. The total leads and the kinds
+sit under it; summing them would erase the distinction that decides whether a refund is even
+possible.
+
+**A credit's kind is where it came from; a debit's is which pocket it came out of**, and the
+same word cannot do both. The first version captioned a spend "Given away" — the balance
+label — so "Water and a protein bar · Given away" read as though the gym had given away a
+protein bar. A spend now says which pocket it was taken from, which is worth saying, because
+`plan_debit` chooses that pocket in the member's interest: promotional first, since it
+expires and is worth nothing lapsed. Found by reading the rendered statement.
+
+Not built, and the screen says so: Top up and Add credit are both writes behind a stepped-up
+financial permission with no form in this build.
+
+
+## Arabic: three kinds of English on an Arabic page
+
+Switching the language and looking at `/members` found three, and they are three different
+mistakes rather than one repeated:
+
+- **A stored value rendered as a label.** `lifecycle_state` printed `lead` in Latin letters
+  on the filter chips and in every row; `membership_kind`, `billing_period` and `status`
+  printed `recurring`, `monthly` and `active` in the next column. `stateName` and `planName`
+  map them, and an unknown value falls through to its stored form rather than to "other" —
+  this is the screen that *filters* by it, so hiding which one it is would be worse than an
+  untranslated word.
+- **English prose in a library.** `members.UNANSWERABLE` held six English sentences and the
+  page rendered them straight, so the Arabic build carried six English paragraphs under
+  Arabic headings. The Command Center's own `UNANSWERABLE` was already message keys; the
+  members module was the odd one out, and is now consistent with it.
+- **A server disclosure rendered verbatim.** `search_is_not_available_because` is the
+  backend's own sentence about what it cannot do. It is the authority for *what* the gap is
+  and it is English by construction, so the reader gets the catalogue's version of the same
+  statement and the server's stays in the data.
+
+**None of these is visible to the catalogue parity check**, which compares the two catalogues
+against each other and is structurally blind to a string that never became a key. That is the
+rule this ledger already recorded for MOD-013's decision reasons, recurring twice in one page.
+The durable answer is the one that rule names: a test per module asserting that every key
+*that module maps to* exists in both catalogues — `tests/component/members.test.ts` has it
+for `stateName`, `planName` and `UNANSWERABLE` now.
+
+**And the members list had no way through its own mask.** Every name reads "Name withheld" at
+AAL 1, and the step-up that lifts it was offered on a member's record only — so a reader of
+the list had a withheld name against every member and nothing on the page to act on. Found by
+TestSprite, which clicked the marker looking for one.

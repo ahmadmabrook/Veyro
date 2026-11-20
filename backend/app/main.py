@@ -6956,6 +6956,22 @@ def create_app(
             person_id=require_uuid(person_id, "person_id"), currency=currency,
             at=as_of)
 
+    @app.get("/ledger/wallets/{person_id}/statements")
+    def get_member_wallets(
+        tenant_id: TenantId, session: Session, person_id: str, as_of: date | None = None,
+    ) -> dict[str, Any]:
+        """Every wallet one person holds — ADM-PAY-07.
+
+        The read beside this one takes a currency, which a till settling a sale has and a
+        member's record does not: `led_wallets` is one row per (person, currency) and nothing
+        told the screen which rows exist. A page that guessed at one would silently omit the
+        rest. Same permission, because it is the same data at a different grain.
+        """
+        permit(session, "finance.wallet.read")
+        return ledger.person_wallets(
+            tenant_pool, tenant_id,
+            person_id=require_uuid(person_id, "person_id"), at=as_of)
+
     @app.post("/ledger/recognition-schedules", status_code=201)
     def open_recognition_schedule(
         tenant_id: TenantId, session: Session, body: RecognitionScheduleBody

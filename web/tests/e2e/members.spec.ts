@@ -20,7 +20,35 @@ test.describe("the members list", () => {
     await page.goto("/members");
   });
 
-  test("is at Compact density, which the design states for this screen", async ({ page }) => {
+  test("names the lifecycle state in the reader's own language", async ({ page }) => {
+    // **A stored value is not a label.** The filter chips and the state column printed
+    // `lead` and `active` raw, so an Arabic reader got Latin letters in the middle of an
+    // Arabic page. The catalogue parity check is structurally blind to it -- it compares the
+    // two catalogues against each other and never sees a string that was not a key -- so
+    // this was found by switching the language and looking.
+    await expect(page.locator("main")).toContainText("Lead");
+    await page.getByRole("button", { name: "العربية" }).click();
+    await page.waitForURL(/members/);
+    await expect(page.locator("main")).toContainText("\u0639\u0645\u064a\u0644 \u0645\u062d\u062a\u0645\u0644");
+    await expect(page.locator("main")).not.toContainText(/\blead\b/);
+  });
+
+  test("offers the step-up on the list, not only inside a record", async ({ page }) => {
+    // **Every name here is withheld at AAL 1**, because identity fields need a financial
+    // permission the session does not carry -- and the remedy lived only on the member
+    // record, so a reader of this list saw "Name withheld" against every row with nothing
+    // on the page to act on. Found by an independent tester, who clicked the marker looking
+    // for a way through.
+    const withheld = page.locator("main").getByText("Withheld").first();
+    await expect(withheld).toBeVisible();
+    const offer = page.getByRole("link", { name: /stronger sign-in|Raise/i }).first();
+    await expect(offer).toBeVisible();
+    await expect(offer).toHaveAttribute("href", /\/step-up\?/);
+    // And it comes back here, rather than dropping the reader on the record of nobody.
+    await expect(offer).toHaveAttribute("href", /next=%2Fmembers/);
+  });
+
+test("is at Compact density, which the design states for this screen", async ({ page }) => {
     // "ADM-MEM-05 · MEMBERS LIST · CM, RECEP · COMPACT · 1440". Compact is 34px rows and the
     // body type one step down -- and the measurement is the assertion, because the first
     // version set `data-density` on a wrapper while the generated selector was `:root[...]`,
@@ -48,7 +76,9 @@ test.describe("the members list", () => {
       (await page.getByText(/in this tenant/).innerText()).match(/·\s*([\d,٠-٩]+)/)?.[1];
     const before = await totalOf();
     expect(before).toBeTruthy();
-    await page.getByRole("link", { name: "cancelled", exact: true }).click();
+    // **The chip reads the label, not the stored value.** It used to print `cancelled` raw,
+    // which put a Latin word on an Arabic page; the URL still carries the stored value.
+    await page.getByRole("link", { name: "Cancelled", exact: true }).click();
     await page.waitForURL(/state=cancelled/);
     expect(await totalOf()).toBe(before);
     await expect(page.getByText(/0 of 0 matching/)).toBeVisible();

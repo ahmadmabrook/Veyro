@@ -6,8 +6,10 @@ import {
   isLifecycleState,
   membershipsByPerson,
   stateCounts,
+  stateName,
   type MembershipRow,
 } from "@/lib/members";
+import { MESSAGES, t } from "@/i18n/locale";
 
 import { specFor, specTextFor } from "@/design/screen-specs";
 
@@ -32,14 +34,22 @@ describe("the members list is built from a design that exists", () => {
   it("names every column the design specifies that this build cannot answer", () => {
     // CLUB, BALANCE and LAST VISIT. Named in one place, so a page cannot quietly render an
     // empty cell as a fact about a member.
-    expect(UNANSWERABLE.columns).toContain("CLUB");
-    expect(UNANSWERABLE.columns).toContain("BALANCE");
-    expect(UNANSWERABLE.columns).toContain("LAST VISIT");
+    // **Through the catalogue, because these are message keys now.** They were English
+    // sentences in a library, rendered straight to the page -- which put six English
+    // paragraphs under Arabic headings in the Arabic build, where the catalogue parity check
+    // could not see them. The Command Center's own `UNANSWERABLE` was already keys.
+    expect(t("en", UNANSWERABLE.columns)).toContain("CLUB");
+    expect(t("en", UNANSWERABLE.columns)).toContain("BALANCE");
+    expect(t("en", UNANSWERABLE.columns)).toContain("LAST VISIT");
+    for (const key of Object.values(UNANSWERABLE)) {
+      expect(MESSAGES.en[key], `${key} is missing from the English catalogue`).toBeTruthy();
+      expect(MESSAGES.ar[key], `${key} is missing from the Arabic catalogue`).toBeTruthy();
+    }
   });
 
   it("says why there is no search rather than offering a box that scans", () => {
-    expect(UNANSWERABLE.search).toContain("ENG-01");
-    expect(UNANSWERABLE.search).toContain("pre-filter");
+    expect(t("en", UNANSWERABLE.search)).toContain("ENG-01");
+    expect(t("en", UNANSWERABLE.search)).toContain("pre-filter");
   });
 });
 
@@ -116,5 +126,27 @@ describe("the subtitle's counts", () => {
 
   it("is empty for a tenant with nobody in it, rather than inventing a zero per state", () => {
     expect(stateCounts({})).toEqual([]);
+  });
+});
+
+describe("stateName", () => {
+  it("names every lifecycle state in both catalogues", () => {
+    // **A stored value is not a label.** These were rendered raw, so an Arabic reader saw
+    // `lead` in Latin letters on the filter chips and in every row of the table. The
+    // catalogue parity check cannot see that: it compares the two catalogues against each
+    // other and is blind to a string that never became a key. This is that check run from
+    // the side the catalogue cannot see -- the rule MOD-013's board already paid for.
+    for (const state of LIFECYCLE_STATES) {
+      const key = stateName(state);
+      expect(key, `${state} has no message key`).not.toBeNull();
+      expect(MESSAGES.en[key!], `${state} is missing from the English catalogue`).toBeTruthy();
+      expect(MESSAGES.ar[key!], `${state} is missing from the Arabic catalogue`).toBeTruthy();
+    }
+  });
+
+  it("returns null for a state added later, so the screen shows it rather than hiding it", () => {
+    // The set is MOD-014's and may grow. On the screen that *filters* by this value,
+    // rendering an unknown one as "other" hides which one it is.
+    expect(stateName("reactivated")).toBeNull();
   });
 });

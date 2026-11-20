@@ -1,3 +1,5 @@
+import type { MessageKey } from "@/i18n/locale";
+
 /**
  * ADM-MEM-05, the members list — its decisions, and an honest account of its gaps.
  *
@@ -70,6 +72,31 @@ export function isLifecycleState(value: string | undefined): value is LifecycleS
 }
 
 /**
+ * The message key naming a lifecycle state.
+ *
+ * **A stored value is not a label**, and this list was rendered raw -- so an Arabic reader
+ * saw `lead` in Latin letters in the middle of an Arabic page, on the filter chips and in
+ * every row of the table. The parity check cannot see this: it compares the two catalogues
+ * against each other and is blind to a string that never became a key, which is the finding
+ * MOD-013's board already paid for. Found by switching the language and looking.
+ *
+ * **An unknown state falls through to its stored value rather than to "other".** The set is
+ * MOD-014's and may grow; hiding which one it is on the screen that filters by it would be
+ * worse than showing an untranslated word.
+ */
+export function stateName(state: string): MessageKey | null {
+  const known: Record<string, MessageKey> = {
+    lead: "members.stateLead",
+    prospect: "members.stateProspect",
+    active: "members.stateActive",
+    paused: "members.statePaused",
+    cancelled: "members.stateCancelled",
+    former: "members.stateFormer",
+  };
+  return known[state] ?? null;
+}
+
+/**
  * The membership each person on the page holds, indexed once.
  *
  * **One call for the page rather than one per row.** Fifty rows against a per-person route is
@@ -110,18 +137,49 @@ export function stateCounts(byState: Record<string, number>): {
 }
 
 /** What the design specifies that this build cannot do, each with the reason. */
+/**
+ * The message key naming a membership kind, billing period or status.
+ *
+ * MOD-017's own vocabulary, rendered raw on the members list until somebody read the Arabic
+ * page: `recurring`, `monthly` and `active` in Latin letters beside Arabic headings. One map
+ * rather than three, because the three sets do not overlap and a reader does not care which
+ * column a word came from.
+ */
+export function planName(stored: string): MessageKey | null {
+  const known: Record<string, MessageKey> = {
+    recurring: "plan.kindRecurring",
+    prepaid: "plan.kindPrepaid",
+    monthly: "plan.periodMonthly",
+    quarterly: "plan.periodQuarterly",
+    annual: "plan.periodAnnual",
+    weekly: "plan.periodWeekly",
+    pending: "plan.statusPending",
+    active: "plan.statusActive",
+    frozen: "plan.statusFrozen",
+    grace: "plan.statusGrace",
+    suspended: "plan.statusSuspended",
+    cancelled: "plan.statusCancelled",
+    expired: "plan.statusExpired",
+    completed: "plan.statusCompleted",
+  };
+  return known[stored] ?? null;
+}
+
+/**
+ * What this screen cannot do, as message keys.
+ *
+ * **Keys, not prose, which is what the Command Center's own `UNANSWERABLE` already is.**
+ * This module held English sentences in a library and rendered them straight to the page, so
+ * the Arabic build carried six English paragraphs under Arabic headings -- and the catalogue
+ * parity check could not see it, because a string that never became a key is invisible to a
+ * comparison between the two catalogues. Found by switching the language and looking, which
+ * is the third time that has been the only thing that worked.
+ */
 export const UNANSWERABLE = {
-  search:
-    "Paragraph 4218 puts a permission-aware search index with a mandatory query pre-filter "
-    + "in ENG-01, which is not built. A LIKE scan presented as search is a read path with no "
-    + "freshness contract and no pre-filter.",
-  quickFilters:
-    "Owes money, Expiring and Not visited 30d each count over another module's data; a "
-    + "server-side filter across modules would be the cross-domain join paragraph 1300 bars.",
-  savedViews: "A saved view is filters plus columns plus sort, named — and nothing stores one.",
-  bulkActions:
-    "Send message, Send payment links and Add to segment: nothing in this build sends a "
-    + "message, there is no payment link, and segments are PPL-01-R05's unbuilt half.",
-  export: "There is no export route, and the design puts this one behind an approval.",
-  columns: "CLUB, BALANCE and LAST VISIT have no read in this build.",
-} as const;
+  search: "members.whySearch",
+  quickFilters: "members.whyQuickFilters",
+  savedViews: "members.whySavedViews",
+  bulkActions: "members.whyBulkActions",
+  export: "members.whyExport",
+  columns: "members.whyColumns",
+} as const satisfies Record<string, MessageKey>;

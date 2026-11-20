@@ -1018,6 +1018,7 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
   // returns `ledger_skipped_because` rather than refusing, precisely so a tenant mid-setup
   // does not find its till has stopped working. Seeding the chart first is what makes the
   // finance board show a trial balance with something on it rather than that honest skip.
+  const chart = {};
   for (const [code, kind] of [
     ["AR", "receivable"], ["BANK", "bank"], ["CASH", "cash"],
     ["CLEARING", "provider_clearing"], ["CONTRA", "contra_revenue"],
@@ -1025,11 +1026,12 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
     ["TAX", "tax_payable"], ["UNEARNED", "unearned_revenue"],
     ["WCASH", "wallet_cash"], ["WPROMO", "wallet_promotional"],
   ]) {
-    await call("/ledger/accounts", {
+    const account = await call("/ledger/accounts", {
       method: "POST", ...as(token),
       body: { account_code: code, account_kind: kind, display_name: code,
               currency: "JOD", correlation_id: cid() },
     });
+    chart[code] = account.account_id;
   }
   // One retired account, so the chart has both states and a board cannot pass by showing
   // only the happy one.
@@ -1162,6 +1164,50 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
             dispute_kind: "chargeback", reason_code: "product_not_received",
             amount_minor: 2000, currency: invoice.currency,
             opened_on: isoDay(-2), respond_due_on: isoDay(10),
+            idempotency_key: randomUUID(), correlation_id: cid() },
+  });
+
+  // **A wallet with both kinds in it**, which is ADM-PAY-07 and the one distinction MOD-018
+  // calls a Critical Control: "a member holding 50.00 they paid in and 10.00 the tenant gave
+  // away holds two different things, and the first is money the tenant owes." A fixture with
+  // only a top-up renders a balance and demonstrates nothing about that, so it seeds a cash
+  // top-up, a promotional credit that expires, and a spend -- which `plan_debit` takes from
+  // the promotional side first, in the member's interest, because that is the kind that is
+  // worth nothing lapsed.
+  //
+  // The counterparts are the chart's own: cash came in at the till, and value given away is
+  // `contra_revenue`, which that kind's own description calls "revenue given back: a
+  // discount, a credit note or a goodwill reduction".
+  await call("/ledger/wallet-credits", {
+    method: "POST", ...as(token),
+    body: { person_id: person.person_id, value_kind: "cash", amount_minor: 10000,
+            currency: "JOD", legal_entity_id: entity.legal_entity_id,
+            counterpart_account_id: chart.CASH, source_kind: "purchase",
+            source_ref: "desk-topup-1", reason: "Top-up at the desk",
+            idempotency_key: randomUUID(), correlation_id: cid() },
+  });
+  await call("/ledger/wallet-credits", {
+    method: "POST", ...as(token),
+    body: { person_id: person.person_id, value_kind: "promotional", amount_minor: 800,
+            currency: "JOD", legal_entity_id: entity.legal_entity_id,
+            counterpart_account_id: chart.CONTRA, source_kind: "goodwill",
+            source_ref: "class-cancelled-1",
+            reason: "Class cancelled \u00b7 Tuesday spin",
+            // **Expiring, because that is what makes the two kinds behave differently.**
+            // A promotional credit nobody spends is worth nothing after this date, and the
+            // statement marks it lapsed rather than dropping it: "where did my 10.00 go" is
+            // the question a member actually asks.
+            expires_on: isoDay(45),
+            idempotency_key: randomUUID(), correlation_id: cid() },
+  });
+  await call("/ledger/wallet-debits", {
+    method: "POST", ...as(token),
+    body: { person_id: person.person_id, amount_minor: 250, currency: "JOD",
+            legal_entity_id: entity.legal_entity_id,
+            // A debit's own vocabulary is `spend | refund | expiry | correction`, not the
+            // credit's: what value came *from* and what it went *to* are different questions.
+            counterpart_account_id: chart.REV, source_kind: "spend",
+            source_ref: "desk-sale-1", reason: "Water and a protein bar",
             idempotency_key: randomUUID(), correlation_id: cid() },
   });
 

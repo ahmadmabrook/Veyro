@@ -980,6 +980,40 @@ def wallet_statement(
     }
 
 
+def person_wallets(
+    pool: Pool, tenant_id: str, *, person_id: str, at: date | None = None,
+) -> dict[str, Any]:
+    """Every wallet one person holds, each as a full statement.
+
+    **The single-currency read needs a currency and a screen does not have one.**
+    `wallet_statement` takes the currency as a required argument, which is right for a till
+    settling a sale in a known currency and useless to a member's record: `led_wallets` is
+    one row per (person, currency), and nothing told the page which rows exist. A screen that
+    guessed -- the tenant's first billing account, say -- would show one wallet and silently
+    omit the others, and a member holding value in a currency the page did not ask about
+    would be told they hold nothing.
+
+    So the currencies are resolved here and each is answered in full. A person with no wallet
+    gets an empty list rather than a 404: the single-currency read is asked about one wallet
+    and can say it is not there, while this one is asked what somebody holds and "nothing" is
+    a true answer rather than a missing thing.
+    """
+    today = at or _today()
+    with tenant_scope(pool, tenant_id) as conn:
+        rows = conn.execute(
+            "SELECT currency FROM plt01.led_wallets WHERE person_id = %s ORDER BY currency",
+            (person_id,),
+        ).fetchall()
+    return {
+        "person_id": person_id,
+        "as_of": today.isoformat(),
+        "wallets": [
+            wallet_statement(pool, tenant_id, person_id=person_id, currency=str(r[0]), at=today)
+            for r in rows
+        ],
+    }
+
+
 # ------------------------------------------------------------------ revenue recognition
 
 def open_recognition_schedule(

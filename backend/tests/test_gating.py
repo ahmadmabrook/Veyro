@@ -415,6 +415,7 @@ WRITE_ROUTES = [
     ("get", f"/ledger/trial-balance?legal_entity_id={_ID}&currency=JOD", None),
     ("get", f"/ledger/journals/{_ID}", None),
     ("get", f"/ledger/wallets/{_ID}?currency=JOD", None),
+    ("get", f"/ledger/wallets/{_ID}/statements", None),
     ("get", "/ledger/recognition-due", None),
     ("get", "/ledger/reconciliation-cases", None),
     ("post", "/finance/dunning-cases",

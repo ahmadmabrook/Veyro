@@ -544,6 +544,66 @@ class PeriodTests(LedgerApiTestCase):
 
 
 class WalletTests(LedgerApiTestCase):
+    def test_every_wallet_one_person_holds_is_answered_without_naming_a_currency(self):
+        """ADM-PAY-07's read, and why it is not the single-currency one beside it.
+
+        `GET /ledger/wallets/{id}` takes a currency, which a till settling a sale has and a
+        member's record does not: `led_wallets` is one row per (person, currency) and nothing
+        told the screen which rows exist. A page that guessed at one -- the tenant's first
+        billing account, say -- would show one wallet and silently omit the rest, and a member
+        holding value in a currency it did not ask about would be told they hold nothing.
+        """
+        tenant_id = self.tenant()
+        entity = self.legal_entity(tenant_id)
+        chart = self.chart(tenant_id)
+        person_id = self.person(tenant_id)
+        owner = self.headers(tenant_id)
+        credited = self.client.post("/ledger/wallet-credits", json={
+            "person_id": person_id, "value_kind": "cash", "amount_minor": 5000,
+            "currency": "JOD", "legal_entity_id": entity,
+            "counterpart_account_id": chart["cash"], "source_kind": "purchase",
+            "reason": "top-up at the desk", "idempotency_key": "w-all-1",
+            **self.correlation()}, headers=owner)
+        self.assertEqual(credited.status_code, 201, credited.text)
+
+        read = self.client.get(f"/ledger/wallets/{person_id}/statements", headers=owner)
+        self.assertEqual(read.status_code, 200, read.text)
+        wallets = read.json()["wallets"]
+        self.assertEqual([w["currency"] for w in wallets], ["JOD"])
+        self.assertEqual(wallets[0]["spendable_minor"], 5000)
+        # The reason is on the line, because an entry that does not name its origin is
+        # indistinguishable from an error -- which is this screen's own rule.
+        self.assertEqual(wallets[0]["lines"][0]["reason"], "top-up at the desk")
+
+    def test_a_person_with_no_wallet_holds_nothing_rather_than_being_missing(self):
+        """An empty list, not a 404.
+
+        The single-currency read is asked about one wallet and can say it is not there; this
+        one is asked what somebody holds, and "nothing" is a true answer rather than a missing
+        thing. A screen that got a 404 here would render an error for the ordinary case of a
+        member who has never held credit.
+        """
+        tenant_id = self.tenant()
+        person_id = self.person(tenant_id)
+        read = self.client.get(
+            f"/ledger/wallets/{person_id}/statements", headers=self.headers(tenant_id))
+        self.assertEqual(read.status_code, 200, read.text)
+        self.assertEqual(read.json()["wallets"], [])
+
+    def test_the_wallets_read_needs_the_wallet_permission(self):
+        tenant_id = self.tenant()
+        person_id = self.person(tenant_id)
+        refused = self.client.get(
+            f"/ledger/wallets/{person_id}/statements",
+            headers=self.headers(tenant_id, self.grant(tenant_id, ["finance.ledger.read"])))
+        self.assertEqual(refused.status_code, 403, refused.text)
+
+    def test_a_malformed_person_id_is_a_message_rather_than_a_500(self):
+        tenant_id = self.tenant()
+        bad = self.client.get(
+            "/ledger/wallets/not-a-uuid/statements", headers=self.headers(tenant_id))
+        self.assertEqual(bad.status_code, 422, bad.text)
+
     def test_a_debit_spends_promotional_value_before_cash(self):
         """**The caller does not choose.** One able to name the kind could spend the
         refundable balance first and leave the member holding value they can never get back."""

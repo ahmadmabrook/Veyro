@@ -16,6 +16,7 @@ import {
 } from "@/lib/members";
 import { listMembers, listMemberships } from "@/lib/members-reads";
 import { isWithheld } from "@/lib/people";
+import { planName, stateName } from "@/lib/members";
 import { presentation } from "@/lib/preferences";
 
 /**
@@ -121,7 +122,11 @@ export default async function MembersPage({
                 <span key={state}>
                   {index > 0 ? " \u00b7 " : ""}
                   <span className="data">{formatInteger(count, "latn")}</span>{" "}
-                  {state === "none" ? text("members.noProfile") : state}
+                  {state === "none"
+                    ? text("members.noProfile")
+                    : stateName(state) === null
+                      ? state
+                      : text(stateName(state) as MessageKey)}
                 </span>
               ))}
           {" \u00b7 "}
@@ -138,6 +143,25 @@ export default async function MembersPage({
             <FilterLink key={state} locale={locale} state={state} current={lifecycleState} />
           ))}
         </nav>
+
+        {/* **A list of withheld names needs the remedy on the list.** Every row here is
+            marked when the session cannot read identity fields, and the member *record*
+            offers the step-up that lifts it -- so a reader on this page saw "Name withheld"
+            against every member with nothing to act on, and had to open one record to find
+            out there was a way. Found by an independent tester, who clicked the marker
+            looking for one. The offer is the same link the record makes, with this page as
+            the destination, and it is shown only when something is actually withheld. */}
+        {page.people.some((row) => isWithheld(row.preferred_name ?? row.legal_name)) ? (
+          <p className="ds-note">
+            {text("members.namesWithheld")}{" "}
+            <Link
+              href={`/step-up?for=financial&action=member.identity.read&next=${
+                encodeURIComponent("/members")}`}
+            >
+              {text("member.raiseSession")}
+            </Link>
+          </p>
+        ) : null}
 
         {page.people.length === 0 ? (
           // "Empty search names the query and offers to clear filters, never 'no data'."
@@ -183,10 +207,17 @@ export default async function MembersPage({
                 header: text("members.state"),
                 kind: "status",
                 priority: 1,
-                render: (row) =>
-                  row.lifecycle_state ?? (
-                    <span className="muted">{text("members.noProfile")}</span>
-                  ),
+                render: (row) => {
+                  if (row.lifecycle_state === null) {
+                    return <span className="muted">{text("members.noProfile")}</span>;
+                  }
+                  const named = stateName(row.lifecycle_state);
+                  // A state the vocabulary does not know is shown as stored rather than as
+                  // "other": this is the screen that filters by it.
+                  return named ? text(named) : (
+                    <span className="data" dir="ltr">{row.lifecycle_state}</span>
+                  );
+                },
               },
               {
                 header: text("members.plan"),
@@ -202,9 +233,16 @@ export default async function MembersPage({
                     <span className="muted">{text("members.noMembership")}</span>
                   ) : (
                     <>
-                      {membership.membership_kind}
+                      {/* **Three more stored values that were rendered as labels.** Kind,
+                          period and status are MOD-017's vocabulary, and printing them raw
+                          put `recurring`, `monthly` and `active` in Latin letters in the
+                          middle of an Arabic page -- the same defect as the lifecycle state
+                          two columns over, found in the same look. */}
+                      {planWord(membership.membership_kind, locale)}
                       <div className="muted" style={caption}>
-                        {membership.billing_period} · {membership.status}
+                        {planWord(membership.billing_period, locale)}
+                        {" \u00b7 "}
+                        {planWord(membership.status, locale)}
                       </div>
                     </>
                   );
@@ -259,7 +297,11 @@ export default async function MembersPage({
         <h2 style={{ margin: 0 }}>{text("members.cannotYet")}</h2>
         <p className="muted" style={{ margin: 0 }}>{text("members.cannotLead")}</p>
         <dl className="facts">
-          <Gap locale={locale} label="members.noSearch" why={page.search_is_not_available_because} />
+          {/* **The server's own sentence is in the data and the reader gets the catalogue's.**
+              `search_is_not_available_because` is the authority for *what* the gap is, and it
+              is English by construction -- rendering it put an English paragraph under an
+              Arabic heading. The key says the same thing in the reader's language. */}
+          <Gap locale={locale} label="members.noSearch" why={UNANSWERABLE.search} />
           <Gap locale={locale} label="members.noQuickFilters" why={UNANSWERABLE.quickFilters} />
           <Gap locale={locale} label="members.missingColumns" why={UNANSWERABLE.columns} />
           <Gap locale={locale} label="members.noSavedViews" why={UNANSWERABLE.savedViews} />
@@ -278,14 +320,25 @@ function Gap({
 }: {
   locale: "en" | "ar";
   label: MessageKey;
-  why: string;
+  why: MessageKey;
 }) {
   return (
     <>
       <dt className="muted">{t(locale, label)}</dt>
-      <dd style={{ margin: 0 }}>{why}</dd>
+      <dd style={{ margin: 0 }}>{t(locale, why)}</dd>
     </>
   );
+}
+
+/**
+ * A stored membership word, in the reader's language, or as stored when it is unknown.
+ *
+ * The same judgement as `stateName`: MOD-017's vocabulary may grow, and a word this app
+ * does not recognise is shown rather than hidden behind "other".
+ */
+function planWord(stored: string, locale: "en" | "ar"): string {
+  const key = planName(stored);
+  return key === null ? stored : t(locale, key);
 }
 
 function FilterLink({
@@ -304,7 +357,11 @@ function FilterLink({
       aria-current={here ? "page" : undefined}
       className="ds-filter-chip"
     >
-      {state ?? t(locale, "members.all")}
+      {state === undefined
+        ? t(locale, "members.all")
+        : stateName(state) === null
+          ? state
+          : t(locale, stateName(state) as MessageKey)}
     </Link>
   );
 }
