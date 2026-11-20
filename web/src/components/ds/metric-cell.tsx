@@ -121,12 +121,27 @@ export function MetricCell({
 export function MetricRow({
   children,
   label,
+  columns = 4,
 }: {
   children: ReactNode;
   label: string;
+  /**
+   * How many cells sit in one row at `bp.lg`.
+   *
+   * **The canvases differ and the grid has to follow**: ADM-CC-01 draws four and ADM-MEM-01
+   * draws five. A fixed four leaves the fifth alone on a second row with three cells' worth
+   * of the grid's own 1px background showing beside it -- which reads as a cell that failed
+   * to render rather than as a row that ended. Found by looking at the page.
+   */
+  columns?: 3 | 4 | 5;
 }) {
   return (
-    <div className="ds-metric-row" role="group" aria-label={label}>
+    <div
+      className="ds-metric-row"
+      role="group"
+      aria-label={label}
+      style={{ "--metric-columns": columns } as React.CSSProperties}
+    >
       {children}
     </div>
   );

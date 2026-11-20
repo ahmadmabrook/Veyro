@@ -129,3 +129,89 @@ export function byDomain(permissions: string[]): [string, string[]][] {
     .map(([domain, list]) => [domain, list.sort()] as [string, string[]])
     .sort((a, b) => a[0].localeCompare(b[0]));
 }
+
+/**
+ * The permission catalogue, and the matrix ADM-STF-04 draws from it.
+ */
+
+export type CatalogPermission = {
+  name: string;
+  description: string;
+  category: string;
+  action_class: string;
+  required_aal: number;
+};
+
+export type PermissionCatalog = {
+  permissions: CatalogPermission[];
+  count: number;
+  /** The highest assurance any session in this build can reach. */
+  reachable_aal: number;
+};
+
+export function readCatalog(): Promise<PermissionCatalog> {
+  return api("/authz/catalog");
+}
+
+export type Mark = "yes" | "partial" | "stepUp" | "no" | "unreachable";
+
+/**
+ * What a role's cell says for one permission.
+ *
+ * Four states, not the design's three, and the fourth is the one this build forced:
+ *
+ * - **yes** — the role holds it and an ordinary sign-in can exercise it.
+ * - **stepUp** — the role holds it and using it needs a stronger sign-in. The design's
+ *   middle mark is "can request approval", which MOD-008 has as a workflow and not as a
+ *   per-role fact; this is the real third state here, and it is just as surprising: holding
+ *   the permission is not enough.
+ * - **unreachable** — the role holds it and *nobody* in this build can exercise it, because
+ *   it needs assurance level 3 and MOD-007 cannot verify a hardware authenticator. Break-glass
+ *   support access and AI acting for a member are both this, deliberately. Collapsing it into
+ *   `stepUp` would tell a reader to sign in more strongly for a door that does not open.
+ * - **no** — the role does not hold it, "and is absent from their UI entirely", which is the
+ *   design's own wording and this product's behaviour: the navigation is filtered by the gate.
+ */
+export function markFor(
+  permission: CatalogPermission,
+  heldByRole: boolean,
+  reachableAal: number,
+): Mark {
+  if (!heldByRole) return "no";
+  if (permission.required_aal > reachableAal) return "unreachable";
+  return permission.required_aal > 1 ? "stepUp" : "yes";
+}
+
+/**
+ * One module's worth of permissions, as a single mark for one role.
+ *
+ * **The default rows are modules, because 205 rows is the wall this screen was in a
+ * different shape.** ADM-STF-04 draws about a dozen capabilities against nine roles, and a
+ * dozen is what makes "nine roles, and what each may actually do" answerable at a glance.
+ * This product's own coarse unit is the module -- `access`, `billing`, `booking` -- which is
+ * also how its permission names are built and how its navigation is grouped.
+ *
+ * Three states, and the middle one is the honest summary: ● every permission in the module,
+ * ◑ some of them, — none. Rendering "some" as either of the other two would be a lie about a
+ * role, and it is the commonest case.
+ *
+ * The first rule written here was "show the rows the roles differ on", and it did not reduce
+ * anything: with one role holding everything, every permission differs from the roles that
+ * hold almost nothing. The rows have to be coarser, not fewer.
+ */
+export function moduleMark(
+  module: string,
+  permissions: CatalogPermission[],
+  heldByRole: Set<string>,
+): Mark {
+  const inModule = permissions.filter((one) => one.name.startsWith(`${module}.`));
+  if (inModule.length === 0) return "no";
+  const held = inModule.filter((one) => heldByRole.has(one.name)).length;
+  if (held === 0) return "no";
+  return held === inModule.length ? "yes" : "partial";
+}
+
+/** Every module the catalogue has, in the order a permission name sorts. */
+export function modulesOf(permissions: CatalogPermission[]): string[] {
+  return [...new Set(permissions.map((one) => one.name.split(".")[0] ?? one.name))].sort();
+}

@@ -739,10 +739,6 @@ class GateTests(AccessApiTestCase):
             self.assertIn(refused.status_code, (401, 422), f"{path}: {refused.text}")
 
 
-if __name__ == "__main__":  # pragma: no cover
-    unittest.main()
-
-
 class ReviewRegressionTests(AccessApiTestCase):
     """One test per blocking finding from the three independent reviews of MOD-022.
 
@@ -1168,3 +1164,123 @@ class VisitTests(AccessApiTestCase):
         refused = self.client.get("/access/visits",
                                   headers=self.headers(tenant_id, nobody))
         self.assertEqual(refused.status_code, 403, refused.text)
+
+
+class MemberRecordReadTests(AccessApiTestCase):
+    """The two person-scoped reads ADM-MEM-01 needs, and the third filter beside them.
+
+    **Every one of these was written for a screen, which is why they are tested here rather
+    than trusted.** The first version of `person_credentials` selected a column named
+    `rotating_window_seconds` -- taken from the module's own prose about a rotating code's
+    bounded window, which lives on the zone's policy and not on the credential. `ruff` and
+    `mypy` are both blind to a column name inside a SQL string, so the only thing that could
+    have caught it is a test that runs the query. Nothing did, and the page rendered "this
+    figure could not be read just now" where the member's credentials belong.
+    """
+
+    def test_a_members_entries_say_when_they_last_came_in_and_how_often(self):
+        floor = self.floor()
+        headers = self.headers(floor["tenant_id"])
+        now = datetime.now(UTC)
+        for back in (0, 7, 14):
+            recorded = self.client.post("/access/events", json={
+                "point_id": floor["point_id"], "direction": "entry",
+                "credential_value": floor["credential_value"],
+                "occurred_at": (now - timedelta(days=back)).isoformat(),
+                "source": "online", "idempotency_key": str(uuid.uuid4()),
+                **self.correlation()}, headers=headers)
+            self.assertEqual(recorded.status_code, 201, recorded.text)
+
+        read = self.client.get(
+            f"/access/attendance?person_id={floor['person_id']}&weeks=4", headers=headers)
+        self.assertEqual(read.status_code, 200, read.text)
+        body = read.json()
+        self.assertEqual(body["days_since"], 0, body)
+        self.assertEqual(body["entries_in_window"], 3, body)
+        # Three entries over a four-week window measured to the last visit.
+        self.assertEqual(body["entries_per_week"], 0.8, body)
+
+    def test_a_member_who_has_never_been_in_has_no_rate_rather_than_a_zero(self):
+        """"Never came" and "stopped coming" are different facts, and a rate of zero says the
+        second about somebody for whom only the first is true."""
+        floor = self.floor()
+        read = self.client.get(
+            f"/access/attendance?person_id={floor['person_id']}",
+            headers=self.headers(floor["tenant_id"]))
+        self.assertEqual(read.status_code, 200, read.text)
+        body = read.json()
+        self.assertIsNone(body["last_entry_on"], body)
+        self.assertIsNone(body["entries_per_week"], body)
+        self.assertIsNone(body["days_since"], body)
+
+    def test_a_members_credentials_are_listed_without_the_digest(self):
+        """**The control is an absence**, so it is asserted as one. The stored value is a
+        SHA-256 of the presented secret and is pseudonymous rather than anonymous: anybody
+        holding a candidate card number could confirm whose it is, so no read returns it."""
+        floor = self.floor()
+        read = self.client.get(
+            f"/access/credentials?person_id={floor['person_id']}",
+            headers=self.headers(floor["tenant_id"]))
+        self.assertEqual(read.status_code, 200, read.text)
+        body = read.json()
+        self.assertEqual(body["live"], 1, body)
+        self.assertEqual(body["credentials"][0]["kind"], "nfc_card")
+        self.assertEqual(body["credentials"][0]["state"], "active")
+        # The *rows*, not the response text: the response says in prose that no digest is
+        # returned, so a substring search for "digest" matches the disclosure explaining the
+        # absence and would pass with the column present. The keys are the assertion.
+        for credential in body["credentials"]:
+            self.assertNotIn("credential_digest", credential, credential)
+            self.assertNotIn("digest", " ".join(credential), credential)
+        self.assertNotIn(floor["credential_value"], read.text)
+
+    def test_a_revoked_credential_is_left_out_unless_asked_for(self):
+        """A card cancelled last year beside a live one reads as two ways in."""
+        floor = self.floor()
+        headers = self.headers(floor["tenant_id"])
+        revoked = self.client.post(
+            f"/access/credentials/{floor['credential_id']}/revoke",
+            json={"reason": "reported lost", **self.correlation()}, headers=headers)
+        self.assertEqual(revoked.status_code, 200, revoked.text)
+
+        live = self.client.get(
+            f"/access/credentials?person_id={floor['person_id']}", headers=headers)
+        self.assertEqual(live.json()["credentials"], [], live.text)
+        every = self.client.get(
+            f"/access/credentials?person_id={floor['person_id']}&include_revoked=true",
+            headers=headers)
+        self.assertEqual(len(every.json()["credentials"]), 1, every.text)
+        self.assertEqual(every.json()["live"], 0, every.text)
+
+    def test_a_decision_history_can_be_read_for_one_person(self):
+        floor = self.floor()
+        self.assertEqual(self.present(floor).status_code, 201)
+        read = self.client.get(
+            f"/access/decisions?person_id={floor['person_id']}",
+            headers=self.headers(floor["tenant_id"]))
+        self.assertEqual(read.status_code, 200, read.text)
+        self.assertTrue(read.json()["decisions"], read.text)
+        self.assertEqual(
+            read.json()["decisions"][0]["person_id"], floor["person_id"], read.text)
+
+    def test_an_unfiltered_decision_history_is_still_refused(self):
+        """Three ways in and never none: an unfiltered read is a movement log for every
+        member in the tenant, which is why the person filter widens the question rather than
+        removing the obligation to ask one."""
+        floor = self.floor()
+        read = self.client.get(
+            "/access/decisions", headers=self.headers(floor["tenant_id"]))
+        self.assertEqual(read.status_code, 422, read.text)
+
+    def test_a_malformed_person_id_answers_422_rather_than_500(self):
+        tenant_id = self.tenant()
+        for route in ("/access/attendance?person_id=not-a-uuid",
+                      "/access/credentials?person_id=not-a-uuid",
+                      "/access/decisions?person_id=not-a-uuid"):
+            with self.subTest(route=route):
+                read = self.client.get(route, headers=self.headers(tenant_id))
+                self.assertEqual(read.status_code, 422, read.text)
+
+
+if __name__ == "__main__":  # pragma: no cover
+    unittest.main()

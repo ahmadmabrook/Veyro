@@ -74,6 +74,7 @@ export type Occupancy = {
 };
 
 export type AccessDecision = {
+  bucket?: DecisionBucket;
   decision_id: string;
   point_id: string;
   zone_id: string;
@@ -92,7 +93,18 @@ export type AccessDecision = {
   decided_at: string;
 };
 
+export type DecisionBucket = "granted" | "policy" | "fault";
+
 export type DecisionPage = {
+  /**
+   * ADM-ACC-02's two filters, counted by the server.
+   *
+   * **The classification is MOD-022's, by reason code.** Twenty-seven expired memberships is
+   * the product working and four reader failures is a maintenance job, and one count hides
+   * the second inside the first -- which is the canvas's own argument for the split. Doing
+   * it here would be a second definition of the same number.
+   */
+  counts?: Record<DecisionBucket, number>;
   decisions: AccessDecision[];
   /** Whether the private halves in this page are real, which the UI must not infer. */
   private_reasons_included: boolean;

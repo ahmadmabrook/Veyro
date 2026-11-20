@@ -61,3 +61,45 @@ export function inZone(
 export function utcStamp(instant: string): string {
   return `${instant.slice(0, 10)} ${instant.slice(11, 16)} UTC`;
 }
+
+/**
+ * The timeline gutter's two halves: the clock above, the day under it.
+ *
+ * ADM-MEM-01 draws a 66px column carrying `06:12` over `today`, and that split is what makes a
+ * vertical scan of a timeline readable -- the eye reads the pair as one unit where a single
+ * eleven-character string reads as neither. So they are two functions and the component takes
+ * both, rather than one that returns a sentence.
+ *
+ * **Both are UTC and the row's meta line says so**, which is the rule one function up: nothing
+ * on a member's record carries a zone to convert into. A timeline entry belongs to the tenant,
+ * not to a site -- MOD-014 projects it from the event outbox, where the only instant is the
+ * one the producer recorded.
+ */
+export function timeOfDay(instant: string): string {
+  return instant.slice(11, 16);
+}
+
+/**
+ * `today`, `yesterday` or `31 Jul` — the bucket the entry falls in.
+ *
+ * **Relative to the reader's own UTC day, which is the only "today" this build has.** A
+ * tenant with clubs in two zones has two local todays and a timeline carrying neither, so
+ * labelling the day in any one site's zone would be wrong for the other; UTC is at least
+ * consistently stated. The `now` argument exists because a test that asserts "today" has to
+ * be able to say when today is -- otherwise its green depends on when it runs, which this
+ * repository has already paid for four times.
+ */
+export function dayLabel(instant: string, now: Date = new Date()): string {
+  const day = instant.slice(0, 10);
+  const today = now.toISOString().slice(0, 10);
+  if (day === today) return "today";
+  const before = new Date(now.getTime() - 86_400_000).toISOString().slice(0, 10);
+  if (day === before) return "yesterday";
+  // `15 Mar` in Latin numerals and English month names, because this is a mono gutter sitting
+  // beside a mono clock: a localised month name in a 66px column wraps, and the one place
+  // this app localises a date is where it is prose rather than data.
+  const at = new Date(instant);
+  return `${at.getUTCDate()} ${
+    ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+      "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][at.getUTCMonth()]}`;
+}

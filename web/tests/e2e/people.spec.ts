@@ -55,7 +55,10 @@ test.describe("the member record", () => {
   test("marks a masked identity field as withheld rather than leaving it blank", async ({
     page,
   }) => {
-    await expect(page.getByRole("heading", { name: "Member 360", level: 1 })).toBeVisible();
+    // **The record's heading is the member's own name**, which ADM-MEM-01 draws and this
+    // page now renders: the old `<h1>Member 360</h1>` was the screen's label where the
+    // canvas puts the person. Masked here, because this session is level 1.
+    await expect(page.getByRole("heading", { name: "Name withheld", level: 1 })).toBeVisible();
     // The legal name is `identity` class, which needs `member.identity.read` -- a financial
     // action, so assurance level 2. This session has level 1, so the value is masked, and the
     // page has to say which of those two facts it is.
@@ -74,6 +77,8 @@ test.describe("the member record", () => {
   });
 
   test("keeps a health note visible as a note and withholds only its body", async ({ page }) => {
+    // ADM-MEM-01 puts notes behind their own tab rather than in the Overview stack.
+    await page.goto(`/people/${fixture().personId}?tab=notes`);
     const notes = page.locator("section").filter({ hasText: "Notes" }).first();
     // The general note reads in full.
     await expect(notes).toContainText("Prefers the 7am class.");
@@ -107,7 +112,7 @@ test.describe("the member record", () => {
   });
 
   test("names the sections no module in this build can answer", async ({ page }) => {
-    const sections = page.locator("section").filter({ hasText: "Where each part comes from" });
+    const sections = page.locator("section").filter({ hasText: "Not answered here" });
     // Seven of the twelve areas PPL-01-R02 lists are not answered here. Rendering them as
     // empty lists would read as "none".
     await expect(sections.getByRole("heading", { name: "Not answered here" })).toBeVisible();
@@ -120,10 +125,16 @@ test.describe("the member record", () => {
     // modules behind membership, bookings, attendance and finance have all been built since,
     // and the one screen a staff member opens before talking to a member was telling them the
     // product does not have bookings.
-    const sections = page.locator("section").filter({ hasText: "Where each part comes from" });
-    for (const built of ["MOD-017", "MOD-018", "MOD-019", "MOD-020"]) {
+    const sections = page.locator("section").filter({ hasText: "Not answered here" });
+    // **MOD-017 and MOD-018 are no longer in this list, and that is the point.** The page
+    // composes membership, entitlements and finance on their own tabs now, so naming them
+    // as gaps would say the product does not have what the tab beside it shows -- the same
+    // stale-list defect this test was written for, in the other direction. They are named
+    // in the panel's own footer as answered elsewhere, which is asserted below.
+    for (const built of ["MOD-019", "MOD-020"]) {
       await expect(sections).toContainText(built);
     }
+    await expect(sections).toContainText("this page asks those modules directly");
     await expect(sections).toContainText("nothing here reads it");
     await expect(sections).not.toContainText("COM-01 is not built");
     await expect(sections).not.toContainText("OPS-01 is not built");

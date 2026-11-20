@@ -1123,7 +1123,11 @@ a {
  * ground. Cell borders would double at every seam and miss one at each end. */
 .ds-metric-row {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  /* Four cells on the Command Center, five on the Member 360. `--metric-columns` is set by
+     the component from how many it was given: a fixed `repeat(4, …)` leaves a fifth cell on
+     its own row with three cells' worth of the grid's own background showing beside it,
+     which reads as a broken cell rather than as an empty one. */
+  grid-template-columns: repeat(var(--metric-columns, 4), minmax(0, 1fr));
   gap: 1px;
   background: var(--color-border-default);
   border: 1px solid var(--color-border-default);
@@ -1826,4 +1830,452 @@ a {
   color: var(--color-text-secondary);
   max-inline-size: 88ch;
   text-wrap: pretty;
+}
+
+/* ------------------------------------------------------------------ record inspector
+   ADM-MEM-01's anatomy: pattern 02 (list → inspector), the record header with its status
+   band and tabs, and the timeline spine. Every measurement below is the canvas's own; the
+   comments in the components say where each came from. */
+
+.ds-inspector {
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr);
+  align-items: start;
+  gap: 0;
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-card);
+  background: var(--color-surface-canvas);
+  overflow: hidden;
+}
+
+.ds-inspector-list {
+  display: flex;
+  flex-direction: column;
+  min-block-size: 100%;
+  background: var(--color-surface-default);
+  border-inline-end: 1px solid var(--color-border-default);
+}
+
+.ds-inspector-list-head {
+  padding: 11px 13px;
+  border-block-end: 1px solid var(--color-border-subtle);
+}
+
+.ds-inspector-list-title {
+  font-size: var(--type-label-size);
+  font-weight: var(--type-label-weight);
+  color: var(--color-text-primary);
+}
+
+.ds-inspector-list-counts {
+  margin: 3px 0 0;
+  font-size: var(--type-caption-size);
+  color: var(--color-text-tertiary);
+}
+
+.ds-inspector-list-foot {
+  margin: 0;
+  padding: 10px 13px;
+  border-block-start: 1px solid var(--color-border-subtle);
+  font-size: var(--type-caption-size);
+  color: var(--color-text-tertiary);
+}
+
+.ds-person-list { list-style: none; margin: 0; padding: 0; }
+
+.ds-person-row {
+  display: flex;
+  gap: 9px;
+  align-items: center;
+  min-block-size: 52px;
+  padding: 7px 13px;
+  border-block-end: 1px solid var(--color-border-subtle);
+  color: inherit;
+  text-decoration: none;
+}
+
+.ds-person-row:hover { background: var(--color-surface-hover); }
+.ds-person-row[aria-current="page"] { background: var(--color-surface-selected); }
+
+.ds-person-avatar {
+  inline-size: 28px;
+  block-size: 28px;
+  border-radius: 50%;
+  background: var(--p-warm-150);
+  flex-shrink: 0;
+}
+
+.ds-person-text { flex: 1; min-inline-size: 0; display: block; }
+
+.ds-person-name {
+  display: block;
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1.3;
+}
+
+.ds-person-detail {
+  display: block;
+  font-size: var(--type-caption-size);
+  color: var(--color-text-tertiary);
+}
+
+.ds-person-figure { flex-shrink: 0; }
+
+.ds-inspector-pane {
+  min-inline-size: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.ds-record-head {
+  background: var(--color-surface-default);
+  border-block-end: 1px solid var(--color-border-default);
+  padding: 16px 20px 0;
+}
+
+.ds-record-head-row {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.ds-record-avatar {
+  inline-size: 52px;
+  block-size: 52px;
+  border-radius: 50%;
+  background: var(--p-warm-200);
+  border: 1px solid var(--color-border-default);
+  flex-shrink: 0;
+}
+
+.ds-record-head-text { flex: 1; min-inline-size: 220px; }
+
+.ds-record-title {
+  display: flex;
+  gap: 9px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.ds-record-name {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 500;
+  line-height: 1.2;
+  letter-spacing: -0.016em;
+}
+
+.ds-record-band {
+  font-size: 9.5px;
+  line-height: 1.4;
+  border: 1px solid currentColor;
+  padding: 2px 6px;
+  border-radius: 3px;
+  text-transform: uppercase;
+}
+
+.ds-record-band[data-tone="critical"] { color: var(--color-semantic-error); }
+.ds-record-band[data-tone="warning"] { color: var(--color-semantic-warning); }
+.ds-record-band[data-tone="neutral"] { color: var(--color-text-tertiary); }
+
+.ds-record-subline {
+  margin: 4px 0 0;
+  font-size: var(--type-label-size);
+  line-height: 1.55;
+  color: var(--color-text-secondary);
+}
+
+.ds-record-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.ds-tabs { margin-block-start: 14px; }
+
+.ds-tab-list {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.ds-tab {
+  display: block;
+  padding-block-end: 9px;
+  font-size: 11.5px;
+  line-height: 1.4;
+  font-weight: 400;
+  color: var(--color-text-secondary);
+  text-decoration: none;
+  border-block-end: 1.5px solid transparent;
+}
+
+.ds-tab:hover { color: var(--color-text-primary); }
+
+.ds-tab[aria-current="page"] {
+  font-weight: 500;
+  color: var(--color-action-primary);
+  border-block-end-color: var(--color-action-primary);
+}
+
+.ds-record-body {
+  padding: 16px 20px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-inline-size: 0;
+}
+
+/* The canvas's two-column split under the metrics: the timeline takes the space and the
+   side blocks sit beside it, stacking under at bp.md. */
+.ds-record-split {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.ds-record-split > .ds-timeline { flex: 1 1 440px; min-inline-size: min(400px, 100%); }
+.ds-record-side {
+  flex: 1 1 280px;
+  min-inline-size: min(260px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* ------------------------------------------------------------------ timeline */
+
+.ds-timeline {
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-card);
+  background: var(--color-surface-default);
+  overflow: hidden;
+}
+
+.ds-timeline-head {
+  padding: 10px 14px;
+  border-block-end: 1px solid var(--color-border-subtle);
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.ds-timeline-title {
+  margin: 0;
+  flex: 1;
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1.3;
+}
+
+.ds-timeline-filters { display: flex; gap: 2px; flex-wrap: wrap; }
+
+.ds-timeline-filter {
+  font-size: 10.5px;
+  line-height: 1;
+  padding: 5px 8px;
+  border-radius: var(--radius-card);
+  color: var(--color-text-secondary);
+  text-decoration: none;
+}
+
+.ds-timeline-filter:hover { background: var(--color-surface-hover); }
+
+.ds-timeline-filter[aria-current="page"] {
+  background: var(--color-surface-canvas);
+  color: var(--color-text-primary);
+}
+
+.ds-timeline-items { list-style: none; margin: 0; padding: 0; }
+
+.ds-timeline-item {
+  display: flex;
+  gap: 11px;
+  padding: 11px 14px;
+  border-block-end: 1px solid var(--color-border-subtle);
+}
+
+.ds-timeline-item:last-child { border-block-end: 0; }
+
+.ds-timeline-when { inline-size: 66px; flex-shrink: 0; }
+
+.ds-timeline-clock {
+  display: block;
+  font-size: 10.5px;
+  line-height: 1.4;
+  color: var(--color-text-primary);
+}
+
+.ds-timeline-day {
+  display: block;
+  font-size: 9.5px;
+  line-height: 1.4;
+  font-weight: 400;
+  color: var(--color-text-tertiary);
+}
+
+.ds-timeline-spine {
+  inline-size: 2px;
+  flex-shrink: 0;
+  border-radius: 1px;
+  background: var(--p-warm-400);
+}
+
+.ds-timeline-spine[data-tone="money"] { background: var(--color-semantic-error); }
+.ds-timeline-spine[data-tone="visit"] { background: var(--color-semantic-success); }
+.ds-timeline-spine[data-tone="coaching"] { background: var(--color-action-primary); }
+.ds-timeline-spine[data-tone="consent"] { background: var(--color-semantic-info); }
+
+.ds-timeline-body { flex: 1; min-inline-size: 0; }
+
+.ds-timeline-headline {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.ds-timeline-what { flex: 1; font-size: 12.5px; font-weight: 500; line-height: 1.45; }
+
+.ds-timeline-meta {
+  margin: 2px 0 0;
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--color-text-secondary);
+}
+
+.ds-timeline-foot {
+  padding: 10px 14px;
+  border-block-start: 1px solid var(--color-border-subtle);
+  font-size: var(--type-caption-size);
+  color: var(--color-text-tertiary);
+}
+
+/* A bordered side block: the canvas's MembershipCard, Coaching and Access panels. */
+.ds-panel {
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-card);
+  background: var(--color-surface-default);
+  overflow: hidden;
+}
+
+.ds-panel-head {
+  padding: 10px 14px;
+  border-block-end: 1px solid var(--color-border-subtle);
+}
+
+.ds-panel-title { margin: 0; font-size: 12.5px; font-weight: 500; line-height: 1.3; }
+.ds-panel-body { padding: 11px 14px; display: flex; flex-direction: column; gap: 7px; }
+
+.ds-panel-note {
+  margin: 0;
+  padding: 10px 14px;
+  border-block-start: 1px solid var(--color-border-subtle);
+  font-size: var(--type-caption-size);
+  line-height: 1.5;
+  color: var(--color-text-tertiary);
+}
+
+/* Below bp.md the two panes become one column: the list goes above the record rather than
+   being squeezed into a 300px track beside a 75px one. */
+@media (max-width: 899px) {
+  .ds-inspector { grid-template-columns: minmax(0, 1fr); }
+  .ds-inspector-list { border-inline-end: 0; border-block-end: 1px solid var(--color-border-default); }
+  .ds-record-head { padding-inline: 14px; }
+  .ds-record-body { padding-inline: 14px; }
+}
+
+/* ------------------------------------------------------------------ capability matrix
+   ADM-STF-04: roles across the top, capabilities down the side, one mark per cell. The
+   first column is sticky because a matrix whose row headings scroll away is a grid of
+   unlabelled glyphs. */
+
+.ds-matrix-scroll {
+  overflow-x: auto;
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-card);
+  background: var(--color-surface-default);
+}
+
+.ds-matrix-scroll:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 2px;
+}
+
+.ds-matrix {
+  border-collapse: collapse;
+  inline-size: 100%;
+  font-size: var(--type-caption-size);
+}
+
+.ds-matrix th,
+.ds-matrix td {
+  border-block-end: 1px solid var(--color-border-subtle);
+  padding: 7px 10px;
+  text-align: start;
+  vertical-align: top;
+}
+
+.ds-matrix thead th {
+  position: sticky;
+  inset-block-start: 0;
+  background: var(--color-surface-sunken);
+  border-block-end: 1px solid var(--color-border-default);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.ds-matrix-rowhead {
+  position: sticky;
+  inset-inline-start: 0;
+  background: var(--color-surface-default);
+  min-inline-size: 190px;
+  font-weight: 400;
+}
+
+.ds-matrix thead .ds-matrix-rowhead { background: var(--color-surface-sunken); }
+
+.ds-matrix-eyebrow {
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  color: var(--color-text-tertiary);
+}
+
+.ds-matrix-name {
+  display: block;
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  color: var(--color-text-primary);
+}
+
+.ds-matrix-detail {
+  display: block;
+  color: var(--color-text-tertiary);
+  max-inline-size: 42ch;
+}
+
+.ds-matrix-colhead { inline-size: 1%; }
+
+.ds-matrix-cell {
+  text-align: center;
+  font-size: var(--type-body-size);
+  line-height: 1;
+  color: var(--color-text-tertiary);
+}
+
+.ds-matrix-cell[data-mark="yes"] { color: var(--color-text-primary); }
+.ds-matrix-cell[data-mark="stepUp"] { color: var(--color-semantic-warning); }
+.ds-matrix-cell[data-mark="unreachable"] { color: var(--color-semantic-error); }
+
+.ds-matrix-legend {
+  margin: var(--space-2) 0 0;
+  font-size: var(--type-caption-size);
+  color: var(--color-text-secondary);
 }

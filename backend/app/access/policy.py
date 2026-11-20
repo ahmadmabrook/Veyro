@@ -108,6 +108,62 @@ PUBLIC_RESTRICTED_CODE = "see_front_desk"
 #: The codes that mean the door opens.
 GRANTS: frozenset[str] = frozenset({"granted", "granted_by_override"})
 
+#: **A refusal that is the product working, and a refusal that is somebody's job.**
+#:
+#: ADM-ACC-02 draws the denial log with two filters and argues for them: "Twenty-seven
+#: expired memberships is the system working. Four reader failures is a maintenance job.
+#: Mixing them in one count hides the second inside the first."
+#:
+#: The split lives here rather than in the surface for the reason every other classification
+#: in this build lives in code: two screens deciding it separately is two definitions of the
+#: same number, and the day either moves nobody can say which is the policy. `check_split`
+#: runs at import and requires every reason code to be in exactly one bucket, so a code added
+#: later cannot quietly fall out of both and disappear from a board.
+#:
+#: **`credential_unknown` is policy, not fault.** A card nobody enrolled being refused is the
+#: product working; counting it as a maintenance job would bury the reader failures in it,
+#: which is the exact harm the canvas's note names.
+FAULT_CODES: frozenset[str] = frozenset({
+    #: A cloned or replayed rotating code, which is a security event rather than a tidy
+    #: refusal: the member whose code it is did not do this.
+    "credential_replayed",
+    #: Presented outside the rotating window, which means the reader's clock or the member's
+    #: app is wrong -- not that they may not come in.
+    "credential_window",
+    "reader_clock_unreliable",
+    #: The door itself: a device out of service, or a reader pointed the wrong way.
+    "device_untrusted",
+    "point_not_an_entry",
+})
+
+#: Every refusal that is not a fault. Derived rather than listed, so the two cannot drift.
+POLICY_CODES: frozenset[str] = frozenset(REASON_CODES) - GRANTS - FAULT_CODES
+
+
+def check_split() -> None:
+    """Every reason code is a grant, a policy refusal or a fault, and never two of them."""
+    buckets = [GRANTS, POLICY_CODES, FAULT_CODES]
+    for code in REASON_CODES:
+        hits = sum(1 for bucket in buckets if code in bucket)
+        if hits != 1:
+            raise AccessError(
+                f"{code!r} is in {hits} of grant/policy/fault; it must be in exactly one")
+    for bucket in buckets:
+        for code in bucket:
+            if code not in REASON_CODES:
+                raise AccessError(f"{code!r} is classified but is not a reason code")
+
+
+check_split()
+
+
+def classify(code: str) -> str:
+    """`granted`, `policy` or `fault` -- what a board counts this decision under."""
+    check_code(code)
+    if code in GRANTS:
+        return "granted"
+    return "fault" if code in FAULT_CODES else "policy"
+
 
 @dataclass(frozen=True)
 class Subject:

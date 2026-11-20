@@ -3655,6 +3655,45 @@ def create_app(
         permit(session, "authz.role.read", correlation_id)
         return authz.list_roles(identity_pool, tenant_id)
 
+    @app.get("/authz/catalog")
+    def read_permission_catalog(tenant_id: TenantId, session: Session) -> dict[str, Any]:
+        """Every permission this software has, what it means and what it costs to exercise.
+
+        **A statement about the software, not about a tenant.** Permissions live in code
+        rather than in a table precisely so that two tenants cannot disagree about which
+        exist, so this takes no pool and reads nobody's rows -- the same shape as
+        `/privacy/erasure-reach`, and asserted the same way: two tenants get identical bytes.
+
+        ADM-STF-04 is why it exists. The design draws roles and capabilities as a matrix with
+        a mark in each cell, and a matrix needs the row headings: what a permission *is*, and
+        whether holding it is enough to use it. Without this the only thing a surface could
+        render was each role's raw permission list, which is what it did -- a four-thousand
+        pixel wall of comma-separated names that nobody can compare two roles in.
+
+        Gated on `authz.role.read`, because a reader who may see which permissions a role
+        holds is the reader who needs to know what those permissions mean.
+        """
+        permit(session, "authz.role.read")
+        return {
+            "permissions": [
+                {"name": name, "description": one.description, "category": one.category,
+                 "action_class": one.action_class,
+                 # **What the action class costs, resolved here rather than in the client.**
+                 # A surface deciding that `financial` means level 2 would be a second copy
+                 # of a rule MOD-007 owns, and the day either moved nobody could say which
+                 # was the policy.
+                 "required_aal": identity_policy.required_aal(one.action_class)}
+                for name, one in sorted(authz_catalog.PERMISSIONS.items())],
+            "count": len(authz_catalog.PERMISSIONS),
+            # The highest level any session in this build can reach. Level 3 needs a hardware
+            # authenticator MOD-007 cannot verify, so a `privileged` permission is held by
+            # nobody who can use it -- which a matrix has to be able to say.
+            "reachable_aal": 2,
+            "a_permission_is_a_fact_about_the_software":
+                "Permissions are code, not rows, so every tenant sees this same list. A "
+                "per-tenant registry would let two tenants disagree about which exist.",
+        }
+
     @app.put("/authz/roles/{role_key}/permissions")
     def set_role_permissions(
         tenant_id: TenantId, session: Session, role_key: str, body: RolePermissionsBody
@@ -3790,6 +3829,21 @@ def create_app(
             raise InvalidRequest("no_action")
         if len(action) > 40:
             raise InvalidRequest("too_many_actions")
+        # **An action the catalogue does not declare is refused, not denied.** `authz.check`
+        # answers a name it has never heard by finding no assignment that grants it, which is
+        # indistinguishable from a real refusal -- so a surface that misspells a permission
+        # renders "you do not hold this" and nothing anywhere says otherwise. This screen's
+        # own metric row did exactly that within an hour of being written, asking for a
+        # `finance.invoice.read` that has never existed, and the page said the reader lacked
+        # a permission rather than that the author had invented one.
+        #
+        # It is MOD-022's rate-limit finding one module over: a budget `BUDGETS` does not
+        # declare is not a limit, and a permission the catalogue does not declare is not a
+        # gate. The whole batch is refused rather than the one entry, because a page that
+        # rendered four of five cells would hide the fault it is meant to surface.
+        unknown = sorted({one for one in action if one not in authz_catalog.PERMISSIONS})
+        if unknown:
+            raise InvalidRequest(f"unknown_action:{','.join(unknown)}")
         scope = authz.resolve_scope(
             tenant_pool, tenant_id,
             brand_id=optional_uuid(brand_id, "brand_id"),
@@ -8429,12 +8483,47 @@ def create_app(
         return access.visits_on(
             tenant_pool, tenant_id, on=on, compare_weeks=compare_weeks)
 
+    @app.get("/access/attendance")
+    def read_person_attendance(
+        tenant_id: TenantId, session: Session, person_id: str,
+        weeks: int = 8,
+    ) -> dict[str, Any]:
+        """When this member last came in, and how often they were coming before that.
+
+        ADM-MEM-01's fourth metric cell. Behind `access.decision.read` -- the access plane's
+        own read permission -- because an entry record is strictly less disclosing than the
+        decision rows that permission already returns: no code, no reason, no policy. It is
+        still a statement about one named person, which is why it is filtered rather than
+        listed and why the Member 360 asks this gate separately from `people.person.read`.
+        """
+        permit(session, "access.decision.read")
+        return access.person_attendance(
+            tenant_pool, tenant_id, person_id=require_uuid(person_id, "person_id"),
+            weeks=weeks)
+
+    @app.get("/access/credentials")
+    def read_person_credentials(
+        tenant_id: TenantId, session: Session, person_id: str,
+        include_revoked: bool = False,
+    ) -> dict[str, Any]:
+        """What this member can present at a door, and in what state.
+
+        ADM-MEM-01's Access block. **No digest is returned**: the stored value is a SHA-256 of
+        the presented secret, which is pseudonymous rather than anonymous, so a listing that
+        carried it would let anybody holding a candidate card number confirm whose it is.
+        """
+        permit(session, "access.credential.read")
+        return access.person_credentials(
+            tenant_pool, tenant_id, person_id=require_uuid(person_id, "person_id"),
+            include_revoked=include_revoked)
+
     @app.get("/access/decisions")
     def read_access_decisions(
         tenant_id: TenantId, session: Session, zone_id: str | None = None,
-        credential_id: str | None = None, limit: int = 100,
+        credential_id: str | None = None, person_id: str | None = None,
+        limit: int = 100,
     ) -> dict[str, Any]:
-        """The decisions recorded at a zone or against a credential.
+        """The decisions recorded at a zone, against a credential, or for one person.
 
         **The private reason is behind a second permission**, and the gate decides which the
         caller gets rather than the caller asking for it: `access.decision.read` returns the
@@ -8451,6 +8540,7 @@ def create_app(
         return access.decision_history(
             tenant_pool, tenant_id, zone_id=optional_uuid(zone_id, "zone_id"),
             credential_id=optional_uuid(credential_id, "credential_id"),
+            person_id=optional_uuid(person_id, "person_id"),
             may_read_private=may_read_private, limit=max(1, min(limit, 500)))
 
     return app

@@ -1,6 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 
+import { fixture } from "./fixture-env";
 import { useOwnerSession, useReaderSession } from "./sign-in";
 
 /**
@@ -18,6 +19,38 @@ import { useOwnerSession, useReaderSession } from "./sign-in";
  * that rendered it bare would let somebody conclude the relay is working. Saying which is the
  * feature, and a zero on this screen is now a sentence rather than an absence.
  */
+/**
+ * Drain the outbox, the way the fleet spec reports its own device healthy.
+ *
+ * **A test that asserts a freshness has to create it**, and "zero pending events" is one: the
+ * fixture's `python -m app.worker --once` drains what the seeding wrote, and then the browser
+ * suite itself writes more -- `access.spec` presents a credential, which records a decision,
+ * which appends `access.denied` to the outbox. So this assertion passed immediately after
+ * seeding and failed once the access suite had run before it, which is a green that depends
+ * on spec order rather than on the product. The same family as this repository's three
+ * budget-spending tests, and found the same way: by running the suite again.
+ *
+ * `POST /events/dispatch` is the relay the worker job calls, so this drains it with the same
+ * code path rather than asserting around the problem.
+ */
+async function drainOutbox(page: import("@playwright/test").Page) {
+  const cookies = await page.context().cookies();
+  const token = cookies.find((cookie) => cookie.name === "veyro_session")?.value;
+  expect(token, "the browser session carries the bearer token").toBeTruthy();
+  const response = await page.request.post(
+    `${process.env.VEYRO_API_ORIGIN ?? "http://127.0.0.1:8000"}/events/dispatch`,
+    {
+      headers: {
+        "X-Veyro-Tenant": fixture().tenantId,
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      data: { correlation_id: crypto.randomUUID() },
+    },
+  );
+  expect(response.ok(), await response.text()).toBeTruthy();
+}
+
 test.describe("the operations board", () => {
   test.beforeEach(async ({ page }) => {
     await useOwnerSession(page);
@@ -28,6 +61,8 @@ test.describe("the operations board", () => {
     page,
   }) => {
     await expect(page.getByRole("heading", { name: "Operations", level: 1 })).toBeVisible();
+    await drainOutbox(page);
+    await page.reload();
     const outbox = page.locator("section").filter({ hasText: "Event outbox" }).first();
     // **Zero pending events is the assertion, and it used to be the opposite one.** Before the
     // worker existed this suite asserted the number was *not* zero, because nothing drained

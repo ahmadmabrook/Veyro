@@ -1589,7 +1589,7 @@ def credential_status(
 
 def decision_history(
     pool: Pool, tenant_id: str, *, zone_id: str | None, credential_id: str | None,
-    may_read_private: bool, limit: int = 100,
+    person_id: str | None = None, may_read_private: bool, limit: int = 100,
 ) -> dict[str, Any]:
     """AccessDecision history, with the private reason behind a second permission.
 
@@ -1601,8 +1601,14 @@ def decision_history(
     """
     if not 1 <= limit <= 1000:
         raise InvalidRequest("a_decision_history_takes_between_one_and_a_thousand")
-    if zone_id is None and credential_id is None:
-        raise InvalidRequest("a_decision_history_is_read_by_zone_or_by_credential")
+    # **Three ways in, and never none.** An unfiltered read is every decision this tenant has
+    # ever taken at every door, which is a movement log for every member -- so the caller has
+    # to say which question they are asking. The person filter is ADM-MEM-01's Access block
+    # and discloses nothing the zone filter does not: a zone read already returns `person_id`
+    # on every row, so narrowing by it is less disclosure rather than more.
+    if zone_id is None and credential_id is None and person_id is None:
+        raise InvalidRequest(
+            "a_decision_history_is_read_by_zone_by_credential_or_by_person")
     with tenant_scope(pool, tenant_id) as conn:
         rows = conn.execute(
             "SELECT decision_id, point_id, zone_id, credential_id, person_id, granted,"
@@ -1611,8 +1617,10 @@ def decision_history(
             " FROM plt01.acc_decisions"
             " WHERE (%s::uuid IS NULL OR zone_id = %s)"
             "   AND (%s::uuid IS NULL OR credential_id = %s)"
+            "   AND (%s::uuid IS NULL OR person_id = %s)"
             " ORDER BY decided_at DESC LIMIT %s",
-            (zone_id, zone_id, credential_id, credential_id, limit)).fetchall()
+            (zone_id, zone_id, credential_id, credential_id, person_id, person_id,
+             limit)).fetchall()
     return {"decisions": [
         {"decision_id": str(r[0]), "point_id": str(r[1]), "zone_id": str(r[2]),
          "credential_id": None if r[3] is None else str(r[3]),
@@ -1633,7 +1641,21 @@ def decision_history(
          "policy_id": None if r[10] is None else str(r[10]),
          "policy_version": None if r[11] is None else int(r[11]),
          "device_mode": str(r[12]), "passback_scope": str(r[13]),
+         # **What a board counts this under.** ADM-ACC-02's two filters, classified by
+         # MOD-022's own code vocabulary rather than by the surface: twenty-seven expired
+         # memberships is the product working and four reader failures is a maintenance job,
+         # and one count hides the second inside the first. Derived from `code` rather than
+         # stored, so an old decision reclassifies with the rule rather than keeping an
+         # answer somebody wrote down once.
+         "bucket": policy.classify(str(r[6])),
          "decided_at": r[14].isoformat()} for r in rows],
+        # The counts over the rows returned, so the filter chips say what they filter to.
+        "counts": {
+            bucket: sum(1 for r in rows if policy.classify(str(r[6])) == bucket)
+            for bucket in ("granted", "policy", "fault")},
+        "a_fault_is_not_a_refusal_the_product_meant":
+            "policy counts the refusals the tenant configured; fault counts the ones that "
+            "mean a reader, a clock or a point needs somebody.",
         "private_reasons_included": may_read_private}
 
 
@@ -1837,4 +1859,132 @@ def visits_on(
             "not a visit.",
         "no_baseline_is_not_zero":
             "usual_for_this_weekday is null where no prior same-weekday carried entries.",
+    }
+
+
+def person_attendance(
+    pool: Pool, tenant_id: str, *, person_id: str, as_of: date | None = None,
+    weeks: int = 8,
+) -> dict[str, Any]:
+    """When this member last came in, and how often they were coming before that.
+
+    ADM-MEM-01's fourth metric cell: "LAST VISIT · 19d ago · was 3x a week". Both halves are
+    needed and neither is the other -- a gap of nineteen days means nothing until you know
+    whether this is somebody who trained three times a week or twice a year, and that second
+    sentence is what a receptionist actually acts on.
+
+    **Entries, not decisions**, which is the same rule `visits_on` states one function up and
+    matters more here: a card that is failing at the door produces refused decisions for
+    exactly the member whose attendance somebody is checking, so a visit count read from the
+    decision log would overstate it in the one case where the figure is being looked at.
+
+    **The rate is measured over the weeks before the last visit, not before today.** The
+    canvas says "was", past tense, and that is the correct arithmetic: averaging the habit
+    over a window that includes the gap reports a smaller number the longer somebody has been
+    away, so every lapsed member reads as somebody who never came much. Measured to the last
+    visit it says what stopped.
+
+    The day is local to the location whose door they walked through -- `acc_events.occurred_at`
+    is an instant and the club has a timezone, so "19d ago" is a count of local days.
+    """
+    as_of = as_of or datetime.now(UTC).date()
+    if weeks < 1 or weeks > 52:
+        raise InvalidRequest("bad_weeks")
+    with tenant_scope(pool, tenant_id) as conn:
+        last = conn.execute(
+            "SELECT (e.occurred_at AT TIME ZONE l.timezone)::date, l.location_name,"
+            "       e.occurred_at"
+            " FROM plt01.acc_events e"
+            " JOIN plt01.acc_zones z ON z.zone_id = e.zone_id"
+            " JOIN plt01.locations l ON l.location_id = z.location_id"
+            " WHERE e.person_id = %s AND e.direction = 'entry'"
+            " ORDER BY e.occurred_at DESC LIMIT 1",
+            (person_id,)).fetchone()
+        if last is None:
+            # **No entry is not a zero rate.** A member who has never used a door and one who
+            # came daily until last month are different facts, and `null` is what keeps them
+            # apart; a surface rendering 0 would say the second never trained.
+            return {
+                "person_id": person_id, "as_of": as_of.isoformat(),
+                "last_entry_on": None, "last_entry_at": None, "last_location": None,
+                "days_since": None, "entries_in_window": 0, "weeks": weeks,
+                "entries_per_week": None,
+                "nothing_recorded_is_not_a_zero_rate":
+                    "No entry has ever been recorded for this person, so there is no rate. "
+                    "That is not the same as a member who stopped coming.",
+            }
+        last_on, last_location, last_at = last
+        window_start = last_on - timedelta(days=7 * weeks)
+        counted = conn.execute(
+            "SELECT count(*)"
+            " FROM plt01.acc_events e"
+            " JOIN plt01.acc_zones z ON z.zone_id = e.zone_id"
+            " JOIN plt01.locations l ON l.location_id = z.location_id"
+            " WHERE e.person_id = %s AND e.direction = 'entry'"
+            "   AND (e.occurred_at AT TIME ZONE l.timezone)::date > %s"
+            "   AND (e.occurred_at AT TIME ZONE l.timezone)::date <= %s",
+            (person_id, window_start, last_on)).fetchone()
+        entries = int(counted[0]) if counted else 0
+    return {
+        "person_id": person_id, "as_of": as_of.isoformat(),
+        "last_entry_on": last_on.isoformat(), "last_entry_at": last_at.isoformat(),
+        "last_location": str(last_location),
+        "days_since": (as_of - last_on).days,
+        "entries_in_window": entries, "weeks": weeks,
+        # One decimal, because "3 a week" and "3.5 a week" are different habits and rounding
+        # to an integer makes every twice-weekly member read the same as a thrice-weekly one.
+        "entries_per_week": round(entries / weeks, 1),
+        "the_rate_ends_at_the_last_visit":
+            "entries_per_week counts the weeks before last_entry_on, not before as_of, so a "
+            "gap does not shrink the habit it interrupted.",
+    }
+
+
+def person_credentials(
+    pool: Pool, tenant_id: str, *, person_id: str, include_revoked: bool = False,
+) -> dict[str, Any]:
+    """What this member can present at a door, and in what state.
+
+    ADM-MEM-01's Access block: "Card ...8841 - active / App pass - active / Fingerprint -
+    enrolled", under the canvas's own note that "biometric data is never displayed or
+    exportable -- only whether enrolment exists".
+
+    **There is no digest in the answer, and there is no column it could come from safely.**
+    `credential_digest` is a SHA-256 of the card number, which is pseudonymous rather than
+    anonymous: somebody holding a candidate card can test it. So the listing carries the kind,
+    the state and the window and never the digest -- which is also why the canvas draws a
+    last-four rather than a number, and this build has no last-four to draw, because it never
+    stored one.
+
+    **A revoked credential is left out by default and counted.** A member whose card was
+    cancelled last year has a row that says so, and a board showing it beside a live one reads
+    as two ways in.
+    """
+    with tenant_scope(pool, tenant_id) as conn:
+        rows = conn.execute(
+            "SELECT credential_id, kind, state, issued_at, expires_at, revoked_at,"
+            "       revocation_epoch"
+            " FROM plt01.acc_credentials"
+            " WHERE person_id = %s AND (%s OR state <> 'revoked')"
+            " ORDER BY issued_at DESC",
+            (person_id, include_revoked)).fetchall()
+    live = [r for r in rows if str(r[2]) == "active"]
+    return {
+        "person_id": person_id,
+        "credentials": [
+            {"credential_id": str(r[0]), "kind": str(r[1]), "state": str(r[2]),
+             "issued_at": r[3].isoformat(),
+             "expires_at": None if r[4] is None else r[4].isoformat(),
+             "revoked_at": None if r[5] is None else r[5].isoformat(),
+             # The credential's own epoch, not the device's: revoking one card must not
+             # invalidate every policy snapshot in the building, so each carries its own and
+             # a reader compares the one it was issued against.
+             "revocation_epoch": int(r[6])} for r in rows],
+        "live": len(live),
+        "no_digest_is_returned":
+            "The stored digest is a SHA-256 of the presented secret and is pseudonymous, so "
+            "it is never read out of this module.",
+        "a_live_credential_is_not_an_admission":
+            "Whether this person gets in is decided per presentation against the zone's "
+            "policy, their membership and their entitlement. This is only what they hold.",
     }

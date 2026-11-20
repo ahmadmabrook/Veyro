@@ -30,10 +30,17 @@ const WCAG = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"];
 // such person -- which looks exactly like a product defect and is a harness mistake.
 const MEMBER = `/people/${fixture().personId}`;
 
+// **The tabs, not the stack.** ADM-MEM-01 puts membership and billing on separate tabs and
+// this page was rebuilt to them, so a spec that loads the record and looks for an invoice is
+// looking at the Overview tab. The tab is in the URL -- the strip is real navigation rather
+// than client state, which is also why a deep link lands on the tab it names.
+const MEMBERSHIP_TAB = `${MEMBER}?tab=membership`;
+const BILLING_TAB = `${MEMBER}?tab=billing`;
+
 test.describe("the membership blocks on a member's page", () => {
   test.beforeEach(async ({ page }) => {
     await useOwnerSession(page);
-    await page.goto(MEMBER);
+    await page.goto(MEMBERSHIP_TAB);
   });
 
   test("shows the membership with its number, kind and status", async ({ page }) => {
@@ -85,6 +92,7 @@ test.describe("the membership blocks on a member's page", () => {
   });
 
   test("shows the invoice, what was paid and both of its statuses", async ({ page }) => {
+    await page.goto(BILLING_TAB);
     await expect(page.getByRole("heading", { name: "Billing", level: 2 })).toBeVisible();
     // **The settled one, named by its figure.** This member has two documents now -- the
     // 45.000 membership invoice, paid, and a 26.000 personal-training invoice that is
@@ -97,6 +105,7 @@ test.describe("the membership blocks on a member's page", () => {
   });
 
   test("shows a due date that is not the issue date", async ({ page }) => {
+    await page.goto(BILLING_TAB);
     // A payment term of zero is a real value and not the one anybody means, and the fixture
     // set both dates the same at first -- which rendered a caption repeating the date above
     // it. Caught by looking at the page.
@@ -110,6 +119,7 @@ test.describe("the membership blocks on a member's page", () => {
   test("lays the billing summary out as label and value, not side by side", async ({
     page,
   }) => {
+    await page.goto(BILLING_TAB);
     // `.facts` is a two-column grid whose items are the `dt` and `dd`; wrapping each pair in
     // a `<div>` is valid HTML and makes the div the grid item, which put both labels on one
     // row with their values beneath. Asserting the geometry is the only way to see it --
@@ -127,6 +137,7 @@ test.describe("the membership blocks on a member's page", () => {
   test("reports exactly what is outstanding, not the count of unpaid documents", async ({
     page,
   }) => {
+    await page.goto(BILLING_TAB);
     // `outstanding` is not `status !== "paid"`: a credited or written-off document is settled
     // too, and counting either would put money on the screen nobody is going to collect.
     //
@@ -162,16 +173,24 @@ test.describe("a front desk who holds none of MOD-017's permissions", () => {
     // reads, which is exactly the subset that makes this provable -- the reader beside it
     // cannot, because without the person read the page's own gate answers first.
     await useDeskSession(page);
-    await page.goto(MEMBER);
-    // The page itself renders, because this identity may read a person. What it may not read
-    // is any of MOD-017, so all three blocks say so and none of them renders empty.
-    await expect(page.getByRole("heading", { name: "Member 360", level: 1 })).toBeVisible();
-    for (const name of [/^Membership agreement$/, /What this membership entitles/, /^Billing$/]) {
-      const heading = page.getByRole("heading", { name, level: 2 });
-      await expect(heading).toBeVisible();
-      await expect(
-        heading.locator("xpath=following-sibling::*").getByText("Not permitted").first(),
-      ).toBeVisible();
+    // **Both tabs, because the blocks are on two tabs now.** ADM-MEM-01 separates membership
+    // from billing, and a refusal has to be said on each -- a reader who switched to Billing
+    // because Membership was refused must not find an empty table there.
+    for (const [tab, headings] of [
+      [MEMBERSHIP_TAB, [/^Membership agreement$/, /What this membership entitles/]],
+      [BILLING_TAB, [/^Billing$/]],
+    ] as [string, RegExp[]][]) {
+      await page.goto(tab);
+      // The record itself renders, because this identity may read a person. What it may not
+      // read is any of MOD-017, so each block says so and none of them renders empty.
+      await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+      for (const name of headings) {
+        const heading = page.getByRole("heading", { name, level: 2 });
+        await expect(heading).toBeVisible();
+        await expect(
+          heading.locator("xpath=following-sibling::*").getByText("Not permitted").first(),
+        ).toBeVisible();
+      }
     }
     // And none of MOD-017's data leaks through the refusal.
     //

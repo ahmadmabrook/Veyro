@@ -23,15 +23,49 @@ test.describe("the permissions surface", () => {
     // The bootstrap role holds every permission in the catalogue; the fixture's publisher
     // holds three. Both are rendered, and the count comes from the list rather than a claim.
     const roles = page.locator("section").filter({ hasText: "Roles" }).first();
-    await expect(roles).toContainText("tenant_admin");
+    // **The matrix, not the role key.** ADM-STF-04 draws roles across the top and
+    // capabilities down the side, which is what makes "nine roles and what each may
+    // actually do" answerable; this page printed each role's 205 permission names instead,
+    // 4,300 pixels of identifier with no way to compare two roles at all.
+    await expect(roles.getByRole("columnheader", { name: "Tenant Administrator" }))
+      .toBeVisible();
+    await expect(roles.getByRole("columnheader", { name: "Front desk" })).toBeVisible();
+    // And a mark that differs between two roles, which is the comparison the screen is for:
+    // the front desk holds some of `people` and none of `finance`.
+    const peopleRow = roles.getByRole("row").filter({ hasText: "people" }).first();
+    await expect(peopleRow).toContainText("can do some of it");
+    const financeRow = roles.getByRole("row").filter({ hasText: "finance" }).first();
+    await expect(financeRow).toContainText("not available");
     await expect(roles).toContainText("Publisher");
-    await expect(roles).toContainText("access.policy.publish");
+  });
+
+  test("can be expanded to every capability, one row each", async ({ page }) => {
+    // **The module summary is the default and not the whole screen.** ◑ says the role can do
+    // some of what a module covers and only the full list says which, so the link that gets
+    // there is part of the answer rather than a convenience -- and it is a link, so the view
+    // is in the URL and a reader can send somebody the one they are looking at.
+    await page.goto("/permissions?rows=all");
+    const roles = page.locator("section").filter({ hasText: "Roles" }).first();
+    const row = roles.getByRole("row").filter({ hasText: "access.policy.publish" }).first();
+    await expect(row).toBeVisible();
+    // **The publisher holds this one and still cannot use it on an ordinary sign-in**,
+    // because publishing a zone policy is `financial` class. That is the state the design's
+    // middle mark sits in here, and it is the one a reader is most likely to get wrong:
+    // holding the permission is not enough, which no list of permission names can say.
+    await expect(row).toContainText("held, but needs a stronger sign-in");
+    // The front desk holds none of it, which is the mark beside it in the same row.
+    await expect(row).toContainText("not available");
   });
 
   test("says what this session may do, at the scope the server derived", async ({ page }) => {
     const mine = page.locator("section").filter({ hasText: "What this session may do" }).first();
     await expect(mine).toContainText("tenant");
-    await expect(mine).toContainText("authz.role.read");
+    // **Counts by module, not every name.** The full list was 205 identifiers under their
+    // module; which permissions this session holds in particular is what the gate table
+    // below answers, action by action, and it answers it correctly where a list cannot --
+    // a permission held on a sign-in too weak for it is in the list and refused by the gate.
+    await expect(mine).toContainText("authz");
+    await expect(mine.getByRole("term").filter({ hasText: "authz" })).toBeVisible();
     // **A permission listed is not a permission usable.** The assurance check is on the
     // action, not on the grant, and the page says so rather than implying the list is enough.
     await expect(mine).toContainText(/stronger sign-in/);

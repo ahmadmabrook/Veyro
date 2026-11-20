@@ -163,3 +163,33 @@ export function splitSections(
       .map(([name, source]) => [name, source.replace(/^unavailable:\s*/, "")] as [string, string]),
   };
 }
+
+/**
+ * The sections the Member 360 page answers itself, from the modules MOD-014's projection
+ * cannot read.
+ *
+ * **MOD-014's `sections` block describes the projection, not the page.** It says
+ * "MOD-017 owns this and nothing here reads it" for membership, entitlements and finance --
+ * true of the projection, and paragraph 1300 is why -- and the page composes all three by
+ * calling each module's own routes through its own gate. So rendering that block unfiltered
+ * put "membership: nothing here reads it" directly under a Membership tab full of
+ * memberships, and "finance: nothing here reads it" under a table of invoices.
+ *
+ * That is the same defect as the stale "not built in this repository" list this screen
+ * already paid for once: a confident wrong answer where a missing one would have been
+ * honest, on the page somebody opens before talking to a member. The filter is the fix, and
+ * the set is pinned to the tabs by a test -- a tab added without its section leaving this
+ * list would re-create the contradiction, and a section removed from here with no tab behind
+ * it would hide a real gap.
+ */
+export const COMPOSED_SECTIONS = ["membership", "entitlements", "finance"] as const;
+
+export function splitComposed(
+  unavailable: [string, string][],
+): { composed: [string, string][]; absent: [string, string][] } {
+  const here = new Set<string>(COMPOSED_SECTIONS);
+  return {
+    composed: unavailable.filter(([name]) => here.has(name)),
+    absent: unavailable.filter(([name]) => !here.has(name)),
+  };
+}

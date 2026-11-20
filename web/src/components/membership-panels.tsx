@@ -39,9 +39,19 @@ import {
 export async function MembershipPanels({
   personId,
   locale,
+  only,
 }: {
   personId: string;
   locale: Locale;
+  /**
+   * Which of the three blocks to render.
+   *
+   * ADM-MEM-01 puts membership and billing on **separate tabs**, so a page asking for the
+   * Billing tab must not also render the agreement above it -- that is the single-page stack
+   * this screen was rebuilt out of. Omitted renders all three, which is what any other
+   * surface composing a member wants.
+   */
+  only?: "membership" | "billing";
 }) {
   const text = (key: MessageKey) => t(locale, key);
   const [records, entitlements, finance] = await Promise.all([
@@ -50,8 +60,11 @@ export async function MembershipPanels({
     gate("finance.account.read"),
   ]);
 
+  const show = (block: "membership" | "billing") => only === undefined || only === block;
+
   return (
     <>
+      {show("membership") ? (
       <section className="page-section">
         <h2 style={{ margin: 0 }}>{text("membership.title")}</h2>
         <p className="muted" style={{ margin: 0 }}>
@@ -61,7 +74,9 @@ export async function MembershipPanels({
           <Memberships personId={personId} locale={locale} />
         </Block>
       </section>
+      ) : null}
 
+      {show("membership") ? (
       <section className="page-section">
         <h2 style={{ margin: 0 }}>{text("membership.entitlements")}</h2>
         <Block
@@ -72,13 +87,16 @@ export async function MembershipPanels({
           <Grants personId={personId} locale={locale} />
         </Block>
       </section>
+      ) : null}
 
+      {show("billing") ? (
       <section className="page-section">
         <h2 style={{ margin: 0 }}>{text("membership.finance")}</h2>
         <Block allowed={finance.allowed} reachable={finance.reachable} locale={locale}>
           <Finance personId={personId} locale={locale} />
         </Block>
       </section>
+      ) : null}
     </>
   );
 }

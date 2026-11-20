@@ -1936,6 +1936,33 @@ def session_detail(
             " ORDER BY overridden_at",
             (session_id,),
         ).fetchall()
+        # **How full this class usually is** -- ADM-SCH-02's fourth metric, "92% USUAL FILL".
+        # Eighteen booked means nothing until you know whether this class normally fills: on
+        # a twenty-bike spin class that is a good Thursday, and on one that normally turns
+        # people away it is a problem somebody should look at.
+        #
+        # **Past occurrences of the same rule, and this one excluded.** The rule is the
+        # version the session was generated from, which is immutable -- so "the same class"
+        # is exactly the set that cites this rule, and a template edit starts a new baseline
+        # rather than retroactively changing an old one. Cancelled occurrences are left out
+        # because nobody could book them, which would drag the mean toward zero for a class
+        # whose instructor was ill once.
+        usual = conn.execute(
+            "SELECT count(*),"
+            "       coalesce(sum(h.taken), 0),"
+            "       coalesce(sum(p.places), 0)"
+            " FROM plt01.sch_sessions o"
+            " CROSS JOIN LATERAL (SELECT o.capacity + o.overbook_places AS places) p"
+            " CROSS JOIN LATERAL ("
+            "   SELECT coalesce(sum(c.places), 0) AS taken"
+            "     FROM plt01.sch_capacity_holds c"
+            "    WHERE c.session_id = o.session_id"
+            "      AND c.status IN ('held', 'attended')) h"
+            " WHERE o.rule_id = %s AND o.session_id <> %s"
+            "   AND o.starts_at < %s AND o.status <> 'cancelled'"
+            "   AND o.capacity + o.overbook_places > 0",
+            (row[13], session_id, row[4]),
+        ).fetchone()
     places = int(row[9]) + int(row[10])
     taken = int(held[0]) if held else 0
     return {
@@ -1949,6 +1976,15 @@ def session_detail(
         "status": str(row[11]),
         "cancellation_reason": str(row[12]) if row[12] else None,
         "rule_id": str(row[13]),
+        # **Null rather than zero where there is no baseline**, which is this repository's
+        # standing rule for a comparison: a class running for the first time has no usual
+        # fill, and 0% would read as one that nobody ever books. The count is returned beside
+        # it so a surface can say how many occurrences it is a mean over -- one prior class
+        # is an anecdote and a board should be able to say so.
+        "usual_fill_bp": (
+            None if usual is None or int(usual[0]) == 0 or int(usual[2]) == 0
+            else round(int(usual[1]) * 10_000 / int(usual[2]))),
+        "usual_fill_over": 0 if usual is None else int(usual[0]),
         # **What it holds now, and what it used to.** Two lists rather than one with a flag,
         # because every caller wants the first and only a dispute wants the second -- and a
         # flag somebody forgets to filter on puts a substituted instructor back on the roster.

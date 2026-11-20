@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { MASK, isWithheld, splitSections } from "@/lib/people";
+import {
+  COMPOSED_SECTIONS,
+  MASK,
+  isWithheld,
+  splitComposed,
+  splitSections,
+} from "@/lib/people";
 
 /**
  * The two distinctions MOD-014's surface rests on, tested where they are decided.
@@ -54,5 +60,44 @@ describe("splitting the sections", () => {
     expect(available.length + unavailable.length).toBe(Object.keys(sections).length);
     const names = [...available, ...unavailable].map(([name]) => name).sort();
     expect(names).toEqual(Object.keys(sections).sort());
+  });
+});
+
+describe("the sections this page answers itself", () => {
+  /**
+   * **MOD-014's `sections` block describes the projection, not the page.** It says
+   * "MOD-017 owns this and nothing here reads it" about membership, entitlements and
+   * finance, which is true of the projection and is what paragraph 1300 is for -- and the
+   * Member 360 page composes all three by calling those modules' own routes through their
+   * own gates.
+   *
+   * Rendering the block unfiltered therefore put "membership: nothing here reads it"
+   * directly under a Membership tab full of memberships. Same class of defect as the stale
+   * "not built in this repository" list this screen already paid for: a confident wrong
+   * answer on the page somebody opens before talking to a member.
+   */
+  it("is exactly the set the page has tabs for", () => {
+    // The tabs that compose another module. `overview`, `access` and `notes` read MOD-014's
+    // own data or MOD-022's, neither of which is in the projection's unavailable list.
+    expect([...COMPOSED_SECTIONS].sort()).toEqual(
+      ["entitlements", "finance", "membership"]);
+  });
+
+  it("moves those out of the gaps and leaves every other one in", () => {
+    const { unavailable } = splitSections({
+      identity: "MOD-014",
+      membership: "unavailable: MOD-017 owns this and nothing here reads it",
+      entitlements: "unavailable: MOD-017 owns this and nothing here reads it",
+      finance: "unavailable: MOD-018 owns this and nothing here reads it",
+      bookings: "unavailable: MOD-019 owns this and nothing here reads it",
+      nutrition: "unavailable: CCH-02 is not built in this repository",
+    });
+    const { composed, absent } = splitComposed(unavailable);
+    expect(composed.map(([name]) => name).sort())
+      .toEqual(["entitlements", "finance", "membership"]);
+    // **A module that exists and a module that does not both stay**, because the page shows
+    // neither: `bookings` is MOD-019's and built, and nothing here reads it either. The two
+    // reasons differ and the server's own prose is what tells them apart.
+    expect(absent.map(([name]) => name).sort()).toEqual(["bookings", "nutrition"]);
   });
 });

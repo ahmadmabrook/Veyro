@@ -78,6 +78,9 @@ export type SessionDetail = ScheduledSession & {
   overbook_places: number;
   cancellation_reason: string | null;
   rule_id: string;
+  /** Null where no earlier occurrence of this rule exists — a baseline, not a zero. */
+  usual_fill_bp: number | null;
+  usual_fill_over: number;
   resources: SessionResource[];
   former_resources: (SessionResource & { superseded_at: string })[];
   changes: SessionChange[];

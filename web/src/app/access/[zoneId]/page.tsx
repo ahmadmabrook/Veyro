@@ -1,10 +1,11 @@
-import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import { Banner } from "@/components/ds/banner";
-import { PageHeader } from "@/components/ds/page-header";
 import { DataGrid } from "@/components/ds/data-grid";
-import { formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
+import { MetricCell, MetricRow } from "@/components/ds/metric-cell";
+import { PageHeader } from "@/components/ds/page-header";
+import { RecordHeader } from "@/components/ds/record-header";
+import { fill, formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
 import { ApiError, currentSession, gate } from "@/lib/api";
 import {
   DISCREET,
@@ -48,7 +49,7 @@ export default async function ZonePage({
   if (!(await currentSession())) redirect("/login");
   if (!(await gate("access.zone.read")).allowed) {
     return (
-      <Shell locale={locale} title={text("access.title")}>
+      <Shell title={text("access.title")}>
         <Banner severity="info">{text("gate.denied")}</Banner>
       </Shell>
     );
@@ -61,7 +62,7 @@ export default async function ZonePage({
     if (error instanceof ApiError && error.status === 404) notFound();
     if (error instanceof ApiError && error.status === 422) notFound();
     return (
-      <Shell locale={locale} title={text("access.title")}>
+      <Shell title={text("access.title")}>
         <Banner severity="critical">{text("error.unexpected")}</Banner>
       </Shell>
     );
@@ -74,30 +75,130 @@ export default async function ZonePage({
   const decisions = (await gate("access.decision.read")).allowed
     ? await readDecisions(zoneId).catch(() => null)
     : null;
+  // **A TypeScript type is a claim about a JSON response, not a check on it.** Against a
+  // server that predates `counts` the field is `undefined`, and reading `.granted` off it
+  // threw -- which took the whole page down with a 500 rather than losing one cell. The
+  // counts are recomputed from the rows when the server does not send them, which is both a
+  // fallback and the assertion that the two agree.
+  const counts = decisions === null ? null : (decisions.counts ?? {
+    granted: decisions.decisions.filter((one) => one.bucket === "granted").length,
+    policy: decisions.decisions.filter((one) => one.bucket === "policy").length,
+    fault: decisions.decisions.filter((one) => one.bucket === "fault").length,
+  });
+
+  const entries = zone.points.filter((point) => point.decides_entry).length;
 
   return (
-    <Shell locale={locale} title={zone.display_name}>
-      <section className="page-section">
-        <h2>{text("access.policy")}</h2>
-        <p className="muted" style={{ margin: 0 }}>
-          {text("access.risk")}: {text(`access.risk.${zone.risk_class}` as MessageKey)} ·{" "}
-          {text("access.offlineCeiling")}{" "}
-          <span className="data">
-            {formatInteger(Math.round(zone.snapshot_ceiling_seconds / 3600), "latn")}
-          </span>{" "}
-          {text("access.hours")}
-        </p>
-        {zone.policy === null ? (
-          <Banner severity="critical">{text("access.noPolicy")}</Banner>
-        ) : (
-          <Terms policy={zone.policy} locale={locale} />
-        )}
+    <div className="ds-inspector-pane">
+      <RecordHeader
+        name={zone.display_name}
+        {...(zone.policy === null
+          ? { band: { text: text("access.noPolicyBand"), tone: "critical" as const } }
+          : {})}
+        subline={
+          <>
+            {text(`access.risk.${zone.risk_class}` as MessageKey)}
+            {" · "}
+            {fill(locale, "access.pointsCounted",
+              { count: zone.points.length, entries })}
+            {" · "}
+            {text("access.offlineCeiling")}{" "}
+            <span className="data" dir="ltr">
+              {formatInteger(Math.round(zone.snapshot_ceiling_seconds / 3600), "latn")}
+            </span>{" "}
+            {text("access.hours")}
+          </>
+        }
+      />
+      <div className="ds-record-body">
+      {/* ADM-ACC-02's counts, which the canvas argues for rather than merely draws: "Policy
+          and fault are separate filters for a reason. Twenty-seven expired memberships is
+          the system working. Four reader failures is a maintenance job. Mixing them in one
+          count hides the second inside the first." The classification is MOD-022's own, by
+          reason code, so two screens cannot disagree about which a refusal was. */}
+      <MetricRow label={text("access.metrics")} columns={4}>
+        <MetricCell
+          label={text("access.insideNow")}
+          {...(occupancy === null
+            ? { freshness: "unavailable" as const,
+                unavailableBecause: text("metric.notPermitted") }
+            : {
+              value: (
+                <span className="data" dir="ltr">
+                  {formatInteger(occupancy.inside, "latn")}
+                </span>
+              ),
+              // Paragraph 4180: advisory unless both directions are reliably measured, and
+              // never a muster source. The word is in the cell rather than under it.
+              comparison: text(
+                `access.confidence.${occupancy.confidence}` as MessageKey),
+            })}
+        />
+        <MetricCell
+          label={text("access.grantedMetric")}
+          {...(decisions === null || counts === null
+            ? { freshness: "unavailable" as const,
+                unavailableBecause: text("metric.notPermitted") }
+            : {
+              value: (
+                <span className="data" dir="ltr">
+                  {formatInteger(counts.granted, "latn")}
+                </span>
+              ),
+              comparison: fill(locale, "access.ofDecisions",
+                { count: decisions.decisions.length }),
+            })}
+        />
+        <MetricCell
+          label={text("access.policyMetric")}
+          {...(decisions === null || counts === null
+            ? { freshness: "unavailable" as const,
+                unavailableBecause: text("metric.notPermitted") }
+            : {
+              value: (
+                <span className="data" dir="ltr">
+                  {formatInteger(counts.policy, "latn")}
+                </span>
+              ),
+              comparison: text("access.policyMeans"),
+            })}
+        />
+        <MetricCell
+          label={text("access.faultMetric")}
+          {...(decisions === null || counts === null
+            ? { freshness: "unavailable" as const,
+                unavailableBecause: text("metric.notPermitted") }
+            : {
+              value: (
+                <span className="data" dir="ltr">
+                  {formatInteger(counts.fault, "latn")}
+                </span>
+              ),
+              comparison: text("access.faultMeans"),
+            })}
+        />
+      </MetricRow>
+
+      <section className="ds-panel">
+        <div className="ds-panel-head">
+          <h2 className="ds-panel-title">{text("access.policy")}</h2>
+        </div>
+        <div className="ds-panel-body">
+          {zone.policy === null ? (
+            <Banner severity="critical">{text("access.noPolicy")}</Banner>
+          ) : (
+            <Terms policy={zone.policy} locale={locale} />
+          )}
+        </div>
       </section>
 
       {occupancy ? <OccupancyPanel occupancy={occupancy} locale={locale} /> : null}
 
-      <section className="page-section">
-        <h2>{text("access.points")}</h2>
+      <section className="ds-panel">
+        <div className="ds-panel-head">
+          <h2 className="ds-panel-title">{text("access.points")}</h2>
+        </div>
+        <div className="ds-panel-body">
         <ul className="stack" style={{ margin: 0, paddingInlineStart: "var(--space-5)" }}>
           {zone.points.map((point) => (
             <li key={point.point_id}>
@@ -113,20 +214,28 @@ export default async function ZonePage({
             </li>
           ))}
         </ul>
-        {zone.access_gaps.length > 0 ? (
-          <>
-            <h3>{text("access.gaps")}</h3>
-            <ul className="muted" style={{ paddingInlineStart: "var(--space-5)" }}>
+        </div>
+      </section>
+
+      {zone.access_gaps.length > 0 ? (
+        <section className="ds-panel">
+          <div className="ds-panel-head">
+            <h2 className="ds-panel-title">{text("access.gaps")}</h2>
+          </div>
+          <div className="ds-panel-body">
+            <ul className="muted" style={{ margin: 0,
+              paddingInlineStart: "var(--space-5)" }}>
               {zone.access_gaps.map((gap) => (
                 <li key={gap}>{gap}</li>
               ))}
             </ul>
-          </>
-        ) : null}
-      </section>
+          </div>
+        </section>
+      ) : null}
 
       {decisions ? <DecisionLog page={decisions} locale={locale} /> : null}
-    </Shell>
+      </div>
+    </div>
   );
 }
 
@@ -199,22 +308,26 @@ function Terms({ policy, locale }: { policy: ZonePolicy; locale: Locale }) {
   );
 }
 
+/**
+ * The occupancy disclaimer.
+ *
+ * **The figure moved into the metric row and the caveat did not follow it**, which would
+ * have been the defect: paragraph 4180 makes this number advisory unless both directions are
+ * reliably measured, and never the sole life-safety muster source. A cell carrying `0` with
+ * the word "advisory" under it is not the same sentence. So the number is a metric and the
+ * server's own words stay beside it in full -- shortening them here would be the interface
+ * deciding the caveat was not worth the space.
+ */
 function OccupancyPanel({ occupancy, locale }: { occupancy: Occupancy; locale: Locale }) {
   const text = (key: MessageKey) => t(locale, key);
   return (
-    <section className="page-section">
-      <h2>{text("access.occupancy")}</h2>
-      <p className="data" style={{ margin: 0, fontSize: "var(--type-display-size)" }}>
-        {formatInteger(occupancy.inside, "latn")}
-      </p>
-      <p className="muted" style={{ margin: 0 }}>
-        {text(`access.confidence.${occupancy.confidence}` as MessageKey)}
-      </p>
-      {/* **The disclaimer is the server's own words, rendered in full.** Paragraph 4180 makes
-          this number advisory unless both directions are reliably measured, and never the
-          sole life-safety muster source. Shortening it here would be the interface deciding
-          the caveat was not worth the space. */}
-      <Banner severity="info">{occupancy.detail}</Banner>
+    <section className="ds-panel">
+      <div className="ds-panel-head">
+        <h2 className="ds-panel-title">{text("access.occupancyCaveat")}</h2>
+      </div>
+      <div className="ds-panel-body">
+        <Banner severity="info">{occupancy.detail}</Banner>
+      </div>
     </section>
   );
 }
@@ -222,8 +335,10 @@ function OccupancyPanel({ occupancy, locale }: { occupancy: Occupancy; locale: L
 function DecisionLog({ page, locale }: { page: DecisionPage; locale: Locale }) {
   const text = (key: MessageKey) => t(locale, key);
   return (
-    <section className="page-section" aria-labelledby="decisions-heading">
-      <h2 id="decisions-heading">{text("access.decisions")}</h2>
+    <section className="ds-panel" aria-labelledby="decisions-heading">
+      <div className="ds-panel-head">
+        <h2 id="decisions-heading" className="ds-panel-title">{text("access.decisions")}</h2>
+      </div>
       {page.decisions.length === 0 ? (
         <Banner severity="info">{text("access.noDecisions")}</Banner>
       ) : (
@@ -299,22 +414,18 @@ function DecisionLog({ page, locale }: { page: DecisionPage; locale: Locale }) {
   );
 }
 
-function Shell({
-  locale,
-  title,
-  children,
-}: {
-  locale: Locale;
-  title: string;
-  children: React.ReactNode;
-}) {
+/**
+ * The shell for a page with no zone to name.
+ *
+ * **No breadcrumb.** `Doors` is on the rail; a link above the title repeating a rail entry
+ * is the chrome saying the same thing twice, which is what every other screen in this app
+ * stopped doing.
+ */
+function Shell({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="stack">
-      <nav aria-label={t(locale, "nav.back")}>
-        <Link href="/access">{t(locale, "access.title")}</Link>
-      </nav>
+    <div className="ds-inspector-pane">
       <PageHeader title={title} />
-      {children}
+      <div className="ds-record-body">{children}</div>
     </div>
   );
 }

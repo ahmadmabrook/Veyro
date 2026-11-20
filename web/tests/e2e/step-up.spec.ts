@@ -151,7 +151,10 @@ test.describe("completing a step-up", () => {
     // sign-out dressed as a success, on the one path where the reader has just proved who
     // they are.
     await page.waitForURL(`/people/${creds.personId}`);
-    await expect(page.getByRole("heading", { name: "Member 360" })).toBeVisible();
+    // The record's heading is the member's own name now, which ADM-MEM-01 draws -- and
+    // after a step-up it is the real one rather than the mask, which is what this test is
+    // about.
+    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
 
     // And the fields that were withheld are readable, which is the whole point.
     //

@@ -2,9 +2,11 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { Banner } from "@/components/ds/banner";
-import { PageHeader } from "@/components/ds/page-header";
 import { DataGrid } from "@/components/ds/data-grid";
-import { formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
+import { MetricCell, MetricRow } from "@/components/ds/metric-cell";
+import { PageHeader } from "@/components/ds/page-header";
+import { RecordHeader } from "@/components/ds/record-header";
+import { fill, formatInteger, t, type MessageKey } from "@/i18n/locale";
 import { ApiError, currentSession, gate } from "@/lib/api";
 import { presentation } from "@/lib/preferences";
 import { heldBeyondRoster, readRoster } from "@/lib/booking";
@@ -40,7 +42,7 @@ export default async function SessionPage({
   const may = await gate("scheduling.schedule.read");
   if (!may.allowed) {
     return (
-      <Shell locale={locale}>
+      <Shell title={text("schedule.session")}>
         <Banner severity="info">
           {may.reachable ? text("gate.denied") : text("gate.unreachable")}
         </Banner>
@@ -67,54 +69,102 @@ export default async function SessionPage({
   const roster = mayRoster.allowed ? await readRoster(sessionId).catch(toNull) : null;
   if (session === null) {
     return (
-      <Shell locale={locale}>
+      <Shell title={text("schedule.session")}>
         <Banner severity="critical">{text("error.unexpected")}</Banner>
       </Shell>
     );
   }
 
+  // ADM-SCH-02's band: `NO COACH`, which is the one thing about a class that has to be
+  // visible before anything else on the page. MOD-019 holds an instructor as a `staff`
+  // resource, so "no coach" is the absence of one -- and a substituted instructor whose hold
+  // was superseded is not one either, which is why this reads the live list.
+  const hasCoach = session.resources.some((held) => held.resource_kind === "staff");
+  const local = inZone(session.starts_at, session.timezone);
+  const ends = inZone(session.ends_at, session.timezone);
+
   return (
-    <Shell locale={locale} name={session.display_name}>
-      <dl className="facts">
-        <dt className="muted">{text("schedule.when")}</dt>
-        {/* **The site's zone, not UTC.** The instant and the local facts are stored separately
-            because neither is derivable from the other, and a surface that slices the ISO
-            string throws away the half the reader needs. */}
-        <dd style={{ margin: 0 }}>
-          <span className="data" dir="ltr">
-            {inZone(session.starts_at, session.timezone).date}
-          </span>{" "}
-          <span className="data" dir="ltr">
-            {inZone(session.starts_at, session.timezone).time}
-          </span>
-          {" — "}
-          <span className="data" dir="ltr">
-            {inZone(session.ends_at, session.timezone).time}
-          </span>
-        </dd>
-        <dt className="muted">{text("schedule.timezone")}</dt>
-        <dd style={{ margin: 0 }}>
-          <span className="data" dir="ltr">
-            {session.timezone}
-          </span>
-        </dd>
-        <dt className="muted">{text("schedule.status")}</dt>
-        <dd style={{ margin: 0 }}>{session.status}</dd>
-        <dt className="muted">{text("schedule.held")}</dt>
-        <dd style={{ margin: 0 }}>
-          <span className="data">{formatInteger(session.held, "latn")}</span>
-          {" / "}
-          <span className="data">{formatInteger(session.places, "latn")}</span>
-        </dd>
-        <dt className="muted">{text("schedule.free")}</dt>
-        <dd style={{ margin: 0 }}>
-          {session.free === 0 ? (
-            <span className="muted">{text("schedule.full")}</span>
-          ) : (
-            <span className="data">{formatInteger(session.free, "latn")}</span>
-          )}
-        </dd>
-      </dl>
+    <Shell>
+      <RecordHeader
+        name={session.display_name}
+        {...(hasCoach || session.status === "cancelled"
+          ? {}
+          : { band: { text: text("schedule.noCoach"), tone: "critical" as const } })}
+        subline={
+          <>
+            <span className="data" dir="ltr">{local.date} {local.time}–{ends.time}</span>
+            {" · "}
+            <span className="data" dir="ltr">{session.timezone}</span>
+            {" · "}
+            {session.status}
+            {session.resources.length === 0 ? null : (
+              <> {"· "}{session.resources.map((held) => held.display_name).join(" · ")}</>
+            )}
+          </>
+        }
+      />
+      <div className="ds-record-body">
+      {/* ADM-SCH-02's four cells: BOOKED · FREE · WAITLIST · USUAL FILL. **The seats belong
+          to MOD-019 and the waitlist to MOD-020**, which paragraph 4145 separates on purpose
+          -- so a reader holding one permission and not the other gets one of the two as a
+          refusal rather than a zero. */}
+      <MetricRow label={text("schedule.metrics")}>
+        <MetricCell
+          label={text("schedule.booked")}
+          value={<span className="data" dir="ltr">{formatInteger(session.held, "latn")}</span>}
+          comparison={fill(locale, "schedule.ofPlaces", { places: session.places })}
+        />
+        <MetricCell
+          label={text("schedule.freeMetric")}
+          value={<span className="data" dir="ltr">{formatInteger(session.free, "latn")}</span>}
+          {...(session.free === 0 ? { comparison: text("schedule.full") } : {})}
+        />
+        <MetricCell
+          label={text("schedule.waitlistMetric")}
+          {...(!mayRoster.allowed || roster === null
+            ? {
+              freshness: "unavailable" as const,
+              unavailableBecause: text(
+                mayRoster.allowed ? "metric.readFailed" : "metric.notPermitted"),
+            }
+            : {
+              value: (
+                <span className="data" dir="ltr">
+                  {formatInteger(roster.waitlist.length, "latn")}
+                </span>
+              ),
+            })}
+        />
+        <MetricCell
+          label={text("schedule.usualFill")}
+          // **`typeof`, not `=== null`.** A TypeScript type is a claim about a JSON
+          // response, not a check on it: against a backend that predates this field the
+          // value is `undefined`, which is not `null`, and `undefined / 100` is `NaN` --
+          // which `formatInteger` refuses, so the whole page answered 500. Found by looking
+          // at it, against a server that had not been restarted.
+          {...(typeof session.usual_fill_bp !== "number"
+            ? {
+              // **No baseline is not zero.** A class running for the first time has no
+              // usual fill, and 0% would read as one nobody ever books.
+              freshness: "unavailable" as const,
+              unavailableBecause: text("schedule.noBaseline"),
+            }
+            : {
+              value: (
+                <span className="data" dir="ltr">
+                  {formatInteger(Math.round(session.usual_fill_bp / 100), "latn")}%
+                </span>
+              ),
+              comparison: fill(locale, "schedule.overOccurrences",
+                { count: session.usual_fill_over }),
+            })}
+        />
+      </MetricRow>
+
+      {/* **The header and the metric row say all of this**, and the `dl` that used to sit
+          here repeated every figure a second time: the date, the zone and the status are the
+          sub-line, and taken-of-places is the BOOKED cell. The canvas has no such list --
+          ADM-SCH-02 goes straight from the four cells to the roster. */}
 
       {session.dst_adjusted ? <Banner severity="info">{text("schedule.dstExplained")}</Banner> : null}
       {session.cancellation_reason !== null ? (
@@ -123,20 +173,31 @@ export default async function SessionPage({
         </Banner>
       ) : null}
 
-      <section className="page-section">
-        <h2 style={{ margin: 0 }}>{text("schedule.resources")}</h2>
-        <Resources list={session.resources} timezone={session.timezone} />
+      <section className="ds-panel">
+        <div className="ds-panel-head">
+          <h2 className="ds-panel-title">{text("schedule.resources")}</h2>
+        </div>
+        <div className="ds-panel-body">
+          <Resources list={session.resources} timezone={session.timezone} />
+        </div>
       </section>
 
       {session.former_resources.length > 0 ? (
-        <section className="page-section">
-          <h2 style={{ margin: 0 }}>{text("schedule.formerResources")}</h2>
-          <Resources list={session.former_resources} timezone={session.timezone} />
+        <section className="ds-panel">
+          <div className="ds-panel-head">
+            <h2 className="ds-panel-title">{text("schedule.formerResources")}</h2>
+          </div>
+          <div className="ds-panel-body">
+            <Resources list={session.former_resources} timezone={session.timezone} />
+          </div>
         </section>
       ) : null}
 
-      <section className="page-section">
-        <h2 style={{ margin: 0 }}>{text("schedule.changes")}</h2>
+      <section className="ds-panel">
+        <div className="ds-panel-head">
+          <h2 className="ds-panel-title">{text("schedule.changes")}</h2>
+        </div>
+        <div className="ds-panel-body">
         {session.changes.length === 0 ? (
           <Banner severity="info">{text("schedule.noChanges")}</Banner>
         ) : (
@@ -193,12 +254,14 @@ export default async function SessionPage({
             ) : null}
           </>
         )}
+        </div>
       </section>
 
-      <section className="page-section">
-        <h2 id="roster-heading" style={{ margin: 0 }}>
-          {text("roster.title")}
-        </h2>
+      <section className="ds-panel">
+        <div className="ds-panel-head">
+          <h2 id="roster-heading" className="ds-panel-title">{text("roster.title")}</h2>
+        </div>
+        <div className="ds-panel-body">
         {!mayRoster.allowed ? (
           <Banner severity="info">
             {mayRoster.reachable ? text("gate.denied") : text("gate.unreachable")}
@@ -289,11 +352,15 @@ export default async function SessionPage({
             </p>
           </>
         )}
+        </div>
       </section>
 
       {session.conflict_overrides.length > 0 ? (
-        <section className="page-section">
-          <h2 style={{ margin: 0 }}>{text("schedule.overrides")}</h2>
+        <section className="ds-panel">
+          <div className="ds-panel-head">
+            <h2 className="ds-panel-title">{text("schedule.overrides")}</h2>
+          </div>
+          <div className="ds-panel-body">
           <ul style={{ margin: 0, paddingInlineStart: "var(--space-5)" }}>
             {session.conflict_overrides.map((override) => (
               <li key={override.overridden_at}>
@@ -305,10 +372,12 @@ export default async function SessionPage({
                 {" · "}
                 {override.reason}
               </li>
-            ))}
-          </ul>
+              ))}
+            </ul>
+          </div>
         </section>
       ) : null}
+      </div>
     </Shell>
   );
 }
@@ -350,19 +419,27 @@ function Resources({
   );
 }
 
+/**
+ * The record shell.
+ *
+ * **No breadcrumb.** The rail is the navigation and `Schedule` is on it; a link above the
+ * title repeating a rail entry is the chrome saying the same thing twice, which is the
+ * pattern this surface removed from every other screen.
+ *
+ * A failure before the session is read has no name to put in a `RecordHeader`, so those
+ * paths fall back to `PageHeader` -- a header with a status band and an empty name would be
+ * worse than one that says what the page is.
+ */
 function Shell({
-  locale,
-  name,
+  title,
   children,
 }: {
-  locale: Locale;
-  name?: string;
+  title?: string;
   children: React.ReactNode;
 }) {
   return (
-    <div className="stack" style={{ padding: "var(--space-6)", maxWidth: "860px" }}>
-      <Link href="/schedule">{t(locale, "schedule.title")}</Link>
-      <PageHeader title={name ?? t(locale, "schedule.session")} />
+    <div className="ds-inspector-pane">
+      {title === undefined ? null : <PageHeader title={title} />}
       {children}
     </div>
   );
