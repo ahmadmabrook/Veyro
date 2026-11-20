@@ -28,8 +28,8 @@ each been shown to fail when the thing they guard is removed.
 
 | Layer | What it proves | Count | Command |
 |---|---|---|---|
-| Foundation (`tests/unit/`) | Tokens, contrast, type, theme coverage, backend parity. No dependencies, no DOM. | 57 | `npm run test:foundation` |
-| Component (`tests/component/`) | Control semantics, the message catalogue in both directions, the sign-in form's four states, the device-label parity, the hierarchy composer, the mask marker, the redirect guard, the relay verdict, why a flag resolved as it did, reading an instant in a site's own timezone, what a member's money and entitlements mean, which periods need somebody and why an unbalanced ledger means lost rows, and when a session is live, which device a session came from and whether it may mint new recovery codes -- including that the money renderer is the one the receipt uses rather than a second one -- in jsdom. | 117 | `npm test` |
+| Foundation (`tests/unit/`) | Tokens, contrast, type, theme coverage, backend parity, **the Admin shell against the design source's own sentence**, the density modes, every media query checked against a breakpoint boundary, and the sweep that stops a screen hand-rolling a component the system already approves. No dependencies, no DOM. | 70 | `npm run test:foundation` |
+| Component (`tests/component/`) | Control semantics, the message catalogue in both directions, the sign-in form's four states, the device-label parity, the hierarchy composer, the mask marker, the redirect guard, the relay verdict, why a flag resolved as it did, reading an instant in a site's own timezone, what a member's money and entitlements mean, which periods need somebody and why an unbalanced ledger means lost rows, when a session is live, which device a session came from and whether it may mint new recovery codes, and **every design-system family against the contract sentence it implements** -- including that the money renderer is the one the receipt uses rather than a second one -- in jsdom. | 143 | `npm test` |
 | End-to-end (`tests/e2e/*.spec.ts`) | A real browser against a real backend whose fixture ran the real worker, including 32 axe runs across both locales, both themes and phone width, twenty surfaces checked for horizontal scroll on a phone, the no-JavaScript sign-in replay, seven surfaces driven as a session that may not read them, a withheld field proved against a session that is actually masked, MOD-017's three blocks proved refused against a front desk that holds the person read and none of the money, a session raised from level 1 to level 2 for real, and the four writes on the account page driven end to end against a subject each test registers for itself -- a session revoked, a device trusted, a batch of recovery codes minted after a step-up, and a device revoked that signs the reader out and refuses the way back. | 246 + 3 setup | `npm run e2e` |
 | Mutation sweep (`tests/e2e/mutate.mjs`) | Each protection above, broken on purpose, is caught by the test that names it. | 92/92 | `npm run e2e:mutate` |
 
@@ -592,6 +592,67 @@ claim the foundations make about the token holds. Pinned in
 `tests/unit/contrast.test.mjs` as a named discrepancy rather than hidden behind a tolerance,
 so correcting either the hex or the table fails the test and a human reads the diff. The
 other 8 of 9 tokens recompute to the printed hundredth on all three surfaces.
+
+## The design system, read at last
+
+**`veyro-product-experience-design/` is the single authoritative source for frontend design**,
+under the owner directive of 2026-11-20, and `ds.json` was never it. `ds.json` is Step 2 —
+colour, type, density, breakpoints, Arabic rules, contrast, guardrails. Steps 3, 4 and 5 are
+37 component families with published APIs, a state matrix and three contracts each; nine
+domain families; ten patterns, four confirmation tiers and fourteen cross-cutting rules. None
+of it had been opened, and neither had any of the 170 screen specifications. Fifteen screens
+were built on the foundations alone, and every one of them invented its own components.
+
+`src/design/extract.mjs` extracts the rest and pins every source file by SHA-256. It runs the
+documents' own data declarations in a sandbox, because the tables are rendered from JavaScript
+arrays and scraping the markup captures `{{ m.c0 }}` rather than the values. `npm run
+design:check` fails on a stale extraction and CI runs it **before** `tokens:check`, because
+the tokens are generated from the contracts — a stale extraction would regenerate tokens that
+agree with the wrong source and the later check would pass.
+
+`contracts/ui/design-compliance.md` is the ledger: every family, every pattern, every shell
+requirement and every screen, in the five states the directive distinguishes — implemented,
+functionally tested, spec verified, visually verified, blocked. **No screen in this repository
+was spec verified before the directive**; every one was at most functionally tested.
+
+**The shell had been specified, extracted and ignored.** `LAYOUTS` says Veyro Admin is a
+12-column grid with a 24px gutter, a rail of 240 collapsing to 56, content capped at 1440 and
+an inspector of 380 widening to 480, with split view as list-plus-inspector and never three
+columns. What shipped was a horizontal strip of fifteen links over a single column capped at
+960px. The numbers are now **parsed from the source's own sentence** rather than retyped — the
+Foundations document records that four precision slips in the design project were all caused by
+a number being copied rather than referenced — and `tests/unit/shell-tokens.test.mjs` asserts
+each one, every density block, and every media query in the app against a breakpoint boundary,
+which is the one place a design number has to be a literal because a media query cannot read a
+custom property. Five mutations, all caught.
+
+**The ad-hoc layer is deleted.** `src/components/controls.tsx` held a Button with two of seven
+variants, a field that rendered a hint and an error at once, and an `Alert` — three components
+duplicating approved families, which the directive forbids by name. 152 call sites moved to
+`Banner`, with the source's own tone mapping: `error → critical`, `warning → attention`, and
+**`success → neutral`, because "success is not a severity, it is the neutral case"**, so four
+success banners lost their green. A shim named `Alert` forwarding to `Banner` was considered
+and not written: that is the duplicate name the rule is about.
+
+Two things that migration taught, both recorded in `.claude/rules/`:
+
+- **The severity map was wrong, and a generated one caught it.** Written by hand from §30,
+  whose Payment line names five states — Step 4 names *ten*, each with its own severity, and
+  Retrying, Overdue, Disputed, Cash pending and Wallet applied exist only there. A payment row
+  could not be marked overdue at all, which is the one payment state a members table exists to
+  surface.
+- **Replacing an ad-hoc component with the approved one can drop a contract the ad-hoc one
+  happened to satisfy.** The old button hard-coded `minHeight: 44px` and met the touch floor by
+  accident of one line; the design system's Button defaults to `md`, which is 36. The sign-in
+  button — the one control a member must hit before anything else works — became 36px on a
+  phone while becoming more compliant in every other respect. Only the browser suite could see
+  it. The floor is in the component layer now, under `(pointer: coarse)`, which is where the
+  source puts it.
+
+**`tests/unit/ds-usage.test.mjs` keeps the backlog honest.** 18 screens still hand-roll a
+`<table>` where `DataGrid` exists and 22 still group with a bare `.panel` where `Card` does;
+both lists are swept in **both directions**, so a screen that quietly stops being migrated
+fails and so does an exemption that is no longer true.
 
 ## What this does not yet cover
 

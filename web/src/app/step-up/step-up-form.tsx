@@ -3,7 +3,9 @@
 import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
 
-import { Alert, Button, Field } from "@/components/controls";
+import { Button } from "@/components/ds/button";
+import { Field } from "@/components/ds/field";
+import { Banner } from "@/components/ds/banner";
 import { t, type Locale, type MessageKey } from "@/i18n/locale";
 
 import { stepUp } from "./actions";
@@ -52,16 +54,18 @@ export function StepUpForm({
         {text(isRecovery ? "stepUp.whyRecovery" : "stepUp.whyPassword")}
       </p>
 
-      {state.error ? <Alert tone="error">{text(state.error)}</Alert> : null}
+      {state.error ? <Banner severity="critical">{text(state.error)}</Banner> : null}
 
       <Field
         id="credential"
         name="credential"
         type={isRecovery ? "text" : "password"}
         label={text(isRecovery ? "stepUp.recovery" : "stepUp.password")}
-        {...(isRecovery ? { hint: text("stepUp.recoveryHint") } : {})}
+        {...(isRecovery ? { description: text("stepUp.recoveryHint") } : {})}
         autoComplete={isRecovery ? "one-time-code" : "current-password"}
-        {...(state.missing ? { error: text("stepUp.required") } : {})}
+        {...(state.missing
+          ? { message: { kind: "error" as const, text: text("stepUp.required") } }
+          : {})}
       />
 
       {/* The server re-derives all three. They are here so the form works without JavaScript
@@ -83,8 +87,11 @@ export function StepUpForm({
 function SubmitButton({ locale }: { locale: Locale }) {
   const { pending } = useFormStatus();
   return (
-    <Button type="submit" disabled={pending} aria-busy={pending}>
-      {t(locale, pending ? "stepUp.working" : "stepUp.submit")}
-    </Button>
+    <Button
+      type="submit"
+      variant="primary"
+      label={t(locale, pending ? "stepUp.working" : "stepUp.submit")}
+      state={pending ? "loading" : "default"}
+    />
   );
 }

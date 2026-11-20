@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { Alert } from "@/components/controls";
+import { Banner } from "@/components/ds/banner";
 import { formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
 import { ApiError, currentSession, gate } from "@/lib/api";
 import { listLocations, type Location } from "@/lib/organization";
@@ -42,9 +42,9 @@ export default async function SchedulePage({
   if (!may.allowed) {
     return (
       <Shell locale={locale}>
-        <Alert tone="info">
+        <Banner severity="info">
           {may.reachable ? text("gate.denied") : text("gate.unreachable")}
-        </Alert>
+        </Banner>
       </Shell>
     );
   }
@@ -62,13 +62,13 @@ export default async function SchedulePage({
   if (chosen === undefined) {
     return (
       <Shell locale={locale}>
-        <Alert tone="info">
+        <Banner severity="info">
           {sites === null
             ? text("schedule.pickSiteInLink")
             : sites.length === 0
               ? text("schedule.noLocation")
               : text("error.unexpected")}
-        </Alert>
+        </Banner>
       </Shell>
     );
   }
@@ -81,7 +81,7 @@ export default async function SchedulePage({
   if (calendar === null) {
     return (
       <Shell locale={locale}>
-        <Alert tone="error">{text("error.unexpected")}</Alert>
+        <Banner severity="critical">{text("error.unexpected")}</Banner>
       </Shell>
     );
   }
@@ -111,7 +111,7 @@ export default async function SchedulePage({
       ) : null}
 
       {calendar.sessions.length === 0 ? (
-        <Alert tone="info">{text("schedule.empty")}</Alert>
+        <Banner severity="info">{text("schedule.empty")}</Banner>
       ) : (
         <>
           <table

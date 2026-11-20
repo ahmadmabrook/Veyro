@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 
-import { Alert } from "@/components/controls";
+import { Banner } from "@/components/ds/banner";
 import { t } from "@/i18n/locale";
 import { currentSession } from "@/lib/api";
 import { presentation } from "@/lib/preferences";
@@ -35,7 +35,7 @@ export default async function LoginPage({
 
   return (
     <>
-      {signedOut ? <Alert tone="info">{t(locale, "login.deviceRevoked")}</Alert> : null}
+      {signedOut ? <Banner severity="info">{t(locale, "login.deviceRevoked")}</Banner> : null}
       <LoginForm locale={locale} />
     </>
   );

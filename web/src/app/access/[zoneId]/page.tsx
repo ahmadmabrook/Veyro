@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
-import { Alert } from "@/components/controls";
+import { Banner } from "@/components/ds/banner";
 import { formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
 import { ApiError, currentSession, gate } from "@/lib/api";
 import {
@@ -48,7 +48,7 @@ export default async function ZonePage({
   if (!(await gate("access.zone.read")).allowed) {
     return (
       <Shell locale={locale} title={text("access.title")}>
-        <Alert tone="info">{text("gate.denied")}</Alert>
+        <Banner severity="info">{text("gate.denied")}</Banner>
       </Shell>
     );
   }
@@ -61,7 +61,7 @@ export default async function ZonePage({
     if (error instanceof ApiError && error.status === 422) notFound();
     return (
       <Shell locale={locale} title={text("access.title")}>
-        <Alert tone="error">{text("error.unexpected")}</Alert>
+        <Banner severity="critical">{text("error.unexpected")}</Banner>
       </Shell>
     );
   }
@@ -87,7 +87,7 @@ export default async function ZonePage({
           {text("access.hours")}
         </p>
         {zone.policy === null ? (
-          <Alert tone="error">{text("access.noPolicy")}</Alert>
+          <Banner severity="critical">{text("access.noPolicy")}</Banner>
         ) : (
           <Terms policy={zone.policy} locale={locale} />
         )}
@@ -213,7 +213,7 @@ function OccupancyPanel({ occupancy, locale }: { occupancy: Occupancy; locale: L
           this number advisory unless both directions are reliably measured, and never the
           sole life-safety muster source. Shortening it here would be the interface deciding
           the caveat was not worth the space. */}
-      <Alert tone="info">{occupancy.detail}</Alert>
+      <Banner severity="info">{occupancy.detail}</Banner>
     </section>
   );
 }
@@ -224,7 +224,7 @@ function DecisionLog({ page, locale }: { page: DecisionPage; locale: Locale }) {
     <section className="panel stack" aria-labelledby="decisions-heading">
       <h2 id="decisions-heading">{text("access.decisions")}</h2>
       {page.decisions.length === 0 ? (
-        <Alert tone="info">{text("access.noDecisions")}</Alert>
+        <Banner severity="info">{text("access.noDecisions")}</Banner>
       ) : (
         <table
           tabIndex={0}

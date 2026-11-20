@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { Alert } from "@/components/controls";
+import { Banner } from "@/components/ds/banner";
 import { formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
 import { ApiError, currentSession, gate } from "@/lib/api";
 import { presentation } from "@/lib/preferences";
@@ -39,9 +39,9 @@ export default async function SessionPage({
   if (!may.allowed) {
     return (
       <Shell locale={locale}>
-        <Alert tone="info">
+        <Banner severity="info">
           {may.reachable ? text("gate.denied") : text("gate.unreachable")}
-        </Alert>
+        </Banner>
       </Shell>
     );
   }
@@ -66,7 +66,7 @@ export default async function SessionPage({
   if (session === null) {
     return (
       <Shell locale={locale}>
-        <Alert tone="error">{text("error.unexpected")}</Alert>
+        <Banner severity="critical">{text("error.unexpected")}</Banner>
       </Shell>
     );
   }
@@ -114,11 +114,11 @@ export default async function SessionPage({
         </dd>
       </dl>
 
-      {session.dst_adjusted ? <Alert tone="info">{text("schedule.dstExplained")}</Alert> : null}
+      {session.dst_adjusted ? <Banner severity="info">{text("schedule.dstExplained")}</Banner> : null}
       {session.cancellation_reason !== null ? (
-        <Alert tone="info">
+        <Banner severity="info">
           {text("schedule.cancelled")}: {session.cancellation_reason}
-        </Alert>
+        </Banner>
       ) : null}
 
       <section className="panel stack">
@@ -136,7 +136,7 @@ export default async function SessionPage({
       <section className="panel stack">
         <h2 style={{ margin: 0 }}>{text("schedule.changes")}</h2>
         {session.changes.length === 0 ? (
-          <Alert tone="info">{text("schedule.noChanges")}</Alert>
+          <Banner severity="info">{text("schedule.noChanges")}</Banner>
         ) : (
           <>
             <ul style={{ margin: 0, paddingInlineStart: "var(--space-5)" }}>
@@ -198,15 +198,15 @@ export default async function SessionPage({
           {text("roster.title")}
         </h2>
         {!mayRoster.allowed ? (
-          <Alert tone="info">
+          <Banner severity="info">
             {mayRoster.reachable ? text("gate.denied") : text("gate.unreachable")}
-          </Alert>
+          </Banner>
         ) : roster === null ? (
-          <Alert tone="error">{text("error.unexpected")}</Alert>
+          <Banner severity="critical">{text("error.unexpected")}</Banner>
         ) : (
           <>
             {roster.bookings.length === 0 ? (
-              <Alert tone="info">{text("roster.empty")}</Alert>
+              <Banner severity="info">{text("roster.empty")}</Banner>
             ) : (
               <table
                 tabIndex={0}
@@ -273,7 +273,7 @@ export default async function SessionPage({
                 numbers that look like they should agree sometimes do not, and saying so beats
                 rendering them bare. */}
             {heldBeyondRoster(roster) > 0 ? (
-              <Alert tone="info">{text("roster.heldBeyond")}</Alert>
+              <Banner severity="info">{text("roster.heldBeyond")}</Banner>
             ) : null}
             <p className="muted" style={{ margin: 0 }}>
               {text("roster.capacityIsElsewhere")}

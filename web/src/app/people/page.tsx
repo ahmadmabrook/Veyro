@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { Alert } from "@/components/controls";
+import { Banner } from "@/components/ds/banner";
 import { formatInteger, t, type MessageKey } from "@/i18n/locale";
 import { ApiError, currentSession, gate } from "@/lib/api";
 import { listDuplicateCandidates, type DuplicateCandidate } from "@/lib/people";
@@ -51,13 +51,13 @@ export default async function PeoplePage() {
         <h2 id="duplicates-heading" style={{ margin: 0 }}>
           {text("people.duplicates")}
         </h2>
-        {failed ? <Alert tone="error">{text(failed)}</Alert> : null}
+        {failed ? <Banner severity="critical">{text(failed)}</Banner> : null}
         {!may.allowed ? (
-          <Alert tone="info">
+          <Banner severity="info">
             {may.reachable ? text("gate.denied") : text("gate.unreachable")}
-          </Alert>
+          </Banner>
         ) : candidates.length === 0 ? (
-          <Alert tone="info">{text("people.noDuplicates")}</Alert>
+          <Banner severity="info">{text("people.noDuplicates")}</Banner>
         ) : (
           <table
             tabIndex={0}

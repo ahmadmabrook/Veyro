@@ -49,6 +49,24 @@ the directive requires deviations to be recorded rather than discovered:
 **No screen in this repository was `spec verified` before this directive.** Every one was at
 most `functionally tested`.
 
+### The ad-hoc layer that is gone
+
+`src/components/controls.tsx` held a Button with two of seven variants, a field that rendered
+two messages at once, and an `Alert` — three ad-hoc components duplicating approved families,
+which §8 of the directive forbids by name. It is deleted. 152 `Alert` call sites across 25
+files became `Banner`, and the tone mapping is the source's: `error → critical`,
+`warning → attention`, and **`success → neutral`, because "success is not a severity, it is
+the neutral case"** — so the four success banners lost their green, which is the rule doing
+its job rather than a regression.
+
+A compatibility shim was considered and not written: a component named `Alert` forwarding to
+`Banner` is exactly the duplicate name the directive rules out.
+
+**Still ad-hoc and not yet migrated**, tracked so the number can only go down: 31 raw
+`<table>` elements across the boards (DataGrid exists and no screen uses it yet) and 67
+`.panel` sections where `Card` applies. `tests/unit/ds-usage.test.mjs` is the sweep that
+keeps that list honest in both directions.
+
 ## Component families — 37
 
 Status per family. `—` means not started. The state matrix (`contracts.json` → `matrix`) says
@@ -61,21 +79,21 @@ accessibility, RTL and responsive behaviour must be.
 | --- | --- | --- |
 | Button | implemented, spec verified | `ds/button.tsx`. 7 variants, 3 sizes read from the extraction, loading keeps the label, icon-only has a name, `href` renders an anchor, `requiredSize` enforces 44px at Touch and Spacious. 6 assertions. |
 | IconButton | — | |
-| Input | — | 18 field types on one shell, one message slot, blur validation |
+| Input | implemented, spec verified | `ds/field.tsx`. One shell, 18 types as control swaps, exactly one message with the stated priority, bidi isolation per type, numeric keyboards derived. 7 assertions. **`controls.tsx`'s field rendered a hint and an error at once**, which §23 rules out; that test became a test that one is shown. |
 | Select | — | |
 | Combobox | — | |
 | Checkbox | — | |
 | Radio | — | |
 | Switch | — | |
 | Textarea | — | |
-| Chip | — | |
+| Chip | implemented | `ds/primitives.tsx`. Kept distinct from Badge: a badge states a status from a fixed vocabulary, a chip is a filter the reader can remove. |
 | Badge | implemented, spec verified | `ds/status-badge.tsx`. Severity and vocabulary **generated** from the source, not transcribed: §30 names five payment states and Step 4 names ten with their own severity column. 6 assertions. |
-| Avatar | — | |
+| Avatar | implemented | Initials, not a photo: there is no object store, and a broken image is worse than initials. `aria-hidden` beside the name it derives from. |
 | Icon | — | Mirroring is per-icon, from the icon manifest |
-| Tooltip | — | |
-| Divider | — | |
-| Skeleton | — | |
-| Spinner | — | |
+| Tooltip | implemented | `aria-describedby`, and the prop is named `supplementary` so the call site says out loud that nothing here is the only copy of that information. |
+| Divider | implemented | |
+| Skeleton | implemented | Height required, `aria-hidden`: a placeholder shorter than its content makes the layout jump. |
+| Spinner | implemented | Takes a label, because the two places a spinner could go — a grid and a button — both rule out a bare one. |
 
 ### Composite · 14
 
@@ -94,7 +112,7 @@ accessibility, RTL and responsive behaviour must be.
 | SegmentedControl | — | 2–4 exclusive options |
 | Card | implemented, spec verified | `ds/card.tsx`. `kind` is required over the six; there is no default, so "cardification" has to be argued for at the call site. |
 | Banner | implemented, spec verified | `ds/banner.tsx`. The role is the decision; `critical` refuses to be dismissible whatever the caller passes. 2 assertions. |
-| Toast | — | Confirms only; 30s undo; one at a time |
+| Toast | implemented, spec verified | `ds/toast.tsx`. 30s window, one at a time, polite live region, undo keyboard-reachable for the full window. **No surface uses it yet** — the account page's four confirmations are the first candidates, and they are Banners today. |
 
 ### Date & time · 6
 
@@ -145,7 +163,7 @@ accessibility, RTL and responsive behaviour must be.
 | Admin: content max 1440 | `LAYOUTS` | implemented, spec verified |
 | Admin: inspector 380 at bp.lg, 480 at bp.xl | `LAYOUTS` | implemented, spec verified. **No screen uses it yet** — the slot exists and the list-and-inspector pattern is not built. |
 | Admin: split view is list + inspector, never three columns | `LAYOUTS` | implemented, spec verified (a third track fails the test) |
-| Four density modes | `DENSITY` | implemented, spec verified. **No surface selects one yet**: `data-density` is honoured and nothing sets it per LAYOUTS (Front Desk Touch, Member Spacious, Console Compact). |
+| Four density modes | `DENSITY` | implemented, spec verified. The 44px button floor applies at Touch, Spacious and wherever the pointer is coarse. **No surface selects a mode yet**: `data-density` is honoured and nothing sets it per LAYOUTS (Front Desk Touch, Member Spacious, Console Compact). |
 | Five breakpoints with declared per-surface behaviour | `BREAKPOINTS` | implemented, spec verified. Every media query in the app is asserted to sit on a breakpoint boundary. |
 | Global chrome: scope switcher, ⌘K, tasks, alerts, account | §21 | partial. Account is a rail entry; language and theme are in the chrome slot. **Scope switcher, ⌘K and tasks/alerts are not built** — there is no scope concept on the client and no command palette. |
 | Rail of eight, generated from role and scope | §21 | partial. The rail is generated from the gate per item, which is the role half; **the scope half does not exist** (every `permit` call is tenant-wide, which MOD-014 records as its own gap), so it renders every permitted section rather than a composed eight. A cut-off at eight would hide pages a reader can open. |

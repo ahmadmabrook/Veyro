@@ -99,8 +99,13 @@ test.describe("presentation", () => {
 
       const field = page.getByLabel("Email or phone");
       await field.focus();
+      // **The ring is on the control, not the input.** §23's shell holds a prefix, the
+      // control and a suffix in one bounded box -- a currency prefix, a phone country code --
+      // so a ring drawn on the `<input>` alone would exclude them and read as a ring around
+      // part of the field. `:focus-within` puts it on the box the reader sees.
       const ring = await field.evaluate((element) => {
-        const style = getComputedStyle(element);
+        const box = element.closest(".ds-field-control") ?? element;
+        const style = getComputedStyle(box);
         return { color: style.outlineColor, style: style.outlineStyle, width: style.outlineWidth };
       });
       // Guardrail G4: the focus ring is system-owned so "a tenant cannot ship an unnavigable

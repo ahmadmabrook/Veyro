@@ -1,7 +1,8 @@
 import { redirect } from "next/navigation";
 
 import { signOut } from "@/app/actions";
-import { Alert, Button } from "@/components/controls";
+import { Button } from "@/components/ds/button";
+import { Banner } from "@/components/ds/banner";
 import { formatInteger, t, type MessageKey } from "@/i18n/locale";
 import { currentSession, gate, type GateAnswer } from "@/lib/api";
 import { presentation } from "@/lib/preferences";
@@ -58,7 +59,7 @@ export default async function HomePage() {
               that leads to a 403 is a disclosure that the capability exists and a dead end
               for the person who clicks it. MOD-008 computes this per action; the page asks. */}
           <form action={signOut}>
-            <Button type="submit">{text("nav.signOut")}</Button>
+            <Button type="submit" label={text("nav.signOut")} />
           </form>
         </div>
       </header>
@@ -79,7 +80,7 @@ export default async function HomePage() {
       <section className="panel stack" aria-labelledby="permissions-heading">
         <h2 id="permissions-heading">{text("home.permissions")}</h2>
         {answers.every((answer) => !answer.allowed) ? (
-          <Alert tone="info">{text("home.noPermissions")}</Alert>
+          <Banner severity="info">{text("home.noPermissions")}</Banner>
         ) : null}
         {/* `aria-labelledby` rather than a `<caption>`: the caption said exactly what the
             heading two lines above it said, so a sighted reader saw the sentence twice and a

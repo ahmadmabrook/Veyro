@@ -93,6 +93,17 @@ test("density changes row height, spacing and type only -- nothing else moves", 
   }
 });
 
+test("the 44px touch floor is in the component layer, not in call sites", () => {
+  // CROSS: "44px minimum in Touch and Spacious; 32px floor in Compact desktop where a pointer
+  // is guaranteed." A floor each caller has to remember is a floor the sign-in button lost
+  // the moment it stopped being a hand-rolled control -- it rendered at 36px on a phone, and
+  // only a browser test noticed.
+  assert.match(globals, /\(pointer: coarse\)/, "no pointer-based rule");
+  const touch = globals.match(/:root\[data-density="touch"\] \.ds-button[^}]*\}/);
+  assert.ok(touch, "touch density does not raise the button floor");
+  assert.match(touch[0], /min-block-size: 44px/);
+});
+
 test("the breakpoint tokens are the source's ranges", () => {
   for (const bp of contracts.breakpoints) {
     const from = bp.range.match(/^(\d+)/)[1];

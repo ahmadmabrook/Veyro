@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { Alert } from "@/components/controls";
+import { Banner } from "@/components/ds/banner";
 import { MembershipPanels } from "@/components/membership-panels";
 import { Withheld } from "@/components/withheld";
 import { formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
@@ -52,9 +52,9 @@ export default async function Member360Page({
   if (!may.allowed) {
     return (
       <Shell locale={locale}>
-        <Alert tone="info">
+        <Banner severity="info">
           {may.reachable ? text("gate.denied") : text("gate.unreachable")}
-        </Alert>
+        </Banner>
       </Shell>
     );
   }
@@ -70,17 +70,17 @@ export default async function Member360Page({
     if (error instanceof ApiError && (error.status === 404 || error.status === 422)) {
       return (
         <Shell locale={locale}>
-          <Alert tone="info">{text("member.notFound")}</Alert>
+          <Banner severity="info">{text("member.notFound")}</Banner>
         </Shell>
       );
     }
     return (
       <Shell locale={locale}>
-        <Alert tone="error">
+        <Banner severity="critical">
           {error instanceof ApiError && error.reason === "unreachable"
             ? text("error.network")
             : text("error.unexpected")}
-        </Alert>
+        </Banner>
       </Shell>
     );
   }
@@ -94,7 +94,7 @@ export default async function Member360Page({
       <section className="panel stack">
         <h2 style={{ margin: 0 }}>{text("member.profile")}</h2>
         {record.member_profile === null ? (
-          <Alert tone="info">{text("member.noProfile")}</Alert>
+          <Banner severity="info">{text("member.noProfile")}</Banner>
         ) : (
           <dl className="facts">
             <Row label={text("member.lifecycle")}>{record.member_profile.lifecycle_state}</Row>
@@ -128,7 +128,7 @@ export default async function Member360Page({
       <section className="panel stack">
         <h2 style={{ margin: 0 }}>{text("member.notes")}</h2>
         {record.notes.length === 0 ? (
-          <Alert tone="info">{text("member.noNotes")}</Alert>
+          <Banner severity="info">{text("member.noNotes")}</Banner>
         ) : (
           <ul className="stack" style={{ margin: 0, paddingInlineStart: "var(--space-5)" }}>
             {record.notes.map((note) => (
@@ -151,7 +151,7 @@ export default async function Member360Page({
       <section className="panel stack">
         <h2 style={{ margin: 0 }}>{text("member.timeline")}</h2>
         {record.timeline.length === 0 ? (
-          <Alert tone="info">{text("member.noTimeline")}</Alert>
+          <Banner severity="info">{text("member.noTimeline")}</Banner>
         ) : (
           <ol className="stack" style={{ margin: 0, paddingInlineStart: "var(--space-5)" }}>
             {record.timeline.map((entry) => (

@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 
-import { Alert } from "@/components/controls";
+import { Banner } from "@/components/ds/banner";
 import { formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
 import { ApiError, currentSession, gate } from "@/lib/api";
 import {
@@ -67,9 +67,9 @@ export default async function IntegrationsPage() {
   ) {
     return (
       <Shell locale={locale}>
-        <Alert tone="info">
+        <Banner severity="info">
           {mayInstalls.reachable ? text("gate.denied") : text("gate.unreachable")}
-        </Alert>
+        </Banner>
       </Shell>
     );
   }
@@ -98,10 +98,10 @@ export default async function IntegrationsPage() {
 
   return (
     <Shell locale={locale}>
-      {failed ? <Alert tone="error">{text("error.unexpected")}</Alert> : null}
+      {failed ? <Banner severity="critical">{text("error.unexpected")}</Banner> : null}
 
       {maySync.allowed ? (
-        <Alert tone="warning">{text("integrations.nothingSyncs")}</Alert>
+        <Banner severity="attention">{text("integrations.nothingSyncs")}</Banner>
       ) : null}
 
       <section className="panel stack">
@@ -110,16 +110,16 @@ export default async function IntegrationsPage() {
           {text("integrations.installsLead")}
         </p>
         {!mayInstalls.allowed ? (
-          <Alert tone="info">{text("gate.denied")}</Alert>
+          <Banner severity="info">{text("gate.denied")}</Banner>
         ) : installs.length === 0 ? (
-          <Alert tone="info">{text("integrations.noInstalls")}</Alert>
+          <Banner severity="info">{text("integrations.noInstalls")}</Banner>
         ) : (
           <>
             {unmet.length > 0 ? (
-              <Alert tone="error">
+              <Banner severity="critical">
                 {text("integrations.obligationsMissing")}{" "}
                 {unmet.map((i) => i.definition_key).join(", ")}
-              </Alert>
+              </Banner>
             ) : null}
             <table
               tabIndex={0}
@@ -181,9 +181,9 @@ export default async function IntegrationsPage() {
           {text("integrations.connectionsLead")}
         </p>
         {!mayConnections.allowed ? (
-          <Alert tone="info">{text("gate.denied")}</Alert>
+          <Banner severity="info">{text("gate.denied")}</Banner>
         ) : connections.length === 0 ? (
-          <Alert tone="info">{text("integrations.noConnections")}</Alert>
+          <Banner severity="info">{text("integrations.noConnections")}</Banner>
         ) : (
           <table
             tabIndex={0}
@@ -247,9 +247,9 @@ export default async function IntegrationsPage() {
           {text("integrations.credentialsLead")}
         </p>
         {!mayCredentials.allowed ? (
-          <Alert tone="info">{text("gate.denied")}</Alert>
+          <Banner severity="info">{text("gate.denied")}</Banner>
         ) : credentials.length === 0 ? (
-          <Alert tone="info">{text("integrations.noCredentials")}</Alert>
+          <Banner severity="info">{text("integrations.noCredentials")}</Banner>
         ) : (
           <ul className="stack" style={{ margin: 0, paddingInlineStart: "var(--space-5)" }}>
             {credentials.map((credential) => (
@@ -280,7 +280,7 @@ export default async function IntegrationsPage() {
           </ul>
         )}
         {mayCredentials.allowed ? (
-          <Alert tone="info">{text("integrations.noVault")}</Alert>
+          <Banner severity="info">{text("integrations.noVault")}</Banner>
         ) : null}
       </section>
 
@@ -290,16 +290,16 @@ export default async function IntegrationsPage() {
           {text("integrations.runsLead")}
         </p>
         {!maySync.allowed ? (
-          <Alert tone="info">{text("gate.denied")}</Alert>
+          <Banner severity="info">{text("gate.denied")}</Banner>
         ) : runs.length === 0 ? (
-          <Alert tone="info">{text("integrations.noRuns")}</Alert>
+          <Banner severity="info">{text("integrations.noRuns")}</Banner>
         ) : (
           <>
             {dead.length > 0 ? (
-              <Alert tone="warning">
+              <Banner severity="attention">
                 {text("integrations.deadRuns")}{" "}
                 <span className="data">{formatInteger(dead.length, "latn")}</span>
-              </Alert>
+              </Banner>
             ) : null}
             <table
               tabIndex={0}
@@ -370,9 +370,9 @@ export default async function IntegrationsPage() {
           {text("integrations.cursorsLead")}
         </p>
         {!maySync.allowed ? (
-          <Alert tone="info">{text("gate.denied")}</Alert>
+          <Banner severity="info">{text("gate.denied")}</Banner>
         ) : cursors.length === 0 ? (
-          <Alert tone="info">{text("integrations.noCursors")}</Alert>
+          <Banner severity="info">{text("integrations.noCursors")}</Banner>
         ) : (
           <ul style={{ margin: 0, paddingInlineStart: "var(--space-5)" }}>
             {cursors.map((cursor) => (

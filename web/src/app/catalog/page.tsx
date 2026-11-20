@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { Alert } from "@/components/controls";
+import { Banner } from "@/components/ds/banner";
 import { formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
 import { ApiError, currentSession, gate } from "@/lib/api";
 import {
@@ -62,9 +62,9 @@ export default async function CatalogPage({
   if (!mayProducts.allowed && !mayPrices.allowed && !mayPromotions.allowed) {
     return (
       <Shell locale={locale}>
-        <Alert tone="info">
+        <Banner severity="info">
           {mayProducts.reachable ? text("gate.denied") : text("gate.unreachable")}
-        </Alert>
+        </Banner>
       </Shell>
     );
   }
@@ -101,14 +101,14 @@ export default async function CatalogPage({
 
   return (
     <Shell locale={locale}>
-      {failed ? <Alert tone="error">{text("error.unexpected")}</Alert> : null}
+      {failed ? <Banner severity="critical">{text("error.unexpected")}</Banner> : null}
 
       <section className="panel stack">
         <h2 style={{ margin: 0 }}>{text("catalog.products")}</h2>
         {!mayProducts.allowed ? (
-          <Alert tone="info">{text("gate.denied")}</Alert>
+          <Banner severity="info">{text("gate.denied")}</Banner>
         ) : products.length === 0 ? (
-          <Alert tone="info">{text("catalog.noProducts")}</Alert>
+          <Banner severity="info">{text("catalog.noProducts")}</Banner>
         ) : (
           <table
             tabIndex={0}
@@ -159,7 +159,7 @@ export default async function CatalogPage({
             mayPrices={mayPrices.allowed}
           />
           {detail.variants.length === 0 ? (
-            <Alert tone="info">{text("catalog.noVariants")}</Alert>
+            <Banner severity="info">{text("catalog.noVariants")}</Banner>
           ) : (
             <table
               tabIndex={0}
@@ -237,9 +237,9 @@ export default async function CatalogPage({
           {text("catalog.booksLead")}
         </p>
         {!mayPrices.allowed ? (
-          <Alert tone="info">{text("gate.denied")}</Alert>
+          <Banner severity="info">{text("gate.denied")}</Banner>
         ) : books.length === 0 ? (
-          <Alert tone="info">{text("catalog.noBooks")}</Alert>
+          <Banner severity="info">{text("catalog.noBooks")}</Banner>
         ) : (
           <table
             tabIndex={0}
@@ -289,9 +289,9 @@ export default async function CatalogPage({
           {text("catalog.promotionsLead")}
         </p>
         {!mayPromotions.allowed ? (
-          <Alert tone="info">{text("gate.denied")}</Alert>
+          <Banner severity="info">{text("gate.denied")}</Banner>
         ) : promotions.length === 0 ? (
-          <Alert tone="info">{text("catalog.noPromotions")}</Alert>
+          <Banner severity="info">{text("catalog.noPromotions")}</Banner>
         ) : (
           <table
             tabIndex={0}
@@ -376,12 +376,12 @@ function Verdict({
   // be a claim built from half the facts.
   if (!mayPrices) return null;
   if (verdict === "sellable") {
-    return <Alert tone="success">{t(locale, "catalog.sellable")}</Alert>;
+    return <Banner severity="neutral">{t(locale, "catalog.sellable")}</Banner>;
   }
   if (verdict === "not_published") {
-    return <Alert tone="info">{t(locale, "catalog.notPublished")}</Alert>;
+    return <Banner severity="info">{t(locale, "catalog.notPublished")}</Banner>;
   }
-  return <Alert tone="warning">{t(locale, "catalog.noLivePrice")}</Alert>;
+  return <Banner severity="attention">{t(locale, "catalog.noLivePrice")}</Banner>;
 }
 
 function Shell({ locale, children }: { locale: Locale; children: React.ReactNode }) {

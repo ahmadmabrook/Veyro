@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { Alert } from "@/components/controls";
+import { Banner } from "@/components/ds/banner";
 import { formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
 import { ApiError, currentSession, gate } from "@/lib/api";
 import { listZones, type ZoneSummary } from "@/lib/access";
@@ -29,11 +29,11 @@ export default async function DoorBoardPage() {
   if (!may.allowed) {
     return (
       <Shell locale={locale}>
-        <Alert tone="info">
+        <Banner severity="info">
           {may.reachable
             ? text("gate.denied")
             : text("gate.unreachable")}
-        </Alert>
+        </Banner>
       </Shell>
     );
   }
@@ -46,11 +46,11 @@ export default async function DoorBoardPage() {
     // of them, so they are different messages.
     return (
       <Shell locale={locale}>
-        <Alert tone="error">
+        <Banner severity="critical">
           {error instanceof ApiError && error.reason === "unreachable"
             ? text("error.network")
             : text("error.unexpected")}
-        </Alert>
+        </Banner>
       </Shell>
     );
   }
@@ -58,7 +58,7 @@ export default async function DoorBoardPage() {
   return (
     <Shell locale={locale}>
       {zones.length === 0 ? (
-        <Alert tone="info">{text("access.empty")}</Alert>
+        <Banner severity="info">{text("access.empty")}</Banner>
       ) : (
         <table
           tabIndex={0}

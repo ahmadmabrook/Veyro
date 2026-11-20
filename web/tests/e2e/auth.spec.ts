@@ -63,8 +63,15 @@ test.describe("sign-in", () => {
       await expect(field).toHaveAttribute("aria-invalid", "true");
       // The message is associated, not merely adjacent: an error a screen reader never reaches
       // is an error only sighted users have.
+      //
+      // **One slot, not one per kind.** §23 gives the field shell a single message slot with
+      // the priority error > warning > success > description, so the id is `-message` and the
+      // error is what it holds -- which the old component could not express, because it
+      // rendered a hint *and* an error and described the field by both.
       const describedBy = await field.getAttribute("aria-describedby");
-      expect(describedBy ?? "").toContain("-error");
+      expect(describedBy ?? "").toContain("-message");
+      const message = page.locator(`#${describedBy}`);
+      await expect(message).toHaveText("This field is required.");
     }
     expect(new URL(page.url()).search).toBe("");
   });

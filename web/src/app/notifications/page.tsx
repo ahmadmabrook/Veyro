@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 
-import { Alert } from "@/components/controls";
+import { Banner } from "@/components/ds/banner";
 import { formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
 import { ApiError, currentSession, gate } from "@/lib/api";
 import { money } from "@/lib/membership";
@@ -62,9 +62,9 @@ export default async function NotificationsPage() {
   ) {
     return (
       <Shell locale={locale}>
-        <Alert tone="info">
+        <Banner severity="info">
           {mayNotifications.reachable ? text("gate.denied") : text("gate.unreachable")}
-        </Alert>
+        </Banner>
       </Shell>
     );
   }
@@ -93,10 +93,10 @@ export default async function NotificationsPage() {
 
   return (
     <Shell locale={locale}>
-      {failed ? <Alert tone="error">{text("error.unexpected")}</Alert> : null}
+      {failed ? <Banner severity="critical">{text("error.unexpected")}</Banner> : null}
 
       {mayNotifications.allowed ? (
-        <Alert tone="warning">{text("notify.nothingSends")}</Alert>
+        <Banner severity="attention">{text("notify.nothingSends")}</Banner>
       ) : null}
 
       <section className="panel stack">
@@ -105,9 +105,9 @@ export default async function NotificationsPage() {
           {text("notify.authoredLead")}
         </p>
         {!mayNotifications.allowed ? (
-          <Alert tone="info">{text("gate.denied")}</Alert>
+          <Banner severity="info">{text("gate.denied")}</Banner>
         ) : rows.length === 0 ? (
-          <Alert tone="info">{text("notify.noneAuthored")}</Alert>
+          <Banner severity="info">{text("notify.noneAuthored")}</Banner>
         ) : (
           <>
             <dl className="facts">
@@ -183,9 +183,9 @@ export default async function NotificationsPage() {
           {text("notify.suppressionsLead")}
         </p>
         {!maySuppressions.allowed ? (
-          <Alert tone="info">{text("gate.denied")}</Alert>
+          <Banner severity="info">{text("gate.denied")}</Banner>
         ) : suppressions.length === 0 ? (
-          <Alert tone="info">{text("notify.noSuppressions")}</Alert>
+          <Banner severity="info">{text("notify.noSuppressions")}</Banner>
         ) : (
           <ul className="stack" style={{ margin: 0, paddingInlineStart: "var(--space-5)" }}>
             {[...liveSuppressions, ...suppressions.filter((s) => !suppressionIsLive(s))].map(
@@ -223,9 +223,9 @@ export default async function NotificationsPage() {
           {text("notify.channelsLead")}
         </p>
         {!mayPolicies.allowed ? (
-          <Alert tone="info">{text("gate.denied")}</Alert>
+          <Banner severity="info">{text("gate.denied")}</Banner>
         ) : channels.length === 0 ? (
-          <Alert tone="info">{text("notify.noChannels")}</Alert>
+          <Banner severity="info">{text("notify.noChannels")}</Banner>
         ) : (
           <table
             tabIndex={0}
@@ -268,16 +268,16 @@ export default async function NotificationsPage() {
         )}
         {mayPolicies.allowed && usableChannels(channels).length === 0 &&
           channels.length > 0 ? (
-          <Alert tone="warning">{text("notify.everyChannelDisabled")}</Alert>
+          <Banner severity="attention">{text("notify.everyChannelDisabled")}</Banner>
         ) : null}
       </section>
 
       <section className="panel stack">
         <h2 style={{ margin: 0 }}>{text("notify.templates")}</h2>
         {!mayTemplates.allowed ? (
-          <Alert tone="info">{text("gate.denied")}</Alert>
+          <Banner severity="info">{text("gate.denied")}</Banner>
         ) : templates.length === 0 ? (
-          <Alert tone="info">{text("notify.noTemplates")}</Alert>
+          <Banner severity="info">{text("notify.noTemplates")}</Banner>
         ) : (
           <table
             tabIndex={0}
@@ -344,9 +344,9 @@ export default async function NotificationsPage() {
           {text("notify.digestsLead")}
         </p>
         {!mayNotifications.allowed ? (
-          <Alert tone="info">{text("gate.denied")}</Alert>
+          <Banner severity="info">{text("gate.denied")}</Banner>
         ) : digests.length === 0 ? (
-          <Alert tone="info">{text("notify.noDigests")}</Alert>
+          <Banner severity="info">{text("notify.noDigests")}</Banner>
         ) : (
           <ul style={{ margin: 0, paddingInlineStart: "var(--space-5)" }}>
             {digests.map((digest) => (

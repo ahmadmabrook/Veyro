@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 
-import { Alert } from "@/components/controls";
+import { Banner } from "@/components/ds/banner";
 import { formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
 import { ApiError, currentSession, gate } from "@/lib/api";
 import {
@@ -86,11 +86,11 @@ export default async function PermissionsPage() {
           {text("perms.mineLead")}
         </p>
         {!mayRoles.allowed ? (
-          <Alert tone="info">
+          <Banner severity="info">
             {mayRoles.reachable ? text("gate.denied") : text("gate.unreachable")}
-          </Alert>
+          </Banner>
         ) : rolesFailed ? (
-          <Alert tone="error">{text(rolesFailed)}</Alert>
+          <Banner severity="critical">{text(rolesFailed)}</Banner>
         ) : mine === null ? null : (
           <>
             <p className="muted" style={{ margin: 0 }}>
@@ -106,11 +106,11 @@ export default async function PermissionsPage() {
           {text("perms.roles")}
         </h2>
         {!mayRoles.allowed ? (
-          <Alert tone="info">
+          <Banner severity="info">
             {mayRoles.reachable ? text("gate.denied") : text("gate.unreachable")}
-          </Alert>
+          </Banner>
         ) : rolesFailed ? null : roles.length === 0 ? (
-          <Alert tone="info">{text("perms.noRoles")}</Alert>
+          <Banner severity="info">{text("perms.noRoles")}</Banner>
         ) : (
           roles.map((role) => (
             <div key={role.role_id} className="stack" style={{ gap: "var(--space-2)" }}>
@@ -141,22 +141,22 @@ export default async function PermissionsPage() {
           {text("perms.auditLead")}
         </p>
         {!mayAudit.allowed ? (
-          <Alert tone="info">
+          <Banner severity="info">
             {mayAudit.reachable ? text("gate.denied") : text("gate.unreachable")}
-          </Alert>
+          </Banner>
         ) : auditFailed ? (
-          <Alert tone="error">{text(auditFailed)}</Alert>
+          <Banner severity="critical">{text(auditFailed)}</Banner>
         ) : (
           <>
             {verdict ? (
-              <Alert tone={verdict.verified ? "info" : "error"}>
+              <Banner severity={verdict.verified ? "info" : "critical"}>
                 {verdict.verified ? text("perms.chainOk") : text("perms.chainBroken")}{" "}
                 {/* **Always, including on the green answer.** */}
                 {text("perms.chainCaveat")}
-              </Alert>
+              </Banner>
             ) : null}
             {audit.length === 0 ? (
-              <Alert tone="info">{text("perms.noAudit")}</Alert>
+              <Banner severity="info">{text("perms.noAudit")}</Banner>
             ) : (
               <table
                 tabIndex={0}

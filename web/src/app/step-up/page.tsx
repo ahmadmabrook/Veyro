@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { Alert } from "@/components/controls";
+import { Banner } from "@/components/ds/banner";
 import { t, type Locale, type MessageKey } from "@/i18n/locale";
 import { ApiError, api, currentSession } from "@/lib/api";
 import { safeNext } from "@/lib/navigation";
@@ -62,11 +62,11 @@ export default async function StepUpPage({
   } catch (error) {
     return (
       <Shell locale={locale} next={next}>
-        <Alert tone="error">
+        <Banner severity="critical">
           {error instanceof ApiError && error.reason === "unreachable"
             ? text("error.network")
             : text("error.unexpected")}
-        </Alert>
+        </Banner>
       </Shell>
     );
   }
@@ -74,7 +74,7 @@ export default async function StepUpPage({
   if (!asked.step_up_required) {
     return (
       <Shell locale={locale} next={next}>
-        <Alert tone="info">{text("stepUp.alreadyDone")}</Alert>
+        <Banner severity="info">{text("stepUp.alreadyDone")}</Banner>
       </Shell>
     );
   }
@@ -84,7 +84,7 @@ export default async function StepUpPage({
     // would send somebody looking for a key the product cannot check.
     return (
       <Shell locale={locale} next={next}>
-        <Alert tone="info">{text("stepUp.unreachable")}</Alert>
+        <Banner severity="info">{text("stepUp.unreachable")}</Banner>
       </Shell>
     );
   }

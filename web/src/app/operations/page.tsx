@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 
-import { Alert } from "@/components/controls";
+import { Banner } from "@/components/ds/banner";
 import { formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
 import { ApiError, currentSession, gate } from "@/lib/api";
 import {
@@ -117,15 +117,15 @@ export default async function OperationsPage() {
                   ordinary use of the product. The relay line comes first because it is the
                   one that can now be a fault; the delivery line is the standing disclosure. */}
               {relay === "stopped" ? (
-                <Alert tone="error">{text("ops.backlogRelayStopped")}</Alert>
+                <Banner severity="critical">{text("ops.backlogRelayStopped")}</Banner>
               ) : relay === "running" ? (
-                <Alert tone="info">{text("ops.backlogRelayRunning")}</Alert>
+                <Banner severity="info">{text("ops.backlogRelayRunning")}</Banner>
               ) : null}
-              <Alert tone="info">
+              <Banner severity="info">
                 {subscriptions === null || backlogIsExpected(subscriptions)
                   ? text("ops.backlogExpected")
                   : text("ops.backlogUnexpected")}
-              </Alert>
+              </Banner>
             </>
           )}
         </Gated>
@@ -142,10 +142,10 @@ export default async function OperationsPage() {
           {(jobs: WorkerJobs) => (
             <>
               {relay === "stopped" ? (
-                <Alert tone="error">{text("ops.workerStopped")}</Alert>
+                <Banner severity="critical">{text("ops.workerStopped")}</Banner>
               ) : null}
               {failingJobs(jobs).length > 0 ? (
-                <Alert tone="error">{text("ops.workerFailing")}</Alert>
+                <Banner severity="critical">{text("ops.workerFailing")}</Banner>
               ) : null}
               <table
                 tabIndex={0}
@@ -223,7 +223,7 @@ export default async function OperationsPage() {
         <Gated gate={mayDeadLetters} value={deadLetters} locale={locale}>
           {(letters: DeadLetter[]) =>
             letters.length === 0 ? (
-              <Alert tone="info">{text("ops.noDeadLetters")}</Alert>
+              <Banner severity="info">{text("ops.noDeadLetters")}</Banner>
             ) : (
               <table
                 tabIndex={0}
@@ -276,7 +276,7 @@ export default async function OperationsPage() {
         <Gated gate={maySubscriptions} value={subscriptions} locale={locale}>
           {(rows: Subscription[]) =>
             rows.length === 0 ? (
-              <Alert tone="info">{text("ops.noSubscriptions")}</Alert>
+              <Banner severity="info">{text("ops.noSubscriptions")}</Banner>
             ) : (
               <ul style={{ margin: 0, paddingInlineStart: "var(--space-5)" }}>
                 {rows.map((row) => (
@@ -301,7 +301,7 @@ export default async function OperationsPage() {
         <Gated gate={mayObjectives} value={objectives} locale={locale}>
           {(rows: Objective[]) =>
             rows.length === 0 ? (
-              <Alert tone="info">{text("ops.noObjectives")}</Alert>
+              <Banner severity="info">{text("ops.noObjectives")}</Banner>
             ) : (
               <ul style={{ margin: 0, paddingInlineStart: "var(--space-5)" }}>
                 {rows.map((row) => (
@@ -350,12 +350,12 @@ function Gated<T>({
   const text = (key: MessageKey) => t(locale, key);
   if (!gate.allowed) {
     return (
-      <Alert tone="info">
+      <Banner severity="info">
         {gate.reachable ? text("gate.denied") : text("gate.unreachable")}
-      </Alert>
+      </Banner>
     );
   }
-  if (value === null) return <Alert tone="error">{text("error.unexpected")}</Alert>;
+  if (value === null) return <Banner severity="critical">{text("error.unexpected")}</Banner>;
   return <>{children(value)}</>;
 }
 

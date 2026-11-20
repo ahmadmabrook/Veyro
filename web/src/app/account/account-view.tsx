@@ -2,7 +2,8 @@
 
 import { useActionState } from "react";
 
-import { Alert, Button } from "@/components/controls";
+import { Button } from "@/components/ds/button";
+import { Banner } from "@/components/ds/banner";
 import { formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
 import {
   assuranceMeans,
@@ -104,19 +105,17 @@ export function AccountView({
           {text("account.recoveryLead")}
         </p>
         {!mayIssueRecoveryCodes(aal) ? (
-          <Alert tone="info">{text("account.codesNeedStepUp")}</Alert>
+          <Banner severity="info">{text("account.codesNeedStepUp")}</Banner>
         ) : (
           <form action={issueCodes}>
             <input type="hidden" name="identity_id" value={identityId} />
-            <Button type="submit" variant="primary">
-              {text("account.issueCodes")}
-            </Button>
+            <Button type="submit" variant="primary" label={text("account.issueCodes")} />
           </form>
         )}
         <Result locale={locale} state={codeState} />
         {codeState.codes.length === 0 ? null : (
           <>
-            <Alert tone="warning">{text("account.codesShownOnce")}</Alert>
+            <Banner severity="attention">{text("account.codesShownOnce")}</Banner>
             <ul
               className="data"
               dir="ltr"
@@ -144,7 +143,7 @@ export function AccountView({
           </dd>
         </dl>
         {others.length === 0 ? (
-          <Alert tone="info">{text("account.noOtherSessions")}</Alert>
+          <Banner severity="info">{text("account.noOtherSessions")}</Banner>
         ) : (
           <ul className="stack" style={{ margin: 0, paddingInlineStart: "var(--space-5)" }}>
             {others.map((other) => (
@@ -159,9 +158,11 @@ export function AccountView({
                 </span>
                 <form action={revokeOne} style={{ display: "inline" }}>
                   <input type="hidden" name="session_id" value={other.session_id} />
-                  <Button type="submit" style={{ marginInlineStart: "var(--space-3)" }}>
-                    {text("account.revoke")}
-                  </Button>
+                  <Button
+                    type="submit"
+                    label={text("account.revoke")}
+                    style={{ marginInlineStart: "var(--space-3)" }}
+                  />
                 </form>
               </li>
             ))}
@@ -177,7 +178,7 @@ export function AccountView({
         <Result locale={locale} state={deviceState} />
         <Result locale={locale} state={trustState} />
         {devices.length === 0 ? (
-          <Alert tone="info">{text("account.noDevices")}</Alert>
+          <Banner severity="info">{text("account.noDevices")}</Banner>
         ) : (
           <ul className="stack" style={{ margin: 0, paddingInlineStart: "var(--space-5)" }}>
             {devices.map((device) => (
@@ -213,14 +214,20 @@ export function AccountView({
                   <>
                     <form action={revokeOneDevice} style={{ display: "inline" }}>
                       <input type="hidden" name="device_id" value={device.device_id} />
-                      <Button type="submit" style={{ marginInlineEnd: "var(--space-2)" }}>
-                        {text("account.revoke")}
-                      </Button>
+                      <Button
+                        type="submit"
+                        // **Destructive**, and the source says it is never adjacent to a
+                        // primary: there is no primary in this row, and Trust beside it is
+                        // the secondary default.
+                        variant="destructive"
+                        label={text("account.revoke")}
+                        style={{ marginInlineEnd: "var(--space-2)" }}
+                      />
                     </form>
                     {device.trusted ? null : (
                       <form action={trustOne} style={{ display: "inline" }}>
                         <input type="hidden" name="device_id" value={device.device_id} />
-                        <Button type="submit">{text("account.trust")}</Button>
+                        <Button type="submit" label={text("account.trust")} />
                       </form>
                     )}
                   </>
@@ -237,7 +244,7 @@ export function AccountView({
           {text("account.eventsLead")}
         </p>
         {events.length === 0 ? (
-          <Alert tone="info">{text("account.noEvents")}</Alert>
+          <Banner severity="info">{text("account.noEvents")}</Banner>
         ) : (
           <table
             tabIndex={0}
@@ -289,10 +296,10 @@ export function AccountView({
 
 function Result({ locale, state }: { locale: Locale; state: AccountState }) {
   if (state.error !== null) {
-    return <Alert tone="error">{t(locale, state.error)}</Alert>;
+    return <Banner severity="critical">{t(locale, state.error)}</Banner>;
   }
   if (state.message !== null) {
-    return <Alert tone="success">{t(locale, state.message)}</Alert>;
+    return <Banner severity="neutral">{t(locale, state.message)}</Banner>;
   }
   return null;
 }

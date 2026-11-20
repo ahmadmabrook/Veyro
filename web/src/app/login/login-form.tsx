@@ -3,7 +3,9 @@
 import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
 
-import { Alert, Button, Field } from "@/components/controls";
+import { Button } from "@/components/ds/button";
+import { Field } from "@/components/ds/field";
+import { Banner } from "@/components/ds/banner";
 import { t, type Locale, type MessageKey } from "@/i18n/locale";
 
 import { signIn } from "./actions";
@@ -39,21 +41,20 @@ export function LoginForm({ locale }: { locale: Locale }) {
         <h1>{text("login.title")}</h1>
 
         {state.error ? (
-          <Alert tone={state.challenge ? "info" : "error"}>{text(state.error)}</Alert>
+          <Banner severity={state.challenge ? "info" : "critical"}>{text(state.error)}</Banner>
         ) : null}
 
         <Field
           id="tenant"
           name="tenant_id"
           label={text("login.tenant")}
-          hint={text("login.tenantHint")}
+          description={text("login.tenantHint")}
           defaultValue={state.tenantId}
           autoComplete="off"
-          inputMode="text"
           // Not `required`: the browser's own validation bubble is unstyled, untranslated and
           // replaces the associated message this form renders. `noValidate` is the other half,
           // and the server checks the same thing regardless.
-          {...(state.missing.tenant ? { error: text("login.required") } : {})}
+          {...(state.missing.tenant ? { message: { kind: "error" as const, text: text("login.required") } } : {})}
         />
 
         <Field
@@ -62,7 +63,7 @@ export function LoginForm({ locale }: { locale: Locale }) {
           label={text("login.identifier")}
           defaultValue={state.identifier}
           autoComplete="username"
-          {...(state.missing.identifier ? { error: text("login.required") } : {})}
+          {...(state.missing.identifier ? { message: { kind: "error" as const, text: text("login.required") } } : {})}
         />
 
         {/* **The password field goes away once a challenge is in flight**, and the challenge
@@ -76,10 +77,9 @@ export function LoginForm({ locale }: { locale: Locale }) {
               id="recovery"
               name="recovery_code"
               label={text("login.recovery")}
-              hint={text("login.recoveryHint")}
+              description={text("login.recoveryHint")}
               autoComplete="one-time-code"
-              inputMode="text"
-              {...(state.missing.recovery ? { error: text("login.required") } : {})}
+              {...(state.missing.recovery ? { message: { kind: "error" as const, text: text("login.required") } } : {})}
             />
           </>
         ) : (
@@ -90,7 +90,7 @@ export function LoginForm({ locale }: { locale: Locale }) {
             label={text("login.password")}
             // No `defaultValue`: a refused attempt clears the password and only the password.
             autoComplete="current-password"
-            {...(state.missing.password ? { error: text("login.required") } : {})}
+            {...(state.missing.password ? { message: { kind: "error" as const, text: text("login.required") } } : {})}
           />
         )}
 
@@ -111,8 +111,14 @@ export function LoginForm({ locale }: { locale: Locale }) {
 function SubmitButton({ idle, busy }: { idle: string; busy: string }) {
   const { pending } = useFormStatus();
   return (
-    <Button type="submit" variant="primary" busy={pending} busyLabel={busy}>
-      {idle}
-    </Button>
+    <Button
+      type="submit"
+      variant="primary"
+      // The label stays while loading -- the contract says a spinner never replaces it -- so
+      // the busy wording is the label rather than a separate one that swaps in.
+      label={pending ? busy : idle}
+      state={pending ? "loading" : "default"}
+      fullWidth
+    />
   );
 }

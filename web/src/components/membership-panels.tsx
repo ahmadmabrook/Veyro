@@ -1,4 +1,4 @@
-import { Alert } from "@/components/controls";
+import { Banner } from "@/components/ds/banner";
 import { formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
 import { ApiError, gate } from "@/lib/api";
 import {
@@ -104,9 +104,9 @@ function Block({
 }) {
   if (allowed) return <>{children}</>;
   return (
-    <Alert tone="info">
+    <Banner severity="info">
       {t(locale, reachable ? "gate.denied" : "gate.unreachable")}
-    </Alert>
+    </Banner>
   );
 }
 
@@ -118,7 +118,7 @@ async function Memberships({ personId, locale }: { personId: string; locale: Loc
   } catch (error) {
     return <Failed error={error} locale={locale} />;
   }
-  if (rows.length === 0) return <Alert tone="info">{text("membership.none")}</Alert>;
+  if (rows.length === 0) return <Banner severity="info">{text("membership.none")}</Banner>;
   return (
     <>
       <table
@@ -198,7 +198,7 @@ async function Grants({ personId, locale }: { personId: string; locale: Locale }
     return <Failed error={error} locale={locale} />;
   }
   if (page.grants.length === 0) {
-    return <Alert tone="info">{text("membership.noGrants")}</Alert>;
+    return <Banner severity="info">{text("membership.noGrants")}</Banner>;
   }
   return (
     <>
@@ -286,7 +286,7 @@ async function Finance({ personId, locale }: { personId: string; locale: Locale 
     return <Failed error={error} locale={locale} />;
   }
   if (accounts.length === 0 && invoices.length === 0) {
-    return <Alert tone="info">{text("membership.noFinance")}</Alert>;
+    return <Banner severity="info">{text("membership.noFinance")}</Banner>;
   }
   const owed = outstandingMinor(invoices);
   const currency = invoices[0]?.currency ?? accounts[0]?.currency ?? "";
@@ -322,7 +322,7 @@ async function Finance({ personId, locale }: { personId: string; locale: Locale 
         </dd>
       </dl>
       {invoices.length === 0 ? (
-        <Alert tone="info">{text("membership.noInvoices")}</Alert>
+        <Banner severity="info">{text("membership.noInvoices")}</Banner>
       ) : (
         <table
           tabIndex={0}
@@ -384,14 +384,14 @@ async function Finance({ personId, locale }: { personId: string; locale: Locale 
 /** A read that failed. The network case is worth telling apart from everything else. */
 function Failed({ error, locale }: { error: unknown; locale: Locale }) {
   return (
-    <Alert tone="error">
+    <Banner severity="critical">
       {t(
         locale,
         error instanceof ApiError && error.reason === "unreachable"
           ? "error.network"
           : "error.unexpected",
       )}
-    </Alert>
+    </Banner>
   );
 }
 

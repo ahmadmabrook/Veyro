@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 
-import { Alert } from "@/components/controls";
+import { Banner } from "@/components/ds/banner";
 import { formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
 import { ApiError, currentSession, gate } from "@/lib/api";
 import {
@@ -66,9 +66,9 @@ export default async function FinancePage({
   if (!may.allowed) {
     return (
       <Shell locale={locale}>
-        <Alert tone="info">
+        <Banner severity="info">
           {may.reachable ? text("gate.denied") : text("gate.unreachable")}
-        </Alert>
+        </Banner>
       </Shell>
     );
   }
@@ -93,11 +93,11 @@ export default async function FinancePage({
   } catch (error) {
     return (
       <Shell locale={locale}>
-        <Alert tone="error">
+        <Banner severity="critical">
           {error instanceof ApiError && error.reason === "unreachable"
             ? text("error.network")
             : text("error.unexpected")}
-        </Alert>
+        </Banner>
       </Shell>
     );
   }
@@ -153,13 +153,13 @@ export default async function FinancePage({
           {text("finance.lockLead")}
         </p>
         {attention.length > 0 ? (
-          <Alert tone="warning">
+          <Banner severity="attention">
             {text("finance.lockAttention")}{" "}
             {attention.map((p) => p.period_key).join(", ")}
-          </Alert>
+          </Banner>
         ) : null}
         {periods.length === 0 ? (
-          <Alert tone="info">{text("finance.noPeriods")}</Alert>
+          <Banner severity="info">{text("finance.noPeriods")}</Banner>
         ) : (
           <table
             tabIndex={0}
@@ -216,9 +216,9 @@ export default async function FinancePage({
       <section className="panel stack">
         <h2 style={{ margin: 0 }}>{text("finance.trialBalance")}</h2>
         {balance === null ? (
-          <Alert tone="info">
+          <Banner severity="info">
             {balanceFailed ? text("finance.balanceUnreadable") : text("finance.noEntity")}
-          </Alert>
+          </Banner>
         ) : (
           <>
             <p className="muted" style={{ margin: 0 }}>
@@ -236,17 +236,17 @@ export default async function FinancePage({
               {mayName.allowed ? null : ` · ${text("finance.entityUnnamed")}`}
             </p>
             {balanceVerdict(balance).kind === "balanced" ? (
-              <Alert tone="success">{text("finance.balanced")}</Alert>
+              <Banner severity="neutral">{text("finance.balanced")}</Banner>
             ) : (
-              <Alert tone="error">
+              <Banner severity="critical">
                 {text("finance.lostRows")}{" "}
                 <span className="data" dir="ltr">
                   {money(balance.difference_minor, balance.currency)}
                 </span>
-              </Alert>
+              </Banner>
             )}
             {!hasPostings(balance) ? (
-              <Alert tone="info">{text("finance.nothingPosted")}</Alert>
+              <Banner severity="info">{text("finance.nothingPosted")}</Banner>
             ) : (
               <table
                 tabIndex={0}
@@ -317,7 +317,7 @@ export default async function FinancePage({
           {text("finance.casesLead")}
         </p>
         {cases.length === 0 ? (
-          <Alert tone="info">{text("finance.noCases")}</Alert>
+          <Banner severity="info">{text("finance.noCases")}</Banner>
         ) : (
           <table
             tabIndex={0}
@@ -366,7 +366,7 @@ export default async function FinancePage({
           {text("finance.recognitionLead")}
         </p>
         {due.length === 0 ? (
-          <Alert tone="info">{text("finance.noRecognition")}</Alert>
+          <Banner severity="info">{text("finance.noRecognition")}</Banner>
         ) : (
           <ul style={{ margin: 0, paddingInlineStart: "var(--space-5)" }}>
             {due.map((item) => (

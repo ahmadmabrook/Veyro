@@ -628,6 +628,19 @@ moving underneath them. **And the seam has to be mutation-proven like anything e
 the limiter's `raise` removed, those tests fail, so freezing the clock did not make them
 vacuous.
 
+**Replacing an ad-hoc component with the approved one can drop a contract the ad-hoc one
+happened to satisfy.** `controls.tsx`'s button hard-coded `minHeight: 44px`, which met the
+design system's touch-target floor by accident of one line. The design system's Button is
+sized `sm | md | lg` at 28/36/44 and defaults to `md`, so the moment the sign-in form moved
+to it the one control a member must hit before anything else works became 36px on a phone --
+with the component *more* compliant in every other respect. The e2e assertion caught it; no
+unit or component test could, because both halves were individually correct. **Before
+deleting an ad-hoc component, read what it hard-codes**, and put each of those properties
+somewhere in the replacement rather than assuming the richer API covers them. The floor now
+lives in the component layer under `(pointer: coarse)`, which is where the source puts it:
+accessibility, RTL and responsive behaviour belong to the component, "not in a screen spec",
+because otherwise every new screen re-implements them.
+
 **A string that never became a message key is invisible to the parity check, and the check
 cannot be made to see it.** `MESSAGE_KEYS` compares the two catalogues against each other --
 in both directions now -- so it catches a key present in one and missing from the other, and
@@ -724,6 +737,16 @@ reading the file deleted nineteen hand-written cases in one pass -- which nothin
 because the suite's own count assertion was regenerated in the same step. The generator prints
 `-- >>> GENERATED ... BEGIN` and `-- <<< ... END`, one splice script moves them, and it refuses
 rather than guessing if either marker is missing or doubled.
+
+**And a signal handler cannot catch SIGKILL, so an interrupted sweep has to be checked
+for rather than trusted.** The web harness restores on SIGINT, SIGTERM and SIGHUP and was
+still killed with a mutation in the tree -- `composeTree` returning `orphanLocations: []`,
+which is a deliberate mutation and reads exactly like a developer's edit. The component
+suite went red one test later for what looked like an unrelated reason. `git status` is the
+check and it found it in seconds; the harness now also reports, on its next run, that an
+anchor is missing *because the replacement text is present* rather than because the mutation
+is stale, and prints the `git checkout` that puts it back. **After any interrupted sweep,
+look at the diff before believing a failure.**
 
 **A mutation harness must restore the tree on a signal, not only on an exception.** `finally`
 does not run when the process is killed, and a web sweep stopped halfway left a deleted line in

@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 
-import { Alert } from "@/components/controls";
+import { Banner } from "@/components/ds/banner";
 import { t, type Locale, type MessageKey } from "@/i18n/locale";
 import type { AuthEvent, DeviceFact, SessionFact } from "@/lib/account";
 import { listAuthEvents, listDevices, listSessions } from "@/lib/account-reads";
@@ -43,11 +43,11 @@ export default async function AccountPage() {
   } catch (error) {
     return (
       <Shell locale={locale}>
-        <Alert tone="error">
+        <Banner severity="critical">
           {error instanceof ApiError && error.reason === "unreachable"
             ? text("error.network")
             : text("error.unexpected")}
-        </Alert>
+        </Banner>
       </Shell>
     );
   }

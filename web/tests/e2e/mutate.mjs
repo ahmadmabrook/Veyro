@@ -113,25 +113,28 @@ const MUTATIONS = [
   },
   {
     id: "touch-target",
-    why: "the primary control must reach the 44px touch minimum",
-    file: "src/components/controls.tsx",
-    from: '        minHeight: "44px",\n        padding: "var(--space-2) var(--space-4)",',
-    to: '        minHeight: "28px",\n        padding: "0 var(--space-4)",',
-    grep: "phone width",
+    why: "lg is mandatory at Touch and Spacious density -- the source calls 44px the minimum "
+      + "target, not a stylistic option",
+    file: "src/components/ds/button.tsx",
+    from: '  if ((TOUCH_DENSITIES as readonly string[]).includes(density)) return "lg";',
+    to: '  if (false) return "lg";',
+    runner: "vitest",
+    grep: "forces lg at the densities",
   },
   {
     id: "label-association",
-    why: "a validation message must be associated with its field, not merely adjacent",
-    file: "src/components/controls.tsx",
-    from: "        aria-describedby={described}",
-    to: "",
+    why: "a validation message must be associated with its field, not merely adjacent -- the "
+      + "contract says the error text is referenced by the field and read on focus",
+    file: "src/components/ds/field.tsx",
+    from: "              aria-describedby={messageId}\n              aria-invalid={invalid || undefined}\n              required={required}\n              className=\"ds-field-input\"\n            />\n          )\n        )}",
+    to: "              aria-invalid={invalid || undefined}\n              required={required}\n              className=\"ds-field-input\"\n            />\n          )\n        )}",
     grep: "names every missing field",
   },
   {
     id: "muster-disclaimer",
     why: "paragraph 4180's disclaimer must be on every occupancy read",
     file: "src/app/access/[zoneId]/page.tsx",
-    from: "      <Alert tone=\"info\">{occupancy.detail}</Alert>",
+    from: "      <Banner severity=\"info\">{occupancy.detail}</Banner>",
     to: "",
     grep: "disclaimer next to the number",
   },
@@ -187,7 +190,7 @@ const MUTATIONS = [
     id: "org-empty-entity",
     why: "a tenant with no legal entity cannot be invoiced, so the page has to say so",
     file: "src/app/organization/page.tsx",
-    from: "        <Alert tone=\"info\">{text(\"org.noEntities\")}</Alert>",
+    from: "        <Banner severity=\"info\">{text(\"org.noEntities\")}</Banner>",
     to: "        <ul />",
     grep: "no legal entity rather than leaving a blank",
   },
@@ -540,7 +543,7 @@ const MUTATIONS = [
     why: "a kill switch outranks every targeting rule and is somebody's deliberate stop, "
       + "which is the one flag state worth an alarm rather than a row",
     file: "src/app/configuration/page.tsx",
-    from: "              <Alert tone=\"error\">{text(\"config.killSwitchEngaged\")}</Alert>",
+    from: "              <Banner severity=\"critical\">{text(\"config.killSwitchEngaged\")}</Banner>",
     to: "              <></>",
     grep: "marks a kill switch",
   },
@@ -652,7 +655,7 @@ const MUTATIONS = [
     why: "only a hash is kept, so a batch exists in one HTTP response -- a page that did not "
       + "say so would imply they can be fetched again",
     file: "src/app/account/account-view.tsx",
-    from: '            <Alert tone="warning">{text("account.codesShownOnce")}</Alert>',
+    from: '            <Banner severity="attention">{text("account.codesShownOnce")}</Banner>',
     to: "            {null}",
     grep: "shows the batch once",
   },
@@ -712,7 +715,7 @@ const MUTATIONS = [
       + "a board rendering that as a queue making progress claims an outbound path there is "
       + "none of",
     file: "src/app/notifications/page.tsx",
-    from: '        <Alert tone="warning">{text("notify.nothingSends")}</Alert>',
+    from: '        <Banner severity="attention">{text("notify.nothingSends")}</Banner>',
     to: "        {null}",
     grep: "leads with the fact that nothing sends",
   },
@@ -978,8 +981,19 @@ for (const mutation of chosen) {
   const original = readFileSync(path, "utf8");
   const occurrences = original.split(mutation.from).length - 1;
   if (occurrences !== 1) {
-    notRun.push(`${mutation.id}: the anchor appears ${occurrences} times, not once`);
-    console.log(`SKIP  ${mutation.id} (anchor matched ${occurrences} times)`);
+    // **Is this a stale definition or a mutation a killed run left behind?** The handlers
+    // above restore on SIGINT, SIGTERM and SIGHUP, and none of them can catch a SIGKILL --
+    // so an interrupted sweep can leave a file mutated, and the only trace is this anchor
+    // going missing. That reads as "somebody edited the component" and sent me looking in
+    // the wrong place for ten minutes, with a red component suite in between. Say which it
+    // is, and say how to put it back.
+    const leftBehind = mutation.to !== "" && original.includes(mutation.to);
+    const because = leftBehind
+      ? `the replacement text is present, so a previous run was killed before it restored `
+        + `this file. Put it back with: git checkout ${mutation.file}`
+      : `the anchor appears ${occurrences} times, not once`;
+    notRun.push(`${mutation.id}: ${because}`);
+    console.log(`SKIP  ${mutation.id} (${leftBehind ? "LEFT MUTATED" : `anchor matched ${occurrences} times`})`);
     continue;
   }
 

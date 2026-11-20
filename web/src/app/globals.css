@@ -463,6 +463,24 @@ a {
 
 /* --- Button ------------------------------------------------------------- */
 
+/* **44px is the floor wherever there is no pointer.** The cross-cutting requirement:
+ * "44px minimum in Touch and Spacious; 32px floor in Compact desktop where a pointer is
+ * guaranteed." A phone guarantees the opposite, so every button reaches the target there
+ * whatever size its caller asked for -- which is the contract living in the component rather
+ * than in fifteen call sites, and it is how the sign-in button came to be 36px on a phone
+ * the moment it stopped being a hand-rolled control with a hard-coded min-height. */
+@media (max-width: 599px), (pointer: coarse) {
+  .ds-button {
+    min-block-size: 44px;
+  }
+}
+
+/* The same floor at the two densities that declare it, at any width. */
+:root[data-density="touch"] .ds-button,
+:root[data-density="spacious"] .ds-button {
+  min-block-size: 44px;
+}
+
 .ds-button:focus-visible,
 .ds-grid-table:focus-visible {
   /* System-owned, never brand-configurable, never removed on mouse users. */
@@ -796,4 +814,113 @@ a {
   .ds-field-control {
     inline-size: 100%;
   }
+}
+
+/* --- Toast and the small primitives ------------------------------------- */
+
+.ds-toast {
+  position: fixed;
+  /* Bottom-centre on mobile above the nav; bottom inline-end on desktop. */
+  inset-block-end: var(--space-4);
+  inset-inline-end: var(--space-4);
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-surface-raised);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-card);
+  font-size: var(--type-body-size);
+}
+
+.ds-toast-undo {
+  background: transparent;
+  border: 0;
+  padding: var(--space-1) var(--space-2);
+  color: var(--color-text-link);
+  font: inherit;
+  font-weight: var(--type-label-weight);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+@media (max-width: 599px) {
+  .ds-toast {
+    inset-inline: var(--space-4);
+    /* Above the bottom nav, which the shell fixes at the viewport's end. */
+    inset-block-end: calc(72px + env(safe-area-inset-bottom, 0px));
+    justify-content: space-between;
+  }
+}
+
+.ds-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding-block: var(--space-05);
+  padding-inline: var(--space-2);
+  background: var(--color-surface-sunken);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-button);
+  font-size: var(--type-label-size);
+}
+
+.ds-chip-remove {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  line-height: 1;
+}
+
+.ds-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--color-surface-sunken);
+  color: var(--color-text-secondary);
+  font-size: var(--type-caption-size);
+  font-weight: var(--type-label-weight);
+}
+
+.ds-divider {
+  border: 0;
+  border-block-start: 1px solid var(--color-border-subtle);
+  margin-block: var(--space-3);
+}
+
+.ds-spinner-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.ds-tooltip {
+  position: relative;
+  display: inline-flex;
+}
+
+.ds-tooltip-text {
+  position: absolute;
+  inset-block-end: calc(100% + var(--space-1));
+  inset-inline-start: 0;
+  z-index: 10;
+  padding: var(--space-1) var(--space-2);
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-card);
+  font-size: var(--type-bodySm-size);
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.ds-tooltip:hover .ds-tooltip-text,
+.ds-tooltip:focus-within .ds-tooltip-text {
+  opacity: 1;
 }

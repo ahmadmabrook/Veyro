@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { Alert } from "@/components/controls";
+import { Banner } from "@/components/ds/banner";
 import { formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
 import { ApiError, currentSession, gate } from "@/lib/api";
 import { readFleet, type FleetDevice, type FleetView } from "@/lib/fleet";
@@ -33,9 +33,9 @@ export default async function FleetPage() {
   if (!may.allowed) {
     return (
       <Shell locale={locale}>
-        <Alert tone="info">
+        <Banner severity="info">
           {may.reachable ? text("gate.denied") : text("gate.unreachable")}
-        </Alert>
+        </Banner>
       </Shell>
     );
   }
@@ -46,11 +46,11 @@ export default async function FleetPage() {
   } catch (error) {
     return (
       <Shell locale={locale}>
-        <Alert tone="error">
+        <Banner severity="critical">
           {error instanceof ApiError && error.reason === "unreachable"
             ? text("error.network")
             : text("error.unexpected")}
-        </Alert>
+        </Banner>
       </Shell>
     );
   }
@@ -65,7 +65,7 @@ export default async function FleetPage() {
           {text("fleet.attentionDetail")}
         </p>
         {attention.size === 0 ? (
-          <Alert tone="info">{text("fleet.allWell")}</Alert>
+          <Banner severity="info">{text("fleet.allWell")}</Banner>
         ) : (
           <ul style={{ margin: 0, paddingInlineStart: "var(--space-5)" }}>
             {fleet.devices
@@ -84,7 +84,7 @@ export default async function FleetPage() {
           {text("fleet.title")}
         </h2>
         {fleet.devices.length === 0 ? (
-          <Alert tone="info">{text("fleet.empty")}</Alert>
+          <Banner severity="info">{text("fleet.empty")}</Banner>
         ) : (
           <table
             tabIndex={0}

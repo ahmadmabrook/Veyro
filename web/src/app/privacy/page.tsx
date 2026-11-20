@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 
-import { Alert } from "@/components/controls";
+import { Banner } from "@/components/ds/banner";
 import { Prose } from "@/components/prose";
 import { formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
 import { ApiError, currentSession, gate } from "@/lib/api";
@@ -70,9 +70,9 @@ export default async function PrivacyPage() {
   ) {
     return (
       <Shell locale={locale}>
-        <Alert tone="info">
+        <Banner severity="info">
           {mayDsar.reachable ? text("gate.denied") : text("gate.unreachable")}
-        </Alert>
+        </Banner>
       </Shell>
     );
   }
@@ -103,20 +103,20 @@ export default async function PrivacyPage() {
 
   return (
     <Shell locale={locale}>
-      {failed ? <Alert tone="error">{text("error.unexpected")}</Alert> : null}
+      {failed ? <Banner severity="critical">{text("error.unexpected")}</Banner> : null}
 
       <section className="panel stack">
         <h2 style={{ margin: 0 }}>{text("privacy.erasure")}</h2>
         {!mayDsar.allowed ? (
-          <Alert tone="info">{text("gate.denied")}</Alert>
+          <Banner severity="info">{text("gate.denied")}</Banner>
         ) : reach === null ? (
-          <Alert tone="error">{text("error.unexpected")}</Alert>
+          <Banner severity="critical">{text("error.unexpected")}</Banner>
         ) : (
           <>
             {reach.erasure_is_complete ? (
-              <Alert tone="success">{text("privacy.erasureComplete")}</Alert>
+              <Banner severity="neutral">{text("privacy.erasureComplete")}</Banner>
             ) : (
-              <Alert tone="warning">{text("privacy.erasureIncomplete")}</Alert>
+              <Banner severity="attention">{text("privacy.erasureIncomplete")}</Banner>
             )}
             <p style={{ margin: 0 }}>{reach.why_incomplete}</p>
             <dl className="facts">
@@ -190,9 +190,9 @@ export default async function PrivacyPage() {
           {text("privacy.requestsLead")}
         </p>
         {!mayDsar.allowed ? (
-          <Alert tone="info">{text("gate.denied")}</Alert>
+          <Banner severity="info">{text("gate.denied")}</Banner>
         ) : queue.length === 0 ? (
-          <Alert tone="info">{text("privacy.noRequests")}</Alert>
+          <Banner severity="info">{text("privacy.noRequests")}</Banner>
         ) : (
           <table
             tabIndex={0}
@@ -224,7 +224,7 @@ export default async function PrivacyPage() {
                       {request.due_at.slice(0, 10)}
                     </span>
                     {request.overdue ? (
-                      <div style={{ ...caption, color: "var(--color-semantic-error)" }}>
+                      <div style={{ ...caption, color: "var(--color-text-critical)" }}>
                         {text("privacy.overdue")}
                       </div>
                     ) : null}
@@ -247,9 +247,9 @@ export default async function PrivacyPage() {
           {text("privacy.holdsLead")}
         </p>
         {!mayRetention.allowed ? (
-          <Alert tone="info">{text("gate.denied")}</Alert>
+          <Banner severity="info">{text("gate.denied")}</Banner>
         ) : holds.length === 0 ? (
-          <Alert tone="info">{text("privacy.noHolds")}</Alert>
+          <Banner severity="info">{text("privacy.noHolds")}</Banner>
         ) : (
           <ul className="stack" style={{ margin: 0, paddingInlineStart: "var(--space-5)" }}>
             {[...liveHolds, ...holds.filter((h) => !holdIsLive(h))].map((hold) => (
@@ -277,9 +277,9 @@ export default async function PrivacyPage() {
       <section className="panel stack">
         <h2 style={{ margin: 0 }}>{text("privacy.retention")}</h2>
         {!mayRetention.allowed ? (
-          <Alert tone="info">{text("gate.denied")}</Alert>
+          <Banner severity="info">{text("gate.denied")}</Banner>
         ) : policies.length === 0 ? (
-          <Alert tone="info">{text("privacy.noRetention")}</Alert>
+          <Banner severity="info">{text("privacy.noRetention")}</Banner>
         ) : (
           <table
             tabIndex={0}
@@ -323,9 +323,9 @@ export default async function PrivacyPage() {
       <section className="panel stack">
         <h2 style={{ margin: 0 }}>{text("privacy.purposes")}</h2>
         {!mayPurposes.allowed ? (
-          <Alert tone="info">{text("gate.denied")}</Alert>
+          <Banner severity="info">{text("gate.denied")}</Banner>
         ) : purposes.length === 0 ? (
-          <Alert tone="info">{text("privacy.noPurposes")}</Alert>
+          <Banner severity="info">{text("privacy.noPurposes")}</Banner>
         ) : (
           <table
             tabIndex={0}
@@ -363,9 +363,9 @@ export default async function PrivacyPage() {
       <section className="panel stack">
         <h2 style={{ margin: 0 }}>{text("privacy.incidents")}</h2>
         {!mayIncidents.allowed ? (
-          <Alert tone="info">{text("gate.denied")}</Alert>
+          <Banner severity="info">{text("gate.denied")}</Banner>
         ) : incidents.length === 0 ? (
-          <Alert tone="info">{text("privacy.noIncidents")}</Alert>
+          <Banner severity="info">{text("privacy.noIncidents")}</Banner>
         ) : (
           <ul className="stack" style={{ margin: 0, paddingInlineStart: "var(--space-5)" }}>
             {incidents.map((incident) => (

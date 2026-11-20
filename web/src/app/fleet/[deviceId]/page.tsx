@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { Alert } from "@/components/controls";
+import { Banner } from "@/components/ds/banner";
 import { formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
 import { ApiError, currentSession, gate } from "@/lib/api";
 import {
@@ -43,9 +43,9 @@ export default async function DevicePage({
   if (!may.allowed) {
     return (
       <Shell locale={locale}>
-        <Alert tone="info">
+        <Banner severity="info">
           {may.reachable ? text("gate.denied") : text("gate.unreachable")}
-        </Alert>
+        </Banner>
       </Shell>
     );
   }
@@ -60,17 +60,17 @@ export default async function DevicePage({
     if (error instanceof ApiError && (error.status === 404 || error.status === 422)) {
       return (
         <Shell locale={locale}>
-          <Alert tone="info">{text("device.notFound")}</Alert>
+          <Banner severity="info">{text("device.notFound")}</Banner>
         </Shell>
       );
     }
     return (
       <Shell locale={locale}>
-        <Alert tone="error">
+        <Banner severity="critical">
           {error instanceof ApiError && error.reason === "unreachable"
             ? text("error.network")
             : text("error.unexpected")}
-        </Alert>
+        </Banner>
       </Shell>
     );
   }
@@ -109,7 +109,7 @@ export default async function DevicePage({
         <section className="panel stack">
           <h2 style={{ margin: 0 }}>{text("device.safety")}</h2>
           {device.safety === null ? (
-            <Alert tone="error">{text("device.noSafety")}</Alert>
+            <Banner severity="critical">{text("device.noSafety")}</Banner>
           ) : (
             <dl className="facts">
               <dt className="muted">{text("device.profile")}</dt>
@@ -162,7 +162,7 @@ export default async function DevicePage({
           {text("device.certificatesLead")}
         </p>
         {device.certificates.length === 0 ? (
-          <Alert tone="info">{text("device.noCertificates")}</Alert>
+          <Banner severity="info">{text("device.noCertificates")}</Banner>
         ) : (
           <ul style={{ margin: 0, paddingInlineStart: "var(--space-5)" }}>
             {device.certificates.map((certificate) => (
@@ -189,7 +189,7 @@ export default async function DevicePage({
       <section className="panel stack">
         <h2 style={{ margin: 0 }}>{text("device.health")}</h2>
         {device.health === null ? (
-          <Alert tone="info">{text("device.noHealth")}</Alert>
+          <Banner severity="info">{text("device.noHealth")}</Banner>
         ) : (
           <dl className="facts">
             <dt className="muted">{text("device.latency")}</dt>
@@ -233,7 +233,7 @@ export default async function DevicePage({
       <section className="panel stack">
         <h2 style={{ margin: 0 }}>{text("device.commands")}</h2>
         {queue.commands.length === 0 ? (
-          <Alert tone="info">{text("device.noCommands")}</Alert>
+          <Banner severity="info">{text("device.noCommands")}</Banner>
         ) : (
           <ul style={{ margin: 0, paddingInlineStart: "var(--space-5)" }}>
             {queue.commands.map((command) => (

@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 
-import { Alert } from "@/components/controls";
+import { Banner } from "@/components/ds/banner";
 import { formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
 import { ApiError, currentSession, gate } from "@/lib/api";
 import {
@@ -76,13 +76,13 @@ export default async function ConfigurationPage({
           {text("config.registry")}
         </h2>
         {!mayConfig.allowed ? (
-          <Alert tone="info">
+          <Banner severity="info">
             {mayConfig.reachable ? text("gate.denied") : text("gate.unreachable")}
-          </Alert>
+          </Banner>
         ) : definitions === null || resolved === null ? (
-          <Alert tone="error">{text("error.unexpected")}</Alert>
+          <Banner severity="critical">{text("error.unexpected")}</Banner>
         ) : definitions.length === 0 ? (
-          <Alert tone="info">{text("config.noDefinitions")}</Alert>
+          <Banner severity="info">{text("config.noDefinitions")}</Banner>
         ) : (
           <>
             <table
@@ -127,13 +127,13 @@ export default async function ConfigurationPage({
           </span>
         </p>
         {!mayFlags.allowed ? (
-          <Alert tone="info">
+          <Banner severity="info">
             {mayFlags.reachable ? text("gate.denied") : text("gate.unreachable")}
-          </Alert>
+          </Banner>
         ) : flags === null ? (
-          <Alert tone="error">{text("error.unexpected")}</Alert>
+          <Banner severity="critical">{text("error.unexpected")}</Banner>
         ) : Object.keys(flags).length === 0 ? (
-          <Alert tone="info">{text("config.noFlags")}</Alert>
+          <Banner severity="info">{text("config.noFlags")}</Banner>
         ) : (
           <>
             <table
@@ -157,7 +157,7 @@ export default async function ConfigurationPage({
             {Object.values(flags).some(
               (decision) => flagReason(decision) === "kill_switch",
             ) ? (
-              <Alert tone="error">{text("config.killSwitchEngaged")}</Alert>
+              <Banner severity="critical">{text("config.killSwitchEngaged")}</Banner>
             ) : null}
             <p className="muted" style={{ margin: 0 }}>
               {text("config.noFlagList")}

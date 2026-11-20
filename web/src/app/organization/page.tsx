@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 
-import { Alert } from "@/components/controls";
+import { Banner } from "@/components/ds/banner";
 import { t, type Locale, type MessageKey } from "@/i18n/locale";
 import { ApiError, currentSession, gate } from "@/lib/api";
 import {
@@ -41,9 +41,9 @@ export default async function OrganizationPage() {
   if (!may.allowed) {
     return (
       <Shell locale={locale}>
-        <Alert tone="info">
+        <Banner severity="info">
           {may.reachable ? text("gate.denied") : text("gate.unreachable")}
-        </Alert>
+        </Banner>
       </Shell>
     );
   }
@@ -60,11 +60,11 @@ export default async function OrganizationPage() {
   } catch (error) {
     return (
       <Shell locale={locale}>
-        <Alert tone="error">
+        <Banner severity="critical">
           {error instanceof ApiError && error.reason === "unreachable"
             ? text("error.network")
             : text("error.unexpected")}
-        </Alert>
+        </Banner>
       </Shell>
     );
   }
@@ -77,7 +77,7 @@ export default async function OrganizationPage() {
         {text("org.lead")}
       </p>
       {tree.length === 0 ? (
-        <Alert tone="info">{text("org.none")}</Alert>
+        <Banner severity="info">{text("org.none")}</Banner>
       ) : (
         tree.map((node) => <OrganizationCard key={node.organization.organization_id} node={node} locale={locale} />)
       )}
@@ -125,7 +125,7 @@ function OrganizationCard({ node, locale }: { node: OrganizationTree; locale: Lo
 
       <h3 style={{ margin: 0 }}>{text("org.entities")}</h3>
       {entities.length === 0 ? (
-        <Alert tone="info">{text("org.noEntities")}</Alert>
+        <Banner severity="info">{text("org.noEntities")}</Banner>
       ) : (
         <ul>
           {entities.map((entity) => (
@@ -145,7 +145,7 @@ function OrganizationCard({ node, locale }: { node: OrganizationTree; locale: Lo
 
       <h3 style={{ margin: 0 }}>{text("org.brands")}</h3>
       {brands.length === 0 ? (
-        <Alert tone="info">{text("org.noBrands")}</Alert>
+        <Banner severity="info">{text("org.noBrands")}</Banner>
       ) : (
         brands.map(({ brand, locations }) => (
           <div key={brand.brand_id} className="stack" style={{ gap: "var(--space-2)" }}>
