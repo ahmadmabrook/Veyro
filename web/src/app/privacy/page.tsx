@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { Banner } from "@/components/ds/banner";
+import { DataGrid } from "@/components/ds/data-grid";
 import { Prose } from "@/components/prose";
 import { formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
 import { ApiError, currentSession, gate } from "@/lib/api";
@@ -106,7 +107,7 @@ export default async function PrivacyPage() {
       {failed ? <Banner severity="critical">{text("error.unexpected")}</Banner> : null}
 
       <section className="panel stack">
-        <h2 style={{ margin: 0 }}>{text("privacy.erasure")}</h2>
+        <h2 id="erasure-heading" style={{ margin: 0 }}>{text("privacy.erasure")}</h2>
         {!mayDsar.allowed ? (
           <Banner severity="info">{text("gate.denied")}</Banner>
         ) : reach === null ? (
@@ -139,22 +140,18 @@ export default async function PrivacyPage() {
             <p className="muted" style={{ margin: 0 }}>
               {text("privacy.groupedBecause")}
             </p>
-            <table
-              tabIndex={0}
-              style={{ width: "100%", borderCollapse: "collapse" }}
-              aria-label={text("privacy.whatSurvives")}
-            >
-              <thead>
-                <tr>
-                  <th scope="col" style={head}>{text("privacy.area")}</th>
-                  <th scope="col" style={head}>{text("privacy.columnsKept")}</th>
-                  <th scope="col" style={head}>{text("privacy.why")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {groupResidue(reach).map((group) => (
-                  <tr key={group.area}>
-                    <td style={cell}>
+            <DataGrid
+              caption={text("privacy.whatSurvives")}
+              labelledBy="erasure-heading"
+              rows={groupResidue(reach)}
+              rowKey={(group) => group.area}
+              columns={[
+                {
+                  header: text("privacy.area"),
+                  kind: "text",
+                  priority: 1,
+                  render: (group) => (
+                    <>
                       <span className="data" dir="ltr">{group.area}</span>
                       <div className="muted" style={caption}>
                         <span className="data" dir="ltr">
@@ -164,19 +161,28 @@ export default async function PrivacyPage() {
                           ? ` +${formatInteger(group.tables.length - 3, "latn")}`
                           : ""}
                       </div>
-                    </td>
-                    <td style={cell}>
-                      <span className="data">
-                        {formatInteger(group.columns, "latn")}
-                      </span>
-                    </td>
-                    <td style={cell}>
-                      <Prose>{group.example}</Prose>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                    </>
+                  ),
+                },
+                {
+                  header: text("privacy.columnsKept"),
+                  kind: "text",
+                  priority: 1,
+                  render: (group) => (
+                    <span className="data">{formatInteger(group.columns, "latn")}</span>
+                  ),
+                },
+                {
+                  header: text("privacy.why"),
+                  kind: "text",
+                  // The reason is the whole point of the block -- a count of surviving
+                  // columns with no reason beside it is a number nobody can act on -- so it
+                  // is priority 2 rather than 3 and drops only on a phone.
+                  priority: 2,
+                  render: (group) => <Prose>{group.example}</Prose>,
+                },
+              ]}
+            />
             <p className="muted" style={{ margin: 0, fontSize: "var(--type-caption-size)" }}>
               {text("privacy.notThisTenant")}
             </p>
@@ -185,7 +191,7 @@ export default async function PrivacyPage() {
       </section>
 
       <section className="panel stack">
-        <h2 style={{ margin: 0 }}>{text("privacy.requests")}</h2>
+        <h2 id="requests-heading" style={{ margin: 0 }}>{text("privacy.requests")}</h2>
         <p className="muted" style={{ margin: 0 }}>
           {text("privacy.requestsLead")}
         </p>
@@ -194,22 +200,21 @@ export default async function PrivacyPage() {
         ) : queue.length === 0 ? (
           <Banner severity="info">{text("privacy.noRequests")}</Banner>
         ) : (
-          <table
-            tabIndex={0}
-            style={{ width: "100%", borderCollapse: "collapse" }}
-            aria-label={text("privacy.requests")}
-          >
-            <thead>
-              <tr>
-                <th scope="col" style={head}>{text("privacy.requestType")}</th>
-                <th scope="col" style={head}>{text("privacy.status")}</th>
-                <th scope="col" style={head}>{text("privacy.due")}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {queue.map((request) => (
-                <tr key={request.request_id}>
-                  <td style={cell}>
+          <DataGrid
+            caption={text("privacy.requests")}
+            labelledBy="requests-heading"
+            rows={queue}
+            rowKey={(request) => request.request_id}
+            // An overdue request is the regulator-facing deadline missed, which is the one
+            // row on this board that is somebody's problem today.
+            rowSeverity={(request) => (request.overdue ? "critical" : null)}
+            columns={[
+              {
+                header: text("privacy.requestType"),
+                kind: "text",
+                priority: 1,
+                render: (request) => (
+                  <>
                     {request.request_type}
                     <div className="muted" style={caption}>
                       {text("privacy.received")}{" "}
@@ -217,22 +222,32 @@ export default async function PrivacyPage() {
                         {request.received_at.slice(0, 10)}
                       </span>
                     </div>
-                  </td>
-                  <td style={cell}>{request.status}</td>
-                  <td style={cell}>
-                    <span className="data" dir="ltr">
-                      {request.due_at.slice(0, 10)}
-                    </span>
+                  </>
+                ),
+              },
+              {
+                header: text("privacy.due"),
+                kind: "date",
+                priority: 1,
+                render: (request) => (
+                  <>
+                    <span className="data" dir="ltr">{request.due_at.slice(0, 10)}</span>
                     {request.overdue ? (
                       <div style={{ ...caption, color: "var(--color-text-critical)" }}>
                         {text("privacy.overdue")}
                       </div>
                     ) : null}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  </>
+                ),
+              },
+              {
+                header: text("privacy.status"),
+                kind: "status",
+                priority: 2,
+                render: (request) => request.status,
+              },
+            ]}
+          />
         )}
         {mayDsar.allowed ? (
           <p className="muted" style={{ margin: 0, fontSize: "var(--type-caption-size)" }}>
@@ -275,43 +290,53 @@ export default async function PrivacyPage() {
       </section>
 
       <section className="panel stack">
-        <h2 style={{ margin: 0 }}>{text("privacy.retention")}</h2>
+        <h2 id="retention-heading" style={{ margin: 0 }}>{text("privacy.retention")}</h2>
         {!mayRetention.allowed ? (
           <Banner severity="info">{text("gate.denied")}</Banner>
         ) : policies.length === 0 ? (
           <Banner severity="info">{text("privacy.noRetention")}</Banner>
         ) : (
-          <table
-            tabIndex={0}
-            style={{ width: "100%", borderCollapse: "collapse" }}
-            aria-label={text("privacy.retention")}
-          >
-            <thead>
-              <tr>
-                <th scope="col" style={head}>{text("privacy.resource")}</th>
-                <th scope="col" style={head}>{text("privacy.dataClass")}</th>
-                <th scope="col" style={head}>{text("privacy.keptFor")}</th>
-                <th scope="col" style={head}>{text("privacy.basis")}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {policies.map((policy) => (
-                <tr key={policy.policy_id}>
-                  <td style={cell}>
-                    <span className="data" dir="ltr">{policy.resource_type}</span>
-                  </td>
-                  <td style={cell}>{policy.data_class}</td>
-                  <td style={cell}>
+          <DataGrid
+            caption={text("privacy.retention")}
+            labelledBy="retention-heading"
+            rows={policies}
+            rowKey={(policy) => policy.policy_id}
+            columns={[
+              {
+                header: text("privacy.resource"),
+                kind: "text",
+                priority: 1,
+                render: (policy) => (
+                  <span className="data" dir="ltr">{policy.resource_type}</span>
+                ),
+              },
+              {
+                header: text("privacy.keptFor"),
+                kind: "text",
+                priority: 1,
+                render: (policy) => (
+                  <>
                     <span className="data">
                       {formatInteger(policy.retention_days, "latn")}
                     </span>{" "}
                     {text("privacy.days")}
-                  </td>
-                  <td style={cell}>{policy.legal_basis}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  </>
+                ),
+              },
+              {
+                header: text("privacy.dataClass"),
+                kind: "text",
+                priority: 2,
+                render: (policy) => policy.data_class,
+              },
+              {
+                header: text("privacy.basis"),
+                kind: "text",
+                priority: 3,
+                render: (policy) => policy.legal_basis,
+              },
+            ]}
+          />
         )}
         {mayRetention.allowed ? (
           <p className="muted" style={{ margin: 0, fontSize: "var(--type-caption-size)" }}>
@@ -321,42 +346,48 @@ export default async function PrivacyPage() {
       </section>
 
       <section className="panel stack">
-        <h2 style={{ margin: 0 }}>{text("privacy.purposes")}</h2>
+        <h2 id="purposes-heading" style={{ margin: 0 }}>{text("privacy.purposes")}</h2>
         {!mayPurposes.allowed ? (
           <Banner severity="info">{text("gate.denied")}</Banner>
         ) : purposes.length === 0 ? (
           <Banner severity="info">{text("privacy.noPurposes")}</Banner>
         ) : (
-          <table
-            tabIndex={0}
-            style={{ width: "100%", borderCollapse: "collapse" }}
-            aria-label={text("privacy.purposes")}
-          >
-            <thead>
-              <tr>
-                <th scope="col" style={head}>{text("privacy.purpose")}</th>
-                <th scope="col" style={head}>{text("privacy.lawfulBasis")}</th>
-                <th scope="col" style={head}>{text("privacy.dataClasses")}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {purposes.map((purpose) => (
-                <tr key={purpose.purpose_id}>
-                  <td style={cell}>
+          <DataGrid
+            caption={text("privacy.purposes")}
+            labelledBy="purposes-heading"
+            rows={purposes}
+            rowKey={(purpose) => purpose.purpose_id}
+            // A retired purpose is a fact about a record that is over, not a problem.
+            rowSeverity={() => null}
+            columns={[
+              {
+                header: text("privacy.purpose"),
+                kind: "text",
+                priority: 1,
+                render: (purpose) => (
+                  <>
                     {purpose.description}
                     <div className="muted" style={caption}>
                       <span className="data" dir="ltr">{purpose.purpose_code}</span>
-                      {purpose.retired_at === null
-                        ? ""
-                        : ` · ${text("privacy.retired")}`}
+                      {purpose.retired_at === null ? "" : ` · ${text("privacy.retired")}`}
                     </div>
-                  </td>
-                  <td style={cell}>{purpose.lawful_basis}</td>
-                  <td style={cell}>{purpose.data_classes.join(", ")}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  </>
+                ),
+              },
+              {
+                header: text("privacy.lawfulBasis"),
+                kind: "text",
+                priority: 1,
+                render: (purpose) => purpose.lawful_basis,
+              },
+              {
+                header: text("privacy.dataClasses"),
+                kind: "text",
+                priority: 2,
+                render: (purpose) => purpose.data_classes.join(", "),
+              },
+            ]}
+          />
         )}
       </section>
 
@@ -404,20 +435,6 @@ function Shell({ locale, children }: { locale: Locale; children: React.ReactNode
   );
 }
 
-const head: React.CSSProperties = {
-  textAlign: "start",
-  padding: "var(--space-2) var(--space-3)",
-  borderBottom: "1px solid var(--color-border-default)",
-  background: "var(--color-surface-sunken)",
-  fontSize: "var(--type-label-size)",
-  fontWeight: "var(--type-label-weight)",
-};
 
-const cell: React.CSSProperties = {
-  textAlign: "start",
-  verticalAlign: "top",
-  padding: "var(--space-2) var(--space-3)",
-  borderBottom: "1px solid var(--color-border-subtle)",
-};
 
 const caption: React.CSSProperties = { fontSize: "var(--type-caption-size)" };

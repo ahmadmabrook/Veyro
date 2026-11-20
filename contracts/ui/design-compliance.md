@@ -62,16 +62,24 @@ its job rather than a regression.
 A compatibility shim was considered and not written: a component named `Alert` forwarding to
 `Banner` is exactly the duplicate name the directive rules out.
 
-**The table migration, tracked so the number can only go down.** Seven screens are on
-`DataGrid` — the overview, people, permissions, the schedule board, the door board, the fleet
-board and both operations grids — and each gained what a hand-rolled table could not express:
-a column priority that collapses the low ones into the primary cell instead of pushing them
-off the screen, and a row-level severity edge-mark where the board has a row somebody must act
-on (a zone with no live policy, a job that never ran, a dead letter, a session moved by a
-clock change). Ten screens with eighteen tables remain, and 22 still group with a bare
-`.panel` where `Card` applies. `tests/unit/ds-usage.test.mjs` sweeps both lists in both
-directions, so a screen that quietly stops being migrated fails and so does an exemption that
-is no longer true.
+**The table migration is complete.** All 26 hand-rolled tables across 18 screens are on
+`DataGrid`, and each gained what a table built by hand could not express: a column priority
+that collapses the low ones into the primary cell instead of pushing them off the screen, and
+a row-level severity edge-mark wherever the board has a row somebody must act on — a zone with
+no live policy, a job that never ran, a dead letter, a critical install missing its written
+obligations, an overdue data-subject request, a promotion that reads active and ended in
+February. `tests/unit/ds-usage.test.mjs` has stopped being a backlog for tables and become an
+absolute rule: the next raw `<table>` in a screen fails it.
+
+22 screens still group with a bare `.panel` where `Card` applies, swept the same way in both
+directions.
+
+**One extension beyond what the source states**, recorded here rather than made quietly:
+`DataGrid` takes a per-column `total`, rendered in a `<tfoot>` with the column's own priority.
+§25's anatomy names a saved-view bar, a filter bar, a header, rows, a bulk-action bar,
+pagination and column config, and no footer — but a trial balance's two totals are what a
+month-end close is signed off against, and putting them outside the grid would align them
+under nothing.
 
 ## Component families — 37
 

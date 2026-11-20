@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { Banner } from "@/components/ds/banner";
+import { DataGrid } from "@/components/ds/data-grid";
 import { formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
 import { ApiError, currentSession, gate } from "@/lib/api";
 import {
@@ -105,7 +106,7 @@ export default async function IntegrationsPage() {
       ) : null}
 
       <section className="panel stack">
-        <h2 style={{ margin: 0 }}>{text("integrations.installs")}</h2>
+        <h2 id="installs-heading" style={{ margin: 0 }}>{text("integrations.installs")}</h2>
         <p className="muted" style={{ margin: 0 }}>
           {text("integrations.installsLead")}
         </p>
@@ -121,53 +122,69 @@ export default async function IntegrationsPage() {
                 {unmet.map((i) => i.definition_key).join(", ")}
               </Banner>
             ) : null}
-            <table
-              tabIndex={0}
-              style={{ width: "100%", borderCollapse: "collapse" }}
-              aria-label={text("integrations.installs")}
-            >
-              <thead>
-                <tr>
-                  <th scope="col" style={head}>{text("integrations.integration")}</th>
-                  <th scope="col" style={head}>{text("integrations.criticality")}</th>
-                  <th scope="col" style={head}>{text("integrations.state")}</th>
-                  <th scope="col" style={head}>{text("integrations.inWriting")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {installs.map((install) => {
-                  const missing = missingObligations(install);
-                  return (
-                    <tr key={install.install_id}>
-                      <td style={cell}>
-                        <span className="data" dir="ltr">{install.definition_key}</span>
-                        <div className="muted" style={caption}>
-                          {"v"}
-                          <span className="data">
-                            {formatInteger(install.definition_version, "latn")}
-                          </span>
-                          {" · "}
-                          {text("integrations.snapshotted")}
-                        </div>
-                      </td>
-                      <td style={cell}>{install.criticality}</td>
-                      <td style={cell}>{install.state}</td>
-                      <td style={cell}>
-                        {!obligationsApply(install) ? (
-                          <span className="muted">{text("integrations.notRequired")}</span>
-                        ) : missing.length === 0 ? (
-                          text("integrations.allThree")
-                        ) : (
-                          <span className="data" dir="ltr">
-                            {text("integrations.missing")} {missing.join(", ")}
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+            <DataGrid
+              caption={text("integrations.installs")}
+              labelledBy="installs-heading"
+              rows={installs}
+              rowKey={(install) => install.install_id}
+              // A critical install carrying traffic without its written obligations is the
+              // one row on this board somebody has to act on: paragraph 3033 requires the
+              // fallback, the reconciliation procedure and the exit plan in writing first.
+              rowSeverity={(install) =>
+                obligationsApply(install) && missingObligations(install).length > 0
+                  ? "critical"
+                  : null
+              }
+              columns={[
+                {
+                  header: text("integrations.integration"),
+                  kind: "text",
+                  priority: 1,
+                  render: (install) => (
+                    <>
+                      <span className="data" dir="ltr">{install.definition_key}</span>
+                      <div className="muted" style={caption}>
+                        {"v"}
+                        <span className="data">
+                          {formatInteger(install.definition_version, "latn")}
+                        </span>
+                        {" · "}
+                        {text("integrations.snapshotted")}
+                      </div>
+                    </>
+                  ),
+                },
+                {
+                  header: text("integrations.inWriting"),
+                  kind: "status",
+                  priority: 1,
+                  render: (install) => {
+                    const missing = missingObligations(install);
+                    return !obligationsApply(install) ? (
+                      <span className="muted">{text("integrations.notRequired")}</span>
+                    ) : missing.length === 0 ? (
+                      text("integrations.allThree")
+                    ) : (
+                      <span className="data" dir="ltr">
+                        {text("integrations.missing")} {missing.join(", ")}
+                      </span>
+                    );
+                  },
+                },
+                {
+                  header: text("integrations.state"),
+                  kind: "status",
+                  priority: 2,
+                  render: (install) => install.state,
+                },
+                {
+                  header: text("integrations.criticality"),
+                  kind: "text",
+                  priority: 2,
+                  render: (install) => install.criticality,
+                },
+              ]}
+            />
             <p className="muted" style={{ margin: 0, fontSize: "var(--type-caption-size)" }}>
               {text("integrations.obligationsNote")}
             </p>
@@ -176,7 +193,7 @@ export default async function IntegrationsPage() {
       </section>
 
       <section className="panel stack">
-        <h2 style={{ margin: 0 }}>{text("integrations.connections")}</h2>
+        <h2 id="connections-heading" style={{ margin: 0 }}>{text("integrations.connections")}</h2>
         <p className="muted" style={{ margin: 0 }}>
           {text("integrations.connectionsLead")}
         </p>
@@ -185,54 +202,66 @@ export default async function IntegrationsPage() {
         ) : connections.length === 0 ? (
           <Banner severity="info">{text("integrations.noConnections")}</Banner>
         ) : (
-          <table
-            tabIndex={0}
-            style={{ width: "100%", borderCollapse: "collapse" }}
-            aria-label={text("integrations.connections")}
-          >
-            <thead>
-              <tr>
-                <th scope="col" style={head}>{text("integrations.account")}</th>
-                <th scope="col" style={head}>{text("integrations.state")}</th>
-                <th scope="col" style={head}>{text("integrations.mayReach")}</th>
-                <th scope="col" style={head}>{text("integrations.validated")}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {connections.map((connection) => (
-                <tr key={connection.connection_id}>
-                  <td style={cell}>
+          <DataGrid
+            caption={text("integrations.connections")}
+            labelledBy="connections-heading"
+            rows={connections}
+            rowKey={(connection) => connection.connection_id}
+            columns={[
+              {
+                header: text("integrations.account"),
+                kind: "text",
+                priority: 1,
+                render: (connection) => (
+                  <>
                     <span className="data" dir="ltr">
                       {connection.external_account_ref}
                     </span>
                     {connection.region === null ? null : (
                       <div className="muted" style={caption}>{connection.region}</div>
                     )}
-                  </td>
-                  <td style={cell}>{connection.state}</td>
-                  <td style={cell}>
-                    <span className="data" dir="ltr">
-                      {connection.granted_scopes.join(", ")}
-                    </span>
-                  </td>
-                  <td style={cell}>
-                    {connection.validated_at === null ? (
-                      <span className="muted">{text("integrations.notValidated")}</span>
-                    ) : (
-                      <>
-                        <span className="data" dir="ltr">
-                          {connection.validated_at.slice(0, 10)}
-                        </span>
-                        <div className="muted" style={caption}>
-                          {text("integrations.validatedMeans")}
-                        </div>
-                      </>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  </>
+                ),
+              },
+              {
+                header: text("integrations.mayReach"),
+                kind: "text",
+                // Priority 1: what a third party may reach is the question this table
+                // answers, and `granted_scopes` carries no UPDATE grant precisely so the
+                // answer stays true for the day it was given.
+                priority: 1,
+                render: (connection) => (
+                  <span className="data" dir="ltr">
+                    {connection.granted_scopes.join(", ")}
+                  </span>
+                ),
+              },
+              {
+                header: text("integrations.state"),
+                kind: "status",
+                priority: 2,
+                render: (connection) => connection.state,
+              },
+              {
+                header: text("integrations.validated"),
+                kind: "date",
+                priority: 2,
+                render: (connection) =>
+                  connection.validated_at === null ? (
+                    <span className="muted">{text("integrations.notValidated")}</span>
+                  ) : (
+                    <>
+                      <span className="data" dir="ltr">
+                        {connection.validated_at.slice(0, 10)}
+                      </span>
+                      <div className="muted" style={caption}>
+                        {text("integrations.validatedMeans")}
+                      </div>
+                    </>
+                  ),
+              },
+            ]}
+          />
         )}
         {mayConnections.allowed ? (
           <p className="muted" style={{ margin: 0, fontSize: "var(--type-caption-size)" }}>
@@ -285,7 +314,7 @@ export default async function IntegrationsPage() {
       </section>
 
       <section className="panel stack">
-        <h2 style={{ margin: 0 }}>{text("integrations.runs")}</h2>
+        <h2 id="runs-heading" style={{ margin: 0 }}>{text("integrations.runs")}</h2>
         <p className="muted" style={{ margin: 0 }}>
           {text("integrations.runsLead")}
         </p>
@@ -301,49 +330,53 @@ export default async function IntegrationsPage() {
                 <span className="data">{formatInteger(dead.length, "latn")}</span>
               </Banner>
             ) : null}
-            <table
-              tabIndex={0}
-              style={{ width: "100%", borderCollapse: "collapse" }}
-              aria-label={text("integrations.runs")}
-            >
-              <thead>
-                <tr>
-                  <th scope="col" style={head}>{text("integrations.resource")}</th>
-                  <th scope="col" style={head}>{text("integrations.state")}</th>
-                  <th scope="col" style={head}>{text("integrations.attempts")}</th>
-                  <th scope="col" style={head}>{text("integrations.reported")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {runs.map((run) => (
-                  <tr key={run.run_id}>
-                    <td style={cell}>
+            <DataGrid
+              caption={text("integrations.runs")}
+              labelledBy="runs-heading"
+              rows={runs}
+              rowKey={(run) => run.run_id}
+              // A run that burned its retry budget needs an attributed release before it can
+              // go in front of the provider again.
+              rowSeverity={(run) => (needsSomebody(run) ? "attention" : null)}
+              columns={[
+                {
+                  header: text("integrations.resource"),
+                  kind: "text",
+                  priority: 1,
+                  render: (run) => (
+                    <>
                       <span className="data" dir="ltr">{run.resource}</span>
                       <div className="muted" style={caption}>
                         <span className="data" dir="ltr">{utcStamp(run.started_at)}</span>
                       </div>
-                    </td>
-                    <td style={cell}>
+                    </>
+                  ),
+                },
+                {
+                  header: text("integrations.state"),
+                  kind: "status",
+                  priority: 1,
+                  render: (run) => (
+                    <>
                       {run.status}
                       {needsSomebody(run) ? (
                         <div className="muted" style={caption}>
                           {text("integrations.needsRelease")}
                         </div>
                       ) : null}
-                    </td>
-                    <td style={cell}>
-                      <span className="data">
-                        {formatInteger(run.attempts, "latn")}
-                      </span>
-                      {" / "}
-                      <span className="data">
-                        {formatInteger(run.max_attempts, "latn")}
-                      </span>
-                    </td>
-                    <td style={cell}>
-                      <span className="data">
-                        {formatInteger(run.records_read, "latn")}
-                      </span>{" "}
+                    </>
+                  ),
+                },
+                {
+                  header: text("integrations.reported"),
+                  kind: "text",
+                  // **Reported, not observed.** Nothing syncs, so these counts are a
+                  // caller's word -- which is why the caveat renders beside them rather than
+                  // under the page.
+                  priority: 2,
+                  render: (run) => (
+                    <>
+                      <span className="data">{formatInteger(run.records_read, "latn")}</span>{" "}
                       {text("integrations.read")}
                       {" · "}
                       <span className="data">
@@ -355,11 +388,23 @@ export default async function IntegrationsPage() {
                           {text("integrations.reportedNotObserved")}
                         </div>
                       ) : null}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                    </>
+                  ),
+                },
+                {
+                  header: text("integrations.attempts"),
+                  kind: "text",
+                  priority: 3,
+                  render: (run) => (
+                    <>
+                      <span className="data">{formatInteger(run.attempts, "latn")}</span>
+                      {" / "}
+                      <span className="data">{formatInteger(run.max_attempts, "latn")}</span>
+                    </>
+                  ),
+                },
+              ]}
+            />
           </>
         )}
       </section>
@@ -410,20 +455,6 @@ function Shell({ locale, children }: { locale: Locale; children: React.ReactNode
   );
 }
 
-const head: React.CSSProperties = {
-  textAlign: "start",
-  padding: "var(--space-2) var(--space-3)",
-  borderBottom: "1px solid var(--color-border-default)",
-  background: "var(--color-surface-sunken)",
-  fontSize: "var(--type-label-size)",
-  fontWeight: "var(--type-label-weight)",
-};
 
-const cell: React.CSSProperties = {
-  textAlign: "start",
-  verticalAlign: "top",
-  padding: "var(--space-2) var(--space-3)",
-  borderBottom: "1px solid var(--color-border-subtle)",
-};
 
 const caption: React.CSSProperties = { fontSize: "var(--type-caption-size)" };

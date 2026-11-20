@@ -1,7 +1,8 @@
 import { redirect } from "next/navigation";
 
 import { Banner } from "@/components/ds/banner";
-import { formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
+import { DataGrid } from "@/components/ds/data-grid";
+import { formatInteger, t, type MessageKey } from "@/i18n/locale";
 import { ApiError, currentSession, gate } from "@/lib/api";
 import {
   evaluateFlags,
@@ -9,9 +10,6 @@ import {
   isUnset,
   listDefinitions,
   readResolved,
-  type ConfigDefinition,
-  type FlagDecision,
-  type ResolvedValue,
 } from "@/lib/configuration";
 import { presentation } from "@/lib/preferences";
 
@@ -85,30 +83,81 @@ export default async function ConfigurationPage({
           <Banner severity="info">{text("config.noDefinitions")}</Banner>
         ) : (
           <>
-            <table
-              tabIndex={0}
-              aria-labelledby="config-heading"
-              style={{ width: "100%", borderCollapse: "collapse" }}
-            >
-              <thead>
-                <tr>
-                  <th scope="col" style={headCell}>{text("config.key")}</th>
-                  <th scope="col" style={headCell}>{text("config.value")}</th>
-                  <th scope="col" style={headCell}>{text("config.scope")}</th>
-                  <th scope="col" style={headCell}>{text("config.owner")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {definitions.map((definition) => (
-                  <Row
-                    key={definition.definition_id}
-                    definition={definition}
-                    resolved={resolved[definition.config_key]}
-                    locale={locale}
-                  />
-                ))}
-              </tbody>
-            </table>
+            <DataGrid
+              caption={text("config.registry")}
+              labelledBy="config-heading"
+              rows={definitions}
+              rowKey={(definition) => definition.definition_id}
+              columns={[
+                {
+                  header: text("config.key"),
+                  kind: "text",
+                  priority: 1,
+                  render: (definition) => (
+                    <>
+                      <span className="data" dir="ltr">{definition.config_key}</span>
+                      {definition.description !== null ? (
+                        <div className="muted" style={{ fontSize: "var(--type-label-size)" }}>
+                          {definition.description}
+                        </div>
+                      ) : null}
+                    </>
+                  ),
+                },
+                {
+                  header: text("config.value"),
+                  kind: "text",
+                  priority: 1,
+                  // A definition with no resolved entry cannot happen -- `/config/resolved`
+                  // is built from the same registry -- but rendering `undefined` as a value
+                  // would be the one answer that is always wrong, so it says so instead.
+                  render: (definition) => {
+                    const entry = resolved[definition.config_key];
+                    return entry === undefined ? (
+                      <span className="muted">{text("error.unexpected")}</span>
+                    ) : (
+                      <span className="data" dir="ltr">{JSON.stringify(entry.value)}</span>
+                    );
+                  },
+                },
+                {
+                  header: text("config.scope"),
+                  kind: "text",
+                  // **Priority 1 beside the value.** A default is not a setting: an unset key
+                  // reads back as its own default, and without the scope a tenant that
+                  // published the same value on purpose is indistinguishable from one that
+                  // never touched it.
+                  priority: 1,
+                  render: (definition) => {
+                    const entry = resolved[definition.config_key];
+                    if (entry === undefined) return null;
+                    return isUnset(entry) ? (
+                      <span className="muted">{text("config.unset")}</span>
+                    ) : (
+                      <>
+                        {entry.scope_type}
+                        {entry.version !== null ? (
+                          <span className="muted">
+                            {" · v"}
+                            <span className="data">
+                              {formatInteger(entry.version, "latn")}
+                            </span>
+                          </span>
+                        ) : null}
+                      </>
+                    );
+                  },
+                },
+                {
+                  header: text("config.owner"),
+                  kind: "text",
+                  priority: 3,
+                  render: (definition) => (
+                    <span className="data" dir="ltr">{definition.owner_module}</span>
+                  ),
+                },
+              ]}
+            />
             <p className="muted" style={{ margin: 0 }}>
               {text("config.unsetExplained")}
             </p>
@@ -136,24 +185,41 @@ export default async function ConfigurationPage({
           <Banner severity="info">{text("config.noFlags")}</Banner>
         ) : (
           <>
-            <table
-              tabIndex={0}
-              aria-labelledby="flags-heading"
-              style={{ width: "100%", borderCollapse: "collapse" }}
-            >
-              <thead>
-                <tr>
-                  <th scope="col" style={headCell}>{text("config.flag")}</th>
-                  <th scope="col" style={headCell}>{text("config.variant")}</th>
-                  <th scope="col" style={headCell}>{text("config.why")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {Object.entries(flags).map(([key, decision]) => (
-                  <FlagRow key={key} flagKey={key} decision={decision} locale={locale} />
-                ))}
-              </tbody>
-            </table>
+            <DataGrid
+              caption={text("config.flags")}
+              labelledBy="flags-heading"
+              rows={Object.entries(flags)}
+              rowKey={([key]) => key}
+              // A kill switch outranks every rule: it is a deliberate stop rather than a
+              // rollout, which is the distinction MOD-005's evaluator is built on.
+              rowSeverity={([, decision]) =>
+                flagReason(decision) === "kill_switch" ? "critical" : null
+              }
+              columns={[
+                {
+                  header: text("config.flag"),
+                  kind: "text",
+                  priority: 1,
+                  render: ([key]) => <span className="data" dir="ltr">{key}</span>,
+                },
+                {
+                  header: text("config.variant"),
+                  kind: "text",
+                  priority: 1,
+                  render: ([, decision]) => (
+                    <span className="data" dir="ltr">{decision.variant}</span>
+                  ),
+                },
+                {
+                  header: text("config.why"),
+                  kind: "text",
+                  // Priority 1: `off` is four different facts, and the variant alone cannot
+                  // tell a kill switch from a flag nobody enabled.
+                  priority: 1,
+                  render: ([, decision]) => text(FLAG_REASON[flagReason(decision)]),
+                },
+              ]}
+            />
             {Object.values(flags).some(
               (decision) => flagReason(decision) === "kill_switch",
             ) ? (
@@ -169,125 +235,22 @@ export default async function ConfigurationPage({
   );
 }
 
-function Row({
-  definition,
-  resolved,
-  locale,
-}: {
-  definition: ConfigDefinition;
-  resolved: ResolvedValue | undefined;
-  locale: Locale;
-}) {
-  const text = (key: MessageKey) => t(locale, key);
-  // A definition with no resolved entry cannot happen -- `/config/resolved` is built from the
-  // same registry -- but rendering `undefined` as a value would be the one answer that is
-  // always wrong, so it says so instead.
-  if (resolved === undefined) {
-    return (
-      <tr>
-        <td style={cell}>
-          <span className="data" dir="ltr">
-            {definition.config_key}
-          </span>
-        </td>
-        <td style={cell} colSpan={3}>
-          <span className="muted">{text("error.unexpected")}</span>
-        </td>
-      </tr>
-    );
-  }
-  return (
-    <tr>
-      <td style={cell}>
-        <span className="data" dir="ltr">
-          {definition.config_key}
-        </span>
-        {definition.description !== null ? (
-          <div className="muted" style={{ fontSize: "var(--type-label-size)" }}>
-            {definition.description}
-          </div>
-        ) : null}
-      </td>
-      <td style={cell}>
-        <span className="data" dir="ltr">
-          {JSON.stringify(resolved.value)}
-        </span>
-      </td>
-      <td style={cell}>
-        {isUnset(resolved) ? (
-          <span className="muted">{text("config.unset")}</span>
-        ) : (
-          <>
-            {resolved.scope_type}
-            {resolved.version !== null ? (
-              <span className="muted">
-                {" · v"}
-                <span className="data">{formatInteger(resolved.version, "latn")}</span>
-              </span>
-            ) : null}
-          </>
-        )}
-      </td>
-      <td style={cell}>
-        <span className="data" dir="ltr">
-          {definition.owner_module}
-        </span>
-      </td>
-    </tr>
-  );
-}
-
-function FlagRow({
-  flagKey,
-  decision,
-  locale,
-}: {
-  flagKey: string;
-  decision: FlagDecision;
-  locale: Locale;
-}) {
-  const text = (key: MessageKey) => t(locale, key);
-  const reason = flagReason(decision);
-  const label: Record<ReturnType<typeof flagReason>, MessageKey> = {
-    kill_switch: "config.reason.killSwitch",
-    disabled: "config.reason.disabled",
-    rule: "config.reason.rule",
-    default: "config.reason.default",
-  };
-  return (
-    <tr>
-      <td style={cell}>
-        <span className="data" dir="ltr">
-          {flagKey}
-        </span>
-      </td>
-      <td style={cell}>
-        <span className="data" dir="ltr">
-          {decision.variant}
-        </span>
-      </td>
-      <td style={cell}>{text(label[reason])}</td>
-    </tr>
-  );
-}
+/**
+ * Why a flag resolved the way it did, as a sentence rather than a rule id.
+ *
+ * `rule:0f3a…` tells a reader nothing; "a targeting rule matched" is the answer, and the id
+ * stays in the data for whoever is debugging.
+ */
+const FLAG_REASON: Record<ReturnType<typeof flagReason>, MessageKey> = {
+  kill_switch: "config.reason.killSwitch",
+  disabled: "config.reason.disabled",
+  rule: "config.reason.rule",
+  default: "config.reason.default",
+};
 
 function toNull(error: unknown): null {
   if (error instanceof ApiError) return null;
   throw error;
 }
 
-const headCell: React.CSSProperties = {
-  textAlign: "start",
-  padding: "var(--space-2) var(--space-3)",
-  borderBottom: "1px solid var(--color-border-default)",
-  background: "var(--color-surface-sunken)",
-  fontSize: "var(--type-label-size)",
-  fontWeight: "var(--type-label-weight)",
-};
 
-const cell: React.CSSProperties = {
-  textAlign: "start",
-  verticalAlign: "top",
-  padding: "var(--space-2) var(--space-3)",
-  borderBottom: "1px solid var(--color-border-subtle)",
-};

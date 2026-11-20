@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { Banner } from "@/components/ds/banner";
+import { DataGrid } from "@/components/ds/data-grid";
 import { formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
 import { ApiError, currentSession, gate } from "@/lib/api";
 import {
@@ -104,53 +105,67 @@ export default async function CatalogPage({
       {failed ? <Banner severity="critical">{text("error.unexpected")}</Banner> : null}
 
       <section className="panel stack">
-        <h2 style={{ margin: 0 }}>{text("catalog.products")}</h2>
+        <h2 id="products-heading" style={{ margin: 0 }}>{text("catalog.products")}</h2>
         {!mayProducts.allowed ? (
           <Banner severity="info">{text("gate.denied")}</Banner>
         ) : products.length === 0 ? (
           <Banner severity="info">{text("catalog.noProducts")}</Banner>
         ) : (
-          <table
-            tabIndex={0}
-            style={{ width: "100%", borderCollapse: "collapse" }}
-            aria-label={text("catalog.products")}
-          >
-            <thead>
-              <tr>
-                <th scope="col" style={head}>{text("catalog.product")}</th>
-                <th scope="col" style={head}>{text("catalog.type")}</th>
-                <th scope="col" style={head}>{text("catalog.status")}</th>
-                <th scope="col" style={head}>{text("catalog.rank")}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {products.map((product) => (
-                <tr key={product.product_id}>
-                  <td style={cell}>
+          <DataGrid
+            caption={text("catalog.products")}
+            labelledBy="products-heading"
+            rows={products}
+            rowKey={(product) => product.product_id}
+            // A published product with no live price cannot be sold and nothing on the server
+            // notices, so the board is where that shows -- but the price read is a different
+            // gate, so the mark stays on the product page rather than guessed at here.
+            rowSeverity={(product) => (product.status === "published" ? null : "attention")}
+            columns={[
+              {
+                header: text("catalog.product"),
+                kind: "text",
+                priority: 1,
+                render: (product) => (
+                  <>
                     <Link href={`/catalog?product=${product.product_id}`}>
                       {product.display_name ?? product.product_key}
                     </Link>
                     <div className="muted" style={caption}>
                       <span className="data" dir="ltr">{product.product_key}</span>
                     </div>
-                  </td>
-                  <td style={cell}>{product.product_type}</td>
-                  <td style={cell}>{product.status}</td>
-                  <td style={cell}>
-                    <span className="data">
-                      {formatInteger(product.merchandising_rank, "latn")}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  </>
+                ),
+              },
+              {
+                header: text("catalog.status"),
+                kind: "status",
+                priority: 1,
+                render: (product) => product.status,
+              },
+              {
+                header: text("catalog.type"),
+                kind: "text",
+                priority: 2,
+                render: (product) => product.product_type,
+              },
+              {
+                header: text("catalog.rank"),
+                kind: "text",
+                priority: 3,
+                render: (product) => (
+                  <span className="data">
+                    {formatInteger(product.merchandising_rank, "latn")}
+                  </span>
+                ),
+              },
+            ]}
+          />
         )}
       </section>
 
       {detail === null ? null : (
         <section className="panel stack">
-          <h2 style={{ margin: 0 }}>
+          <h2 id="variants-heading" style={{ margin: 0 }}>
             {detail.display_name ?? detail.product_key}
           </h2>
           <Verdict
@@ -161,67 +176,75 @@ export default async function CatalogPage({
           {detail.variants.length === 0 ? (
             <Banner severity="info">{text("catalog.noVariants")}</Banner>
           ) : (
-            <table
-              tabIndex={0}
-              style={{ width: "100%", borderCollapse: "collapse" }}
-              aria-label={text("catalog.variants")}
-            >
-              <thead>
-                <tr>
-                  <th scope="col" style={head}>{text("catalog.variant")}</th>
-                  <th scope="col" style={head}>{text("catalog.grants")}</th>
-                  <th scope="col" style={head}>{text("catalog.status")}</th>
-                  <th scope="col" style={head}>{text("catalog.written")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {detail.variants.map((variant) => {
-                  const rows = prices.filter((p) => p.variant_id === variant.variant_id);
-                  return (
-                    <tr key={variant.variant_id}>
-                      <td style={cell}>
-                        {variant.display_name}
-                        <div className="muted" style={caption}>
-                          <span className="data" dir="ltr">{variant.variant_key}</span>
+            <DataGrid
+              caption={text("catalog.variants")}
+              labelledBy="variants-heading"
+              rows={detail.variants}
+              rowKey={(variant) => variant.variant_id}
+              columns={[
+                {
+                  header: text("catalog.variant"),
+                  kind: "text",
+                  priority: 1,
+                  render: (variant) => (
+                    <>
+                      {variant.display_name}
+                      <div className="muted" style={caption}>
+                        <span className="data" dir="ltr">{variant.variant_key}</span>
+                      </div>
+                    </>
+                  ),
+                },
+                {
+                  header: text("catalog.written"),
+                  kind: "money",
+                  // Priority 1: a row in its window is not the resolved price, and a variant
+                  // with no price at all is the thing somebody opened this page to find.
+                  priority: 1,
+                  // The price read is its own gate, so a reader who holds the product read
+                  // and not the price read is told so rather than shown an empty cell.
+                  restricted: () => !mayPrices.allowed,
+                  render: (variant) => {
+                    const rows = prices.filter((p) => p.variant_id === variant.variant_id);
+                    return rows.length === 0 ? (
+                      <span className="muted">{text("catalog.noPrice")}</span>
+                    ) : (
+                      rows.map((price) => (
+                        <div key={price.price_id}>
+                          <span className="data" dir="ltr">
+                            {money(price.amount_minor, price.currency)}
+                          </span>
+                          <div className="muted" style={caption}>
+                            <span className="data" dir="ltr">{price.price_book_key}</span>
+                            {" · "}
+                            {price.in_window && price.price_book_status === "active"
+                              ? text("catalog.inWindow")
+                              : text("catalog.notInForce")}
+                          </div>
                         </div>
-                      </td>
-                      <td style={cell}>
-                        {variant.entitlement_quantity === null
-                          ? variant.term_days === null
-                            ? <span className="muted">—</span>
-                            : `${formatInteger(variant.term_days, "latn")} ${text("catalog.days")}`
-                          : `${formatInteger(variant.entitlement_quantity, "latn")} ${text("catalog.uses")}`}
-                      </td>
-                      <td style={cell}>{variant.status}</td>
-                      <td style={cell}>
-                        {!mayPrices.allowed ? (
-                          <span className="muted">{text("gate.denied")}</span>
-                        ) : rows.length === 0 ? (
-                          <span className="muted">{text("catalog.noPrice")}</span>
-                        ) : (
-                          rows.map((price) => (
-                            <div key={price.price_id}>
-                              <span className="data" dir="ltr">
-                                {money(price.amount_minor, price.currency)}
-                              </span>
-                              <div className="muted" style={caption}>
-                                <span className="data" dir="ltr">
-                                  {price.price_book_key}
-                                </span>
-                                {" · "}
-                                {price.in_window && price.price_book_status === "active"
-                                  ? text("catalog.inWindow")
-                                  : text("catalog.notInForce")}
-                              </div>
-                            </div>
-                          ))
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                      ))
+                    );
+                  },
+                },
+                {
+                  header: text("catalog.grants"),
+                  kind: "text",
+                  priority: 2,
+                  render: (variant) =>
+                    variant.entitlement_quantity === null
+                      ? variant.term_days === null
+                        ? <span className="muted">—</span>
+                        : `${formatInteger(variant.term_days, "latn")} ${text("catalog.days")}`
+                      : `${formatInteger(variant.entitlement_quantity, "latn")} ${text("catalog.uses")}`,
+                },
+                {
+                  header: text("catalog.status"),
+                  kind: "status",
+                  priority: 3,
+                  render: (variant) => variant.status,
+                },
+              ]}
+            />
           )}
           {mayPrices.allowed ? (
             <p className="muted" style={{ margin: 0, fontSize: "var(--type-caption-size)" }}>
@@ -232,7 +255,7 @@ export default async function CatalogPage({
       )}
 
       <section className="panel stack">
-        <h2 style={{ margin: 0 }}>{text("catalog.books")}</h2>
+        <h2 id="books-heading" style={{ margin: 0 }}>{text("catalog.books")}</h2>
         <p className="muted" style={{ margin: 0 }}>
           {text("catalog.booksLead")}
         </p>
@@ -241,50 +264,57 @@ export default async function CatalogPage({
         ) : books.length === 0 ? (
           <Banner severity="info">{text("catalog.noBooks")}</Banner>
         ) : (
-          <table
-            tabIndex={0}
-            style={{ width: "100%", borderCollapse: "collapse" }}
-            aria-label={text("catalog.books")}
-          >
-            <thead>
-              <tr>
-                <th scope="col" style={head}>{text("catalog.book")}</th>
-                <th scope="col" style={head}>{text("catalog.dimensions")}</th>
-                <th scope="col" style={head}>{text("catalog.priority")}</th>
-                <th scope="col" style={head}>{text("catalog.status")}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {books.map((book) => (
-                <tr key={book.price_book_id}>
-                  <td style={cell}>
+          <DataGrid
+            caption={text("catalog.books")}
+            labelledBy="books-heading"
+            rows={books}
+            rowKey={(book) => book.price_book_id}
+            rowSeverity={(book) => (book.status === "active" ? null : "attention")}
+            columns={[
+              {
+                header: text("catalog.book"),
+                kind: "text",
+                priority: 1,
+                render: (book) => (
+                  <>
                     {book.display_name}
                     <div className="muted" style={caption}>
                       <span className="data" dir="ltr">
                         {book.price_book_key} · {book.currency}
                       </span>
                     </div>
-                  </td>
-                  <td style={cell}>
-                    {book.channel}
-                    {" · "}
-                    {book.customer_segment}
-                  </td>
-                  <td style={cell}>
-                    <span className="data">
-                      {formatInteger(book.priority, "latn")}
-                    </span>
-                  </td>
-                  <td style={cell}>{book.status}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  </>
+                ),
+              },
+              {
+                header: text("catalog.status"),
+                kind: "status",
+                priority: 1,
+                render: (book) => book.status,
+              },
+              {
+                header: text("catalog.dimensions"),
+                kind: "text",
+                priority: 2,
+                render: (book) => `${book.channel} · ${book.customer_segment}`,
+              },
+              {
+                header: text("catalog.priority"),
+                kind: "text",
+                // The priority comparison is what the board cannot do, so the number is here
+                // and the page says it is not the resolved price.
+                priority: 3,
+                render: (book) => (
+                  <span className="data">{formatInteger(book.priority, "latn")}</span>
+                ),
+              },
+            ]}
+          />
         )}
       </section>
 
       <section className="panel stack">
-        <h2 style={{ margin: 0 }}>{text("catalog.promotions")}</h2>
+        <h2 id="promotions-heading" style={{ margin: 0 }}>{text("catalog.promotions")}</h2>
         <p className="muted" style={{ margin: 0 }}>
           {text("catalog.promotionsLead")}
         </p>
@@ -293,64 +323,76 @@ export default async function CatalogPage({
         ) : promotions.length === 0 ? (
           <Banner severity="info">{text("catalog.noPromotions")}</Banner>
         ) : (
-          <table
-            tabIndex={0}
-            style={{ width: "100%", borderCollapse: "collapse" }}
-            aria-label={text("catalog.promotions")}
-          >
-            <thead>
-              <tr>
-                <th scope="col" style={head}>{text("catalog.promotion")}</th>
-                <th scope="col" style={head}>{text("catalog.worth")}</th>
-                <th scope="col" style={head}>{text("catalog.status")}</th>
-                <th scope="col" style={head}>{text("catalog.window")}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {promotions.map((promotion) => {
-                const worth = promotionValue(promotion);
-                return (
-                  <tr key={promotion.promotion_id}>
-                    <td style={cell}>
-                      {promotion.display_name}
-                      <div className="muted" style={caption}>
-                        <span className="data" dir="ltr">{promotion.promotion_key}</span>
-                        {" · "}
-                        {promotion.promotion_kind}
-                      </div>
-                    </td>
-                    <td style={cell}>
-                      {worth.kind === "percent" ? (
-                        // **Not the basis points.** `1000` on screen for ten percent is the
-                        // units mistake this build's money rules exist to prevent.
-                        <span className="data" dir="ltr">{worth.percent}%</span>
-                      ) : worth.kind === "amount" ? (
-                        <span className="data" dir="ltr">
-                          {money(worth.minor, worth.currency)}
-                        </span>
-                      ) : (
-                        <span className="muted">—</span>
-                      )}
-                    </td>
-                    <td style={cell}>
-                      {promotionIsLive(promotion)
-                        ? text("catalog.discountingNow")
-                        : text("catalog.notDiscounting")}
-                      <div className="muted" style={caption}>{promotion.status}</div>
-                    </td>
-                    <td style={cell}>
-                      <span className="data" dir="ltr">
-                        {promotion.effective_from.slice(0, 10)}
-                        {promotion.effective_to === null
-                          ? " →"
-                          : ` → ${promotion.effective_to.slice(0, 10)}`}
-                      </span>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          <DataGrid
+            caption={text("catalog.promotions")}
+            labelledBy="promotions-heading"
+            rows={promotions}
+            rowKey={(promotion) => promotion.promotion_id}
+            // Nothing retires a promotion when its window closes -- the resolver reads the
+            // window -- so `status: active` on a campaign that ended in February is the
+            // ordinary state of that table, and the row says which it is.
+            rowSeverity={(promotion) => (promotionIsLive(promotion) ? null : "attention")}
+            columns={[
+              {
+                header: text("catalog.promotion"),
+                kind: "text",
+                priority: 1,
+                render: (promotion) => (
+                  <>
+                    {promotion.display_name}
+                    <div className="muted" style={caption}>
+                      <span className="data" dir="ltr">{promotion.promotion_key}</span>
+                      {" · "}
+                      {promotion.promotion_kind}
+                    </div>
+                  </>
+                ),
+              },
+              {
+                header: text("catalog.status"),
+                kind: "status",
+                priority: 1,
+                render: (promotion) => (
+                  <>
+                    {promotionIsLive(promotion)
+                      ? text("catalog.discountingNow")
+                      : text("catalog.notDiscounting")}
+                    <div className="muted" style={caption}>{promotion.status}</div>
+                  </>
+                ),
+              },
+              {
+                header: text("catalog.worth"),
+                kind: "money",
+                priority: 1,
+                render: (promotion) => {
+                  const worth = promotionValue(promotion);
+                  return worth.kind === "percent" ? (
+                    // **Not the basis points.** `1000` on screen for ten percent is the units
+                    // mistake this build's money rules exist to prevent.
+                    <span className="data" dir="ltr">{worth.percent}%</span>
+                  ) : worth.kind === "amount" ? (
+                    <span className="data" dir="ltr">{money(worth.minor, worth.currency)}</span>
+                  ) : (
+                    <span className="muted">—</span>
+                  );
+                },
+              },
+              {
+                header: text("catalog.window"),
+                kind: "date",
+                priority: 2,
+                render: (promotion) => (
+                  <span className="data" dir="ltr">
+                    {promotion.effective_from.slice(0, 10)}
+                    {promotion.effective_to === null
+                      ? " →"
+                      : ` → ${promotion.effective_to.slice(0, 10)}`}
+                  </span>
+                ),
+              },
+            ]}
+          />
         )}
         {mayPromotions.allowed ? (
           <p className="muted" style={{ margin: 0, fontSize: "var(--type-caption-size)" }}>
@@ -396,20 +438,6 @@ function Shell({ locale, children }: { locale: Locale; children: React.ReactNode
   );
 }
 
-const head: React.CSSProperties = {
-  textAlign: "start",
-  padding: "var(--space-2) var(--space-3)",
-  borderBottom: "1px solid var(--color-border-default)",
-  background: "var(--color-surface-sunken)",
-  fontSize: "var(--type-label-size)",
-  fontWeight: "var(--type-label-weight)",
-};
 
-const cell: React.CSSProperties = {
-  textAlign: "start",
-  verticalAlign: "top",
-  padding: "var(--space-2) var(--space-3)",
-  borderBottom: "1px solid var(--color-border-subtle)",
-};
 
 const caption: React.CSSProperties = { fontSize: "var(--type-caption-size)" };

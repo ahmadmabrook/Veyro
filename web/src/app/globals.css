@@ -924,3 +924,10 @@ a {
 .ds-tooltip:focus-within .ds-tooltip-text {
   opacity: 1;
 }
+
+/* A totals row sits under a divider and carries the weight of a heading, because it is one. */
+.ds-grid-total {
+  border-block-start: 2px solid var(--color-border-default);
+  font-weight: var(--type-label-weight);
+  text-align: start;
+}

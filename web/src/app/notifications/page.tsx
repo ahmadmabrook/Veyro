@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { Banner } from "@/components/ds/banner";
+import { DataGrid } from "@/components/ds/data-grid";
 import { formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
 import { ApiError, currentSession, gate } from "@/lib/api";
 import { money } from "@/lib/membership";
@@ -100,7 +101,7 @@ export default async function NotificationsPage() {
       ) : null}
 
       <section className="panel stack">
-        <h2 style={{ margin: 0 }}>{text("notify.authored")}</h2>
+        <h2 id="authored-heading" style={{ margin: 0 }}>{text("notify.authored")}</h2>
         <p className="muted" style={{ margin: 0 }}>
           {text("notify.authoredLead")}
         </p>
@@ -118,23 +119,21 @@ export default async function NotificationsPage() {
                 <span className="data">{formatInteger(rows.length, "latn")}</span>
               </dd>
             </dl>
-            <table
-              tabIndex={0}
-              style={{ width: "100%", borderCollapse: "collapse" }}
-              aria-label={text("notify.authored")}
-            >
-              <thead>
-                <tr>
-                  <th scope="col" style={head}>{text("notify.message")}</th>
-                  <th scope="col" style={head}>{text("notify.category")}</th>
-                  <th scope="col" style={head}>{text("notify.status")}</th>
-                  <th scope="col" style={head}>{text("notify.decidedBecause")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row) => (
-                  <tr key={row.notification_id}>
-                    <td style={cell}>
+            <DataGrid
+              caption={text("notify.authored")}
+              labelledBy="authored-heading"
+              rows={rows}
+              rowKey={(row) => row.notification_id}
+              // A message nothing will ever send is the standing fact of this board, not a
+              // fault of its own, so no row is marked for it. A suppressed one is a decision.
+              rowSeverity={(row) => (row.status === "suppressed" ? "attention" : null)}
+              columns={[
+                {
+                  header: text("notify.message"),
+                  kind: "text",
+                  priority: 1,
+                  render: (row) => (
+                    <>
                       <span className="data" dir="ltr">{row.template_key}</span>
                       <div className="muted" style={caption}>
                         {row.channel}
@@ -145,31 +144,49 @@ export default async function NotificationsPage() {
                           {formatInteger(row.template_version, "latn")}
                         </span>
                       </div>
-                    </td>
-                    <td style={cell}>{row.category}</td>
-                    <td style={cell}>
+                    </>
+                  ),
+                },
+                {
+                  header: text("notify.status"),
+                  kind: "status",
+                  priority: 1,
+                  render: (row) => (
+                    <>
                       {row.status}
                       {waitingOn(row) === "no_dispatcher" ? (
                         <div className="muted" style={caption}>
                           {text("notify.noDispatcher")}
                         </div>
                       ) : null}
-                    </td>
-                    <td style={cell}>
-                      {row.decision_reason === null ? (
-                        <span className="muted">{text("notify.noReason")}</span>
-                      ) : reasonKey(row.decision_reason) !== null ? (
-                        text(reasonKey(row.decision_reason)!)
-                      ) : (
-                        // A reason this build does not know a sentence for. Raw and true
-                        // beats a friendly lie about a decision somebody needs to see.
-                        <span className="data" dir="ltr">{row.decision_reason}</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                    </>
+                  ),
+                },
+                {
+                  header: text("notify.decidedBecause"),
+                  kind: "text",
+                  // Priority 1: the reason is the most explanatory field on the board, and a
+                  // status without it is a decision nobody can act on.
+                  priority: 1,
+                  render: (row) =>
+                    row.decision_reason === null ? (
+                      <span className="muted">{text("notify.noReason")}</span>
+                    ) : reasonKey(row.decision_reason) !== null ? (
+                      text(reasonKey(row.decision_reason)!)
+                    ) : (
+                      // A reason this build does not know a sentence for. Raw and true beats
+                      // a friendly lie about a decision somebody needs to see.
+                      <span className="data" dir="ltr">{row.decision_reason}</span>
+                    ),
+                },
+                {
+                  header: text("notify.category"),
+                  kind: "text",
+                  priority: 3,
+                  render: (row) => row.category,
+                },
+              ]}
+            />
             <p className="muted" style={{ margin: 0, fontSize: "var(--type-caption-size)" }}>
               {text("notify.noBodyHere")}
             </p>
@@ -218,7 +235,7 @@ export default async function NotificationsPage() {
       </section>
 
       <section className="panel stack">
-        <h2 style={{ margin: 0 }}>{text("notify.channels")}</h2>
+        <h2 id="channels-heading" style={{ margin: 0 }}>{text("notify.channels")}</h2>
         <p className="muted" style={{ margin: 0 }}>
           {text("notify.channelsLead")}
         </p>
@@ -227,44 +244,49 @@ export default async function NotificationsPage() {
         ) : channels.length === 0 ? (
           <Banner severity="info">{text("notify.noChannels")}</Banner>
         ) : (
-          <table
-            tabIndex={0}
-            style={{ width: "100%", borderCollapse: "collapse" }}
-            aria-label={text("notify.channels")}
-          >
-            <thead>
-              <tr>
-                <th scope="col" style={head}>{text("notify.channel")}</th>
-                <th scope="col" style={head}>{text("notify.enabled")}</th>
-                <th scope="col" style={head}>{text("notify.fallback")}</th>
-                <th scope="col" style={head}>{text("notify.cost")}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {channels.map((policy) => (
-                <tr key={policy.policy_id}>
-                  <td style={cell}>{policy.channel}</td>
-                  <td style={cell}>
-                    {policy.enabled ? text("notify.yes") : text("notify.no")}
-                  </td>
-                  <td style={cell}>
-                    {policy.fallback_channel ?? (
-                      <span className="muted">{text("notify.noFallback")}</span>
-                    )}
-                  </td>
-                  <td style={cell}>
-                    {policy.cost_per_message_minor === null || policy.currency === null ? (
-                      <span className="muted">—</span>
-                    ) : (
-                      <span className="data" dir="ltr">
-                        {money(policy.cost_per_message_minor, policy.currency)}
-                      </span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <DataGrid
+            caption={text("notify.channels")}
+            labelledBy="channels-heading"
+            rows={channels}
+            rowKey={(policy) => policy.policy_id}
+            rowSeverity={(policy) => (policy.enabled ? null : "attention")}
+            columns={[
+              {
+                header: text("notify.channel"),
+                kind: "text",
+                priority: 1,
+                render: (policy) => policy.channel,
+              },
+              {
+                header: text("notify.enabled"),
+                kind: "status",
+                priority: 1,
+                render: (policy) => (policy.enabled ? text("notify.yes") : text("notify.no")),
+              },
+              {
+                header: text("notify.fallback"),
+                kind: "text",
+                priority: 2,
+                render: (policy) =>
+                  policy.fallback_channel ?? (
+                    <span className="muted">{text("notify.noFallback")}</span>
+                  ),
+              },
+              {
+                header: text("notify.cost"),
+                kind: "money",
+                priority: 3,
+                render: (policy) =>
+                  policy.cost_per_message_minor === null || policy.currency === null ? (
+                    <span className="muted">—</span>
+                  ) : (
+                    <span className="data" dir="ltr">
+                      {money(policy.cost_per_message_minor, policy.currency)}
+                    </span>
+                  ),
+              },
+            ]}
+          />
         )}
         {mayPolicies.allowed && usableChannels(channels).length === 0 &&
           channels.length > 0 ? (
@@ -273,63 +295,70 @@ export default async function NotificationsPage() {
       </section>
 
       <section className="panel stack">
-        <h2 style={{ margin: 0 }}>{text("notify.templates")}</h2>
+        <h2 id="templates-heading" style={{ margin: 0 }}>{text("notify.templates")}</h2>
         {!mayTemplates.allowed ? (
           <Banner severity="info">{text("gate.denied")}</Banner>
         ) : templates.length === 0 ? (
           <Banner severity="info">{text("notify.noTemplates")}</Banner>
         ) : (
-          <table
-            tabIndex={0}
-            style={{ width: "100%", borderCollapse: "collapse" }}
-            aria-label={text("notify.templates")}
-          >
-            <thead>
-              <tr>
-                <th scope="col" style={head}>{text("notify.template")}</th>
-                <th scope="col" style={head}>{text("notify.category")}</th>
-                <th scope="col" style={head}>{text("notify.status")}</th>
-                <th scope="col" style={head}>{text("notify.variables")}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {templates.map((template) => (
-                <tr key={template.template_id}>
-                  <td style={cell}>
+          <DataGrid
+            caption={text("notify.templates")}
+            labelledBy="templates-heading"
+            rows={templates}
+            rowKey={(template) => template.template_id}
+            columns={[
+              {
+                header: text("notify.template"),
+                kind: "text",
+                priority: 1,
+                render: (template) => (
+                  <>
                     <span className="data" dir="ltr">{template.template_key}</span>
                     <div className="muted" style={caption}>
                       {template.channel}
                       {" · "}
                       {template.locale}
                       {" · v"}
-                      <span className="data">
-                        {formatInteger(template.version, "latn")}
-                      </span>
+                      <span className="data">{formatInteger(template.version, "latn")}</span>
                     </div>
-                  </td>
-                  <td style={cell}>
+                  </>
+                ),
+              },
+              {
+                header: text("notify.category"),
+                kind: "text",
+                // Priority 1: the category decides whether a recipient's opt-out can stop
+                // the message at all, which is the control §2463 is about.
+                priority: 1,
+                render: (template) => (
+                  <>
                     {template.category}
-                    {template.category === "marketing" ||
-                    template.category === "coaching" ? (
-                      <div className="muted" style={caption}>
-                        {text("notify.canBeMuted")}
-                      </div>
-                    ) : (
-                      <div className="muted" style={caption}>
-                        {text("notify.cannotBeMuted")}
-                      </div>
-                    )}
-                  </td>
-                  <td style={cell}>{template.status}</td>
-                  <td style={cell}>
-                    <span className="data" dir="ltr">
-                      {template.variables.join(", ") || "—"}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                    <div className="muted" style={caption}>
+                      {template.category === "marketing" || template.category === "coaching"
+                        ? text("notify.canBeMuted")
+                        : text("notify.cannotBeMuted")}
+                    </div>
+                  </>
+                ),
+              },
+              {
+                header: text("notify.status"),
+                kind: "status",
+                priority: 2,
+                render: (template) => template.status,
+              },
+              {
+                header: text("notify.variables"),
+                kind: "text",
+                priority: 3,
+                render: (template) => (
+                  <span className="data" dir="ltr">
+                    {template.variables.join(", ") || "—"}
+                  </span>
+                ),
+              },
+            ]}
+          />
         )}
         {mayTemplates.allowed ? (
           <p className="muted" style={{ margin: 0, fontSize: "var(--type-caption-size)" }}>
@@ -382,20 +411,6 @@ function Shell({ locale, children }: { locale: Locale; children: React.ReactNode
   );
 }
 
-const head: React.CSSProperties = {
-  textAlign: "start",
-  padding: "var(--space-2) var(--space-3)",
-  borderBottom: "1px solid var(--color-border-default)",
-  background: "var(--color-surface-sunken)",
-  fontSize: "var(--type-label-size)",
-  fontWeight: "var(--type-label-weight)",
-};
 
-const cell: React.CSSProperties = {
-  textAlign: "start",
-  verticalAlign: "top",
-  padding: "var(--space-2) var(--space-3)",
-  borderBottom: "1px solid var(--color-border-subtle)",
-};
 
 const caption: React.CSSProperties = { fontSize: "var(--type-caption-size)" };

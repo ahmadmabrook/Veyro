@@ -649,10 +649,19 @@ Two things that migration taught, both recorded in `.claude/rules/`:
   it. The floor is in the component layer now, under `(pointer: coarse)`, which is where the
   source puts it.
 
-**`tests/unit/ds-usage.test.mjs` keeps the backlog honest.** 18 screens still hand-roll a
-`<table>` where `DataGrid` exists and 22 still group with a bare `.panel` where `Card` does;
-both lists are swept in **both directions**, so a screen that quietly stops being migrated
-fails and so does an exemption that is no longer true.
+**Every table in the app is a `DataGrid`** — 26 of them across 18 screens — so each one has
+a column priority that collapses the low columns into the primary cell rather than pushing
+them off a phone, and a row-level severity edge-mark where the board has a row somebody must
+act on. `tests/unit/ds-usage.test.mjs` has stopped being a backlog for tables and become an
+absolute rule: the next raw `<table>` in a screen fails it. 22 screens still group with a bare
+`.panel` where `Card` applies, swept the same way in **both directions**, so a screen that
+quietly stops being migrated fails and so does an exemption that is no longer true.
+
+The grid is where the source's responsive contract actually lives, and it is worth measuring
+rather than reading: on the permissions board at 1400px all five columns render and no
+secondary fragment is visible; at 503px two are hidden and their values read under the entry.
+A droppable value is in the DOM twice and visible once — which is what makes the collapse a
+stylesheet rule rather than a measurement, and a measurement is wrong on the first paint.
 
 ## What this does not yet cover
 

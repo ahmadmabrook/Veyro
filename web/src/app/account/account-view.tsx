@@ -4,6 +4,7 @@ import { useActionState } from "react";
 
 import { Button } from "@/components/ds/button";
 import { Banner } from "@/components/ds/banner";
+import { DataGrid } from "@/components/ds/data-grid";
 import { formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
 import {
   assuranceMeans,
@@ -239,49 +240,60 @@ export function AccountView({
       </section>
 
       <section className="panel stack">
-        <h2 style={{ margin: 0 }}>{text("account.events")}</h2>
+        <h2 id="events-heading" style={{ margin: 0 }}>{text("account.events")}</h2>
         <p className="muted" style={{ margin: 0 }}>
           {text("account.eventsLead")}
         </p>
         {events.length === 0 ? (
           <Banner severity="info">{text("account.noEvents")}</Banner>
         ) : (
-          <table
-            tabIndex={0}
-            style={{ width: "100%", borderCollapse: "collapse" }}
-            aria-label={text("account.events")}
-          >
-            <thead>
-              <tr>
-                <th scope="col" style={head}>{text("account.what")}</th>
-                <th scope="col" style={head}>{text("account.outcome")}</th>
-                <th scope="col" style={head}>{text("account.when")}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {events.map((event, index) => (
-                <tr key={`${event.occurred_at}-${index}`}>
-                  <td style={cell}>
+          <DataGrid
+            caption={text("account.events")}
+            labelledBy="events-heading"
+            rows={events}
+            rowKey={(event) => `${event.occurred_at}-${event.kind}-${event.outcome}`}
+            // A refused sign-in is the row somebody checking their account after a
+            // suspicious email is looking for.
+            rowSeverity={(event) => (event.outcome === "failed" ? "attention" : null)}
+            columns={[
+              {
+                header: text("account.what"),
+                kind: "text",
+                priority: 1,
+                render: (event) => (
+                  <>
                     {event.kind}
                     {event.factor === null ? null : (
                       <div className="muted" style={caption}>{event.factor}</div>
                     )}
-                  </td>
-                  <td style={cell}>
+                  </>
+                ),
+              },
+              {
+                header: text("account.outcome"),
+                kind: "status",
+                priority: 1,
+                render: (event) => (
+                  <>
                     {event.outcome}
                     {event.reason === null ? null : (
                       <div className="muted" style={caption}>{event.reason}</div>
                     )}
-                  </td>
-                  <td style={cell}>
-                    <span className="data" dir="ltr">
-                      {event.occurred_at.slice(0, 16).replace("T", " ")}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  </>
+                ),
+              },
+              {
+                header: text("account.when"),
+                kind: "date",
+                priority: 2,
+                render: (event) => (
+                  <span className="data" dir="ltr">
+                    {event.occurred_at.slice(0, 16).replace("T", " ")}
+                  </span>
+                ),
+              },
+            ]}
+          />
         )}
         <p className="muted" style={{ margin: 0, fontSize: "var(--type-caption-size)" }}>
           {text("account.recentOnly")}
@@ -304,20 +316,6 @@ function Result({ locale, state }: { locale: Locale; state: AccountState }) {
   return null;
 }
 
-const head: React.CSSProperties = {
-  textAlign: "start",
-  padding: "var(--space-2) var(--space-3)",
-  borderBottom: "1px solid var(--color-border-default)",
-  background: "var(--color-surface-sunken)",
-  fontSize: "var(--type-label-size)",
-  fontWeight: "var(--type-label-weight)",
-};
 
-const cell: React.CSSProperties = {
-  textAlign: "start",
-  verticalAlign: "top",
-  padding: "var(--space-2) var(--space-3)",
-  borderBottom: "1px solid var(--color-border-subtle)",
-};
 
 const caption: React.CSSProperties = { fontSize: "var(--type-caption-size)" };

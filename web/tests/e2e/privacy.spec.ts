@@ -74,7 +74,15 @@ test.describe("the privacy board", () => {
       .locator("section")
       .filter({ has: page.getByRole("heading", { name: "What erasure reaches" }) });
     await expect(section).not.toContainText("**");
-    await expect(section.locator("strong").filter({ hasText: "who pays." })).toBeVisible();
+    // **Scoped to what is visible**, because DataGrid renders every droppable column twice:
+    // once in its own cell and once as a secondary fragment inside the primary cell, with
+    // CSS showing exactly one at any width. That is what makes the collapse a stylesheet
+    // rule rather than a measurement -- a measurement is wrong on the first paint -- and it
+    // means a plain locator matches two nodes while the reader and the accessibility tree
+    // see one.
+    await expect(
+      section.locator("strong").filter({ hasText: "who pays." }).filter({ visible: true }),
+    ).toBeVisible();
   });
 
   test("says the block reads no tenant data at all", async ({ page }) => {

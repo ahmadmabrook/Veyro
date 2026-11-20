@@ -31,16 +31,8 @@ const APP = join(WEB, "src/app");
  * simply off the screen rather than collapsed into the primary cell.
  */
 const RAW_TABLES = new Set([
-  "access/[zoneId]/page.tsx",
-  "account/account-view.tsx",
-  "catalog/page.tsx",
-  "configuration/page.tsx",
-  "finance/page.tsx",
-  "integrations/page.tsx",
-  "notifications/page.tsx",
-  "organization/page.tsx",
-  "privacy/page.tsx",
-  "schedule/[sessionId]/page.tsx",
+  // **Empty, which is the point.** Every board is on DataGrid now, so this rule has stopped
+  // being a backlog and become an absolute one: the next raw <table> in a screen fails here.
 ]);
 
 /**
@@ -50,22 +42,27 @@ const RAW_TABLES = new Set([
  * "cardification" an argument somebody has to make at the call site rather than a default.
  */
 const RAW_PANELS = new Set([
-  ...RAW_TABLES,
-  "account/page.tsx",
-  // Off the table backlog and still on this one: their grids moved to DataGrid, the sections
-  // around them are still bare panels. The two lists are not the same migration.
+  "access/[zoneId]/page.tsx",
   "access/page.tsx",
+  "account/account-view.tsx",
+  "account/page.tsx",
+  "catalog/page.tsx",
+  "configuration/page.tsx",
+  "finance/page.tsx",
+  "fleet/[deviceId]/page.tsx",
   "fleet/page.tsx",
+  "integrations/page.tsx",
+  "login/login-form.tsx",
+  "notifications/page.tsx",
   "operations/page.tsx",
+  "organization/page.tsx",
   "page.tsx",
+  "people/[personId]/page.tsx",
   "people/page.tsx",
   "permissions/page.tsx",
+  "privacy/page.tsx",
+  "schedule/[sessionId]/page.tsx",
   "schedule/page.tsx",
-  // These two have no table of their own -- their tables live in a shared panel component --
-  // and they do still group with a bare .panel, which is why they are here and not above.
-  "fleet/[deviceId]/page.tsx",
-  "login/login-form.tsx",
-  "people/[personId]/page.tsx",
   "step-up/step-up-form.tsx",
 ]);
 
@@ -101,7 +98,7 @@ test("no new screen hand-rolls a table where DataGrid exists", () => {
   );
 });
 
-test("the raw-table backlog has not gone stale", () => {
+test("the raw-table backlog is empty, and stays honest if it is not", () => {
   const fixed = [...RAW_TABLES].filter((path) => {
     const file = files.find((f) => f.path === path);
     return file && !file.text.includes("<table");

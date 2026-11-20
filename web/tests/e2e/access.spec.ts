@@ -98,12 +98,20 @@ test.describe("a zone", () => {
     const row = page.getByRole("row").filter({ hasText: "see_front_desk" });
     await expect(row).toBeVisible();
     await expect(row).toContainText("Refused");
-    // **The third cell, not the row.** Paragraph 1944: the member standing in the lobby is
-    // told one thing, and the log has to say so rather than implying they were given the
-    // real reason. Asserting on the row passed even with the mark removed, because the
-    // fourth cell carries its own "Withheld" when the caller lacks the reason permission --
-    // which is a different fact about a different column.
-    const shownToMember = row.getByRole("cell").nth(2);
+    // **One cell, not the row.** Paragraph 1944: the member standing in the lobby is told one
+    // thing, and the log has to say so rather than implying they were given the real reason.
+    // Asserting on the row passed even with the mark removed, because another cell carries
+    // its own "Withheld" when the caller lacks the reason permission -- a different fact
+    // about a different column.
+    //
+    // **Found by its own column, not by position.** The first version took `.nth(2)`, which
+    // was the public-reason cell until the board moved to DataGrid and the columns were put
+    // in priority order -- then it pointed at the private reason and the test failed for a
+    // reason that had nothing to do with what it asserts. A positional cell locator is a
+    // test coupled to a layout decision it does not care about.
+    const shownToMember = row
+      .getByRole("cell")
+      .filter({ hasText: "please see the front desk" });
     await expect(shownToMember).toContainText("please see the front desk");
     await expect(shownToMember).toContainText("Withheld");
   });

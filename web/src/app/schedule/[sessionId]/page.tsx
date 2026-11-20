@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { Banner } from "@/components/ds/banner";
+import { DataGrid } from "@/components/ds/data-grid";
 import { formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
 import { ApiError, currentSession, gate } from "@/lib/api";
 import { presentation } from "@/lib/preferences";
@@ -208,45 +209,52 @@ export default async function SessionPage({
             {roster.bookings.length === 0 ? (
               <Banner severity="info">{text("roster.empty")}</Banner>
             ) : (
-              <table
-                tabIndex={0}
-                aria-labelledby="roster-heading"
-                style={{ width: "100%", borderCollapse: "collapse" }}
-              >
-                <thead>
-                  <tr>
-                    <th scope="col" style={headCell}>{text("roster.member")}</th>
-                    <th scope="col" style={headCell}>{text("roster.state")}</th>
-                    <th scope="col" style={headCell}>{text("roster.source")}</th>
-                    <th scope="col" style={headCell}>{text("roster.checkedIn")}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {roster.bookings.map((entry) => (
-                    <tr key={entry.booking_id}>
-                      <td style={cell}>
+              <DataGrid
+                caption={text("roster.title")}
+                labelledBy="roster-heading"
+                rows={roster.bookings}
+                rowKey={(entry) => entry.booking_id}
+                columns={[
+                  {
+                    header: text("roster.member"),
+                    kind: "person",
+                    priority: 1,
+                    render: (entry) => (
+                      <span className="data" dir="ltr">{entry.person_id.slice(0, 8)}</span>
+                    ),
+                  },
+                  {
+                    header: text("roster.checkedIn"),
+                    kind: "status",
+                    // Priority 1: whether somebody is in the room is what a coach opens a
+                    // roster to find out.
+                    priority: 1,
+                    // **A check-in is recorded, not performed.** Nothing in this build reads
+                    // a turnstile, so this is a claim a named actor made at a time -- and
+                    // "not yet" is a different fact from a blank cell.
+                    render: (entry) =>
+                      entry.checked_in_at === null ? (
+                        <span className="muted">{text("roster.notCheckedIn")}</span>
+                      ) : (
                         <span className="data" dir="ltr">
-                          {entry.person_id.slice(0, 8)}
+                          {inZone(entry.checked_in_at, session.timezone).time}
                         </span>
-                      </td>
-                      <td style={cell}>{entry.state}</td>
-                      <td style={cell}>{entry.source_kind}</td>
-                      <td style={cell}>
-                        {/* **A check-in is recorded, not performed.** Nothing in this build
-                            reads a turnstile, so this is a claim a named actor made at a
-                            time -- and "not yet" is a different fact from a blank cell. */}
-                        {entry.checked_in_at === null ? (
-                          <span className="muted">{text("roster.notCheckedIn")}</span>
-                        ) : (
-                          <span className="data" dir="ltr">
-                            {inZone(entry.checked_in_at, session.timezone).time}
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                      ),
+                  },
+                  {
+                    header: text("roster.state"),
+                    kind: "status",
+                    priority: 2,
+                    render: (entry) => entry.state,
+                  },
+                  {
+                    header: text("roster.source"),
+                    kind: "text",
+                    priority: 3,
+                    render: (entry) => entry.source_kind,
+                  },
+                ]}
+              />
             )}
             <h3 style={{ margin: 0, fontSize: "var(--type-label-size)" }}>
               {text("roster.waitlist")}
@@ -364,19 +372,5 @@ function toNull(error: unknown): null {
   throw error;
 }
 
-const headCell: React.CSSProperties = {
-  textAlign: "start",
-  padding: "var(--space-2) var(--space-3)",
-  borderBottom: "1px solid var(--color-border-default)",
-  background: "var(--color-surface-sunken)",
-  fontSize: "var(--type-label-size)",
-  fontWeight: "var(--type-label-weight)",
-};
 
-const cell: React.CSSProperties = {
-  textAlign: "start",
-  verticalAlign: "top",
-  padding: "var(--space-2) var(--space-3)",
-  borderBottom: "1px solid var(--color-border-subtle)",
-};
 

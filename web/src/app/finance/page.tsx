@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { Banner } from "@/components/ds/banner";
+import { DataGrid } from "@/components/ds/data-grid";
 import { formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
 import { ApiError, currentSession, gate } from "@/lib/api";
 import {
@@ -148,7 +149,7 @@ export default async function FinancePage({
   return (
     <Shell locale={locale}>
       <section className="panel stack">
-        <h2 style={{ margin: 0 }}>{text("finance.lock")}</h2>
+        <h2 id="lock-heading" style={{ margin: 0 }}>{text("finance.lock")}</h2>
         <p className="muted" style={{ margin: 0 }}>
           {text("finance.lockLead")}
         </p>
@@ -161,50 +162,66 @@ export default async function FinancePage({
         {periods.length === 0 ? (
           <Banner severity="info">{text("finance.noPeriods")}</Banner>
         ) : (
-          <table
-            tabIndex={0}
-            style={{ width: "100%", borderCollapse: "collapse" }}
-            aria-label={text("finance.lock")}
-          >
-            <thead>
-              <tr>
-                <th scope="col" style={head}>{text("finance.period")}</th>
-                <th scope="col" style={head}>{text("finance.span")}</th>
-                <th scope="col" style={head}>{text("finance.status")}</th>
-                <th scope="col" style={head}>{text("finance.admitsTrade")}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {periods.map((period) => (
-                <tr key={period.period_id}>
-                  <td style={cell}>
-                    <span className="data" dir="ltr">{period.period_key}</span>
-                  </td>
-                  <td style={cell}>
-                    <span className="data" dir="ltr">
-                      {period.starts_on} → {period.ends_on}
-                    </span>
-                  </td>
-                  <td style={cell}>
-                    {period.status}
-                    {period.reopen_reason === null ? null : (
-                      <div className="muted" style={caption}>
-                        {text("finance.reopenedBecause")} {period.reopen_reason}
-                      </div>
-                    )}
-                  </td>
-                  <td style={cell}>
+          <DataGrid
+            caption={text("finance.lock")}
+            labelledBy="lock-heading"
+            rows={periods}
+            rowKey={(period) => period.period_id}
+            // A period in `closing` is the one that surprises: an accountant beginning the
+            // month-end close is deliberately stopping that entity's till, and a reader
+            // reasoning from `status` alone gets exactly that case wrong.
+            rowSeverity={(period) => (period.admits_trade ? null : "attention")}
+            columns={[
+              {
+                header: text("finance.period"),
+                kind: "text",
+                priority: 1,
+                render: (period) => (
+                  <span className="data" dir="ltr">{period.period_key}</span>
+                ),
+              },
+              {
+                header: text("finance.admitsTrade"),
+                kind: "status",
+                priority: 1,
+                render: (period) => (
+                  <>
                     {period.admits_trade ? text("finance.yes") : text("finance.no")}
                     {period.status === "closing" ? (
                       <div className="muted" style={caption}>
                         {text("finance.closingTakesOnlyTheClose")}
                       </div>
                     ) : null}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  </>
+                ),
+              },
+              {
+                header: text("finance.status"),
+                kind: "status",
+                priority: 2,
+                render: (period) => (
+                  <>
+                    {period.status}
+                    {period.reopen_reason === null ? null : (
+                      <div className="muted" style={caption}>
+                        {text("finance.reopenedBecause")} {period.reopen_reason}
+                      </div>
+                    )}
+                  </>
+                ),
+              },
+              {
+                header: text("finance.span"),
+                kind: "date",
+                priority: 3,
+                render: (period) => (
+                  <span className="data" dir="ltr">
+                    {period.starts_on} → {period.ends_on}
+                  </span>
+                ),
+              },
+            ]}
+          />
         )}
         {absenceMeansNeverOpened ? (
           <p className="muted" style={{ margin: 0, fontSize: "var(--type-caption-size)" }}>
@@ -214,7 +231,7 @@ export default async function FinancePage({
       </section>
 
       <section className="panel stack">
-        <h2 style={{ margin: 0 }}>{text("finance.trialBalance")}</h2>
+        <h2 id="trial-balance-heading" style={{ margin: 0 }}>{text("finance.trialBalance")}</h2>
         {balance === null ? (
           <Banner severity="info">
             {balanceFailed ? text("finance.balanceUnreadable") : text("finance.noEntity")}
@@ -248,61 +265,68 @@ export default async function FinancePage({
             {!hasPostings(balance) ? (
               <Banner severity="info">{text("finance.nothingPosted")}</Banner>
             ) : (
-              <table
-                tabIndex={0}
-                style={{ width: "100%", borderCollapse: "collapse" }}
-                aria-label={text("finance.trialBalance")}
-              >
-                <thead>
-                  <tr>
-                    <th scope="col" style={head}>{text("finance.account")}</th>
-                    <th scope="col" style={head}>{text("finance.class")}</th>
-                    <th scope="col" style={head}>{text("finance.debit")}</th>
-                    <th scope="col" style={head}>{text("finance.credit")}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {balance.lines.map((line) => (
-                    <tr key={line.account_id}>
-                      <td style={cell}>
+              <DataGrid
+                caption={text("finance.trialBalance")}
+                labelledBy="trial-balance-heading"
+                rows={balance.lines}
+                rowKey={(line) => line.account_id}
+                totalLabel={text("finance.total")}
+                columns={[
+                  {
+                    header: text("finance.account"),
+                    kind: "text",
+                    priority: 1,
+                    render: (line) => (
+                      <>
                         <span className="data" dir="ltr">{line.account_code}</span>
                         <div className="muted" style={caption}>
                           {line.account_kind}
-                          {line.status === "active"
-                            ? ""
-                            : ` · ${text("finance.retired")}`}
+                          {/* A retired account with a balance is exactly the row somebody
+                              needs to notice; unmarked it reads as a live one. */}
+                          {line.status === "active" ? "" : ` · ${text("finance.retired")}`}
                         </div>
-                      </td>
-                      <td style={cell}>{line.account_class}</td>
-                      <td style={cell}>
-                        <span className="data" dir="ltr">
-                          {money(line.debit_minor, balance.currency)}
-                        </span>
-                      </td>
-                      <td style={cell}>
-                        <span className="data" dir="ltr">
-                          {money(line.credit_minor, balance.currency)}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                  <tr>
-                    <th scope="row" style={cell} colSpan={2}>
-                      {text("finance.total")}
-                    </th>
-                    <td style={cell}>
+                      </>
+                    ),
+                    total: () => text("finance.total"),
+                  },
+                  {
+                    header: text("finance.debit"),
+                    kind: "money",
+                    priority: 1,
+                    render: (line) => (
+                      <span className="data" dir="ltr">
+                        {money(line.debit_minor, balance.currency)}
+                      </span>
+                    ),
+                    total: () => (
                       <span className="data" dir="ltr">
                         {money(balance.debit_total_minor, balance.currency)}
                       </span>
-                    </td>
-                    <td style={cell}>
+                    ),
+                  },
+                  {
+                    header: text("finance.credit"),
+                    kind: "money",
+                    priority: 1,
+                    render: (line) => (
+                      <span className="data" dir="ltr">
+                        {money(line.credit_minor, balance.currency)}
+                      </span>
+                    ),
+                    total: () => (
                       <span className="data" dir="ltr">
                         {money(balance.credit_total_minor, balance.currency)}
                       </span>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
+                    ),
+                  },
+                  {
+                    header: text("finance.class"),
+                    kind: "text",
+                    priority: 3,
+                    render: (line) => line.account_class,
+                  },
+                ]}
+              />
             )}
             <p className="muted" style={{ margin: 0, fontSize: "var(--type-caption-size)" }}>
               {text("finance.balancedByConstruction")}
@@ -312,51 +336,64 @@ export default async function FinancePage({
       </section>
 
       <section className="panel stack">
-        <h2 style={{ margin: 0 }}>{text("finance.cases")}</h2>
+        <h2 id="cases-heading" style={{ margin: 0 }}>{text("finance.cases")}</h2>
         <p className="muted" style={{ margin: 0 }}>
           {text("finance.casesLead")}
         </p>
         {cases.length === 0 ? (
           <Banner severity="info">{text("finance.noCases")}</Banner>
         ) : (
-          <table
-            tabIndex={0}
-            style={{ width: "100%", borderCollapse: "collapse" }}
-            aria-label={text("finance.cases")}
-          >
-            <thead>
-              <tr>
-                <th scope="col" style={head}>{text("finance.caseKind")}</th>
-                <th scope="col" style={head}>{text("finance.subject")}</th>
-                <th scope="col" style={head}>{text("finance.difference")}</th>
-                <th scope="col" style={head}>{text("finance.openFor")}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {cases.map((item) => (
-                <tr key={item.case_id}>
-                  <td style={cell}>{item.case_kind}</td>
-                  <td style={cell}>
+          <DataGrid
+            caption={text("finance.cases")}
+            labelledBy="cases-heading"
+            rows={cases}
+            rowKey={(item) => item.case_id}
+            // A reconciliation case is an unanswered question, which is what the board is
+            // for -- so every row carries the mark rather than none of them.
+            rowSeverity={() => "attention"}
+            columns={[
+              {
+                header: text("finance.caseKind"),
+                kind: "text",
+                priority: 1,
+                render: (item) => item.case_kind,
+              },
+              {
+                header: text("finance.difference"),
+                kind: "money",
+                priority: 1,
+                render: (item) => (
+                  <span className="data" dir="ltr">
+                    {money(item.difference_minor, item.currency)}
+                  </span>
+                ),
+              },
+              {
+                header: text("finance.subject"),
+                kind: "text",
+                priority: 2,
+                render: (item) => (
+                  <>
                     {item.subject_kind}
                     <div className="muted" style={caption}>
                       <span className="data" dir="ltr">{item.subject_ref}</span>
                     </div>
-                  </td>
-                  <td style={cell}>
-                    <span className="data" dir="ltr">
-                      {money(item.difference_minor, item.currency)}
-                    </span>
-                  </td>
-                  <td style={cell}>
-                    <span className="data">
-                      {formatInteger(item.age_days, "latn")}
-                    </span>{" "}
+                  </>
+                ),
+              },
+              {
+                header: text("finance.openFor"),
+                kind: "text",
+                priority: 2,
+                render: (item) => (
+                  <>
+                    <span className="data">{formatInteger(item.age_days, "latn")}</span>{" "}
                     {text("finance.days")}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  </>
+                ),
+              },
+            ]}
+          />
         )}
       </section>
 
@@ -409,20 +446,6 @@ function Shell({ locale, children }: { locale: Locale; children: React.ReactNode
   );
 }
 
-const head: React.CSSProperties = {
-  textAlign: "start",
-  padding: "var(--space-2) var(--space-3)",
-  borderBottom: "1px solid var(--color-border-default)",
-  background: "var(--color-surface-sunken)",
-  fontSize: "var(--type-label-size)",
-  fontWeight: "var(--type-label-weight)",
-};
 
-const cell: React.CSSProperties = {
-  textAlign: "start",
-  verticalAlign: "top",
-  padding: "var(--space-2) var(--space-3)",
-  borderBottom: "1px solid var(--color-border-subtle)",
-};
 
 const caption: React.CSSProperties = { fontSize: "var(--type-caption-size)" };

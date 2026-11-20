@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { Banner } from "@/components/ds/banner";
+import { DataGrid } from "@/components/ds/data-grid";
 import { t, type Locale, type MessageKey } from "@/i18n/locale";
 import { ApiError, currentSession, gate } from "@/lib/api";
 import {
@@ -149,41 +150,38 @@ function OrganizationCard({ node, locale }: { node: OrganizationTree; locale: Lo
       ) : (
         brands.map(({ brand, locations }) => (
           <div key={brand.brand_id} className="stack" style={{ gap: "var(--space-2)" }}>
-            <h4 style={{ margin: 0 }}>{brand.brand_name}</h4>
+            <h4 id={`sites-${brand.brand_id}`} style={{ margin: 0 }}>{brand.brand_name}</h4>
             {locations.length === 0 ? (
               <p className="muted" style={{ margin: 0 }}>
                 {text("org.noLocations")}
               </p>
             ) : (
-              <table tabIndex={0} style={{ width: "100%", borderCollapse: "collapse" }}>
-                <caption style={{ textAlign: "start", paddingBottom: "var(--space-2)" }}>
-                  {text("org.locations")}
-                </caption>
-                <thead>
-                  <tr>
-                    <th scope="col" style={headCell}>
-                      {text("org.locations")}
-                    </th>
-                    <th scope="col" style={headCell}>
-                      {text("org.timezone")}
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {locations.map((location) => (
-                    <tr key={location.location_id}>
-                      <td style={cell}>{location.location_name}</td>
-                      <td style={cell}>
-                        {/* An IANA zone name is an identifier: it is ASCII, it is not
-                            translated, and MOD-019 reads every rota window in it. */}
-                        <span className="data" dir="ltr">
-                          {location.timezone}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <DataGrid
+                caption={text("org.locations")}
+                labelledBy={`sites-${brand.brand_id}`}
+                rows={locations}
+                rowKey={(location) => location.location_id}
+                columns={[
+                  {
+                    header: text("org.locations"),
+                    kind: "text",
+                    priority: 1,
+                    render: (location) => location.location_name,
+                  },
+                  {
+                    header: text("org.timezone"),
+                    kind: "text",
+                    // Priority 1: MOD-019 reads every rota window in this zone, so a site
+                    // list without it is a list nobody can schedule from.
+                    priority: 1,
+                    // An IANA zone name is an identifier: it is ASCII, it is not translated,
+                    // and the bidi algorithm would reorder it inside an Arabic page.
+                    render: (location) => (
+                      <span className="data" dir="ltr">{location.timezone}</span>
+                    ),
+                  },
+                ]}
+              />
             )}
           </div>
         ))
@@ -201,18 +199,4 @@ function Shell({ locale, children }: { locale: Locale; children: React.ReactNode
   );
 }
 
-const headCell: React.CSSProperties = {
-  textAlign: "start",
-  padding: "var(--space-2) var(--space-3)",
-  borderBottom: "1px solid var(--color-border-default)",
-  background: "var(--color-surface-sunken)",
-  fontSize: "var(--type-label-size)",
-  fontWeight: "var(--type-label-weight)",
-};
 
-const cell: React.CSSProperties = {
-  textAlign: "start",
-  verticalAlign: "top",
-  padding: "var(--space-2) var(--space-3)",
-  borderBottom: "1px solid var(--color-border-subtle)",
-};

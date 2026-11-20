@@ -628,6 +628,14 @@ moving underneath them. **And the seam has to be mutation-proven like anything e
 the limiter's `raise` removed, those tests fail, so freezing the clock did not make them
 vacuous.
 
+**A positional cell locator is a test coupled to a layout decision it does not care
+about.** `row.getByRole("cell").nth(2)` was the public-reason cell on the door board until
+that board moved to a grid whose columns are ordered by priority -- then it pointed at the
+private reason, and a test about paragraph 1944's discreet line failed for a reason that has
+nothing to do with the discreet line. Filter the cell by what it contains, or by a header
+association; the index is a coincidence of the current layout and it is exactly what a design
+migration changes.
+
 **And the same migration can add a defect the ad-hoc one did not have, on every screen at
 once.** The hand-rolled tables all named themselves with `aria-labelledby` pointing at the
 heading above them, with a comment on one of them explaining why: a caption that repeats the

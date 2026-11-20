@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import { Banner } from "@/components/ds/banner";
+import { DataGrid } from "@/components/ds/data-grid";
 import { formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
 import { ApiError, currentSession, gate } from "@/lib/api";
 import {
@@ -10,7 +11,6 @@ import {
   readDecisions,
   readOccupancy,
   readZone,
-  type AccessDecision,
   type DecisionPage,
   type Occupancy,
   type ZoneDetail,
@@ -226,80 +226,75 @@ function DecisionLog({ page, locale }: { page: DecisionPage; locale: Locale }) {
       {page.decisions.length === 0 ? (
         <Banner severity="info">{text("access.noDecisions")}</Banner>
       ) : (
-        <table
-          tabIndex={0}
-          aria-labelledby="decisions-heading"
-          style={{ width: "100%", borderCollapse: "collapse" }}
-        >
-          <thead>
-            <tr>
-              <th scope="col" style={headCell}>
-                {text("access.when")}
-              </th>
-              <th scope="col" style={headCell}>
-                {text("access.policy")}
-              </th>
-              <th scope="col" style={headCell}>
-                {text("access.shownToMember")}
-              </th>
-              <th scope="col" style={headCell}>
-                {text("access.fullReason")}
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {page.decisions.map((decision) => (
-              <DecisionRow key={decision.decision_id} decision={decision} locale={locale} />
-            ))}
-          </tbody>
-        </table>
+        <DataGrid
+          caption={text("access.decisions")}
+          labelledBy="decisions-heading"
+          rows={page.decisions}
+          rowKey={(decision) => decision.decision_id}
+          // A refusal at a door is what somebody reads this log for.
+          rowSeverity={(decision) => (decision.granted ? null : "attention")}
+          columns={[
+            {
+              header: text("access.policy"),
+              kind: "status",
+              priority: 1,
+              render: (decision) => (
+                <>
+                  {decision.granted ? text("access.granted") : text("access.refused")}
+                  <div
+                    className="muted data"
+                    dir="ltr"
+                    style={{ fontSize: "var(--type-caption-size)" }}
+                  >
+                    {decision.code}
+                  </div>
+                </>
+              ),
+            },
+            {
+              header: text("access.shownToMember"),
+              kind: "text",
+              priority: 1,
+              render: (decision) => (
+                <>
+                  {decision.public_reason}
+                  {decision.public_reason === DISCREET || isRestricted(decision.code) ? (
+                    <div className="muted" style={{ fontSize: "var(--type-caption-size)" }}>
+                      {/* Marked, because a reader of this log should be able to tell at a
+                          glance that the member was not told why -- which is the whole trade
+                          paragraph 1944 makes. */}
+                      {text("access.reasonWithheld")}
+                    </div>
+                  ) : null}
+                </>
+              ),
+            },
+            {
+              header: text("access.fullReason"),
+              kind: "text",
+              priority: 2,
+              render: (decision) =>
+                decision.private_reason === null ? (
+                  <span className="muted">{text("access.reasonWithheld")}</span>
+                ) : (
+                  decision.private_reason
+                ),
+            },
+            {
+              header: text("access.when"),
+              kind: "date",
+              priority: 2,
+              // A timestamp is a Latin run; isolated for the same reason as the clock range.
+              render: (decision) => (
+                <span className="data" dir="ltr">
+                  {decision.decided_at.slice(0, 19).replace("T", " ")}
+                </span>
+              ),
+            },
+          ]}
+        />
       )}
     </section>
-  );
-}
-
-function DecisionRow({ decision, locale }: { decision: AccessDecision; locale: Locale }) {
-  const text = (key: MessageKey) => t(locale, key);
-  return (
-    <tr>
-      <td style={cell}>
-        {/* A timestamp is a Latin run; isolated for the same reason as the clock range. */}
-        <span className="data" dir="ltr">
-          {decision.decided_at.slice(0, 19).replace("T", " ")}
-        </span>
-      </td>
-      <td style={cell}>
-        <span
-          style={{
-            color: decision.granted
-              ? "var(--color-semantic-success)"
-              : "var(--color-text-critical)",
-          }}
-        >
-          {decision.granted ? text("access.granted") : text("access.refused")}
-        </span>
-        <div className="muted data" dir="ltr" style={{ fontSize: "var(--type-caption-size)" }}>
-          {decision.code}
-        </div>
-      </td>
-      <td style={cell}>
-        {decision.public_reason}
-        {decision.public_reason === DISCREET || isRestricted(decision.code) ? (
-          <div className="muted" style={{ fontSize: "var(--type-caption-size)" }}>
-            {/* Marked, because a reader of this log should be able to tell at a glance that
-                the member was not told why -- which is the whole trade paragraph 1944 makes. */}
-            {text("access.reasonWithheld")}
-          </div>
-        ) : null}
-      </td>
-      <td style={cell}>
-        {decision.private_reason === null ? (
-          <span className="muted">{text("access.reasonWithheld")}</span>
-        ) : (
-          decision.private_reason
-        )}
-      </td>
-    </tr>
   );
 }
 
@@ -323,18 +318,4 @@ function Shell({
   );
 }
 
-const headCell: React.CSSProperties = {
-  textAlign: "start",
-  padding: "var(--space-2) var(--space-3)",
-  borderBottom: "1px solid var(--color-border-default)",
-  background: "var(--color-surface-sunken)",
-  fontSize: "var(--type-label-size)",
-  fontWeight: "var(--type-label-weight)",
-};
 
-const cell: React.CSSProperties = {
-  textAlign: "start",
-  verticalAlign: "top",
-  padding: "var(--space-2) var(--space-3)",
-  borderBottom: "1px solid var(--color-border-subtle)",
-};

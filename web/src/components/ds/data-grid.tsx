@@ -27,6 +27,13 @@ import { StatusBadge, edgeMark, type Severity, type Status } from "./status-badg
  * - **RTL**: column order mirrors by writing direction; money and numeric columns stay
  *   end-aligned on the *logical* end, which `text-align: end` gives without a direction check.
  *
+ * **A droppable value is in the DOM twice and visible once.** Its own cell and the secondary
+ * fragment inside the primary cell are both rendered, and the stylesheet shows exactly one at
+ * any width -- which is what makes the collapse a rule rather than a measurement, and a
+ * measurement is wrong on the first paint. The consequence for a test is that a plain locator
+ * matches two nodes; the reader and the accessibility tree see one, because the other is
+ * `display: none`.
+ *
  * **This is the server-rendered subset.** Sorting, selection, the bulk bar and the inspector
  * are interactive and belong to a client component built on this one; what is here is the
  * structure, the states, the priority collapse and the cell kinds, which is what every
@@ -46,6 +53,18 @@ export type Column<Row> = {
   render: (row: Row) => ReactNode;
   /** Marks the cell unreadable for this caller: renders "restricted", never blank or zero. */
   restricted?: (row: Row) => boolean;
+  /**
+   * This column's total, for a grid that has one.
+   *
+   * **An extension beyond what the source states**, recorded as such in
+   * `contracts/ui/design-compliance.md`. §25's anatomy names a saved-view bar, a filter bar,
+   * a header, rows, a bulk-action bar, pagination and column config -- and no footer. A trial
+   * balance needs one: its two totals are what the close is signed off against, and putting
+   * them outside the grid would align them under nothing. `<tfoot>` is the HTML for it and
+   * the column's own priority applies, so a total drops with the column it totals rather
+   * than becoming a number with no heading.
+   */
+  total?: () => ReactNode;
 };
 
 export type GridState =
@@ -67,6 +86,7 @@ export function DataGrid<Row>({
   rowSeverity,
   state = { kind: "ready" },
   restrictedLabel = "restricted",
+  totalLabel = "Total",
   density = "compact",
 }: {
   /** The accessible name. A grid without one is a table a screen reader cannot introduce. */
@@ -88,6 +108,8 @@ export function DataGrid<Row>({
   rowSeverity?: (row: Row) => Severity | null;
   state?: GridState;
   restrictedLabel?: string;
+  /** The row header for the totals row, when the grid has one. */
+  totalLabel?: string;
   density?: "compact" | "default" | "touch" | "spacious";
 }) {
   // Priority 1 columns are the ones that survive every width; the rest fold into the primary
@@ -212,6 +234,31 @@ export function DataGrid<Row>({
                 </tr>
               ))}
         </tbody>
+        {columns.some((column) => column.total) ? (
+          <tfoot>
+            <tr>
+              {columns.map((column, index) => {
+                const content = column.total?.();
+                return index === 0 ? (
+                  <th
+                    key={column.header}
+                    scope="row"
+                    className={`ds-col ds-col-p${column.priority} ds-grid-total`}
+                  >
+                    {content ?? totalLabel}
+                  </th>
+                ) : (
+                  <td
+                    key={column.header}
+                    className={`ds-col ds-col-p${column.priority} ds-col-${column.kind} ds-grid-total`}
+                  >
+                    {content}
+                  </td>
+                );
+              })}
+            </tr>
+          </tfoot>
+        ) : null}
       </table>
       {state.kind === "loading" ? (
         // "count as 'loading…'" -- a count slot that says what it is doing, never a centred
