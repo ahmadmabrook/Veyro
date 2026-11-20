@@ -145,8 +145,8 @@ describe("Card — §31", () => {
 describe("DataGrid — §25", () => {
   type Row = { id: string; member: string; balance: string; plan: string };
   const rows: Row[] = [
-    { id: "1", member: "Ahmad Nabulsi", balance: "55.000", plan: "Club" },
-    { id: "2", member: "Lina Haddad", balance: "0.000", plan: "Flex" },
+    { id: "1", member: "Ahmad Nabulsi", balance: "55.00", plan: "Club" },
+    { id: "2", member: "Lina Haddad", balance: "0.00", plan: "Flex" },
   ];
   const columns: Column<Row>[] = [
     { header: "Member", kind: "person", priority: 1, render: (r) => r.member },
@@ -171,7 +171,7 @@ describe("DataGrid — §25", () => {
     grid();
     const restricted = screen.getAllByText("restricted");
     expect(restricted.length).toBeGreaterThan(0);
-    expect(screen.queryByText("0.000")).toBeNull();
+    expect(screen.queryByText("0.00")).toBeNull();
   });
 
   it("declares a priority per column so the collapse is a rule, not a measurement", () => {
@@ -246,8 +246,8 @@ describe("DataGrid — §25", () => {
 
   it("reads money with its kind", () => {
     // "Money is read with its kind because a bare number is ambiguous."
-    render(<MoneyCell formatted="55.000" currency="JOD" />);
-    expect(screen.getByLabelText("55.000 JOD")).toBeTruthy();
+    render(<MoneyCell formatted="55.00" currency="JOD" />);
+    expect(screen.getByLabelText("55.00 JOD")).toBeTruthy();
   });
 
   it("is one tab stop, not one per row", () => {

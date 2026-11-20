@@ -9,8 +9,26 @@ Numbering = Literal["latn", "arab"]
 
 LOCALES: Final[tuple[Locale, ...]] = ("ar", "en")
 
-# ISO 4217 minor-unit exponents. Closed table: anything else fails closed.
+# ISO 4217 minor-unit exponents -- how an amount is **stored**. A JOD amount is a count of
+# fils, which is a thousandth. Closed table: anything else fails closed.
 CURRENCY_MINOR_UNITS: Final[dict[str, int]] = {"JOD": 3, "USD": 2}
+
+# How many decimals an amount is **shown** with, which is a different question and is the
+# design system's to answer:
+#
+#   "Always three-letter code plus two decimals, tabular figures, end-aligned. JOD is three
+#    decimals in banking and two in retail -- Veyro is a retail product and shows two
+#    everywhere, including exports, so a reconciliation never has to guess which convention a
+#    column used."
+#
+# All 206 JOD figures drawn across the design folder use two decimals and none uses three.
+# Using the storage exponent for display was the defect: every money figure on every screen
+# in this product read `JOD 52.200` where the design reads `JOD 52.20`.
+#
+# **The two tables are separate on purpose.** Storage precision is what makes a proration
+# exact and a journal balance; display precision is what a receipt and a screen agree on.
+# Collapsing them in either direction loses one of those.
+CURRENCY_DISPLAY_DIGITS: Final[dict[str, int]] = {"JOD": 2, "USD": 2}
 
 LRI: Final = chr(0x2066)
 RLI: Final = chr(0x2067)
@@ -113,18 +131,42 @@ def format_integer(value: int, numbering: str, grouping: bool = True) -> str:
 
 
 def format_money(amount_minor: int, currency: str, numbering: str, locale: str) -> str:
-    """ISO code + amount from integer minor units; bidi-isolated (LTR) inside Arabic text."""
+    """ISO code + amount from integer minor units; bidi-isolated (LTR) inside Arabic text.
+
+    **Stored in minor units, shown at the display precision**, which for JOD are different:
+    an amount is a count of fils and the design shows two decimals, "so a reconciliation
+    never has to guess which convention a column used".
+
+    **A stored amount finer than the display can express is rounded half away from zero**,
+    which is `money.round_half_up`'s rule and therefore the only rounding rule in this build
+    -- MOD-016 shipped a second one and a reviewer found it disagreeing with the first on
+    ordinary inputs. Sub-display amounts are reachable: proration divides and `allocate`
+    splits by largest remainder, so 999 fils exists and shows as `JOD 1.00`.
+
+    The consequence is the ordinary one for any rounded display and is worth stating: a
+    column of shown line amounts need not sum to the shown total. The minor units are the
+    record; this is the rendering.
+    """
     exponent = CURRENCY_MINOR_UNITS.get(currency)
-    if exponent is None:
+    digits = CURRENCY_DISPLAY_DIGITS.get(currency)
+    if exponent is None or digits is None:
         raise ValueError("unsupported currency")
+    if digits > exponent:
+        raise ValueError("display precision exceeds stored precision")
     _check_numbering(numbering)
     loc = parse_locale(locale)
     minor_total = _require_int(amount_minor)
-    major, minor = divmod(abs(minor_total), 10**exponent)
+    # Round on the magnitude, so the carry reaches the major part: 999 fils is 1.00, not 0.100.
+    dropped = exponent - digits
+    magnitude = abs(minor_total)
+    if dropped:
+        scale = 10**dropped
+        magnitude = (magnitude + scale // 2) // scale
+    major, minor = divmod(magnitude, 10**digits)
     amount = format_integer(major, numbering)
-    if exponent:
+    if digits:
         separator = _ARABIC_DECIMAL if numbering == "arab" else "."
-        amount += separator + shape_digits(str(minor).zfill(exponent), numbering)
+        amount += separator + shape_digits(str(minor).zfill(digits), numbering)
     sign = "-" if minor_total < 0 else ""
     text = f"{currency} {sign}{amount}"
     return isolate(text, "ltr") if loc == "ar" else text

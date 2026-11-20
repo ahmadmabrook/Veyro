@@ -111,7 +111,7 @@ test.describe("the finance board", () => {
     const clearing = balance
       .getByRole("row")
       .filter({ has: page.getByText("CLEARING", { exact: true }) });
-    await expect(clearing).toContainText("JOD 52.200");
+    await expect(clearing).toContainText("JOD 52.20");
     const revenue = balance
       .getByRole("row")
       .filter({ has: page.getByText("REV", { exact: true }) });
@@ -121,11 +121,11 @@ test.describe("the finance board", () => {
     // only the first was paid. Those two cells disagreeing is exactly the confusion MOD-017
     // keeps apart -- "membership state, billing state and access state are related but never
     // conflated" -- so asserting both is the point rather than an inconvenience.
-    await expect(revenue).toContainText("JOD 71.000");
+    await expect(revenue).toContainText("JOD 71.00");
     const tax = balance
       .getByRole("row")
       .filter({ has: page.getByText("TAX", { exact: true }) });
-    await expect(tax).toContainText("JOD 11.360");
+    await expect(tax).toContainText("JOD 11.36");
   });
 
   test("marks a retired account rather than letting it read as live", async ({ page }) => {
@@ -181,6 +181,6 @@ test.describe("a session that may not read the ledger", () => {
     await page.goto("/finance");
     await expect(page.locator("main").getByRole("status")).toContainText(/not permitted/i);
     // And no figure reaches the refusal.
-    await expect(page.getByText("JOD 52.200")).toHaveCount(0);
+    await expect(page.getByText("JOD 52.20")).toHaveCount(0);
   });
 });

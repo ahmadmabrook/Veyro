@@ -77,7 +77,7 @@ test.describe("a product opened on the catalog board", () => {
     const row = page.getByRole("row").filter({ hasText: "Monthly" });
     await expect(row).toContainText("30 days");
     // The agreed figure with the currency's own exponent: 45000 fils is 45.000 dinars.
-    await expect(row).toContainText("JOD 45.000");
+    await expect(row).toContainText("JOD 45.00");
     await expect(row).toContainText("in its window, in an active book");
   });
 
@@ -110,6 +110,6 @@ test.describe("a session that may not read the catalog", () => {
     await useDeskSession(page);
     await page.goto("/catalog");
     await expect(page.locator("main").getByRole("status")).toContainText(/not permitted/i);
-    await expect(page.getByText("JOD 45.000")).toHaveCount(0);
+    await expect(page.getByText("JOD 45.00")).toHaveCount(0);
   });
 });

@@ -455,6 +455,36 @@ Command Center loads, which no person reaches.
   41,280 at the 19th of a 31-day month; straight-line gives 67,348. The method implemented is
   straight-line and the response names it, rather than reverse-engineering one illustration.
 
+## Money renders at the design's precision now, and that is two tables rather than one
+
+`CURRENCY_MINOR_UNITS` is the ISO 4217 **storage** exponent -- a JOD amount is a count of
+fils, a thousandth -- and it was being used as the **display** precision as well. So every
+money figure on every screen in this product read `JOD 52.200` where the design reads
+`JOD 52.20`.
+
+The design system states it, and the folder settles it: **206 JOD figures are drawn across
+the design documents and all 206 use two decimals; none uses three.**
+
+> Always three-letter code plus two decimals, tabular figures, end-aligned. JOD is three
+> decimals in banking and two in retail — Veyro is a retail product and shows two everywhere,
+> including exports, so a reconciliation never has to guess which convention a column used.
+
+So `CURRENCY_DISPLAY_DIGITS` is its own table, in both runtimes, and the cross-runtime parity
+suite gained the rounding boundaries: the half that rounds up, the half that rounds down, the
+carry that reaches the major part, the carry that crosses a thousands separator, and both
+signs. Storage precision is what makes a proration exact and a journal balance; display
+precision is what a receipt and a screen agree on, and collapsing them in either direction
+loses one.
+
+**Two properties are disclosed rather than discovered.** Rounding is half away from zero,
+which is `money.round_half_up`'s rule and therefore the only rounding rule in the build --
+MOD-016 shipped a second one and a reviewer found it disagreeing with the first on ordinary
+inputs. And a stored amount finer than two decimals is reachable, because proration divides
+and `allocate` splits by largest remainder: 999 fils shows as `JOD 1.00` and one fil shows as
+`JOD 0.00`. A column of shown line amounts therefore need not sum to the shown total, which
+is the ordinary property of any rounded display. **The minor units are the record; this is
+the rendering.**
+
 ## Unresolved design requirements
 
 Recorded rather than invented, per §7 of the directive. Nothing here is a licence to improvise;
@@ -466,6 +496,5 @@ each is a question for the design source or its author.
 | `color.surface.raised` is a composite | Foundations | `warm.0 + e1` — a primitive plus an elevation, which the generator reports rather than resolving to a hex. |
 | Icon manifest | §59, `CROSS` → RTL layout | "Mirroring is per-element, from the icon manifest." No icon manifest is present in the design folder. |
 | Per-family state matrix beyond the 17 rows | §69 | The matrix names 17 rows for 37 families; several families are grouped (`Select · Combobox`, `Modal · Drawer · Sheet`). Grouped rows are applied to each member. |
-| **JOD renders with three decimals everywhere, and the design says two** | `Veyro DS Domain Components`, MoneyValue | "Always three-letter code plus two decimals… JOD is three decimals in banking and two in retail — Veyro is a retail product and shows two everywhere, including exports, so a reconciliation never has to guess which convention a column used." `CURRENCY_MINOR_UNITS` is the ISO 4217 *storage* exponent (fils, 3) and is correct; the **display** convention is a separate decision this build has never made, so every money figure on every screen reads `JOD 52.200` where the design reads `JOD 52.20`. Found by reading the component source. **Not fixed here**: it changes every money figure in the app and in the cross-runtime parity suite, the rounding of the third digit is not stated anywhere, and MOD-015's own rule is that a second rounding rule is a pair of numbers that disagree on a receipt. It is the next change. |
 | Screen-level layout detail | `V1 Batch *` | The batch files specify each screen in prose (pattern, intent, content rules) rather than measured layout. Compliance is against the stated pattern and its component contracts. |
 | Density "type step" across registers | `DENSITY`, `TYPE_SCALE` | The scale is not one ladder — headings, body, label, caption, data and eyebrow are separate registers — so "+1 step" has exactly one unambiguous reading, the body ramp. Spacious is "+2 steps" and that ramp has one step above `type.body`; the scale's own usage note assigns `type.bodyLg` to "Member app body, coach prose", which is the surface LAYOUTS puts at Spacious, so the generator clamps to the top of the ramp. **An interpretation, not a value read off the page.** |

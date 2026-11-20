@@ -53,6 +53,16 @@ const MONEY = [
   [1234567, "USD", "arab", "ar"],
   [999, "USD", "latn", "ar"],
   [100000000, "USD", "arab", "ar"],
+  // **The display-rounding boundaries**, which is where two implementations of "two decimals
+  // from three stored" diverge: the half that rounds up, the half that rounds down, the carry
+  // that reaches the major part, and the carry that crosses a thousands separator.
+  [1005, "JOD", "latn", "en"],
+  [1004, "JOD", "latn", "en"],
+  [999, "JOD", "latn", "en"],
+  [995, "JOD", "arab", "ar"],
+  [999995, "JOD", "latn", "en"],
+  [-1005, "JOD", "latn", "en"],
+  [-999, "JOD", "arab", "ar"],
 ];
 
 const INTEGERS = [
@@ -73,7 +83,7 @@ const DIGITS = [
   ["2026-11-18", "arab"],
   ["١٢٣", "latn"],
   ["no digits here", "arab"],
-  ["JOD 45.000", "arab"],
+  ["JOD 45.00", "arab"],
 ];
 
 const ISOLATES = [
@@ -184,22 +194,45 @@ test("an Arabic-locale amount is wrapped in an LTR isolate that is closed", () =
   assert.ok(formatted.startsWith("⁦"), "must open an LTR isolate");
   assert.ok(formatted.endsWith("⁩"), "must close it");
   // The isolate is what stops JOD jumping to the wrong side of its amount.
-  assert.equal(formatted, "⁦JOD 45.000⁩");
+  assert.equal(formatted, "⁦JOD 45.00⁩");
 });
 
 test("an English amount carries no bidi control at all", () => {
   const formatted = formatMoney(45000, "JOD", "latn", "en");
-  assert.equal(formatted, "JOD 45.000");
+  assert.equal(formatted, "JOD 45.00");
   assert.ok(!/[‪-‮⁦-⁩]/u.test(formatted));
 });
 
-test("JOD keeps three minor digits and USD two", () => {
-  assert.equal(formatMoney(1, "JOD", "latn", "en"), "JOD 0.001");
+test("both currencies show two decimals, because Veyro is a retail product", () => {
+  // The design system, verbatim: "JOD is three decimals in banking and two in retail --
+  // Veyro is a retail product and shows two everywhere, including exports, so a
+  // reconciliation never has to guess which convention a column used." All 206 JOD figures
+  // drawn across the design folder use two decimals and none uses three; this app rendered
+  // three on every money figure on every screen until the storage exponent and the display
+  // precision became two tables.
+  assert.equal(formatMoney(5220, "JOD", "latn", "en"), "JOD 5.22");
   assert.equal(formatMoney(1, "USD", "latn", "en"), "USD 0.01");
 });
 
+test("a stored amount finer than the display rounds half away from zero", () => {
+  // Proration divides and `allocate` splits by largest remainder, so a sub-qirsh JOD amount
+  // is ordinary rather than exotic. One rounding rule in the build: `money.round_half_up`'s.
+  assert.equal(formatMoney(1005, "JOD", "latn", "en"), "JOD 1.01");
+  assert.equal(formatMoney(1004, "JOD", "latn", "en"), "JOD 1.00");
+  assert.equal(formatMoney(-1005, "JOD", "latn", "en"), "JOD -1.01");
+  // And the carry reaches the major part rather than stopping at the decimals.
+  assert.equal(formatMoney(999, "JOD", "latn", "en"), "JOD 1.00");
+  assert.equal(formatMoney(999995, "JOD", "latn", "en"), "JOD 1,000.00");
+});
+
+test("a fils that rounds to nothing shows as zero, which is the stated trade", () => {
+  // The honest consequence of a two-decimal retail convention over three stored decimals,
+  // and the reason the minor units are the record rather than the rendering.
+  assert.equal(formatMoney(1, "JOD", "latn", "en"), "JOD 0.00");
+});
+
 test("a negative sign sits with the amount, inside the isolate", () => {
-  assert.equal(formatMoney(-45500, "JOD", "latn", "ar"), "⁦JOD -45.500⁩");
+  assert.equal(formatMoney(-45500, "JOD", "latn", "ar"), "⁦JOD -45.50⁩");
 });
 
 test("untrusted text cannot close an isolate this code opened", () => {
@@ -223,7 +256,7 @@ test("a paragraph separator is rejected rather than stripped, and not echoed", (
 test("numbering is never derived from the locale", () => {
   // An Arabic-locale tenant on Latin numerals must get Latin numerals: the choice is the
   // tenant's, made once, and not a property of the string's language.
-  assert.equal(formatMoney(45000, "JOD", "latn", "ar"), "⁦JOD 45.000⁩");
+  assert.equal(formatMoney(45000, "JOD", "latn", "ar"), "⁦JOD 45.00⁩");
   assert.ok(!/[٠-٩]/u.test(formatMoney(45000, "JOD", "latn", "ar")));
 });
 

@@ -75,7 +75,7 @@ describe("money", () => {
   it("uses the currency's own exponent, which is three for JOD", () => {
     // The whole point: 4500 fils is 4.500 dinars, not 45.00. A hard-coded /100 is the defect
     // this test exists to catch, and it would be invisible in USD.
-    expect(money(4500, "JOD")).toContain("4.500");
+    expect(money(4500, "JOD")).toContain("4.50");
     expect(money(4500, "USD")).toContain("45.00");
   });
 
@@ -95,12 +95,12 @@ describe("money", () => {
     // The point of delegating: `formatMoney` is parity-tested against the backend's own
     // formatter, so a screen and a receipt cannot drift. This asserts the shape that
     // function produces -- the code before the amount -- which `Intl` does not.
-    expect(money(45000, "JOD")).toBe("JOD 45.000");
-    expect(money(-45500, "JOD")).toBe("JOD -45.500");
+    expect(money(45000, "JOD")).toBe("JOD 45.00");
+    expect(money(-45500, "JOD")).toBe("JOD -45.50");
   });
 
   it("formats zero rather than rendering it as empty", () => {
-    expect(money(0, "JOD")).toContain("0.000");
+    expect(money(0, "JOD")).toContain("0.00");
   });
 });
 

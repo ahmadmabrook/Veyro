@@ -82,8 +82,29 @@ const REJECTED_CONTROL = new RegExp(
 export const MAX_UNTRUSTED_TEXT_CHARS = 256;
 export const MAX_SAFE_MINOR_UNITS = Number.MAX_SAFE_INTEGER;
 
-/** ISO 4217 minor-unit exponents. A closed table: anything else fails closed. */
+/**
+ * ISO 4217 minor-unit exponents -- how an amount is **stored**. A JOD amount is a count of
+ * fils, which is a thousandth. A closed table: anything else fails closed.
+ */
 export const CURRENCY_MINOR_UNITS = { JOD: 3, USD: 2 };
+
+/**
+ * How many decimals an amount is **shown** with, which is a different question and is the
+ * design system's to answer:
+ *
+ * > "Always three-letter code plus two decimals, tabular figures, end-aligned. JOD is three
+ * > decimals in banking and two in retail -- Veyro is a retail product and shows two
+ * > everywhere, including exports, so a reconciliation never has to guess which convention a
+ * > column used."
+ *
+ * All 206 JOD figures drawn across the design folder use two decimals and none uses three.
+ * Using the storage exponent for display was the defect: every money figure on every screen
+ * in this product read `JOD 52.200` where the design reads `JOD 52.20`.
+ *
+ * **The two tables are separate on purpose.** Storage precision is what makes a proration
+ * exact and a journal balance; display precision is what a receipt and a screen agree on.
+ */
+export const CURRENCY_DISPLAY_DIGITS = { JOD: 2, USD: 2 };
 
 const ARABIC_DIGITS = Array.from({ length: 10 }, (_, i) =>
   String.fromCodePoint(0x0660 + i),
@@ -177,18 +198,35 @@ export function formatInteger(value, numbering, grouping = true) {
  */
 export function formatMoney(amountMinor, currency, numbering, locale) {
   const exponent = CURRENCY_MINOR_UNITS[currency];
-  if (exponent === undefined) throw new ConventionError("unsupported currency");
+  const digits = CURRENCY_DISPLAY_DIGITS[currency];
+  if (exponent === undefined || digits === undefined) {
+    throw new ConventionError("unsupported currency");
+  }
+  if (digits > exponent) throw new ConventionError("display precision exceeds stored precision");
   checkNumbering(numbering);
   const loc = parseLocale(locale);
   const minorTotal = requireInt(amountMinor);
-  const scale = 10 ** exponent;
-  const magnitude = Math.abs(minorTotal);
+  // **Round on the magnitude, so the carry reaches the major part**: 999 fils is 1.00 and not
+  // 0.100. Half away from zero, which is `money.round_half_up`'s rule and therefore the only
+  // rounding rule in this build -- MOD-016 shipped a second one and a reviewer found it
+  // disagreeing with the first on ordinary inputs.
+  //
+  // Sub-display amounts are reachable: proration divides and `allocate` splits by largest
+  // remainder. A column of shown line amounts therefore need not sum to the shown total,
+  // which is the ordinary property of any rounded display; the minor units are the record.
+  const dropped = exponent - digits;
+  let magnitude = Math.abs(minorTotal);
+  if (dropped) {
+    const scale = 10 ** dropped;
+    magnitude = Math.floor((magnitude + Math.floor(scale / 2)) / scale);
+  }
+  const scale = 10 ** digits;
   const major = Math.floor(magnitude / scale);
   const minor = magnitude % scale;
   let amount = formatInteger(major, numbering);
-  if (exponent) {
+  if (digits) {
     const separator = numbering === "arab" ? ARABIC_DECIMAL : ".";
-    amount += separator + shapeDigits(String(minor).padStart(exponent, "0"), numbering);
+    amount += separator + shapeDigits(String(minor).padStart(digits, "0"), numbering);
   }
   const sign = minorTotal < 0 ? "-" : "";
   const text = `${currency} ${sign}${amount}`;

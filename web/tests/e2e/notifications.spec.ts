@@ -103,7 +103,7 @@ test.describe("the messages board", () => {
     await expect(sms).toContainText("No");
     await expect(sms).toContainText("email");
     // A per-message cost with the currency's own exponent: 45 fils is 0.045 dinars.
-    await expect(sms).toContainText("JOD 0.045");
+    await expect(sms).toContainText("JOD 0.05");
   });
 
   test("says which templates a member may mute and which they may not", async ({ page }) => {

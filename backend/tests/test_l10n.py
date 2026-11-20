@@ -36,7 +36,7 @@ L10N_DIR = Path(conventions.__file__).parent
 
 
 AR_1234567 = "١٬٢٣٤٬٥٦٧"
-AR_JOD_12345 = "JOD ١٢٫٣٤٥"
+AR_JOD_12345 = "JOD ١٢٫٣٥"
 
 
 class LocaleTests(unittest.TestCase):
@@ -114,18 +114,44 @@ class DigitTests(unittest.TestCase):
 
 
 class MoneyTests(unittest.TestCase):
-    def test_hp_iso_code_and_minor_units(self):
-        self.assertEqual(format_money(12345, "JOD", "latn", "en"), "JOD 12.345")
+    def test_hp_iso_code_and_two_display_decimals(self):
+        """**Stored in minor units, shown at the display precision**, which differ for JOD.
+
+        An amount is a count of fils; the design system shows two decimals -- "JOD is three
+        decimals in banking and two in retail -- Veyro is a retail product and shows two
+        everywhere, including exports, so a reconciliation never has to guess which
+        convention a column used". All 206 JOD figures drawn across the design folder use
+        two decimals and none uses three.
+        """
+        self.assertEqual(format_money(12345, "JOD", "latn", "en"), "JOD 12.35")
         self.assertEqual(format_money(5, "USD", "latn", "en"), "USD 0.05")
-        self.assertEqual(format_money(7, "JOD", "latn", "en"), "JOD 0.007")
+        # Seven fils rounds to nothing at the display precision, which is the stated trade:
+        # the minor units are the record and this is the rendering.
+        self.assertEqual(format_money(7, "JOD", "latn", "en"), "JOD 0.01")
+        self.assertEqual(format_money(4, "JOD", "latn", "en"), "JOD 0.00")
+
+    def test_bnd_display_rounding_is_half_away_from_zero_and_carries(self):
+        """One rounding rule in the build -- `money.round_half_up`'s.
+
+        MOD-016 shipped a second one (`round(... * 10_000 / list)`, Python's banker's
+        rounding on a float) and a reviewer found it disagreeing with the first on ordinary
+        inputs. A display convention is no different: two rules would put two numbers on one
+        receipt.
+        """
+        self.assertEqual(format_money(1005, "JOD", "latn", "en"), "JOD 1.01")
+        self.assertEqual(format_money(1004, "JOD", "latn", "en"), "JOD 1.00")
+        self.assertEqual(format_money(-1005, "JOD", "latn", "en"), "JOD -1.01")
+        # The carry reaches the major part, and across a thousands separator.
+        self.assertEqual(format_money(999, "JOD", "latn", "en"), "JOD 1.00")
+        self.assertEqual(format_money(999995, "JOD", "latn", "en"), "JOD 1,000.00")
 
     def test_hp_arabic_text_isolates_money_ltr(self):
-        self.assertEqual(format_money(12345, "JOD", "latn", "ar"), LRI + "JOD 12.345" + PDI)
+        self.assertEqual(format_money(12345, "JOD", "latn", "ar"), LRI + "JOD 12.35" + PDI)
         self.assertEqual(format_money(12345, "JOD", "arab", "ar"), LRI + AR_JOD_12345 + PDI)
         self.assertEqual(format_money(12345, "JOD", "arab", "en"), AR_JOD_12345)
 
     def test_bnd_zero_negative_and_very_large(self):
-        self.assertEqual(format_money(0, "JOD", "latn", "en"), "JOD 0.000")
+        self.assertEqual(format_money(0, "JOD", "latn", "en"), "JOD 0.00")
         self.assertEqual(format_money(-5, "USD", "latn", "en"), "USD -0.05")
         self.assertEqual(format_money(10**20, "USD", "latn", "en"), "USD 1" + ",000" * 6 + ".00")
 
@@ -283,18 +309,18 @@ class FixtureTests(unittest.TestCase):
     def test_hp_english_and_arabic_lines(self):
         en = render_balance_line("en", "latn", "Sara", 1234, "JOD")
         self.assertEqual(
-            en, {"lang": "en", "dir": "ltr", "text": f"Balance for {FSI}Sara{PDI}: JOD 1.234"}
+            en, {"lang": "en", "dir": "ltr", "text": f"Balance for {FSI}Sara{PDI}: JOD 1.23"}
         )
         ar = render_balance_line("ar", "latn", "Sara", 1234, "JOD")
         self.assertEqual(
             ar,
-            {"lang": "ar", "dir": "rtl", "text": f"رصيد {FSI}Sara{PDI}: {LRI}JOD 1.234{PDI}"},
+            {"lang": "ar", "dir": "rtl", "text": f"رصيد {FSI}Sara{PDI}: {LRI}JOD 1.23{PDI}"},
         )
 
     def test_hp_mixed_script_name_and_arabic_numbering(self):
         line = render_balance_line("ar", "arab", "أحمد Ahmed 42", 1234, "JOD")
         self.assertIn(f"{FSI}أحمد Ahmed 42{PDI}", line["text"])
-        self.assertIn(f"{LRI}JOD ١٫٢٣٤{PDI}", line["text"])
+        self.assertIn(f"{LRI}JOD ١٫٢٣{PDI}", line["text"])
 
     def test_locale_switch_changes_lang_dir_text_only(self):
         for numbering in ("latn", "arab"):
@@ -473,8 +499,8 @@ class HostileControlTests(unittest.TestCase):
 
     def test_sec_trusted_template_and_amount_remain_protected(self):
         line = render_balance_line("ar", "latn", "Sara" + RLO, 1234, "JOD")
-        self.assertEqual(line["text"], f"رصيد {FSI}Sara{PDI}: {LRI}JOD 1.234{PDI}")
-        self.assertEqual(format_money(1, "JOD", "latn", "ar"), LRI + "JOD 0.001" + PDI)
+        self.assertEqual(line["text"], f"رصيد {FSI}Sara{PDI}: {LRI}JOD 1.23{PDI}")
+        self.assertEqual(format_money(1, "JOD", "latn", "ar"), LRI + "JOD 0.00" + PDI)
         template = "line1\nline2 {name}"
         out = translate("k", "en", {"name": "x"}, catalogs={"en": {"k": template}})
         self.assertEqual(out.text, "line1\nline2 x")  # trusted templates are not filtered

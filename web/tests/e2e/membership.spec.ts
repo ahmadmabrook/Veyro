@@ -48,7 +48,7 @@ test.describe("the membership blocks on a member's page", () => {
     // 45000 fils is 45.000 dinars. A hard-coded /100 would render 450.00 and every
     // assertion about the word "price" would still pass, which is the whole point.
     const row = page.getByRole("row").filter({ hasText: "GOLD-00042" });
-    await expect(row).toContainText("45.000");
+    await expect(row).toContainText("45.00");
     await expect(row).not.toContainText("450.00");
   });
 
@@ -91,7 +91,7 @@ test.describe("the membership blocks on a member's page", () => {
     // overdue and in recovery, which is what gives the Command Center its MONEY row. `INV-`
     // matched both, which is the loose-locator trap this suite already records for a
     // positional cell.
-    const row = page.getByRole("row").filter({ hasText: "52.200" });
+    const row = page.getByRole("row").filter({ hasText: "52.20" });
     await expect(row).toContainText("paid");
     await expect(page.getByText(/move independently/)).toBeVisible();
   });
@@ -100,7 +100,7 @@ test.describe("the membership blocks on a member's page", () => {
     // A payment term of zero is a real value and not the one anybody means, and the fixture
     // set both dates the same at first -- which rendered a caption repeating the date above
     // it. Caught by looking at the page.
-    const row = page.getByRole("row").filter({ hasText: "52.200" });
+    const row = page.getByRole("row").filter({ hasText: "52.20" });
     const issued = await row.textContent();
     const dates = (issued ?? "").match(/\d{4}-\d{2}-\d{2}/g) ?? [];
     expect(dates.length).toBeGreaterThanOrEqual(2);
@@ -137,7 +137,7 @@ test.describe("the membership blocks on a member's page", () => {
     const outstanding = page.getByRole("term").filter({ hasText: "Outstanding" });
     await expect(outstanding).toBeVisible();
     const value = outstanding.locator("xpath=following-sibling::dd[1]");
-    await expect(value).toContainText("30.160");
+    await expect(value).toContainText("30.16");
   });
 
   test("says the blocks are composed here rather than joined on the server", async ({
@@ -180,6 +180,6 @@ test.describe("a front desk who holds none of MOD-017's permissions", () => {
     // read. Two human-facing numbers on one page owned by two modules, and the test tripped
     // over the confusion the caption beside them now warns about.
     await expect(page.getByText("GOLD-00042")).toHaveCount(0);
-    await expect(page.getByText("45.000")).toHaveCount(0);
+    await expect(page.getByText("45.00")).toHaveCount(0);
   });
 });
