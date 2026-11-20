@@ -3735,6 +3735,36 @@ module's gate and renders them beside the person. Three gates, asked separately,
 reader may hold any subset -- a coach sees the membership and not the money -- and a refused
 block says it was refused rather than rendering empty.
 
+**MOD-013's board is the opposite problem: the module works and nothing sends.** There is no
+provider, no SMTP and no outbound request, so every notification sits at `requested` for ever
+-- and the honest thing to render is an absence. The waiting count leads the page with the
+sentence that says what it means: not a backlog to clear, the lack of a dispatcher. A board
+showing the number alone would be claiming an outbound path there is none of.
+
+Three things the page does not show, each the server's decision rather than the surface's
+restraint: no message text, because the list route carries no rendered body on purpose and
+one that did would be a read path to everything a tenant has ever said to anybody under one
+permission; no address, because the tables hold a SHA-256 of `channel:address`; and no release
+control on a bounce, because only an unsubscribe may be lifted, so the page says which kind a
+row is rather than offering a button that would be refused.
+
+**And the decision reason was rendering as its stored enum.** `no_preference_stops_it` tells
+a reader nothing they can act on -- "a rule id is not a reason", which MOD-005's board learned
+about flags, met again one module over. The eight reasons read as sentences now, and an
+unknown value falls through to its raw form rather than to "unknown": the set is the module's
+and may grow, and hiding a decision somebody needs to see is worse than showing an ugly one.
+
+**The first fix for that was itself a defect, and only the other locale showed it.** The
+sentences went into a `Record<string, string>` in the library -- English prose, rendered
+straight to the page -- so the most explanatory field on the Arabic board read in English
+while every heading, caption and empty state around it was correct. `MESSAGE_KEYS` compares
+the two catalogues against each other and is structurally blind to a string that never became
+a key, so no assertion could have found it; it was found by switching the language and
+looking. The map returns a `MessageKey` now, a component test asserts every key it maps to
+exists in **both** catalogues, and a browser test reads the Arabic sentence off the Arabic
+page. The rule is in `.claude/rules/backend/mod004-rls.md` beside the other evidence rules,
+because the blind spot is the check's and not this module's.
+
 **MOD-009's board is the disclosure, finally somewhere a person can look.** 17 subject-bearing
 columns are erased or anonymised and 371 survive, and that ratio is the most important thing
 this build knows about itself. Three decisions carry the block:
@@ -3852,8 +3882,9 @@ initially asserted the *wrong* number and failed for that reason, which is the c
 arriving in the evidence before it could arrive in the product.
 
 Known gaps: the surface covers the sign-in, the step-up, MOD-004, MOD-008, MOD-010, MOD-011,
-MOD-005, MOD-009, MOD-014, MOD-016, MOD-017, MOD-018, MOD-019, MOD-021 and MOD-022, plus
-MOD-020's roster on a session. The other four implemented modules have no screens yet,
+MOD-005, MOD-009, MOD-013, MOD-014, MOD-016, MOD-017, MOD-018, MOD-019, MOD-021 and
+MOD-022, plus MOD-020's roster on a session. The other three implemented modules have no
+screens yet,
 which is the bulk of the remaining work; MOD-019's own surface is read-only -- publishing a
 schedule, substituting an instructor and cancelling a session are all built on the server and
 none has a form, which is the same gap the hierarchy has and for the same reason: every one of
@@ -3873,8 +3904,8 @@ is part of it. So "implemented" above is accurate about the server plane and inc
 the product for every module except MOD-022, and the backlog has two halves.
 
 The first is the screens the eighteen built modules do not have. `web/` covers the sign-in, the
-step-up, MOD-004, MOD-005, MOD-008, MOD-009, MOD-010, MOD-011, MOD-014, MOD-016, MOD-017,
-MOD-018, MOD-019, MOD-020's roster, MOD-021 and MOD-022;
+step-up, MOD-004, MOD-005, MOD-008, MOD-009, MOD-010, MOD-011, MOD-013, MOD-014, MOD-016,
+MOD-017, MOD-018, MOD-019, MOD-020's roster, MOD-021 and MOD-022;
 `contracts/ui/screen-contracts.yaml` names the rest, and
 the work is per module rather than per screen because each one needs its gate, its masked
 fields and its failure states wired the way those are. The second is the modules themselves: MOD-023 (Coach Workspace, which

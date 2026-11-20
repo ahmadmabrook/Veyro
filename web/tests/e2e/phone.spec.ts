@@ -42,6 +42,7 @@ const surfaces: [string, string][] = [
   ["a product", `/catalog?product=${creds.productId}`],
   // The widest table in the app: twenty areas against a column of prose.
   ["the privacy board", "/privacy"],
+  ["the messages board", "/notifications"],
 ];
 
 test.describe("at phone width", () => {

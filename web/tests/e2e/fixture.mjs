@@ -20,7 +20,7 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { existsSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
@@ -319,7 +319,12 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
                     // `mem_contract_versions_publisher_is_not_author` compares the two
                     // identities, so the owner cannot publish what the owner drafted and a
                     // fixture with one session could not write this fixture at all.
-                    "membership.contract.publish"],
+                    "membership.contract.publish",
+                    // **And the template approval**, which is the same two-act shape: a
+                    // template goes out under the tenant's name to everybody, so its author
+                    // cannot approve it -- MOD-008's separation of duties applied to content,
+                    // and a constraint rather than a convention.
+                    "notifications.template.approve"],
       correlation_id: cid(),
     },
   });
@@ -1059,6 +1064,70 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
             summary: "A door reader was offline for twenty minutes",
             detected_at: new Date(Date.now() - 2 * 86400000).toISOString(),
             personal_data_involved: "no", correlation_id: cid() },
+  });
+
+  // ---------------------------------------------------------------- MOD-013, messages
+  //
+  // **Two templates and two suppressions, because each pair is a distinction.** One template
+  // is `transactional`, which a member cannot mute, and one is `marketing`, which they can --
+  // the category is what decides whether a consent record is required and whether an opt-out
+  // can stop the message, and a board with one of them shows neither side. One suppression is
+  // an unsubscribe, which may be lifted; the other a bounce, which may not, because it is the
+  // channel's judgement about deliverability rather than the tenant's choice.
+  //
+  // **The author is not the approver**, by constraint: a template goes out under the tenant's
+  // name to everybody, which is MOD-008's separation of duties applied to content.
+  await call("/notifications/channels", {
+    method: "PUT", ...as(token),
+    body: { channel: "email", enabled: true, fallback_channel: null,
+            cost_per_message_minor: 2, currency: "JOD", correlation_id: cid() },
+  });
+  await call("/notifications/channels", {
+    method: "PUT", ...as(token),
+    body: { channel: "sms", enabled: false, fallback_channel: "email",
+            cost_per_message_minor: 45, currency: "JOD", correlation_id: cid() },
+  });
+
+  const templates = {};
+  for (const [key, category, subject] of [
+    ["payment.failed", "transactional", "Your payment did not go through"],
+    ["class.offer", "marketing", "A class you might like"],
+  ]) {
+    const made = await call("/notifications/templates", {
+      method: "POST", ...as(token),
+      body: { template_key: key, version: 1, category, channel: "email", locale: "en",
+              subject, body: "Hello {{ name }}.", variables: ["name"],
+              correlation_id: cid() },
+    });
+    await call(`/notifications/templates/${made.template_id}/approve`, {
+      method: "POST", ...as(publisherToken), body: { correlation_id: cid() },
+    });
+    // Publishing is `template.write`, which the author holds; only the approval has to be
+    // somebody else.
+    await call(`/notifications/templates/${made.template_id}/publish`, {
+      method: "POST", ...as(token), body: { correlation_id: cid() },
+    });
+    templates[key] = made.template_id;
+  }
+
+  // A digest of `channel:address`, computed exactly as `delivery.address_digest` does. The
+  // address itself never reaches this build's notification tables, which is the point.
+  const digestOf = (channel, address) =>
+    createHash("sha256").update(`${channel}:${address}`).digest("hex");
+
+  await call("/notifications", {
+    method: "POST", ...as(token),
+    body: { template_key: "payment.failed", recipient_id: person.person_id,
+            address_digests: { email: digestOf("email", "jane.member@veyro.test") },
+            idempotency_key: randomUUID(), variables: { name: "Jane" },
+            correlation_id: cid() },
+  });
+
+  await call("/notifications/suppressions", {
+    method: "POST", ...as(token),
+    body: { channel: "email", address_digest: digestOf("email", "left@veyro.test"),
+            reason: "unsubscribed", detail: "asked to stop at the front desk",
+            correlation_id: cid() },
   });
 
   // **A consumer the relay can route to.** Without one the outbox is fanned out to nobody and

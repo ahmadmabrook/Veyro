@@ -611,6 +611,17 @@ not-run: the harness reporting a gap it had created, which is the same false gre
 other paragraph here arriving by a route none of them cover. Encode the newlines and decode
 them at the psql boundary.
 
+**A string that never became a message key is invisible to the parity check, and the check
+cannot be made to see it.** `MESSAGE_KEYS` compares the two catalogues against each other --
+in both directions now -- so it catches a key present in one and missing from the other, and
+is structurally blind to English prose held in a `Record<string, string>` in a library and
+rendered straight to the page. MOD-013's board shipped eight decision reasons that way, so
+the single most explanatory field on an Arabic page read in English while every heading,
+caption and empty state around it was correct. **No assertion about structure can find this
+and none did**: it was found by switching the language and looking at the page. The durable
+answer is a test per module that asserts every key *that module maps to* exists in both
+catalogues, which is the parity check run from the side the catalogue cannot see.
+
 **A surface branch no fixture can reach is the same vacuity, one layer up, and it has now
 happened four times in four modules.** `Alert`'s `warning` tone with no period in `closing`;
 the promotion block with only a live promotion seeded; the legal-hold list rendering a

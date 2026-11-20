@@ -600,6 +600,45 @@ const MUTATIONS = [
     grep: "says reachability is worked out rather than stored",
   },
   {
+    id: "notify-reason-is-a-sentence",
+    why: "`no_preference_stops_it` tells a reader nothing they can act on -- 'a rule id is "
+      + "not a reason', which MOD-005's board learned about flags",
+    file: "src/lib/notifications.ts",
+    from: "  return REASON_KEYS[reason] ?? null;",
+    to: "  return null;",
+    grep: "decision reason as a sentence",
+  },
+  {
+    id: "notify-says-nothing-sends",
+    why: "every notification sits at `requested` for ever because no dispatcher exists, and "
+      + "a board rendering that as a queue making progress claims an outbound path there is "
+      + "none of",
+    file: "src/app/notifications/page.tsx",
+    from: '        <Alert tone="warning">{text("notify.nothingSends")}</Alert>',
+    to: "        {null}",
+    grep: "leads with the fact that nothing sends",
+  },
+  {
+    id: "notify-only-an-unsubscribe-can-be-lifted",
+    why: "a bounce is the channel's judgement about deliverability, and a tenant that could "
+      + "clear one would be choosing to keep sending to an address that rejected them",
+    file: "src/lib/notifications.ts",
+    from: '  return suppression.reason === "unsubscribed";',
+    to: "  return true;",
+    runner: "vitest",
+    grep: "true only for an unsubscribe",
+  },
+  {
+    id: "notify-suppressed-is-not-waiting",
+    why: "a suppression is a decision the module made and recorded a reason for; counting it "
+      + "as waiting would inflate the one number on the page that means nothing sends",
+    file: "src/lib/notifications.ts",
+    from: '  if (notification.status === "suppressed") return "decided";',
+    to: '  if (notification.status === "suppressed") return "no_dispatcher";',
+    runner: "vitest",
+    grep: "suppressed message decided",
+  },
+  {
     id: "privacy-residue-is-grouped",
     why: "371 rows of column names is a wall rather than a disclosure, and the grouping is "
       + "what makes the shape of what survives legible at all",
