@@ -193,6 +193,65 @@ accessibility, RTL and responsive behaviour must be.
 | Contrast matrix | `CONTRAST` | implemented, spec verified |
 | Numerals identical on screen and receipt | `ARABIC_RULES` | implemented, spec verified |
 
+## The screen designs exist, and the registry is not them
+
+**`screen-contracts.yaml` is an identity registry and says so**: every contract field is
+`null` and the manifest reads "IDENTITY_ONLY - full screen contracts are UNRESOLVED". That is
+true of the registry data file it was generated from. It was then read as true of the *design
+folder*, which it is not.
+
+The `V1 Batch *` documents carry screens **rendered**, with their exact copy, their column
+sets, their quick filters, their bulk actions, their empty and error states, and an eyebrow
+stating the roles, the density and the width each was drawn at. ADM-MEM-05 is the example
+worth knowing:
+
+> ADM-MEM-05 · MEMBERS LIST · CM, RECEP · COMPACT · 1440
+> 4,812 rows, and the three you need
+> … Owes money · 18 · Expiring · 14 · Not visited 30d · 214 · ＋ Filter · Save this view
+> … 3 selected · Send message · Send payment links · Add to segment
+> … Showing 1–50 of 18 matching · 4,812 total · Columns · Export · needs approval
+> **There is no state where 4,812 rows render.**
+
+Seven columns, three quick filters, a saved-view control, a bounded selection with an explicit
+"select all 18 matching", an export behind an approval, and a stated scale rule. None of that
+was in the registry, and none of it is in this app.
+
+`web/src/design/screens.mjs` extracts all of it to `screens.generated.json`, pinned by
+SHA-256 and checked by `npm run design:check` like the contracts. **37 of the 170 screens have
+a design this detailed; the other 133 have identity only** — a name and a ux group — which is
+a genuine gap in the source rather than something to invent around.
+
+### And the existing surface does not follow the design's information architecture
+
+This is the deepest fidelity gap and it is structural rather than visual. `web/` is organised
+by **backend module**: a configuration board, a privacy board, an operations board, a fleet
+board, an integrations board. The design is organised by **what an operator does**: Command,
+CRM, Members, Membership, Payments, Scheduling, Staff, Settings, Reports, Comms, Automation,
+Tasks, Access, POS admin.
+
+Five of the existing screens have no screen contract at all, because no screen in the registry
+corresponds to them. The others map loosely:
+
+| Existing | Nearest design | Fidelity |
+| --- | --- | --- |
+| `/login` | ADM-AUTH-01 Admin sign-in | layout not compared |
+| `/step-up` | ADM-AUTH-02 Sensitive action re-auth | layout not compared |
+| `/organization` | ADM-SET-01, ADM-SET-02 | not compared |
+| `/people` | ADM-MEM-11 Merge duplicate members (partially) | the members list ADM-MEM-05 specifies does not exist |
+| `/people/{id}` | ADM-MEM-01/02 Member 360 | sections exist; the design's tabs and spine do not |
+| `/schedule` | ADM-SCH-01 Class schedule · **week grid** | a list, not a week grid |
+| `/schedule/{id}` | ADM-SCH-02 Class detail and roster | partial |
+| `/access`, `/access/{id}` | ADM-ACC-01, ADM-ACC-02 | partial |
+| `/permissions` | ADM-STF-04, ADM-SET-08 | partial |
+| `/catalog` | ADM-POS-01, ADM-POS-03 | partial |
+| `/finance` | ADM-PAY-01 Payments ledger | different subject — this is the GL, not the payments ledger |
+| `/notifications` | ADM-COM-02, ADM-COM-04 | partial |
+| `/configuration`, `/privacy`, `/operations`, `/fleet`, `/integrations` | **none** | module surfaces with no design |
+| `/account` | MBR-33 Security and devices (Member surface) | built without reading it |
+
+Correcting this is the bulk of the remaining frontend work, and it is per screen rather than
+per module.
+
 ## Screens — 170
 
 Tracked in `contracts/ui/screen-contracts.yaml` by identity. Every screen is `—` until its

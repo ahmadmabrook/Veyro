@@ -24,7 +24,8 @@
     "fixture": "node tests/e2e/fixture.mjs",
     "e2e:mutate": "node tests/e2e/mutate.mjs",
     "design:extract": "node src/design/extract.mjs",
-    "design:check": "node src/design/extract.mjs --check"
+    "design:check": "node src/design/extract.mjs --check && node src/design/screens.mjs --check",
+    "design:screens": "node src/design/screens.mjs"
   },
   "dependencies": {
     "next": "16.4.6",

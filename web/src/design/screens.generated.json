@@ -1,0 +1,431 @@
+{
+  "manifest": "veyro-screen-designs",
+  "note": "Extracted from the authoritative design source. Generated; do not edit by hand. Regenerate with: npm run design:screens",
+  "authority": "These are the screen designs. contracts/ui/screen-contracts.yaml is the identity registry and carries no layout; this carries what each screen actually specifies.",
+  "sources": [
+    {
+      "file": "veyro-product-experience-design/project/Veyro V1 Admin Billing and Ops.dc.html",
+      "sha256": "bbff8fc0c2b547eb483db36122a621fe5dda7e36715196b8320da43d7c5ec3a3",
+      "sections": 3
+    },
+    {
+      "file": "veyro-product-experience-design/project/Veyro V1 Admin Members and Membership.dc.html",
+      "sha256": "cb31ea40e387ac60455f27f4557b3688f8ed7c2460a0c64888e3383cd54f18e6",
+      "sections": 2
+    },
+    {
+      "file": "veyro-product-experience-design/project/Veyro V1 Batch F Command and CRM.dc.html",
+      "sha256": "b6d121364f9c2bd7f5accc125df3332418a704b660e7549365d13bcc28f62b62",
+      "sections": 3
+    },
+    {
+      "file": "veyro-product-experience-design/project/Veyro V1 Batch G Member Record and Lifecycle.dc.html",
+      "sha256": "87493a2cde59756879225e89e81016e900710fa8dd0c37743eb75a9c9d05bdbb",
+      "sections": 3
+    },
+    {
+      "file": "veyro-product-experience-design/project/Veyro V1 Batch H Payments and Retail.dc.html",
+      "sha256": "3441543aae85e724731bbfb97f46c1a6e021c4b428413287cdda72a77f8362f9",
+      "sections": 3
+    },
+    {
+      "file": "veyro-product-experience-design/project/Veyro V1 Batch I Scheduling and Access.dc.html",
+      "sha256": "111b29402caa286a735172025d5b7b2d5736027a5a008e7907834df5f9d0c44a",
+      "sections": 3
+    },
+    {
+      "file": "veyro-product-experience-design/project/Veyro V1 Batch J Staff and Communication.dc.html",
+      "sha256": "954e6e1d1ab2c0ad56bf9d9257bfca5b9a8c325a8d0a8792cc6913d9bab0303d",
+      "sections": 3
+    },
+    {
+      "file": "veyro-product-experience-design/project/Veyro V1 Batch K Automation Reports and AI.dc.html",
+      "sha256": "ffa120b0472da056d5e2bc0289e21adf393ac6bfa8d8196b32dff0692b836a7f",
+      "sections": 3
+    },
+    {
+      "file": "veyro-product-experience-design/project/Veyro V1 Batch L Settings Search and Auth.dc.html",
+      "sha256": "eb5ef24a297759c1edb38ac999b203c629e925fd43fce8626e81319416db24bf",
+      "sections": 3
+    }
+  ],
+  "screen_ids": [
+    "ADM-ACC-01",
+    "ADM-AUT-01",
+    "ADM-AUT-03",
+    "ADM-AUTH-01",
+    "ADM-CC-06",
+    "ADM-CC-07",
+    "ADM-COM-01",
+    "ADM-COM-02",
+    "ADM-CRM-02",
+    "ADM-CRM-03",
+    "ADM-MEM-05",
+    "ADM-MEM-06",
+    "ADM-MEM-09",
+    "ADM-MSH-01",
+    "ADM-MSH-02",
+    "ADM-MSH-05",
+    "ADM-MSH-07",
+    "ADM-PAY-03",
+    "ADM-PAY-04",
+    "ADM-PAY-05",
+    "ADM-PAY-07",
+    "ADM-PAY-08",
+    "ADM-PAY-09",
+    "ADM-PAY-10",
+    "ADM-POS-01",
+    "ADM-RPT-01",
+    "ADM-SCH-02",
+    "ADM-SCH-03",
+    "ADM-SCH-04",
+    "ADM-SCH-07",
+    "ADM-SET-01",
+    "ADM-SET-03",
+    "ADM-SET-06",
+    "ADM-SRCH-01",
+    "ADM-STF-01",
+    "ADM-STF-04",
+    "ADM-TSK-01"
+  ],
+  "screens": [
+    {
+      "ids": [
+        "ADM-PAY-03"
+      ],
+      "eyebrow": "ADM-PAY-03 · INVOICE DETAIL · ACCT, CM · DEFAULT",
+      "context": [
+        "INVOICE DETAIL",
+        "ACCT, CM",
+        "DEFAULT"
+      ],
+      "file": "veyro-product-experience-design/project/Veyro V1 Admin Billing and Ops.dc.html",
+      "text": "letter-spacing:.1em\">ADM-PAY-03 · INVOICE DETAIL · ACCT, CM · DEFAULT\nOne invoice, and its life\nINV-20418 UNPAID · 2 DAYS LATE\nAhmad Nabulsi · issued 17 Aug · due 17 Aug · Khalda\nTake payment ⋯\nDESCRIPTION\nQTY\nAMOUNT\nClub membership · August\n1–31 Aug · monthly rolling · tax exempt\n1\n55.00\nTotal\nJOD 55.00\nWHAT HAS HAPPENED TO THIS INVOICE\n17 Aug 06:00 Issued and charged automatically\n17 Aug 06:01 Declined · card expired · Visa ···4417\n18 Aug 06:00 Retry 1 declined · same reason\n19 Aug 06:12 Retry 2 declined · dunning stopped, 2 of 2 used\n19 Aug 06:13 Reminder drafted, awaiting approval\nJOFOTARA Not submitted — e-invoices are sent on payment, not issue\nJordan requires submission of the settled transaction. An unpaid invoice has nothing to report yet, so this state is correct rather than a failure.\nSTATES · ADM-PAY-03\nPaid — status badge in success, JoFotara reference shown, Take payment replaced by Receipt. Refunded — original preserved, refund shown as a linked negative document, never an edit. Disputed — evidence deadline banner. Void — struck, reason and author recorded. JoFotara rejected — the field at fault named, with a fix-and-resubmit action.\nIMMUTABILITY\nIssued invoices are never edited. Corrections are credit notes with their own number and a link to the original. There is no edit affordance on this screen at any permission level — which is a design decision, not a missing feature, and the reason the timeline can be trusted as an audit trail.\nPERMISSIONS\nAccountant and Club Manager see everything here. Reception sees the invoice and Take payment but not the ⋯ menu (void, credit note, resend to JoFotara). Coach has no route to this screen at all.\n<div style=\"font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;"
+    },
+    {
+      "ids": [
+        "ADM-PAY-05",
+        "ADM-SCH-02"
+      ],
+      "eyebrow": "ADM-PAY-05 · FAILED PAYMENT RECOVERY · ADM-SCH-02 · CLASS ROSTER",
+      "context": [
+        "FAILED PAYMENT RECOVERY",
+        "CLASS ROSTER"
+      ],
+      "file": "veyro-product-experience-design/project/Veyro V1 Admin Billing and Ops.dc.html",
+      "text": "letter-spacing:.1em\">ADM-PAY-05 · FAILED PAYMENT RECOVERY · ADM-SCH-02 · CLASS ROSTER\nTwo workspaces\nADM-PAY-05 · RECOVERY · OPENED FROM THE COMMAND CENTER\n6 failed payments · JOD 312.00\nAll retries exhausted · no access blocked\nSend all 6 links\n☑\n{{ r.name }}\n{{ r.reason }}\n{{ r.amount }}\n{{ r.hint }}\nThe message they receive\nHi Ahmad — your August payment of JOD 55.00 didn't go through because your card expired. You can pay here: veyro.link/p/8k2m . You're still able to train as normal.\nSent in the member's chosen language. Each link is single-use and member-specific. Two of the six have withdrawn marketing consent — this is a service message, so it still sends, and the distinction is enforced by the system rather than left to the sender.\nWhy this is a workspace and not a list: the six are one decision, not six. Reviewing each individually is available but is the slower path, and the batch action is the default because the recommended treatment is identical for all six.\nADM-SCH-02 · CLASS ROSTER · THU 19:00 SPIN\nSpin · Thursday 19:00\nStudio 2 · 20 bikes · Khalda\nNO COACH\n18\nBOOKED\n2\nFREE\n3\nWAITLIST\n92%\nUSUAL FILL\nBOOKED · 18\nDana Qasem booked 6d ago\nHala Barakat 2 no-shows\nLina Haddad booked 2d ago\nShow 15 more\nAssign a coach\nMessage the 18\nCancel class\nCancelling opens ADM-SCH-07 , which requires a message and offers each member a credit or a transfer to Friday before it commits. A class cancellation that silently notifies nobody is the single most damaging thing this screen could allow.\n<div style=\"font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;"
+    },
+    {
+      "ids": [
+        "ADM-COM-01",
+        "ADM-SET-03"
+      ],
+      "eyebrow": "ADM-COM-01 · WHATSAPP · ADM-SET-03 · JOFOTARA",
+      "context": [
+        "WHATSAPP",
+        "JOFOTARA"
+      ],
+      "file": "veyro-product-experience-design/project/Veyro V1 Admin Billing and Ops.dc.html",
+      "text": "letter-spacing:.1em\">ADM-COM-01 · WHATSAPP · ADM-SET-03 · JOFOTARA\nTwo Jordan-shaped screens\nADM-COM-01 · WHATSAPP · AHMAD NABULSI\nMarketing consent withdrawn 12 Jul. Service messages about payments, bookings and access are still permitted. Promotional templates are unavailable for this member and do not appear below.\nHi, is the 19:00 spin on Thursday still running?\nAhmad · 18:22\nYes — we're confirming the coach today and I'll message you by this evening.\nLayla · 18:31 · read\nGreat, thanks\nAhmad · 18:33\nPayment link\nClass confirmed\nRenewal due\nWrite a reply… Send\nOutside the 24-hour window only approved templates can open a conversation — free text is disabled and the reason is stated inline rather than the Send button silently failing.\nADM-SET-03 · TAX & E-INVOICING · JORDAN\nTax and invoicing\nNadi Group · Jordan · JOD\nTAX NUMBER\n1099238471\nSALES TAX RATE\n16% Retail only. Memberships are exempt in Jordan.\nCONNECTED JoFotara e-invoicing\nSubmitting since 14 June. 1,847 invoices sent, 3 rejected this month — all three for a missing buyer tax number, all corrected and resubmitted.\nTest connection Submission log\nBuyer tax number is required for business sales. When a member is registered as a company, the field becomes mandatory at the point of sale rather than failing later at submission — which is what caused this month's three rejections, and is now prevented upstream.\nGlobal shape, local content. This screen is TaxIntegration — JoFotara is the Jordan adapter. A UK tenant sees HMRC MTD in the same frame with different fields. Nothing here is hard-coded to Jordan except the adapter's own configuration.\nREMAINING ADMIN V1 · SPECIFIED AGAINST DRAWN SHAPES\nThirty-three screens, each named and dimensioned\nEvery row states its parent shape, what differs, its states and its permission behaviour. That is the engineering-handoff bar from §64 — an implementer needs no product decision from any of these, only the component library and this row.\nSCREEN ID\nSCREEN\nPARENT SHAPE\nWHAT DIFFERS · STATES · PERMISSIONS\n{{ s.id }}\n{{ s.name }}\n{{ s.parent }}\n{{ s.diff }}"
+    },
+    {
+      "ids": [
+        "ADM-MEM-05"
+      ],
+      "eyebrow": "ADM-MEM-05 · MEMBERS LIST · CM, RECEP · COMPACT · 1440",
+      "context": [
+        "MEMBERS LIST",
+        "CM, RECEP",
+        "COMPACT",
+        "1440"
+      ],
+      "file": "veyro-product-experience-design/project/Veyro V1 Admin Members and Membership.dc.html",
+      "text": "letter-spacing:.1em\">ADM-MEM-05 · MEMBERS LIST · CM, RECEP · COMPACT · 1440\n4,812 rows, and the three you need\nMembers\n4,812 active · 312 expired · 68 frozen · all locations\nAdd member\n⌕ Name, phone, email, member ID\nOwes money · 18\nExpiring · 14\nNot visited 30d · 214\n＋ Filter\nSave this view\n3 selected\nSend message\nSend payment links\nAdd to segment\nClear\nMEMBER\nPLAN\nCLUB\nBALANCE\nRENEWS\nLAST VISIT\nSTATE\n{{ m.check }}\n{{ m.name }}\n{{ m.plan }}\n{{ m.club }}\n{{ m.balance }}\n{{ m.renews }}\n{{ m.visit }}\n{{ m.state }}\nShowing 1–50 of 18 matching · 4,812 total\nColumns\nExport · needs approval\nSCALE · 500 TO 100,000\nNothing on this screen enumerates the full set. Filters query server-side, the count states matches against total, selection is bounded to the loaded page with an explicit “select all 18 matching” when a filter is active. There is no state where 4,812 rows render. At 100,000 the only change is that the unfiltered default becomes “recently active” rather than everyone.\nSTATES · ADM-MEM-05\nEmpty search names the query and offers to clear filters, never “no data”. Loading is 12 skeleton rows at 34px. Restricted — a receptionist sees the table without the balance column and without Export. Bulk in progress shows per-row outcome, not a modal spinner. Partial failure on a bulk send lists which failed and offers retry on those only.\nKEYBOARD\n/ focuses search · ↑↓ moves the row cursor · Space selects · ⇧↑↓ extends · ⏎ opens Member 360 · Esc clears selection. The table is one tab stop; the row cursor is not focus, so screen readers announce the row without the grid stealing tab order.\n<div style=\"font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;"
+    },
+    {
+      "ids": [
+        "ADM-MSH-01",
+        "ADM-MSH-05",
+        "ADM-MSH-07"
+      ],
+      "eyebrow": "ADM-MSH-01 · ADM-MSH-05 · ADM-MSH-07 · THE THREE CONSEQUENCE-HEAVY ACTIONS",
+      "context": [
+        "ADM-MSH-05",
+        "THE THREE CONSEQUENCE-HEAVY ACTIONS"
+      ],
+      "file": "veyro-product-experience-design/project/Veyro V1 Admin Members and Membership.dc.html",
+      "text": "letter-spacing:.1em\">ADM-MSH-01 · ADM-MSH-05 · ADM-MSH-07 · THE THREE CONSEQUENCE-HEAVY ACTIONS\nSale, upgrade, cancel\nEach shows the money consequence before the commit, and none uses a modal — they are side sheets over Member 360, so the member's context stays visible while you change their agreement.\nADM-MSH-01 · MEMBERSHIP SALE · SIDE SHEET\nSell a membership to Rana Sabbagh\nConverting from trial · day 6 of 7 · Khalda\nFlex\nOff-peak only · no classes\n40.00\nClub\nAll hours · classes included\nShe attended 4 classes on trial — this is the fit\n55.00\nClub+\nAll clubs · 2 PT sessions monthly\n78.00\nMonthly\n3 months · −5%\n12 months · −15%\nToday · pro-rata to 31 Aug JOD 21.29\nThen monthly from 1 Sep JOD 55.00\nMonthly rolling — she can cancel any time with 30 days' notice. No commitment fee.\nTake payment · 21.29\nSend her a link\nBoth figures are shown before commit. The pro-rata amount and the recurring amount are different numbers and confusing them is the most common membership-sale complaint in the industry.\nADM-MSH-05 · UPGRADE · CLUB → CLUB+\nDana Qasem · upgrade to Club+\nClub, 11 days remaining −20.17\nClub+, 11 days 28.60\nPay today JOD 8.43\nFrom 1 Sep her monthly becomes JOD 78.00, up from 55.00.\nShe gains all-clubs access and 2 PT sessions monthly, effective immediately.\nUpgrade and charge 8.43\nADM-MSH-07 · CANCEL · TIER 3\nCancel Tareq Odeh's membership\nHis 12-month commitment runs to March. Cancelling now triggers a two-month fee of JOD 80.00 , and his access ends on 7 September after the notice period.\nBefore you cancel\nHe stopped visiting 12 days ago and has not given a reason. A freeze costs him nothing and keeps the commitment intact.\nOffer a freeze instead\nREASON · REQUIRED\nMoving away, cost, unhappy, other…\nCancel membership Keep it\nREMAINING SCREENS IN THIS BATCH · SPECIFIED TO IMPLEMENTATION DEPTH\nSeven more, each a variation on what is drawn above\nThese are side sheets sharing the sale sheet's anatomy: consequence panel, reason capture where destructive, money before commit. Each row states what differs — which is what an engineer needs, and all a designer would add.\nSCREEN ID\nSCREEN\nWHAT DIFFERS FROM THE SALE SHEET\nTIER\n{{ s.id }}\n{{ s.name }}\n{{ s.diff }}\n{{ s.tier }}"
+    },
+    {
+      "ids": [
+        "ADM-CC-06"
+      ],
+      "eyebrow": "ADM-CC-06 · ATTENTION ITEM DETAIL · SIDE SHEET OVER THE COMMAND CENTER",
+      "context": [
+        "ATTENTION ITEM DETAIL",
+        "SIDE SHEET OVER THE COMMAND CENTER"
+      ],
+      "file": "veyro-product-experience-design/project/Veyro V1 Batch F Command and CRM.dc.html",
+      "text": "letter-spacing:.1em\">ADM-CC-06 · ATTENTION ITEM DETAIL · SIDE SHEET OVER THE COMMAND CENTER\nWhere an exception gets resolved\nMONEY · CRITICAL\nEXC-8841 · raised 06:12 · 2h ago\n✕\n6 payments failed overnight JOD 312.00\nFour expired cards, two insufficient funds, across Khalda and Abdoun. Veyro retried each twice on the 18th and 19th. No access is blocked — Nadi Group's policy allows 14 days' grace, so all six can train today.\nOWNER\nUnassigned\nAGE\n2h 14m\nAFFECTED\n6 members\nSOURCE\nBilling run · automatic\nTHE SIX RECORDS · EACH LINKS TO ITS MEMBER\n{{ a.name }}\n{{ a.reason }}\n{{ a.amount }}\nOpen ↗\nWHAT VEYRO HAS ALREADY DONE\n19 Aug 06:12 Billing run · 6 of 214 charges declined\n19 Aug 06:13 6 reminder messages drafted, held for approval\n19 Aug 06:13 Exception raised to the Command Center\nSend 6 payment links\nOpen recovery workspace\nAssign to…\nSnooze\nResolving from here collapses the row in the Command Center with a 30-second undo. Snoozing requires a reason and a return date — an exception cannot be dismissed, only deferred with an account of why.\nSTATES · ADM-CC-06\nUnassigned as drawn. Assigned to me shows the owner and adds Release. Assigned to someone else keeps every action visible but read-only, with \"Nadia is handling this\" and a Take over that records the handover. Resolved shows the outcome, resolver and elapsed time, and offers Reopen. Snoozed shows the reason and return date.\nPERMISSIONS\nA Club Manager sees only the two members at their club and a JOD total scoped to them. Reception can open the sheet but has no batch action — only Take payment per member. An exception a role cannot act on never enters their queue in the first place.\nKEYBOARD\nOpens with focus on the heading, not the primary action — a destructive default under a returning Enter key is how batch messages get sent by accident. Esc closes and returns focus to the originating row.\n<div style=\"font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;"
+    },
+    {
+      "ids": [
+        "ADM-CC-07",
+        "ADM-CRM-02"
+      ],
+      "eyebrow": "ADM-CC-07 · RESOLVED TODAY · ADM-CRM-02 · LEAD TABLE",
+      "context": [
+        "RESOLVED TODAY",
+        "LEAD TABLE"
+      ],
+      "file": "veyro-product-experience-design/project/Veyro V1 Batch F Command and CRM.dc.html",
+      "text": "letter-spacing:.1em\">ADM-CC-07 · RESOLVED TODAY · ADM-CRM-02 · LEAD TABLE\nTwo grids at Compact\nADM-CC-07 · RESOLVED TODAY\n7 resolved today\nMedian 41 minutes · all locations\nITEM\nRESOLVER\nTOOK\nOUTCOME\n{{ r.item }}\n{{ r.who }}\n{{ r.took }}\n{{ r.outcome }}\nRead-only for every role, including Owner. There is no un-resolve — reopening happens on the item itself and appears here as a new row, so this list is a record rather than a state.\nADM-CRM-02 · LEAD LIST · TABLE VIEW\nNo contact 48h · 7\nTrial ending · 4\nMine · 12\nBoard view\nLEAD\nSOURCE\nOWNER\nAGE\nNEXT ACTION\n{{ l.name }}\n{{ l.source }}\n{{ l.owner }}\n{{ l.age }}\n{{ l.next }}\nSame grid component as the members list at the same 34px. Sales sees their own leads by default with a Mine toggle; a Club Manager sees the team. Age is the sortable column that matters — a lead's value decays by the hour, so it carries colour where the others do not.\n<div style=\"font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;"
+    },
+    {
+      "ids": [
+        "ADM-CRM-03"
+      ],
+      "eyebrow": "ADM-CRM-03 · 04 · 05 · 06 · 07 · THE CHAIN, ONE RECORD THROUGHOUT",
+      "context": [
+        "04",
+        "05",
+        "06",
+        "07",
+        "THE CHAIN, ONE RECORD THROUGHOUT"
+      ],
+      "file": "veyro-product-experience-design/project/Veyro V1 Batch F Command and CRM.dc.html",
+      "text": "letter-spacing:.1em\">ADM-CRM-03 · 04 · 05 · 06 · 07 · THE CHAIN, ONE RECORD THROUGHOUT\nRana, from open day to member\nADM-CRM-04 · ADD LEAD\nNew lead\nName and phone are enough. Everything else can wait.\nNAME\nRana Sabbagh\nPHONE\n+962 79 411 0288\nNo existing record\nChecked as you typed against members and leads. If this number already existed, that record would open instead of a second one being created.\nSOURCE · OPTIONAL\nSweifieh open day ▾\nINTEREST · OPTIONAL\nClasses PT Gym only\nSave lead\nADM-CRM-03 · LEAD PROFILE · ADM-CRM-05 · TRIAL RUNNING\nRana Sabbagh\nSweifieh open day · Yasmin · +962 79 411 0288\nDAY 6 OF 7\nHer trial ends tomorrow\nFour visits, four classes, all spin. She has used the trial more than most — this is a conversion, not a chase.\nConvert to member\n4\nVISITS\n4\nCLASSES\n2\nDAYS LEFT\nHigh\nENGAGEMENT\nTOUCHPOINTS\nToday Attended 19:00 spin · 4th class\n15 Aug Trial started · credential issued\n13 Aug Met Yasmin at the open day · asked twice about spin\nADM-CRM-06 · CONVERT\nRana becomes a member\nClub · monthly · JOD 55.00 Pro-rata to 31 Aug · JOD 21.29 Then 55.00 from 1 Sep\nHer four class attendances, her credential and Yasmin's notes all carry over. Nothing is re-entered.\nTake 21.29 Send link\nSame record, new state. The lead ID becomes the member ID — this is the duplicate-entry fix from the UX review, enforced structurally rather than by discipline.\nADM-CRM-07 · MARK LOST\nWhy did Omar Zaid not join?\nToo expensive\nJoined somewhere else\nLocation or hours\nNo longer responding\nWhich gym, if he said…\nMark lost\nNot deleted. Reopenable, and re-contact after 90 days is a supported flow rather than a fresh record. The reason feeds source effectiveness in ADM-RPT-03.\nCOMPONENTS · SideSheet · AttentionRow(detail) · PersonRow ×6 · TimelineItem · DataGrid(Compact) ×2 · Member360Header(lead) · MetricCell ×8 · Form fields · ReasonPicker · MoneyValue · Button · zero new tokens"
+    },
+    {
+      "ids": [
+        "ADM-MEM-06"
+      ],
+      "eyebrow": "ADM-MEM-06 · 07 · 08 · MEMBER 360 SECTIONS · DEFAULT DENSITY",
+      "context": [
+        "07",
+        "08",
+        "MEMBER 360 SECTIONS",
+        "DEFAULT DENSITY"
+      ],
+      "file": "veyro-product-experience-design/project/Veyro V1 Batch G Member Record and Lifecycle.dc.html",
+      "text": "letter-spacing:.1em\">ADM-MEM-06 · 07 · 08 · MEMBER 360 SECTIONS · DEFAULT DENSITY\nBilling, attendance, documents\nADM-MEM-06 · BILLING · AHMAD NABULSI\nOUTSTANDING\n55.00\nPAID · LIFETIME\n1,485.00\nNEXT CHARGE\n21 Aug\nINVOICES\nNUMBER\nFOR\nAMOUNT\nSTATE\n{{ i.num }}\n{{ i.for }}\n{{ i.amt }}\n{{ i.state }}\nPAYMENT METHOD\nVisa ···4417 Expired July 2026\nSCHEDULE\nMonthly on the 21st Auto-renewing\nTake payment Update card\nReception sees this section without the lifetime figure and without the invoice ⋯ menu. Coach has no route to it.\nADM-MEM-07 · ATTENDANCE\n19d\nSINCE LAST\n2.8\nWEEKLY AVG\n214\nLIFETIME\nVISITS PER WEEK · 12 WEEKS\n2 Jun 19 Aug\nThree weeks at zero. The drop starts the week after his last PT session, not the week his payment failed.\nRECENT VISITS\n31 Jul Khalda · 18:40 · card\n29 Jul Khalda · 07:15 · app\n27 Jul Abdoun · 19:02 · card\nADM-MEM-08 · DOCUMENTS\n{{ d.name }} {{ d.state }}\n{{ d.dates }}\n＋ Upload a document\nHis waiver expires in 23 days. Documents inside 30 days of expiry raise a Command Center item — nobody has to remember to look here.\nMedical clearance is hidden from this view. It exists on his record and is visible only to roles with health permission. Reception sees three documents here, not four, and no indication a fourth exists.\n<div style=\"font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;"
+    },
+    {
+      "ids": [
+        "ADM-MEM-09"
+      ],
+      "eyebrow": "ADM-MEM-09 · 10 · 11",
+      "context": [
+        "10",
+        "11"
+      ],
+      "file": "veyro-product-experience-design/project/Veyro V1 Batch G Member Record and Lifecycle.dc.html",
+      "text": "letter-spacing:.1em\">ADM-MEM-09 · 10 · 11\nNotes, manual add, and the merge\nADM-MEM-09 · NOTES & COMMUNICATION\nMarketing consent withdrawn 12 Jul. Service messages permitted.\nSTAFF NOTES · INTERNAL, NEVER MEMBER-VISIBLE\nMentioned his hours changed at work — mornings may suit him better than evenings now.\nLayla · 31 Jul 18:44\nAsked about freezing rather than cancelling. Explained the allowance.\nZiad · 12 Jul 11:20\nAdd a note…\nAppend-only. Author and time are fixed at write. A correction is a new note, because a note that can be edited is not evidence of anything.\nADM-MEM-10 · ADD MEMBER MANUALLY\nNew member · walk-in\nNAME\nHala Barakat\nPHONE\n+962 79 662 4180\nThis number already has a record\nHala Barakat · Club · Sweifieh · joined Feb 2025. Continue and you will create a second record for the same person.\nOpen that record Different person\nDetection runs on phone as it is typed, before anything is saved. Preventing the duplicate costs one screen; ADM-MEM-11 exists because prevention is never perfect.\nADM-MEM-11 · MERGE DUPLICATES · TIER 3, IRREVERSIBLE\nTwo records for Hala Barakat\nPick which value survives for each field. Payment history from both always merges.\nFIELD\nM-03918 · FEB 2025\nM-04901 · TODAY\n{{ m.field }}\n{{ m.a }}\n{{ m.b }}\nThe surviving record will be M-03918 with 14 visits, 6 invoices and JOD 385.00 of history from both. The other ID stops resolving.\nTYPE THE SURVIVING ID TO CONFIRM\nM-03918\nMerge records Cancel\nA conflicting membership state — two active memberships at different clubs — blocks the merge with an explanation rather than picking one. That is a billing decision, not a data decision.\n<div style=\"font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;"
+    },
+    {
+      "ids": [
+        "ADM-MSH-02"
+      ],
+      "eyebrow": "ADM-MSH-02 · 03 · 04 · 06 · 09 · THE REST OF THE LIFECYCLE",
+      "context": [
+        "03",
+        "04",
+        "06",
+        "09",
+        "THE REST OF THE LIFECYCLE"
+      ],
+      "file": "veyro-product-experience-design/project/Veyro V1 Batch G Member Record and Lifecycle.dc.html",
+      "text": "letter-spacing:.1em\">ADM-MSH-02 · 03 · 04 · 06 · 09 · THE REST OF THE LIFECYCLE\nRenew, freeze, resume, downgrade, and the plan catalogue\nADM-MSH-02 · RENEW\nRenew Lina Haddad · Club+\nThe price has changed since she last renewed\nShe paid JOD 72.00 . Club+ is now JOD 78.00 . Tell her before you take payment.\n12 months at 78.00 936.00\nAnnual discount 15% −140.40\nToday 795.60\nTake 795.60 Monthly instead\nThe price-change disclosure is not dismissible and is not a tooltip. A member discovering a rise on their statement is a complaint; hearing it at the desk is a conversation.\nADM-MSH-03 · FREEZE\nFreeze Ahmad's membership\nFROM\n1 Sep\nUNTIL\n1 Oct\nREASON\nTravel ▾\nBilling pauses from 1 Sep · access off for the month · renewal moves to 21 Oct · his Club rate is held · 2 of 3 freeze months used this year\nFreeze Cancel\nAt 3 of 3 the action blocks and names the manager who can override. Tier 2 — undoable for 30 seconds, because a freeze applied to the wrong member is common and cheap to reverse.\nADM-MSH-04 · RESUME EARLY\nYara is back early\nFrozen until 1 October. Resuming today restarts billing and access immediately.\nRest of August · 12 days 30.19\nRenewal returns to 1 Sep\nOne freeze month is returned to her allowance — she used 1 of the 2 she booked.\nResume · take 30.19\nAccess is restored on confirm, not overnight. A member standing at the desk expects the turnstile to work before they walk away from it.\nADM-MSH-06 · DOWNGRADE · TIER 3\nDana · Club+ to Club\nShe loses\nAccess to Abdoun and Sweifieh · 2 monthly PT sessions · her 4 unused PT credits expire on 1 Sep\nTakes effect 1 September , not today — she has paid for August at the higher rate and keeps it. New monthly: JOD 55.00 .\nUse the credits first\nDowngrade from 1 Sep\nThe loss is stated before the saving, and the credit expiry is the line that matters — a member who discovers it afterwards has been quietly charged for something they never got.\nADM-MSH-09 · PLANS & PRICING · OWNER ONLY\nPLAN\nPRICE\nACTIVE\nCHANGED\nENTITLEMENTS\n{{ p.name }}\n{{ p.price }}\n{{ p.active }}\n{{ p.changed }}\n{{ p.ent }}\nRaising Club from 55.00 to 58.00\n2,140 members are on this plan. 890 are inside a fixed-term commitment and keep 55.00 until it ends. The other 1,250 move at their next renewal, the earliest on 22 August.\nEffective date required · type \"58.00\" to confirm\nThe affected count is computed before the change is saved, not reported after. A price rise is the most consequential action in Admin and the only one where the blast radius is stated in members rather than currency.\nCOMPONENTS · Member360 sections ×3 · DataGrid ×3 · Chart(bar) · DocumentRow · NoteRow · SideSheet ×5 · ConsequencePanel · MoneyValue · DuplicateWarning · MergeGrid · TypedConfirm · zero new tokens"
+    },
+    {
+      "ids": [
+        "ADM-PAY-04",
+        "ADM-PAY-08",
+        "ADM-PAY-07"
+      ],
+      "eyebrow": "ADM-PAY-04 · ADM-PAY-08 · ADM-PAY-07",
+      "context": [
+        "ADM-PAY-08"
+      ],
+      "file": "veyro-product-experience-design/project/Veyro V1 Batch H Payments and Retail.dc.html",
+      "text": "letter-spacing:.1em\">ADM-PAY-04 · ADM-PAY-08 · ADM-PAY-07\nTake payment, partial refund, wallet\nADM-PAY-04 · TAKE PAYMENT\nAhmad Nabulsi owes JOD 100.00\nTwo open invoices. Choose what this payment settles.\nAMOUNT\n100.00\nALLOCATED TO\n☑ INV-20418 · Club, August\n2 days late\n55.00\n☑ INV-20501 · PT top-up\ndue 25 Aug\n40.00\nJOD 5.00 left over after both invoices. It will go to his wallet as credit, usable at the desk or against his next invoice.\nMETHOD\nCard Cash CliQ Wallet · 0.00\nTake JOD 100.00\nAllocation is explicit and never inferred. Unallocated money is the single most common cause of a member being chased for an invoice they have already paid.\nADM-PAY-08 · PARTIAL REFUND · TIER 3 + 4\nRefund part of INV-19884\nPT package, 10 sessions, JOD 280.00, paid 3 July. Yara used 4 and is moving abroad.\nPaid 280.00\n6 unused at 28.00 168.00\nAlready refunded 0.00\nRefundable 168.00\nREFUND AMOUNT · TYPE IT\n168.00\nREASON · REQUIRED\nRelocating · 6 sessions unused ▾\nGoes back to Visa ···2201 , the card that paid, in 3–5 days. Her 6 credits are removed on confirm. Ziad must approve — refunds over JOD 100.00 need a manager.\nRequest approval Cancel\nThe original invoice is never edited. This produces a linked credit note with its own number.\nADM-PAY-07 · WALLET & CREDITS\nJOD 12.50\nDANA'S BALANCE\n8.00\nEXPIRES 30 SEP\nDATE\nMOVEMENT\nAMOUNT\n{{ w.date }}\n{{ w.what }}\n{{ w.amt }}\nTop up Add credit · tier 3\nAlways labelled credit, never a negative balance. Each entry names its origin — a cancelled class, an overpayment, a goodwill gesture — because unexplained credit is indistinguishable from an error.\n<div style=\"font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;"
+    },
+    {
+      "ids": [
+        "ADM-PAY-09",
+        "ADM-PAY-10"
+      ],
+      "eyebrow": "ADM-PAY-06 · ADM-PAY-09 · ADM-PAY-10",
+      "context": [
+        "ADM-PAY-06",
+        "ADM-PAY-10"
+      ],
+      "file": "veyro-product-experience-design/project/Veyro V1 Batch H Payments and Retail.dc.html",
+      "text": "letter-spacing:.1em\">ADM-PAY-06 · ADM-PAY-09 · ADM-PAY-10\nDunning rules, the cash drawer, and a disputed charge\nADM-PAY-06 · DUNNING · OWNER & ACCOUNTANT\nWhen a payment fails\nRetry the card twice , one day apart, at 06:00 .\nDraft a message after the final failure and hold it for approval .\nAllow access for 14 days past the due date.\nRaise a Command Center exception when 3 or more fail in one run.\nNEVER, WHATEVER THE RULES SAY\nNever block access without a person deciding · never message outside 09:00–20:00 · never send more than one reminder a week · never charge a card that has been removed.\nSentence form, same as the automation builder. The NEVER block is not configurable per-tenant — it is the floor beneath every dunning policy.\nADM-PAY-09 · CASH RECONCILIATION\nClosing Layla's shift\nKhalda · 16:00–22:04\nOpening float 50.00\nCash taken · 14 sales 96.00\nCash refunded −8.00\nShould be in the drawer 138.00\nCOUNTED\n135.50\nShort by 2.50\nAbove the JOD 2.00 threshold, so a note is required and Ziad must co-sign.\nWhat happened…\nClose & request co-sign\nThe expected figure is shown before the count is entered. Hiding it would be a fraud control; showing it is an accuracy control, and accuracy is the more common problem.\nADM-PAY-10 · DISPUTE · ACCOUNTANT ONLY\nDISPUTED INV-19102\nFaris Alami's bank has challenged JOD 78.00 from 2 June, claiming the service was not received. The amount is held by the acquirer.\nEvidence due 26 August · 7 days\nMissing the deadline forfeits the amount automatically.\nEVIDENCE VEYRO CAN ASSEMBLE\n☑ 11 check-ins in the billed month\n☑ Signed membership contract\n☑ Invoice and JoFotara reference\n☐ Written statement · you add this\nSubmit evidence Accept the loss\nThe check-in record is the strongest evidence a gym has and Veyro assembles it automatically. Accepting the loss is a real option and is recorded as a decision, not a lapse.\n<div style=\"font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;"
+    },
+    {
+      "ids": [
+        "ADM-POS-01"
+      ],
+      "eyebrow": "ADM-POS-01 · 02 · 03 · RETAIL CONFIGURATION",
+      "context": [
+        "02",
+        "03",
+        "RETAIL CONFIGURATION"
+      ],
+      "file": "veyro-product-experience-design/project/Veyro V1 Batch H Payments and Retail.dc.html",
+      "text": "letter-spacing:.1em\">ADM-POS-01 · 02 · 03 · RETAIL CONFIGURATION\nProducts, stock, discounts\nADM-POS-01 + 02 · PRODUCTS, PRICING & STOCK · COMPACT\nAll · 34\nLow stock · 3\nOut · 1\nAdd product\nPRODUCT\nPRICE\nTAX\nABDOUN\nKHALDA\nSWEIF.\nSTATE\n{{ p.name }}\n{{ p.price }}\n{{ p.tax }}\n{{ p.s1 }}\n{{ p.s2 }}\n{{ p.s3 }}\n{{ p.state }}\nStock is per club, price is not. Creatine is out at Khalda and fine at Abdoun — the POS grid greys it only at the till where it is actually missing.\nEditing a price asks for an effective date . Retail prices change without notice; membership prices cannot, which is why they live in ADM-MSH-09 instead.\nAdjustments require a reason from a fixed list — sold, damaged, stocktake, transferred. Free-text shrinkage is how inventory becomes fiction.\nADM-POS-03 · DISCOUNTS · OWNER ONLY\nStaff discount · 20% on retail. Any staff member may apply it to their own purchase.\nGoodwill · up to 10% on anything. Reception may apply without approval.\nAnything over 10% needs a manager present at the till . Not a code — a person.\nOpen day · 15% off memberships , valid 13–20 August, expires automatically.\nThe 10% threshold here is what makes POS-06 ask for a manager. One number, configured once, enforced at every till.\nDiscount codes were considered and rejected for V1: a code that circulates among staff is indistinguishable from no control at all. Approval is a person, and it is recorded.\nCOMPONENTS · SideSheet ×4 · AllocationList · TypedConfirm · MoneyValue(owed, credit, refund, variance) · DataGrid(Compact) ×2 · AutomationRule(sentence form) ×2 · EvidenceChecklist · zero new tokens"
+    },
+    {
+      "ids": [
+        "ADM-SCH-03",
+        "ADM-SCH-07"
+      ],
+      "eyebrow": "ADM-SCH-03 · ADM-SCH-07 · CREATE, AND CANCEL",
+      "context": [
+        "ADM-SCH-07",
+        "CREATE, AND CANCEL"
+      ],
+      "file": "veyro-product-experience-design/project/Veyro V1 Batch I Scheduling and Access.dc.html",
+      "text": "letter-spacing:.1em\">ADM-SCH-03 · ADM-SCH-07 · CREATE, AND CANCEL\nThe two ends of a class\nADM-SCH-03 · CREATE A CLASS\nNew recurring class\nTYPE\nSpin ▾\nCOACH\nOmar Salti ▾\nOmar already has PT at 19:00 Thursdays\nWith Ahmad Nabulsi, booked until 12 October. Dana and Yousef are both qualified and free at that hour.\nUse Dana Keep Omar anyway\nROOM\nStudio 2 ▾\nCAPACITY\n20\nTIME\n19:00\nStudio 2 holds 20 bikes. Capacity cannot exceed the room.\nREPEATS\nS M T W Th F S\nWAITLIST\nUp to 5 · auto-promote when a place frees · notify immediately\nCreate · 2 classes a week\nConflicts surface as the coach field changes, not on save — a save-time error means re-deciding everything else too. It warns, it does not block: a manager may know Omar's PT is moving.\nADM-SCH-07 · CANCEL A CLASS · 18 PEOPLE AFFECTED\nCancel Spin, Thursday 19:00\n18 booked, 3 on the waitlist. This is tomorrow.\nWHY · GOES INTO THE MESSAGE\nNo coach available ▾\nWHAT THE 18 GET · REQUIRED\nMove them to Friday 19:00\nDana is on · 6 places free · 12 would need to choose another\nGive each a class credit\nUsable on any class within 30 days\nThey will receive\nThursday's 19:00 spin is cancelled — we could not cover the class. We have held you a place on Friday at 19:00 with Dana. Reply if that doesn't work and we'll credit you instead.\nSent in each member's language. The 3 on the waitlist get a shorter version.\nCancel & notify 21 Find a coach instead\nCannot commit without choosing what the members get. A cancellation that notifies nobody is the most damaging thing this screen could permit, so the notification is the action rather than a follow-up.\nADM-SCH-05 · SCHEDULE PT\nBook Yousef with Hala\nWHEN\nThu 17:30\nLENGTH\n55 min\nUses 1 of her 3 remaining credits . Two left after this, expiring 30 November.\nBook · use 1 credit\nAt zero credits the button becomes Sell a package first and opens POS-05 with Hala and Yousef pre-filled. Never a blocked state with no way out.\nADM-SCH-06 · ROOMS & RESOURCES\n{{ r.name }} {{ r.cap }} {{ r.equip }}\nCapacity here is the ceiling every class inherits. Double-booking is impossible because ADM-SCH-03 reads this list — the constraint lives in one place, not in each scheduler's memory.\n<div style=\"font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;"
+    },
+    {
+      "ids": [
+        "ADM-SCH-04"
+      ],
+      "eyebrow": "ADM-SCH-04 · COACH AVAILABILITY · WEEK GRID",
+      "context": [
+        "COACH AVAILABILITY",
+        "WEEK GRID"
+      ],
+      "file": "veyro-product-experience-design/project/Veyro V1 Batch I Scheduling and Access.dc.html",
+      "text": "letter-spacing:.1em\">ADM-SCH-04 · COACH AVAILABILITY · WEEK GRID\nWhen Yousef can work, and what is already booked\nYousef Haddad · availability\nWeek of 17 August · Khalda · 26 of 34 available hours booked\nAdd an exception\n{{ d.label }}\n{{ s.time }}\n{{ c.label }}\nAVAILABLE, UNBOOKED\nPT BOOKED\nCLASS\nNOT WORKING\nEXCEPTION\nThursday afternoon is an exception — he asked for it off three weeks ago. His 17:30 with Hala sits inside it, so the grid shows both and the booking is flagged rather than silently honoured or silently dropped.\nWorking hours are the background; bookings are drawn on top. Reducing availability never deletes a booking — it surfaces the conflict for a person to resolve, because the member on the other end has already been told a time.\n<div style=\"font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;"
+    },
+    {
+      "ids": [
+        "ADM-ACC-01"
+      ],
+      "eyebrow": "ADM-ACC-01 · 02 · 03 · PHYSICAL ACCESS",
+      "context": [
+        "02",
+        "03",
+        "PHYSICAL ACCESS"
+      ],
+      "file": "veyro-product-experience-design/project/Veyro V1 Batch I Scheduling and Access.dc.html",
+      "text": "letter-spacing:.1em\">ADM-ACC-01 · 02 · 03 · PHYSICAL ACCESS\nWhere the product meets hardware it does not own\nADM-ACC-01 · ACCESS DASHBOARD\nOne reader is down\n9 devices across 3 clubs · 218 entries today\nDEVICE\nCLUB\nTODAY\nSTATE\n{{ d.name }}\n{{ d.club }}\n{{ d.today }}\n{{ d.state }}\nSweifieh main door stopped responding at 09:04. Reception is admitting people manually and every entry is still recorded. This is the origin of the Command Center banner — the banner is a view of this row, not a separate alert.\nRetry the device Open manual check-in\nRead-only for Reception — they see the state and the manual fallback, not the retry. Retrying hardware is a manager action because a badly-timed reset locks a lobby full of people out.\nADM-ACC-02 · DENIAL LOG\nAll · 31\nPolicy · 27\nFault · 4\nTIME\nMEMBER\nWHY\n{{ d.time }}\n{{ d.who }}\n{{ d.why }}\nPolicy and fault are separate filters for a reason. Twenty-seven expired memberships is the system working. Four reader failures is a maintenance job. Mixing them in one count hides the second inside the first.\nADM-ACC-03 · CREDENTIALS · AHMAD\nCard ···8841 ACTIVE\nIssued 4 Mar 2024 · 214 uses\nApp pass ACTIVE\nRotating QR · last used 31 Jul\nFingerprint ENROLLED\nEnrolled 8 Mar 2024 · Khalda\nIssue a new card Report lost\nBIOMETRIC\nEnrolment status only. The template is never displayed, never exported, and not fetched by this screen . Removal is tier 4 and needs owner approval — it also ends his ability to enter without a card.\nReception sees the card and app rows and can issue a replacement. The fingerprint row is absent for them entirely — not greyed, absent.\nCOMPONENTS · SideSheet ×4 · ConflictWarning · RecurrencePicker · WeekGrid(availability) · DataGrid(Compact) ×3 · DeviceRow · CredentialRow · MessagePreview · zero new tokens"
+    },
+    {
+      "ids": [
+        "ADM-STF-04"
+      ],
+      "eyebrow": "ADM-STF-04 · PERMISSION MATRIX · OWNER ONLY",
+      "context": [
+        "PERMISSION MATRIX",
+        "OWNER ONLY"
+      ],
+      "file": "veyro-product-experience-design/project/Veyro V1 Batch J Staff and Communication.dc.html",
+      "text": "letter-spacing:.1em\">ADM-STF-04 · PERMISSION MATRIX · OWNER ONLY\nNine roles, and what each may actually do\nRoles and permissions\nNadi Group · editable within system limits · every change audited\nAdd a custom role\nCAPABILITY\n{{ r.short }}\n{{ c.name }}\n{{ x.mark }}\nLEGEND\n● can do · ◐ can request approval · — not available, and absent from their UI entirely\nThe ◐ column is the one this product argued for: a receptionist who can ask for a refund is faster than one who phones a manager, and safer than one who can issue it.\nLocked rows cannot be delegated. Editing permissions and starting an impersonation are Owner-only and greyed even for the Owner editing this screen — you cannot grant yourself, or anyone, a way around them.\n<div style=\"font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;"
+    },
+    {
+      "ids": [
+        "ADM-STF-01"
+      ],
+      "eyebrow": "ADM-STF-01 · 02 · 03",
+      "context": [
+        "02",
+        "03"
+      ],
+      "file": "veyro-product-experience-design/project/Veyro V1 Batch J Staff and Communication.dc.html",
+      "text": "letter-spacing:.1em\">ADM-STF-01 · 02 · 03\nThe team, one person, and an invitation\nADM-STF-01 · STAFF LIST · COMPACT\nActive · 14\nInvited · 2\nLeft · 3\nInvite\nNAME\nROLE\nCLUBS\nLAST SEEN\n{{ s.name }}\n{{ s.role }}\n{{ s.clubs }}\n{{ s.seen }}\nDana's spin certification expires in 18 days. Certifications inside 30 days raise a Command Center item — an uncertified coach taking a class is an insurance problem, not an admin one.\nA Club Manager sees only their own club's staff. Last seen exists so a departed employee with a live login is visible rather than discovered.\nADM-STF-02 · STAFF PROFILE · TIER 4 CHANGES\nLayla Mansour\nReception · Khalda · since Jan 2025\nROLE\nReception ▾\nCLUBS\nKhalda Abdoun Sweifieh\nINDIVIDUAL GRANTS · BEYOND HER ROLE\n☑ Issue refunds up to JOD 50.00\nGranted by Ziad · 4 Mar 2026\n☐ Override access denials\n☐ Export member data\nChanging any of this is tier 4 — step-up authentication, a reason, and an audit entry naming both people. You cannot grant a permission you do not hold yourself.\nSave changes End access\nADM-STF-03 · INVITE\nInvite someone\nEMAIL\nkareem@nadi.jo\nROLE\nSales ▾\nCLUBS\nKhalda, Sweifieh ▾\nThe link expires in 7 days . Sales can see leads and members at those two clubs, sell memberships, and take payments. No financial administration.\nSend invitation\nPENDING · 2\nyasmin@nadi.jo 2d left Resend\nomar.s@nadi.jo expired Resend\n<div style=\"font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;"
+    },
+    {
+      "ids": [
+        "ADM-COM-02",
+        "ADM-TSK-01"
+      ],
+      "eyebrow": "ADM-COM-02 · 03 · 04 · ADM-TSK-01",
+      "context": [
+        "03",
+        "04"
+      ],
+      "file": "veyro-product-experience-design/project/Veyro V1 Batch J Staff and Communication.dc.html",
+      "text": "letter-spacing:.1em\">ADM-COM-02 · 03 · 04 · ADM-TSK-01\nTemplates, broadcast, notifications, tasks\nADM-COM-03 · BROADCAST\nMessage a group of members\nWHO\nNot visited in 30 days ▾\n214 match · 186 will receive this\n28 have withdrawn marketing consent. They are excluded automatically and cannot be added back — this is promotional content, so their choice governs. If you need to reach all 214, it has to be a service message about their membership.\nTEMPLATE\nWe miss you · win-back ▾\nPREVIEW · ENGLISH\nHi Ahmad — we haven't seen you at Khalda for a while. Your membership is active and there's a spin class Thursday at 19:00 if you fancy it.\nPREVIEW · العربية\nمرحباً أحمد — لم نرك في خلدا منذ فترة. عضويتك سارية، وهناك حصة سبينينغ الخميس ١٩:٠٠ إن أحببت.\nSend to 186 Schedule\nBoth languages are previewed before sending, always. A broadcast is the one place a translation error reaches hundreds of people at once.\nADM-COM-02 · TEMPLATES\n{{ t.name }} {{ t.state }}\n{{ t.meta }}\nWhatsApp approval is external. Veyro shows the provider's real status and cannot fake it — a template pending approval is genuinely unusable, and saying otherwise would produce failed sends at the worst moment.\nEvery template exists as a pair. A template with only one language cannot be published.\nADM-COM-04 · NOTIFICATIONS\nEVENT\nAPP\nEMAIL\nWHATS\n{{ n.event }}\n{{ n.app }}\n{{ n.email }}\n{{ n.wa }}\nDefaults are deliberately quiet. Nothing here opts a person into a channel they did not choose, and WhatsApp is off by default because it reaches people at home.\nADM-TSK-01 · TASKS\nMine · 4\nTeam · 11\nOverdue · 2\n☐\n{{ t.name }}\n{{ t.meta }}\nTasks born from an exception link back to it. Completing the task does not resolve the exception — the work and the record of the work are separate , which is why the Command Center count does not drop when someone ticks a box here.\nThree sources: assigned by a person, generated by an automation, or suggested by Veyro. The source is always named — a task nobody can account for gets ignored.\nCOMPONENTS · PermissionMatrix · DataGrid(Compact) ×2 · SideSheet ×3 · GrantRow · ConsentFilter · MessagePreview(bilingual) · TemplateRow · NotificationMatrix · TaskRow · zero new tokens"
+    },
+    {
+      "ids": [],
+      "eyebrow": "ADM-AI-01 · AI INSIGHT DETAIL · THE DESTINATION OF EVERY EVIDENCE LINK",
+      "context": [
+        "ADM-AI-01",
+        "AI INSIGHT DETAIL",
+        "THE DESTINATION OF EVERY EVIDENCE LINK"
+      ],
+      "file": "veyro-product-experience-design/project/Veyro V1 Batch K Automation Reports and AI.dc.html",
+      "text": "letter-spacing:.1em\">ADM-AI-01 · AI INSIGHT DETAIL · THE DESTINATION OF EVERY EVIDENCE LINK\nWhy Veyro said PT revenue fell JOD 1,840\n✦\nVEYRO INTERPRETATION · FULL DERIVATION\ngenerated 08:38 · 1.2s\nTHE CLAIM\nKhalda's PT revenue is JOD 1,840 below the same point in July, and roughly JOD 1,240 of that is recoverable.\nWHAT WAS READ\nSOURCE\nRECORDS\nWHAT IT CONTRIBUTED\n{{ s.name }}\n{{ s.n }}\n{{ s.what }}\nTHE ARITHMETIC\nJuly 1–19 · PT billed at Khalda 6,420.00\nAugust 1–19 · PT billed at Khalda 4,580.00\nDifference −1,840.00\nSessions delivered, not verified 31\nAverage billed rate at Khalda 40.00\nRecoverable if all 31 are genuine 1,240.00\nWHAT VEYRO IS AND IS NOT CONFIDENT ABOUT\nCERTAIN The JOD 1,840 gap and the 31 unverified sessions. Both are counted from records, not estimated.\nLIKELY That most of the 31 are genuine. Omar's historical verification rate is 94%, so the 1,240 figure is an upper bound , not an expectation.\nUNCERTAIN That the roster change caused the decline. Omar's remaining nine clients also booked 18% less often, which the roster change does not explain. Veyro cannot separate the two.\nWHAT THIS IS NOT\nNot a forecast, not a confirmed recovery, and not a judgement about Omar's performance. It is a reading of billing records with the reasoning shown. Nothing here has been acted on — the request to verify has not been sent.\nOpen the 31 sessions\nPreview the request to Khalda\nThis is wrong\n\"This is wrong\" records the disagreement against the insight with a reason, and the same reading is not raised again for 30 days. An interpretation a manager cannot contradict is not an interpretation.\nWHY THREE CONFIDENCE BANDS AND NOT A PERCENTAGE\nA number like \"82% confident\" reads as measured precision about something that is a judgement. Three named bands — counted, likely, cannot separate — say the same thing without borrowing authority the reasoning does not have.\nSTATES · ADM-AI-01\nStale inputs withholds the insight entirely rather than reasoning from old figures. Insufficient data says which comparison could not be made. Disputed shows the manager's objection above the claim. Acted on shows what was done, by whom, and what changed afterwards.\nPERMISSIONS\nOwner and Regional see cross-club derivations. A Club Manager sees their own club's arithmetic. Reception never reaches this screen — an insight nobody can act on is noise. The indigo is color.semantic.ai and never inherits a tenant brand.\n<div style=\"font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;"
+    },
+    {
+      "ids": [
+        "ADM-AUT-01",
+        "ADM-AUT-03"
+      ],
+      "eyebrow": "ADM-AUT-01 · ADM-AUT-03",
+      "context": [
+        "ADM-AUT-03"
+      ],
+      "file": "veyro-product-experience-design/project/Veyro V1 Batch K Automation Reports and AI.dc.html",
+      "text": "letter-spacing:.1em\">ADM-AUT-01 · ADM-AUT-03\nWhat runs unattended, and what it did\nADM-AUT-01 · AUTOMATIONS\n6 running · JOD 8,940 recovered\nSince 1 January · attributable to automation\nNew rule\nRULE\nSTATE\nRUNS · 30D\nVALUE\n{{ a.name }}\n{{ a.state }}\n{{ a.runs }}\n{{ a.value }}\nValue is attributed conservatively. A recovered payment counts only if it settled within 14 days of the automation's message and the member had not already been contacted by a person. Double-counting a save that a receptionist actually made would flatter the feature and mislead the owner.\nPaused rules stay visible with their history. A deleted rule keeps its run log — the actions it took are still part of the record.\nADM-AUT-03 · RUN HISTORY · WIN-BACK RULE\n28\nRUNS · 30D\n24\nSENT\n3\nSKIPPED\n1\nFAILED\n{{ r.when }} {{ r.who }} {{ r.outcome }}\n{{ r.detail }}\nThe failure is retryable and named. A WhatsApp send failed because the template was pending re-approval — the member was never contacted and Veyro did not silently fall back to email, because a channel a member chose is not interchangeable.\nSkips are as important as sends. Three members were skipped because a person had already contacted them that week — the rule deferring to a human is the behaviour worth auditing.\n<div style=\"font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;"
+    },
+    {
+      "ids": [
+        "ADM-RPT-01"
+      ],
+      "eyebrow": "ADM-RPT-01 · 02 · 03 · 04 · 05",
+      "context": [
+        "02",
+        "03",
+        "04",
+        "05"
+      ],
+      "file": "veyro-product-experience-design/project/Veyro V1 Batch K Automation Reports and AI.dc.html",
+      "text": "letter-spacing:.1em\">ADM-RPT-01 · 02 · 03 · 04 · 05\nReports, and the gate in front of an export\nADM-RPT-02 · REVENUE · OWNER & ACCOUNTANT\nRevenue · August to date\nAll locations · data through 08:38\nMonth\nCOLLECTED\n41,280\nINVOICED\n41,592\nOUTSTANDING\n312\nREFUNDED\n168\nBY SOURCE\nSOURCE\nABDOUN\nKHALDA\nSWEIFIEH\nVS JULY\n{{ r.name }}\n{{ r.a }}\n{{ r.k }}\n{{ r.s }}\n{{ r.delta }}\nExport · needs a reason Compare periods\nCollected and invoiced are separate columns because they are separate facts. A report showing one number labelled \"revenue\" is the reason operators cannot reconcile their own books.\nADM-RPT-01 · REPORTS INDEX\n{{ r.name }}\n{{ r.desc }}\n{{ r.who }}\nA Club Manager opening this screen sees four reports, not six. The two financial ones are absent — not listed and locked.\nADM-RPT-05 · EXPORT GATE · TIER 4\nExport 4,812 member records\nThis file will contain names, phone numbers, email addresses, membership history and payment totals. It leaves Veyro and cannot be recalled.\nWHY · RECORDED AND VISIBLE TO THE TENANT\nAnnual audit — accountant request…\nOptionally exclude phone and email, which covers most audit needs without exporting contact details at all.\nConfirm identity & export\nStep-up authentication, then the audit entry. Appears in front of every export containing personal or financial data, including the revenue report above.\nADM-RPT-03 · MEMBERSHIP\n+61\nJOINED\n−23\nLEFT\n+38\nNET\nWHY THE 23 LEFT\n{{ c.reason }} {{ c.n }}\nReasons come from ADM-MSH-07's required field. Nine of 23 gave no reason — shown honestly rather than folded into \"other\".\nADM-RPT-04 · ATTENDANCE\nVISITS BY HOUR · KHALDA · WEEKDAYS\n06:00 22:00\n18:00–20:00 runs at 94% of floor capacity. Two more classes at 07:00, where capacity sits at 41%, would move perhaps 30 people out of the evening crush.\nThe conclusion is written in words beneath the chart. A manager should not have to interpret a heat strip to find the actionable hour.\nCOMPONENTS · AITreatment(full derivation) · ConfidenceBand ×3 · DataGrid(Compact) ×4 · Chart(bar, heat strip) ×3 · MetricCell ×11 · RunLogRow · ExportGate(tier 4) · zero new tokens"
+    },
+    {
+      "ids": [
+        "ADM-SRCH-01"
+      ],
+      "eyebrow": "ADM-SRCH-01 · COMMAND PALETTE · ⌘K FROM ANY SCREEN",
+      "context": [
+        "COMMAND PALETTE",
+        "⌘K FROM ANY SCREEN"
+      ],
+      "file": "veyro-product-experience-design/project/Veyro V1 Batch L Settings Search and Auth.dc.html",
+      "text": "letter-spacing:.1em\">ADM-SRCH-01 · COMMAND PALETTE · ⌘K FROM ANY SCREEN\nFaster than the rail, and permission-aware at query time\n⌕\nahmad |\nESC\nMEMBERS · 2\nAhmad Nabulsi\nClub · Khalda · owes 55.00\n⏎\nAhmad Sabri\nFlex · Abdoun\nACTIONS FOR AHMAD NABULSI\n◫ Take payment · JOD 55.00\n◷ Send a payment link\n◍ Freeze his membership\nINVOICES · 1\n◨ INV-20418 · unpaid · 55.00\nASK VEYRO\n✦ Why has Ahmad stopped coming?\n↑↓ MOVE\n⏎ OPEN\n⌘⏎ RUN THE ACTION\nTAB FILTER BY TYPE\nACTIONS COME SECOND, DELIBERATELY\nThe member is found first, then what you can do to them. Ranking actions above entities means a mistyped name can trigger a payment on the wrong person — the entity is the safety anchor and the actions inherit it.\nPERMISSION-FILTERED AT QUERY TIME\nReception typing the same query gets the member and Take payment, but no Freeze and no invoice row. Results are filtered in the query, not hidden in the response — a search index that returns records a role cannot see is a data leak with a UI in front of it.\nEMPTY AND SCALE STATES\nEmpty shows four recent members and three suggested actions, not a blank field. At 100,000 members the shape is unchanged — the query is server-side and capped at five per section with \"see all 412 matches\" opening the filtered table.\n<div style=\"font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;"
+    },
+    {
+      "ids": [
+        "ADM-SET-06"
+      ],
+      "eyebrow": "ADM-SET-06 · WHITE-LABEL BRANDING · THE GUARDRAILS IN PRACTICE",
+      "context": [
+        "WHITE-LABEL BRANDING",
+        "THE GUARDRAILS IN PRACTICE"
+      ],
+      "file": "veyro-product-experience-design/project/Veyro V1 Batch L Settings Search and Auth.dc.html",
+      "text": "letter-spacing:.1em\">ADM-SET-06 · WHITE-LABEL BRANDING · THE GUARDRAILS IN PRACTICE\nA tenant picks a colour and the system pushes back\nADM-SET-06 · BRANDING · OWNER ONLY\nYOUR ACCENT COLOUR\n#2F7D4F\nThis green is too close to the colour Veyro uses for confirmed payments\nYour staff would see the same green on a Pay button and on a paid invoice. The nearest shade of your green that stays distinct is #1F6E7A — still recognisably yours, and it passes contrast at 5.9:1.\n→\nUse #1F6E7A\nDERIVED AUTOMATICALLY · NOT CONFIGURABLE\naction\npressed\nselected\ndark\nfocus\nSix tokens from one input. Status colours, the AI indigo and the focus ring are not in this screen at all — G3, G4 and G7 mean those cannot be attempted rather than refused.\nLOGO\nnadi\nMONOCHROME\nRequired before publishing\nUsed on receipts, invoices and exports. Publishing is blocked until it exists — degrading silently at a thermal printer is worse than a blocked button.\nADM-SET-07 · LOCALIZATION\nLANGUAGES OFFERED\nEnglish العربية\nNUMERALS\n0123 ٠١٢٣\nArabic-Indic for counts, dates and times. Money keeps Latin digits with its code — JOD 41,280.00 — because that is the form on your invoices and JoFotara submissions. Applied identically on screen, receipt and export.\nPREVIEW\nتنتهي عضويتك في ٢١ آب · المبلغ JOD 55.00\nOne rule per tenant, never mixed and never decided per component. Month names follow the Levantine set — آب, تموز — because that is what Jordanian members read.\nADM-SET-05 · INTEGRATIONS\n{{ i.name }} {{ i.state }}\n{{ i.meta }}\nDisconnecting the access controller states what stops working : card and app entry at all three clubs, immediately. Reception check-in continues. Nothing is disconnected without that sentence.\n<div style=\"font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;"
+    },
+    {
+      "ids": [
+        "ADM-SET-01",
+        "ADM-AUTH-01"
+      ],
+      "eyebrow": "ADM-SET-01 · 02 · 04 · 08 · ADM-AUTH-01 · 02",
+      "context": [
+        "02",
+        "04",
+        "08",
+        "02"
+      ],
+      "file": "veyro-product-experience-design/project/Veyro V1 Batch L Settings Search and Auth.dc.html",
+      "text": "letter-spacing:.1em\">ADM-SET-01 · 02 · 04 · 08 · ADM-AUTH-01 · 02\nOrganisation, clubs, providers, security, and the door\nADM-SET-01 · ORGANISATION\nLEGAL NAME\nNadi Group for Sports Ltd\nTRADING NAME · SHOWN TO MEMBERS\nNadi\nREGISTERED ADDRESS\nAbdoun, Amman, Jordan\nThe legal name appears on invoices and JoFotara submissions. The trading name appears everywhere a member looks. Two fields because they are genuinely different things and conflating them puts a limited-company suffix on a member's welcome screen.\nADM-SET-02 · KHALDA\nOPENING HOURS\nSun–Thu 06:00–23:00 Fri 14:00–22:00 · Sat 08:00–22:00\nFLOOR CAPACITY\n180\nFriday hours are shorter because of prayers — a Jordan default the product ships with rather than making every tenant discover. Capacity drives the Front Desk \"in the building\" figure and off-peak plan eligibility.\nA Club Manager may edit their own club. Adding or removing a club is Owner-only and affects billing.\nADM-SET-04 · PAYMENT PROVIDERS\nCard acquirer LIVE\n2,140 charges this month · 6 declined\nCliQ LIVE\nAlias NADI.KHALDA · 184 payments\nWHEN A PROVIDER IS UNREACHABLE\nQueue the sale locally and print \"payment pending\" · never print \"paid\" · alert the manager after 5 minutes · submit automatically on reconnection.\nThis is the setting POS-02's offline queue reads. Configured once here rather than decided at each till.\nADM-SET-08 · SECURITY & AUDIT\nMFA required for Owner, Accountant and Regional Sessions end after 12 hours Shared-device sessions end after 15 minutes\nRECENT AUDIT ENTRIES\n{{ a.what }}\n{{ a.who }}\nImmutable and exportable under the tier-4 gate. Includes Veyro's own staff — an impersonation session appears here for the tenant to read.\nADM-AUTH-01 · SIGN IN\nV Veyro\nSign in\nEMAIL\nziad@nadi.jo\nPASSWORD\n••••••••••\nContinue\nForgotten your password?\nTenant resolved from the email domain. A wrong password and an unknown account produce the same message — anything else confirms who works here.\nADM-AUTH-02 · STEP-UP RE-AUTH\nConfirm it's you\nYou're about to export 4,812 member records . You last signed in 6 hours ago, so confirm your identity before continuing.\nPASSWORD\n••••••\nConfirm Use passkey\nCancelling returns you to the export screen with your reason still typed — not to a dead end , and not losing the work.\nAppears in front of tier-4 actions when the session is older than the policy window: exports, permission changes, biometric removal, tenant suspension.\nVEYRO ADMIN · V1 COMPLETE\nAll 85 V1 Admin screens are now drawn across batches F–L and the earlier phases. Zero new tokens, zero new components, zero new patterns across all 85. Next: Front Desk and POS remainder, then Coach, Member and Console."
+    }
+  ]
+}
