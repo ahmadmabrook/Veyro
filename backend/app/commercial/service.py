@@ -3335,6 +3335,126 @@ def list_billing_accounts(
     }
 
 
+def invoice_history(pool: Pool, tenant_id: str, invoice_id: str) -> dict[str, Any]:
+    """What has happened to one invoice, in order -- ADM-PAY-03's own middle section.
+
+    > 17 Aug 06:00  Issued and charged automatically
+    > 17 Aug 06:01  Declined · card expired · Visa ···4417
+    > 18 Aug 06:00  Retry 1 declined · same reason
+    > 19 Aug 06:12  Retry 2 declined · dunning stopped, 2 of 2 used
+
+    **Composed from three insert-only tables, never from a status field.** The invoice's own
+    status is a cache of what these rows add up to; a timeline built from it would say what is
+    true now and nothing about how it got there, which is the opposite of what the screen is
+    for. The design's immutability note is the reason this can be trusted as an audit trail:
+    "Issued invoices are never edited. Corrections are credit notes with their own number and
+    a link to the original."
+
+    Four kinds of entry, each from the table that owns it: the issue itself, every payment
+    intent and its outcome (including the `unknown` one, which is a provider that did not
+    answer and is not the same as a failure), every payment actually recorded, and the dunning
+    case with the attempts it has spent. A refund is a payment's own event and carries the
+    payment it reverses.
+    """
+    with tenant_scope(pool, tenant_id) as conn:
+        invoice = conn.execute(
+            "SELECT document_number, issued_on, gross_minor, currency, billing_account_id"
+            " FROM plt01.fin_invoices WHERE invoice_id = %s",
+            (invoice_id,),
+        ).fetchone()
+        if invoice is None:
+            raise NotFound("invoice_not_found")
+        intents = conn.execute(
+            "SELECT intent_id, status, amount_minor, currency, created_at, settled_at,"
+            " failure_code, method FROM plt01.fin_payment_intents"
+            " WHERE invoice_id = %s ORDER BY created_at",
+            (invoice_id,),
+        ).fetchall()
+        payments = conn.execute(
+            "SELECT payment_id, amount_minor, currency, method, received_at, provider_ref"
+            " FROM plt01.fin_payments WHERE invoice_id = %s ORDER BY received_at",
+            (invoice_id,),
+        ).fetchall()
+        refunds = conn.execute(
+            "SELECT r.refund_id, r.amount_minor, r.currency, r.status, r.approved_at,"
+            " r.settled_at, r.approval_reason FROM plt01.fin_refunds r"
+            " JOIN plt01.fin_payments p ON p.payment_id = r.payment_id"
+            " WHERE p.invoice_id = %s ORDER BY r.approved_at",
+            (invoice_id,),
+        ).fetchall()
+        dunning = conn.execute(
+            "SELECT case_id, stage, status, opened_on, next_action_on, attempts,"
+            " access_recommendation, closed_at, resolution FROM plt01.fin_dunning_cases"
+            " WHERE invoice_id = %s ORDER BY opened_on",
+            (invoice_id,),
+        ).fetchall()
+
+    events: list[dict[str, Any]] = [{
+        "kind": "issued",
+        "at": invoice[1].isoformat(),
+        "amount_minor": int(invoice[2]),
+        "currency": str(invoice[3]),
+        "detail": str(invoice[0]),
+    }]
+    for row in intents:
+        events.append({
+            "kind": "payment_intent",
+            "at": (row[5] or row[4]).isoformat(),
+            "status": str(row[1]),
+            "amount_minor": int(row[2]),
+            "currency": str(row[3]),
+            "method": str(row[7]),
+            # **`unknown` is not a failure.** The provider did not answer, which means money
+            # may well have left; MOD-017 treats it as outstanding for refunding purposes and
+            # a timeline that called it "declined" would be stating the opposite.
+            "detail": str(row[6]) if row[6] else None,
+        })
+    for row in payments:
+        events.append({
+            "kind": "payment",
+            "at": row[4].isoformat(),
+            "amount_minor": int(row[1]),
+            "currency": str(row[2]),
+            "method": str(row[3]),
+            "detail": str(row[5]) if row[5] else None,
+        })
+    for row in refunds:
+        events.append({
+            "kind": "refund",
+            # Settled if the provider answered, approved if not: a refund in flight belongs
+            # on the timeline at the moment somebody approved it, not at a time that does not
+            # exist yet.
+            "at": (row[5] or row[4]).isoformat(),
+            "status": str(row[3]),
+            "amount_minor": int(row[1]),
+            "currency": str(row[2]),
+            "detail": str(row[6]),
+        })
+    for row in dunning:
+        events.append({
+            "kind": "dunning",
+            "at": (row[7] or row[3]).isoformat(),
+            "status": str(row[2]),
+            "stage": int(row[1]),
+            "attempts": int(row[5]),
+            "access_recommendation": str(row[6]),
+            "next_action_on": row[4].isoformat() if row[4] else None,
+            "detail": str(row[8]) if row[8] else None,
+        })
+
+    events.sort(key=lambda event: event["at"])
+    return {
+        "invoice_id": invoice_id,
+        "document_number": str(invoice[0]),
+        "events": events,
+        #: ADM-PAY-03's own note, which is a product fact rather than a surface's caption.
+        "immutable_because":
+            "An issued invoice is never edited: the five ledger tables are insert-only for "
+            "both runtime roles, so a correction is a credit note with its own number and a "
+            "link to the original. That is what makes this timeline an audit trail.",
+    }
+
+
 def list_invoices(
     pool: Pool, tenant_id: str, *, billing_account_id: str | None = None,
     person_id: str | None = None, payment_status: str | None = None, limit: int = 50,

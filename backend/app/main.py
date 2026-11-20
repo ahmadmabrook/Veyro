@@ -6290,6 +6290,20 @@ def create_app(
         return commercial.get_invoice(
             tenant_pool, tenant_id, require_uuid(invoice_id, "invoice_id"))
 
+    @app.get("/finance/invoices/{invoice_id}/history")
+    def read_invoice_history(
+        tenant_id: TenantId, session: Session, invoice_id: str
+    ) -> dict[str, Any]:
+        """What has happened to one invoice, in order -- ADM-PAY-03's middle section.
+
+        Composed from the insert-only tables rather than from the invoice's status, which is
+        a cache of what they add up to. A timeline built from the cache says what is true now
+        and nothing about how it got there, which is the opposite of what the screen is for.
+        """
+        permit(session, "finance.account.read")
+        return commercial.invoice_history(
+            tenant_pool, tenant_id, require_uuid(invoice_id, "invoice_id"))
+
     @app.post("/finance/payment-intents", status_code=201)
     def create_payment_intent(
         tenant_id: TenantId, session: Session, body: PaymentIntentBody

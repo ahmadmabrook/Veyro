@@ -2271,3 +2271,93 @@ class ListingReadTests(CommercialApiTestCase):
         self.assertEqual(missing.status_code, 404, missing.text)
         malformed = self.client.get("/memberships/not-a-uuid", headers=head)
         self.assertEqual(malformed.status_code, 422, malformed.text)
+
+class InvoiceHistoryTests(CommercialApiTestCase):
+    """ADM-PAY-03's "what has happened to this invoice", composed from insert-only tables.
+
+    The screen's own immutability note is why this can be an audit trail: "Issued invoices
+    are never edited. Corrections are credit notes with their own number and a link to the
+    original." So the timeline is built from the rows that were written, never from the
+    invoice's cached status -- which says what is true now and nothing about how it got there.
+    """
+
+    def test_an_issued_invoice_has_one_entry_and_names_itself(self):
+        tenant_id = self.tenant()
+        billing = self.billing(tenant_id, self.person(tenant_id))
+        invoice = self.invoice(tenant_id, billing)
+        head = self.scoped(tenant_id, ["finance.account.read"])
+        history = self.client.get(
+            f"/finance/invoices/{invoice['invoice_id']}/history", headers=head)
+        self.assertEqual(history.status_code, 200, history.text)
+        body = history.json()
+        self.assertEqual([e["kind"] for e in body["events"]], ["issued"], body)
+        self.assertEqual(body["document_number"], invoice["document_number"], body)
+        self.assertIn("credit note", body["immutable_because"])
+
+    def test_a_payment_joins_the_timeline_in_order(self):
+        tenant_id = self.tenant()
+        billing = self.billing(tenant_id, self.person(tenant_id))
+        invoice = self.invoice(tenant_id, billing)
+        head = self.headers(tenant_id)
+        intent = self.client.post("/finance/payment-intents", json={
+            "billing_account_id": billing["billing_account_id"],
+            "invoice_id": invoice["invoice_id"], "amount_minor": invoice["gross_minor"],
+            "method": "card", "provider_key": "acme.payments",
+            "idempotency_key": f"pi-{uuid.uuid4().hex[:8]}", **self.correlation()},
+            headers=head)
+        self.assertEqual(intent.status_code, 201, intent.text)
+        settled = self.client.post(
+            f"/finance/payment-intents/{intent.json()['intent_id']}/settle", json={
+                "outcome": "succeeded", **self.correlation()}, headers=head)
+        self.assertEqual(settled.status_code, 200, settled.text)
+
+        body = self.client.get(
+            f"/finance/invoices/{invoice['invoice_id']}/history",
+            headers=self.scoped(tenant_id, ["finance.account.read"])).json()
+        kinds = [e["kind"] for e in body["events"]]
+        self.assertIn("payment_intent", kinds, body)
+        self.assertIn("payment", kinds, body)
+        # Ordered by when each happened, which is the only ordering a timeline can have.
+        instants = [e["at"] for e in body["events"]]
+        self.assertEqual(instants, sorted(instants), body)
+
+    def test_an_unknown_outcome_is_not_reported_as_a_failure(self):
+        """`unknown` means the provider did not answer, which is not a decline.
+
+        MOD-017 treats it as money that may well have left -- it counts against what a
+        payment can still be refunded -- so a timeline that rendered it as "declined" would
+        be stating the opposite of the module's own reading.
+        """
+        tenant_id = self.tenant()
+        billing = self.billing(tenant_id, self.person(tenant_id))
+        invoice = self.invoice(tenant_id, billing)
+        head = self.headers(tenant_id)
+        intent = self.client.post("/finance/payment-intents", json={
+            "billing_account_id": billing["billing_account_id"],
+            "invoice_id": invoice["invoice_id"], "amount_minor": invoice["gross_minor"],
+            "method": "card", "provider_key": "acme.payments",
+            "idempotency_key": f"pi-{uuid.uuid4().hex[:8]}", **self.correlation()},
+            headers=head)
+        self.client.post(
+            f"/finance/payment-intents/{intent.json()['intent_id']}/settle", json={
+                "outcome": "unknown", **self.correlation()}, headers=head)
+
+        body = self.client.get(
+            f"/finance/invoices/{invoice['invoice_id']}/history",
+            headers=self.scoped(tenant_id, ["finance.account.read"])).json()
+        intents = [e for e in body["events"] if e["kind"] == "payment_intent"]
+        self.assertEqual([e["status"] for e in intents], ["unknown"], body)
+        self.assertEqual([e["kind"] for e in body["events"]].count("payment"), 0, body)
+
+    def test_an_unknown_invoice_is_a_404_and_a_malformed_one_a_422(self):
+        tenant_id = self.tenant()
+        head = self.scoped(tenant_id, ["finance.account.read"])
+        missing = self.client.get(
+            f"/finance/invoices/{uuid.uuid4()}/history", headers=head)
+        self.assertEqual(missing.status_code, 404, missing.text)
+        malformed = self.client.get("/finance/invoices/not-a-uuid/history", headers=head)
+        self.assertEqual(malformed.status_code, 422, malformed.text)
+
+
+if __name__ == "__main__":
+    unittest.main()
