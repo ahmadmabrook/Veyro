@@ -2799,7 +2799,15 @@ def create_app(
     # argues for at length: the login path is reachable without authentication and its subject
     # is caller-supplied, so a durable counter would be an unbounded-growth primitive written by
     # anybody. The cost is that two replicas each allow the full budget.
-    limiter = ratelimit.Limiter()
+    #
+    # **The budget is the table's unless `local` says otherwise.** `config.load_settings`
+    # refuses `VEYRO_API_REQUEST_BUDGET` outside the local environment, so this override
+    # cannot widen a control in development or staging; it exists because the browser suite
+    # makes more requests in a minute than any operator does, and raising the table's own
+    # number to suit a test is the mistake that number's comment names.
+    limiter = ratelimit.Limiter(
+        budgets=None if cfg.api_request_budget is None
+        else {**ratelimit.BUDGETS, "api.request": cfg.api_request_budget})
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:

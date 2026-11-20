@@ -4,7 +4,7 @@ import { Banner } from "@/components/ds/banner";
 import { PageHeader } from "@/components/ds/page-header";
 import { RecordHeader } from "@/components/ds/record-header";
 import { formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
-import { ApiError, currentSession, gate } from "@/lib/api";
+import { ApiError, currentSession, gate, failureMessage } from "@/lib/api";
 import {
   commissioning,
   readCommandQueue,
@@ -68,9 +68,7 @@ export default async function DevicePage({
     return (
       <Shell locale={locale}>
         <Banner severity="critical">
-          {error instanceof ApiError && error.reason === "unreachable"
-            ? text("error.network")
-            : text("error.unexpected")}
+          {text(failureMessage(error))}
         </Banner>
       </Shell>
     );

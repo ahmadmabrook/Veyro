@@ -12,7 +12,7 @@ import { memberFacts } from "@/components/member-metrics";
 import { MembershipPanels } from "@/components/membership-panels";
 import { Withheld } from "@/components/withheld";
 import { fill, formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
-import { ApiError, currentSession, gate } from "@/lib/api";
+import { ApiError, currentSession, gate, failureMessage } from "@/lib/api";
 import { listMembers } from "@/lib/members-reads";
 import {
   classifyEvent,
@@ -121,9 +121,7 @@ export default async function Member360Page({
     }
     return (
       <Banner severity="critical">
-        {error instanceof ApiError && error.reason === "unreachable"
-          ? text("error.network")
-          : text("error.unexpected")}
+        {text(failureMessage(error))}
       </Banner>
     );
   }

@@ -4,7 +4,7 @@ import { Banner } from "@/components/ds/banner";
 import { PageHeader } from "@/components/ds/page-header";
 import { DataGrid } from "@/components/ds/data-grid";
 import { fill, formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
-import { ApiError, currentSession, gate } from "@/lib/api";
+import { ApiError, currentSession, gateAll } from "@/lib/api";
 import {
   backlogIsExpected,
   failingJobs,
@@ -56,14 +56,17 @@ export default async function OperationsPage() {
 
   if (!(await currentSession())) redirect("/login");
 
-  const [mayEvents, mayDeadLetters, maySubscriptions, mayObjectives, mayMetrics] =
-    await Promise.all([
-      gate("events.event.read"),
-      gate("events.dead_letter.read"),
-      gate("events.subscription.read"),
-      gate("ops.objective.read"),
-      gate("ops.metric.read"),
-    ]);
+  // One round trip rather than several: `/authz/checks` asks the same question about
+  // every action at once, with the same scope resolution and the same assurance weighing.
+  // The semantics are identical -- it is not a permission list, which would be MOD-014's
+  // "a grant is not a session" finding.
+  const [mayEvents, mayDeadLetters, maySubscriptions, mayObjectives, mayMetrics] = await gateAll([
+    "events.event.read",
+    "events.dead_letter.read",
+    "events.subscription.read",
+    "ops.objective.read",
+    "ops.metric.read",
+  ] as const);
 
   const [health, deadLetters, subscriptions, objectives, worker] = await Promise.all([
     mayEvents.allowed ? readOutboxHealth().catch(toNull) : null,

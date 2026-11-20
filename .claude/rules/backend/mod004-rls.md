@@ -781,3 +781,42 @@ where it does not exist. Thirteen primary-key mutations were refused and recorde
 which is the harness manufacturing the gap it then reports. The same goes for widening a
 numeric bound: the integer has to be the whole literal, or `'00:01:30'::interval` becomes
 `1000000:01:30'::interval` and the statement never runs.
+
+
+**A suite that passes on a dev server and fails against the production build has not been
+run.** `playwright.config.ts` says so in its own comment -- "a gate that only ever saw
+`next dev` is a gate that has not seen the artefact" -- and this session proved it twice in
+one afternoon. Two defects were invisible locally and red in CI:
+
+  * **A colour-contrast failure in the dark theme**, on a translucent surface. The design's
+    published contrast table measures every text token on three *opaque* grounds;
+    `color.surface.selected` is `rgba(126,166,232,.16)` in dark, which is not a colour until
+    it is composited over whatever it sits on, so a text token on a selected row is a pairing
+    the table has nothing to say about. `text.tertiary` reads 3.74:1 there -- under AA, and
+    invisible to anybody looking at a light screen. The remedy is both halves: secondary on a
+    selected row, and a unit test that composites the overlay and checks every token against
+    the result. **The published table is not the whole contrast surface, and an overlay is
+    where it stops.**
+  * **An assertion about the machine rather than about the app.**
+    `document.fonts.check(<the whole declared family stack>)` also asks whether the browser
+    has `system-ui` and `sans-serif`; a bare Linux runner answered no. The test's subject is
+    that the face the body *uses* is loaded rather than merely named, which is the first
+    family and nothing else.
+
+**And a rate limit is a budget a test suite can spend.** MOD-011's `api.request` is 600 a
+minute per identity and the browser suite spent it: three hundred tests in three minutes,
+every one a page view with its gate batch and its reads. Six tests came back with the page
+saying "something went wrong", in different places on every run -- the signature of a budget
+rather than of a defect, and it was *only* reproducible against the production build, which
+is faster than a dev server. Three things came out of it and all three were worth having:
+
+  * **A 429 is not "something went wrong".** Every surface rendered `error.unexpected` for
+    anything that was not a network failure, so a reader refused by the limiter was told the
+    product had broken. It is the one refusal that is temporary and the reader's to act on.
+  * **Batch the gate.** `/authz/checks` exists because the Command Center cost nineteen round
+    trips; eight more pages were still asking one at a time.
+  * **The budget is overridable in `local` and refused everywhere else.** Lowering the table's
+    number to suit a test would be exactly the mistake that number's own comment names -- "a
+    limit that trips during ordinary use is a limit somebody will raise to infinity rather
+    than investigate" -- so the override is per process, bounded, and `config.load_settings`
+    refuses it unless `VEYRO_ENV` is `local`.

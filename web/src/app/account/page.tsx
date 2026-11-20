@@ -5,7 +5,7 @@ import { PageHeader } from "@/components/ds/page-header";
 import { fill, t, type Locale, type MessageKey } from "@/i18n/locale";
 import type { AuthEvent, DeviceFact, SessionFact } from "@/lib/account";
 import { listAuthEvents, listDevices, listSessions } from "@/lib/account-reads";
-import { ApiError, currentSession } from "@/lib/api";
+import { currentSession, failureMessage } from "@/lib/api";
 import { presentation } from "@/lib/preferences";
 
 /**
@@ -45,9 +45,7 @@ export default async function AccountPage() {
     return (
       <Shell locale={locale}>
         <Banner severity="critical">
-          {error instanceof ApiError && error.reason === "unreachable"
-            ? text("error.network")
-            : text("error.unexpected")}
+          {text(failureMessage(error))}
         </Banner>
       </Shell>
     );

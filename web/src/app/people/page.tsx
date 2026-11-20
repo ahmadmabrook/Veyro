@@ -5,7 +5,7 @@ import { Banner } from "@/components/ds/banner";
 import { DataGrid } from "@/components/ds/data-grid";
 import { fill, formatInteger, t, type MessageKey } from "@/i18n/locale";
 import { PageHeader } from "@/components/ds/page-header";
-import { ApiError, currentSession, gate } from "@/lib/api";
+import { currentSession, gate, failureMessage } from "@/lib/api";
 import { listDuplicateCandidates, type DuplicateCandidate } from "@/lib/people";
 import { presentation } from "@/lib/preferences";
 import { utcStamp } from "@/lib/time";
@@ -37,9 +37,7 @@ export default async function PeoplePage() {
     try {
       candidates = await listDuplicateCandidates();
     } catch (error) {
-      failed = error instanceof ApiError && error.reason === "unreachable"
-        ? "error.network"
-        : "error.unexpected";
+      failed = failureMessage(error);
     }
   }
 

@@ -86,6 +86,21 @@ const child = spawn(
       // names a developer's own machine.
       VEYRO_ENV: "local",
       VEYRO_RELEASE: "e2e",
+      // **MOD-011's per-identity request budget, raised for this harness only.**
+      //
+      // `api.request` is 600 a minute per identity and its own comment in `ratelimit.py`
+      // says why it is generous: "a limit that trips during ordinary use is a limit
+      // somebody will raise to infinity rather than investigate". A browser suite is not
+      // ordinary use -- three hundred tests in three minutes, every one of them a page view
+      // with its gate batch and its reads -- so it tripped the limiter, and six tests came
+      // back with the page saying "something went wrong" when nothing had.
+      //
+      // **It failed in CI and passed on every laptop**, because a laptop runs `next dev` and
+      // CI drives the production build, which is faster. Lowering the number for everybody
+      // would be the mistake that comment names; so the override lives in `config.py`, is
+      // bounded, and is refused outside the `local` environment -- which is the only
+      // environment this script starts.
+      VEYRO_API_REQUEST_BUDGET: "20000",
       ...process.env,
       VEYRO_DATABASE_URL: dsn,
     },

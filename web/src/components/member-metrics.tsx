@@ -1,7 +1,7 @@
 import { MetricCell, MetricRow } from "@/components/ds/metric-cell";
 import { MoneyValue } from "@/components/ds/money-value";
-import { fill, t, type Locale, type MessageKey } from "@/i18n/locale";
-import { gate } from "@/lib/api";
+import { fill, formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
+import { gateAll } from "@/lib/api";
 import { readAttendance, readCredentials, recordBand } from "@/lib/member-record";
 import {
   listGrants,
@@ -40,13 +40,18 @@ export async function memberFacts(
   personId: string, locale: Locale,
 ): Promise<MemberFacts> {
   const text = (key: MessageKey) => t(locale, key);
-  const [finance, records, entitlements, visits, credentials] = await Promise.all([
-    gate("finance.account.read"),
-    gate("membership.record.read"),
-    gate("membership.entitlement.read"),
-    gate("access.decision.read"),
-    gate("access.credential.read"),
-  ]);
+  // **One round trip, not five.** `/authz/checks` asks the same question about several
+  // actions in one request, with the same scope resolution and the same assurance weighing
+  // -- it exists because the Command Center cost nineteen round trips against
+  // `api.request`'s 600-a-minute per-identity budget, and the browser suite tripped it
+  // first. This row is five of them, and the member record asks nine in all.
+  const [finance, records, entitlements, visits, credentials] = await gateAll([
+    "finance.account.read",
+    "membership.record.read",
+    "membership.entitlement.read",
+    "access.decision.read",
+    "access.credential.read",
+  ] as const);
 
   // Each read is attempted only where its gate allowed, and a failure is the cell's own
   // "unavailable" rather than the page's error: one module being down must not take the
@@ -188,13 +193,23 @@ export async function memberFacts(
                 credentials.allowed ? "metric.readFailed" : "metric.notPermitted"),
             }
             : {
-              value: fill(locale, "member.liveCredentials", { count: held.live }),
+              // **The figure, not the sentence.** `MetricCell`'s value is mono at 21px
+              // because it is a number; a phrase there wraps to two lines at display size,
+              // which Arabic showed first -- "بيان اعتماد واحد" over two lines where the
+              // English "1 credential" happened to fit. The count is the value and the
+              // noun moves into the line under it, which is what every other cell does.
+              value: (
+                <span className="data" dir="ltr">
+                  {formatInteger(held.live, "latn")}
+                </span>
+              ),
               // **Holding a credential is not an admission**, and the cell says so rather
               // than reading as "Granted": whether this person gets in is decided per
               // presentation against the zone's policy, their membership and their
               // entitlement, and nothing on a record page can evaluate that without
               // recording a decision.
-              comparison: text("member.notAnAdmission"),
+              comparison: `${fill(locale, "member.credentialNoun", { count: held.live })
+                } \u00b7 ${text("member.notAnAdmission")}`,
             })}
         />
       </MetricRow>

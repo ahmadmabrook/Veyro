@@ -6,7 +6,7 @@ import { CapabilityMatrix, MATRIX_GLYPH } from "@/components/ds/capability-matri
 import { PageHeader } from "@/components/ds/page-header";
 import { DataGrid } from "@/components/ds/data-grid";
 import { fill, formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
-import { ApiError, currentSession, gate, type GateAnswer } from "@/lib/api";
+import { currentSession, gate, type GateAnswer, failureMessage } from "@/lib/api";
 import {
   byDomain,
   listRoles,
@@ -416,9 +416,7 @@ function PermissionList({
 }
 
 function failure(error: unknown): MessageKey {
-  return error instanceof ApiError && error.reason === "unreachable"
-    ? "error.network"
-    : "error.unexpected";
+  return failureMessage(error);
 }
 
 /**

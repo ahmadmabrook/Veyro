@@ -8,7 +8,7 @@ import { PageHeader } from "@/components/ds/page-header";
 import { Prose } from "@/components/prose";
 import { Withheld } from "@/components/withheld";
 import { fill, formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
-import { ApiError, currentSession, gate } from "@/lib/api";
+import { currentSession, gateAll, failureMessage } from "@/lib/api";
 import { readCollections, type Collections } from "@/lib/command-centre-reads";
 import { listMembers } from "@/lib/members-reads";
 import { exceptions, moneyKind, readPayments, type PaymentsLedger } from "@/lib/payments";
@@ -65,11 +65,15 @@ export default async function PaymentsPage({
 
   if (!(await currentSession())) redirect("/login");
 
-  const [mayPayments, mayRevenue, mayPeople] = await Promise.all([
-    gate("finance.payment.read"),
-    gate("finance.revenue.read"),
-    gate("people.person.read"),
-  ]);
+  // One round trip rather than several: `/authz/checks` asks the same question about
+  // every action at once, with the same scope resolution and the same assurance weighing.
+  // The semantics are identical -- it is not a permission list, which would be MOD-014's
+  // "a grant is not a session" finding.
+  const [mayPayments, mayRevenue, mayPeople] = await gateAll([
+    "finance.payment.read",
+    "finance.revenue.read",
+    "people.person.read",
+  ] as const);
 
   if (!mayPayments.allowed) {
     return (
@@ -88,9 +92,7 @@ export default async function PaymentsPage({
     return (
       <Shell locale={locale}>
         <Banner severity="critical">
-          {error instanceof ApiError && error.reason === "unreachable"
-            ? text("error.network")
-            : text("error.unexpected")}
+          {text(failureMessage(error))}
         </Banner>
       </Shell>
     );

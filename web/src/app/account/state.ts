@@ -9,7 +9,7 @@
 export type AccountState = {
   /** A message key, so the result is translated like everything else on these surfaces. */
   message: "account.revoked" | "account.trusted" | "account.codesIssued" | null;
-  error: "account.refused" | "account.needsStepUp" | "error.network" | null;
+  error: "account.refused" | "account.needsStepUp" | "error.network" | "error.tooMany" | null;
   /** Rendered once, then gone. Never persisted anywhere by this app. */
   codes: string[];
   /**

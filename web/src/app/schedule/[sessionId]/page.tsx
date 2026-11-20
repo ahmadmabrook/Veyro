@@ -7,7 +7,7 @@ import { MetricCell, MetricRow } from "@/components/ds/metric-cell";
 import { PageHeader } from "@/components/ds/page-header";
 import { RecordHeader } from "@/components/ds/record-header";
 import { fill, formatInteger, t, type MessageKey } from "@/i18n/locale";
-import { ApiError, currentSession, gate } from "@/lib/api";
+import { ApiError, currentSession, gateAll } from "@/lib/api";
 import { presentation } from "@/lib/preferences";
 import { heldBeyondRoster, readRoster } from "@/lib/booking";
 import { readSession, type SessionResource } from "@/lib/scheduling";
@@ -39,7 +39,12 @@ export default async function SessionPage({
 
   if (!(await currentSession())) redirect("/login");
 
-  const may = await gate("scheduling.schedule.read");
+  // One round trip for all three; see `member-metrics.tsx` for why.
+  const [may, mayChange, mayRoster] = await gateAll([
+    "scheduling.schedule.read",
+    "scheduling.session.change",
+    "booking.booking.read",
+  ] as const);
   if (!may.allowed) {
     return (
       <Shell title={text("schedule.session")}>
@@ -61,10 +66,6 @@ export default async function SessionPage({
   // paragraph 4145 draws: the schedule owns the occurrence and its capacity, booking owns the
   // member's reservation. A reader may hold one and not the other, so the block is gated on
   // its own and a refusal says so rather than rendering an empty class.
-  const [mayChange, mayRoster] = await Promise.all([
-    gate("scheduling.session.change"),
-    gate("booking.booking.read"),
-  ]);
   const session = await readSession(sessionId).catch(toNull);
   const roster = mayRoster.allowed ? await readRoster(sessionId).catch(toNull) : null;
   if (session === null) {

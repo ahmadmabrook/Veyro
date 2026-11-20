@@ -4,7 +4,7 @@ import { Banner } from "@/components/ds/banner";
 import { PageHeader } from "@/components/ds/page-header";
 import { DataGrid } from "@/components/ds/data-grid";
 import { fill, formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
-import { ApiError, currentSession, gate } from "@/lib/api";
+import { ApiError, currentSession, gateAll } from "@/lib/api";
 import { money } from "@/lib/membership";
 import {
   listChannels,
@@ -51,12 +51,16 @@ export default async function NotificationsPage() {
 
   if (!(await currentSession())) redirect("/login");
 
-  const [mayTemplates, mayPolicies, mayNotifications, maySuppressions] = await Promise.all([
-    gate("notifications.template.read"),
-    gate("notifications.policy.read"),
-    gate("notifications.notification.read"),
-    gate("notifications.suppression.read"),
-  ]);
+  // One round trip rather than several: `/authz/checks` asks the same question about
+  // every action at once, with the same scope resolution and the same assurance weighing.
+  // The semantics are identical -- it is not a permission list, which would be MOD-014's
+  // "a grant is not a session" finding.
+  const [mayTemplates, mayPolicies, mayNotifications, maySuppressions] = await gateAll([
+    "notifications.template.read",
+    "notifications.policy.read",
+    "notifications.notification.read",
+    "notifications.suppression.read",
+  ] as const);
 
   if (
     !mayTemplates.allowed && !mayPolicies.allowed && !mayNotifications.allowed &&

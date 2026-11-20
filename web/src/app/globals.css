@@ -1920,6 +1920,16 @@ a {
   color: var(--color-text-tertiary);
 }
 
+/* **Small text on the selected row is secondary, never tertiary.** `color.surface.selected`
+   is a translucent overlay in the dark theme -- `rgba(126,166,232,.16)` -- so it lifts the
+   ground it sits on, and tertiary reads 3.74:1 against the result. Under AA, and invisible
+   to anybody looking at a light screen: axe found it against the production build in CI and
+   `tests/unit/contrast.test.mjs` pins both halves now. The design's own table measures three
+   opaque surfaces and has nothing to say about an overlay. */
+.ds-person-row[aria-current="page"] .ds-person-detail {
+  color: var(--color-text-secondary);
+}
+
 .ds-person-figure { flex-shrink: 0; }
 
 .ds-inspector-pane {

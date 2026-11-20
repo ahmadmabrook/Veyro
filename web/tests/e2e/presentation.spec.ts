@@ -223,10 +223,23 @@ test.describe("the typeface", () => {
     // `next/font` self-hosts under a generated name, so the assertion is that the first
     // family in the stack is the variable this app sets rather than a system fallback.
     expect(family).not.toMatch(/^system-ui/);
-    const usable = await page.evaluate(() =>
-      document.fonts.check(`${getComputedStyle(document.body).fontSize} ${
-        getComputedStyle(document.body).fontFamily}`));
-    expect(usable, "the computed body font must resolve to a face the browser has").toBe(true);
+    // **The first family only, not the whole stack.** `document.fonts.check` over the
+    // declared list also asks whether the browser has `system-ui` and `sans-serif`, which
+    // is a question about the machine rather than about this app -- and a bare Linux CI
+    // runner answered no, so this failed in CI and passed on every developer's laptop. What
+    // the test is for is that the face the body *uses* is loaded rather than merely named,
+    // and that is the first family: the self-hosted Plex `next/font` generated.
+    const usable = await page.evaluate(() => {
+      const first = getComputedStyle(document.body).fontFamily.split(",")[0]!.trim();
+      return {
+        first,
+        loaded: document.fonts.check(
+          `${getComputedStyle(document.body).fontSize} ${first}`),
+      };
+    });
+    expect(usable.first, "the body's first family is the app's own variable")
+      .toMatch(/Plex|__/);
+    expect(usable.loaded, `the body's own face must be loaded: ${usable.first}`).toBe(true);
   });
 
   test("a money figure and an id are set in the mono face", async ({ page }) => {

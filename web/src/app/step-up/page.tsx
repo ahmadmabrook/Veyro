@@ -5,7 +5,7 @@ import { readCatalog } from "@/lib/authz";
 
 import { Banner } from "@/components/ds/banner";
 import { t, type Locale, type MessageKey } from "@/i18n/locale";
-import { ApiError, api, currentSession } from "@/lib/api";
+import { api, currentSession, failureMessage } from "@/lib/api";
 import { safeNext } from "@/lib/navigation";
 import { presentation } from "@/lib/preferences";
 
@@ -81,9 +81,7 @@ export default async function StepUpPage({
     return (
       <Shell locale={locale} next={next}>
         <Banner severity="critical">
-          {error instanceof ApiError && error.reason === "unreachable"
-            ? text("error.network")
-            : text("error.unexpected")}
+          {text(failureMessage(error))}
         </Banner>
       </Shell>
     );

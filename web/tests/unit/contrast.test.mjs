@@ -181,3 +181,56 @@ test("passesAA refuses to answer without a size", () => {
     /needs the rendered size/,
   );
 });
+
+/**
+ * **The selected surface is a translucent overlay, and nothing in the table covers it.**
+ *
+ * The design's contrast rows measure every text token on `warm.0`, `warm.100` and
+ * `warm.150` -- three opaque grounds in the light theme. `color.surface.selected` is
+ * neither: in light it is `ink.50`, and in dark it is `rgba(126,166,232,.16)`, which is not
+ * a colour at all until it is composited over whatever it sits on. So a text token on a
+ * selected row is a pairing the published table has nothing to say about, and the member
+ * queue's sub-line found that out the hard way: `text.tertiary` reads 3.74:1 on the dark
+ * selected row, under AA, and a sighted reader on a light screen never sees it.
+ *
+ * This composites both themes' selected surface over their own default and checks every
+ * text token against the result, which is the half the table cannot carry because the
+ * answer depends on what the overlay is over.
+ */
+
+/** `rgba(r,g,b,a)` over an opaque hex, as the browser composites it. */
+function over([r, g, b], alpha, hex) {
+  const base = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+  return "#" + [r, g, b]
+    .map((c, i) => Math.round(c * alpha + base[i] * (1 - alpha))
+      .toString(16).padStart(2, "0")).join("");
+}
+
+const DARK_SELECTED = over([126, 166, 232], 0.16, "#211f1c");
+const LIGHT_SELECTED = "#e8edf6";
+
+test("small text on a selected row reaches AA in both themes", () => {
+  // Secondary, not tertiary: tertiary is the contrast floor on an *opaque* surface, and the
+  // selected overlay lifts the ground enough to take it under AA in the dark theme. The
+  // rule the app follows is "small text on color.surface.selected uses text.secondary", and
+  // this is what makes it a rule rather than a habit.
+  for (const [theme, ground, secondary] of [
+    ["dark", DARK_SELECTED, "#b8b3aa"],
+    ["light", LIGHT_SELECTED, "#57544d"],
+  ]) {
+    assert.ok(
+      passesAA(secondary, ground, { sizePx: 11 }),
+      `${theme}: secondary on the selected row is ${ratioAt2dp(secondary, ground)}`,
+    );
+  }
+});
+
+test("tertiary on the dark selected row is under AA, which is why the rule exists", () => {
+  // **The documented failure, pinned like the DS's own one.** A change that made this pass
+  // would mean the palette moved, and the rule above would quietly stop being necessary --
+  // which is a thing somebody should notice rather than discover.
+  assert.ok(
+    !passesAA("#928d84", DARK_SELECTED, { sizePx: 11 }),
+    `tertiary on the dark selected row is ${ratioAt2dp("#928d84", DARK_SELECTED)}`,
+  );
+});

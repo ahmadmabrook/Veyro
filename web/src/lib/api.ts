@@ -260,3 +260,25 @@ export async function gate(action: string): Promise<GateAnswer> {
     throw error;
   }
 }
+
+/**
+ * Which message an API failure deserves.
+ *
+ * **Three answers, and conflating them is the defect this exists for.** Every surface in this
+ * app rendered `error.unexpected` -- "Something went wrong." -- for anything that was not a
+ * network failure, so a reader whose *own* request had been refused by MOD-011's rate limiter
+ * was told the product had broken. It is the one refusal that is both temporary and the
+ * reader's to act on, and it says "wait a moment" rather than "this is broken": CI found it,
+ * because the browser suite makes more requests in a minute than any operator does and six
+ * tests came back with the page saying something had gone wrong when nothing had.
+ *
+ * A 429 is the only status broken out, deliberately. A 403 and a 404 are handled where they
+ * are meaningful -- the gate's own refusal, "no such person" -- and anything else really is
+ * unexpected, which is what that message is for.
+ */
+export function failureMessage(error: unknown): "error.network" | "error.tooMany"
+| "error.unexpected" {
+  if (!(error instanceof ApiError)) return "error.unexpected";
+  if (error.reason === "unreachable") return "error.network";
+  return error.status === 429 ? "error.tooMany" : "error.unexpected";
+}

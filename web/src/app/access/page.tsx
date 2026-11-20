@@ -5,7 +5,7 @@ import { Banner } from "@/components/ds/banner";
 import { PageHeader } from "@/components/ds/page-header";
 import { DataGrid } from "@/components/ds/data-grid";
 import { fill, formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
-import { ApiError, currentSession, gate } from "@/lib/api";
+import { currentSession, gate, failureMessage } from "@/lib/api";
 import { listZones, type ZoneSummary } from "@/lib/access";
 import { presentation } from "@/lib/preferences";
 
@@ -49,9 +49,7 @@ export default async function DoorBoardPage() {
     return (
       <Shell locale={locale}>
         <Banner severity="critical">
-          {error instanceof ApiError && error.reason === "unreachable"
-            ? text("error.network")
-            : text("error.unexpected")}
+          {text(failureMessage(error))}
         </Banner>
       </Shell>
     );

@@ -458,6 +458,10 @@ const MESSAGES = {
     "member.noMembership": "No membership sold to this person.",
     "member.neverVisited": "No entry has ever been recorded. That is not the same as a member who stopped coming.",
     "member.noCountedGrant": "No counted entitlement. An unlimited grant has no balance and is not rendered as one.",
+    "member.credentialNoun": {
+      one: "credential",
+      other: "credentials"
+    },
     "member.notAnAdmission": "held, not admitted",
     "metric.notPermitted": "You do not hold the permission this figure needs.",
     "metric.readFailed": "This figure could not be read just now.",
@@ -683,6 +687,7 @@ const MESSAGES = {
     "gate.denied": "Not permitted",
     "error.network": "The server could not be reached.",
     "error.unexpected": "Something went wrong.",
+    "error.tooMany": "Too many requests just now. This is a limit on how fast one account may ask, not a fault \u2014 wait a moment and reload.",
     "state.loading": "Loading…",
     "membership.title": "Membership agreement",
     "membership.lead": "Composed by this page from MOD-017's own routes, each through its own gate — MOD-014's projection does not read them, because a cross-domain read is what paragraph 1300 bars.",
@@ -1587,6 +1592,14 @@ const MESSAGES = {
     "member.noMembership": "لم تُبَع أي عضوية لهذا الشخص.",
     "member.neverVisited": "لم يُسجَّل أي دخول قط. وهذا ليس كعضو توقّف عن الحضور.",
     "member.noCountedGrant": "لا يوجد استحقاق معدود. المنح غير المحدود لا رصيد له ولا يُعرض كرقم.",
+    "member.credentialNoun": {
+      zero: "بيانات اعتماد",
+      one: "بيان اعتماد",
+      two: "بيانا اعتماد",
+      few: "بيانات اعتماد",
+      many: "بيان اعتماد",
+      other: "بيان اعتماد"
+    },
     "member.notAnAdmission": "محمول، لا مسموح",
     "metric.notPermitted": "لا تملك الصلاحية التي يحتاجها هذا الرقم.",
     "metric.readFailed": "لم يتعذّر قراءة هذا الرقم الآن.",
@@ -1853,6 +1866,7 @@ const MESSAGES = {
     "gate.unreachable": "غير متاح في هذه النسخة",
     "gate.denied": "غير مسموح",
     "error.network": "تعذّر الوصول إلى الخادم.",
+    "error.tooMany": "طلبات كثيرة في وقت قصير. هذا حدّ على سرعة طلب الحساب الواحد، لا عطل — انتظر قليلاً ثم أعد التحميل.",
     "error.unexpected": "حدث خطأ ما.",
     "state.loading": "جارٍ التحميل…",
     "membership.title": "اتفاقية العضوية",

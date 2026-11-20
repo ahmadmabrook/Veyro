@@ -5,7 +5,7 @@ import { PageHeader } from "@/components/ds/page-header";
 import { DataGrid } from "@/components/ds/data-grid";
 import { Prose } from "@/components/prose";
 import { fill, formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
-import { ApiError, currentSession, gate } from "@/lib/api";
+import { ApiError, currentSession, gateAll } from "@/lib/api";
 import {
   erasesOf,
   holdIsLive,
@@ -59,12 +59,16 @@ export default async function PrivacyPage() {
 
   if (!(await currentSession())) redirect("/login");
 
-  const [mayPurposes, mayRetention, mayDsar, mayIncidents] = await Promise.all([
-    gate("privacy.purpose.read"),
-    gate("privacy.retention.read"),
-    gate("privacy.dsar.read"),
-    gate("privacy.incident.read"),
-  ]);
+  // One round trip rather than several: `/authz/checks` asks the same question about
+  // every action at once, with the same scope resolution and the same assurance weighing.
+  // The semantics are identical -- it is not a permission list, which would be MOD-014's
+  // "a grant is not a session" finding.
+  const [mayPurposes, mayRetention, mayDsar, mayIncidents] = await gateAll([
+    "privacy.purpose.read",
+    "privacy.retention.read",
+    "privacy.dsar.read",
+    "privacy.incident.read",
+  ] as const);
 
   if (
     !mayPurposes.allowed && !mayRetention.allowed && !mayDsar.allowed &&

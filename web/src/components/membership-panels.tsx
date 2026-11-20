@@ -1,6 +1,6 @@
 import { Banner } from "@/components/ds/banner";
 import { formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
-import { ApiError, gate } from "@/lib/api";
+import { gateAll, failureMessage } from "@/lib/api";
 import {
   listAccounts,
   listGrants,
@@ -54,11 +54,12 @@ export async function MembershipPanels({
   only?: "membership" | "billing";
 }) {
   const text = (key: MessageKey) => t(locale, key);
-  const [records, entitlements, finance] = await Promise.all([
-    gate("membership.record.read"),
-    gate("membership.entitlement.read"),
-    gate("finance.account.read"),
-  ]);
+  // One round trip rather than three; see `member-metrics.tsx` for why that matters.
+  const [records, entitlements, finance] = await gateAll([
+    "membership.record.read",
+    "membership.entitlement.read",
+    "finance.account.read",
+  ] as const);
 
   const show = (block: "membership" | "billing") => only === undefined || only === block;
 
@@ -403,12 +404,7 @@ async function Finance({ personId, locale }: { personId: string; locale: Locale 
 function Failed({ error, locale }: { error: unknown; locale: Locale }) {
   return (
     <Banner severity="critical">
-      {t(
-        locale,
-        error instanceof ApiError && error.reason === "unreachable"
-          ? "error.network"
-          : "error.unexpected",
-      )}
+      {t(locale, failureMessage(error))}
     </Banner>
   );
 }

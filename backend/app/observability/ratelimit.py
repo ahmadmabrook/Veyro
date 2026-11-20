@@ -93,14 +93,15 @@ def window_start(now_epoch: float, *, window_seconds: int = WINDOW_SECONDS) -> i
 
 
 def decide(*, limit_key: str, used: int, now_epoch: float,
-           window_seconds: int = WINDOW_SECONDS) -> Verdict:
+           window_seconds: int = WINDOW_SECONDS,
+           budgets: dict[str, int] | None = None) -> Verdict:
     """Is this request within budget? Pure, so the counter can live anywhere.
 
     `used` counts this request. A budget of 30 admits the 30th and refuses the 31st, which is
     the reading that makes "30 per minute" mean what it says.
     """
     try:
-        limit = BUDGETS[limit_key]
+        limit = (BUDGETS if budgets is None else budgets)[limit_key]
     except KeyError:
         raise RateLimitError(f"{limit_key!r} is not a rate limit this build defines") from None
     if used <= limit:
@@ -119,9 +120,21 @@ class Limiter:
     """
 
     def __init__(self, *, window_seconds: int = WINDOW_SECONDS,
-                 max_tracked: int = _MAX_TRACKED) -> None:
+                 max_tracked: int = _MAX_TRACKED,
+                 budgets: dict[str, int] | None = None) -> None:
         self._window_seconds = window_seconds
         self._max_tracked = max_tracked
+        #: **The table, or an override this instance was handed.** `BUDGETS` is the reviewable
+        #: list and stays the default; a caller may pass a copy with one number changed, which
+        #: is how the end-to-end harness raises `api.request` for a browser suite that makes
+        #: more requests in a minute than any operator does.
+        #:
+        #: An override belongs here rather than in a mutation of `BUDGETS`, because a module
+        #: dict that two processes disagree about is a second definition of the same control --
+        #: and because it keeps the refusal where it has to be: `config.load_settings` admits
+        #: the override only in the `local` environment, so development and staging get the
+        #: table whatever the environment says.
+        self._budgets = dict(BUDGETS) if budgets is None else dict(budgets)
         self._counts: dict[tuple[str, str, str], tuple[int, int]] = {}
         self._lock = Lock()
 
@@ -134,7 +147,7 @@ class Limiter:
         tenant's traffic cannot consume another's budget, which is the whole of the
         noisy-neighbour requirement that a per-process limiter can satisfy.
         """
-        if limit_key not in BUDGETS:
+        if limit_key not in self._budgets:
             raise RateLimitError(f"{limit_key!r} is not a rate limit this build defines")
         start = window_start(now_epoch, window_seconds=self._window_seconds)
         key = (tenant_id, limit_key, subject)
@@ -147,7 +160,7 @@ class Limiter:
             if len(self._counts) > self._max_tracked:
                 self._evict(start)
         return decide(limit_key=limit_key, used=count, now_epoch=now_epoch,
-                      window_seconds=self._window_seconds)
+                      window_seconds=self._window_seconds, budgets=self._budgets)
 
     def _evict(self, current_window: int) -> None:
         """Drop everything from an earlier window; if that is not enough, drop arbitrarily.

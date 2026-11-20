@@ -37,6 +37,11 @@ async function act(run: () => Promise<AccountState>): Promise<AccountState> {
     if (error instanceof ApiError && error.reason === "unreachable") {
       return { ...IDLE, error: "error.network" };
     }
+    // A refusal by the rate limiter is temporary and is the reader's to act on, which
+    // "something went wrong" is not: the form says to wait rather than that it broke.
+    if (error instanceof ApiError && error.status === 429) {
+      return { ...IDLE, error: "error.tooMany" };
+    }
     // A 403 here means the session is too weak for what was asked, which for this page is
     // only ever the recovery-code action. Saying so is the difference between a reader
     // stepping up and a reader concluding the product is broken.
