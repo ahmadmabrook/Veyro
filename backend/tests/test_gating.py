@@ -92,6 +92,7 @@ READ_ROUTES = [
     ("get", "/catalog/promotions", None),
     ("get", f"/catalog/resolutions/{_ID}", None),
     ("get", f"/catalog/bundles/{_ID}/status?order_reference=sweep", None),
+    ("get", "/people", None),
     ("get", "/people/duplicates/all", None),
     ("get", f"/people/merges/plan?source_person_id={_ID}&target_person_id={_SUBJECT}", None),
     ("get", "/scheduling/resources", None),

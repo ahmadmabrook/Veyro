@@ -63,10 +63,12 @@ test("the shell is two panes and there is no third track", () => {
 test("each density mode emits the row, control and step the source states", () => {
   for (const mode of contracts.density) {
     const [row, control] = mode.row_and_control.split("/").map((s) => parseInt(s.trim(), 10));
+    // The selector is an attribute one rather than `:root`, so a screen can set a density on
+    // its own wrapper -- which ADM-MEM-05 does, and which `:root[...]` silently did not do.
     const selector =
       mode.mode === "Default"
-        ? ':root, :root\\[data-density="default"\\]'
-        : `:root\\[data-density="${mode.mode.toLowerCase()}"\\]`;
+        ? ':root, \\[data-density="default"\\]'
+        : `\\[data-density="${mode.mode.toLowerCase()}"\\]`;
     const block = css.match(new RegExp(`${selector} \\{([^}]*)\\}`));
     assert.ok(block, `${mode.mode} emits no density block`);
     assert.match(block[1], new RegExp(`--density-row:\\s*${row}px;`), mode.mode);
@@ -80,7 +82,7 @@ test("density changes row height, spacing and type only -- nothing else moves", 
   // Patterns, CROSS: "Four modes changing row height, spacing step and type step only.
   // Colour, radius, anatomy and hierarchy are invariant." A density block that redefined a
   // colour or a radius would be a fifth theme wearing a density's name.
-  const blocks = css.match(/:root\[data-density="[a-z]+"\] \{[^}]*\}/g) ?? [];
+  const blocks = css.match(/\n\[data-density="[a-z]+"\] \{[^}]*\}/g) ?? [];
   assert.ok(blocks.length >= 3, "the density modes are not emitted");
   for (const block of blocks) {
     const declared = [...block.matchAll(/(--[a-z-]+):/g)].map((m) => m[1]);

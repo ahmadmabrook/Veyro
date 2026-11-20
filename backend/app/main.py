@@ -5139,6 +5139,26 @@ def create_app(
             actor_id=session["identity_id"], correlation_id=body.correlation_id,
         )
 
+    @app.get("/people")
+    def list_people(
+        tenant_id: TenantId, session: Session,
+        lifecycle_state: str | None = None, tag_key: str | None = None, limit: int = 50,
+    ) -> dict[str, Any]:
+        """The members list, **masked**, bounded, and honest about what it cannot answer.
+
+        ADM-MEM-05 specifies seven columns; this module owns two of them. The rest are other
+        modules' and the surface composes them from each module's own list route -- paragraph
+        1300 bars a cross-domain join, not a surface that asks twice. The response names the
+        ones nothing in this build can answer at all, so a page cannot render an empty cell
+        as a fact about a member.
+        """
+        gate = permit(session, "people.person.read")
+        return people.list_people(
+            tenant_pool, tenant_id,
+            masked_fields=gate.masked_fields, held_permissions=held_permissions(session),
+            lifecycle_state=lifecycle_state, tag_key=tag_key, limit=limit,
+        )
+
     @app.get("/people/{person_id}")
     def read_person(
         tenant_id: TenantId, session: Session, person_id: str

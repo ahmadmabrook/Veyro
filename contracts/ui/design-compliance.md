@@ -183,6 +183,7 @@ accessibility, RTL and responsive behaviour must be.
 | Admin: content max 1440 | `LAYOUTS` | implemented, spec verified |
 | Admin: inspector 380 at bp.lg, 480 at bp.xl | `LAYOUTS` | implemented, spec verified. **No screen uses it yet** — the slot exists and the list-and-inspector pattern is not built. |
 | Admin: split view is list + inspector, never three columns | `LAYOUTS` | implemented, spec verified (a third track fails the test) |
+| A screen may set its own density | `LAYOUTS`, ADM-MEM-05 | implemented, spec verified. The generated selector was `:root[data-density=…]`, which matches only `<html>` — so a screen setting it on its own wrapper read as compact and rendered at the default row height. Found by measuring the rendered rows. |
 | Four density modes | `DENSITY` | implemented, spec verified. The 44px button floor applies at Touch, Spacious and wherever the pointer is coarse. **No surface selects a mode yet**: `data-density` is honoured and nothing sets it per LAYOUTS (Front Desk Touch, Member Spacious, Console Compact). |
 | Five breakpoints with declared per-surface behaviour | `BREAKPOINTS` | implemented, spec verified. Every media query in the app is asserted to sit on a breakpoint boundary. |
 | Global chrome: scope switcher, ⌘K, tasks, alerts, account | §21 | partial. Account is a rail entry; language and theme are in the chrome slot. **Scope switcher, ⌘K and tasks/alerts are not built** — there is no scope concept on the client and no command palette. |
@@ -263,6 +264,7 @@ exist are listed here as `implemented, functionally tested` and **not** design-c
 | Sign-in | `/login` | implemented, functionally tested |
 | Step-up | `/step-up` | implemented, functionally tested |
 | Account | `/account` | implemented, functionally tested |
+| Members (ADM-MEM-05) | `/members` | implemented, functionally tested, **spec verified in part** — 4 of 7 columns, the two-number footer, Compact density; the search, quick filters, saved views, bulk bar and export are named as blocked with the product's reason |
 | Overview | `/` | implemented, functionally tested |
 | Organization | `/organization` | implemented, functionally tested |
 | People / duplicates | `/people` | implemented, functionally tested |

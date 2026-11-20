@@ -177,28 +177,28 @@
 }
 
 /* Density. Four modes, three variables, nothing else moves. */
-:root[data-density="compact"] {
+[data-density="compact"] {
   --density-row: 34px;
   --density-control: 40px;
   --density-gap: 8px; /* spacing step −1 step from --space-3 */
   --density-type-size: 12.5px; /* type.bodySm */
   --density-type-line: 1.55;
 }
-:root, :root[data-density="default"] {
+:root, [data-density="default"] {
   --density-row: 40px;
   --density-control: 48px;
   --density-gap: 12px; /* spacing step base from --space-3 */
   --density-type-size: 14px; /* type.body */
   --density-type-line: 1.60;
 }
-:root[data-density="touch"] {
+[data-density="touch"] {
   --density-row: 48px;
   --density-control: 52px;
   --density-gap: 16px; /* spacing step +1 step from --space-3 */
   --density-type-size: 15px; /* type.bodyLg */
   --density-type-line: 1.60;
 }
-:root[data-density="spacious"] {
+[data-density="spacious"] {
   --density-row: 56px;
   --density-control: 64px;
   --density-gap: 20px; /* spacing step +2 steps from --space-3 */

@@ -67,6 +67,19 @@ class PeopleApiTestCase(GatedApiTestCase):
         self.assertEqual(noted.status_code, 201, noted.text)
         return person_id
 
+    def plain_subject(self, tenant_id: str, name: str) -> str:
+        """A person with no custom fields.
+
+        `subject` declares three custom fields, and a field key is unique per tenant -- so a
+        second `subject` in one tenant is refused with `this_field_key_already_exists`. A list
+        test needs several people and none of their classified fields.
+        """
+        created = self.client.post("/people", json={
+            "legal_name": name, "date_of_birth": "1990-04-02", **self.correlation()},
+            headers=self.headers(tenant_id))
+        self.assertEqual(created.status_code, 201, created.text)
+        return str(created.json()["person_id"])
+
     def custom_field(self, body: dict, key: str) -> dict:
         return next(f for f in body["custom_fields"] if f["field_key"] == key)
 
@@ -436,6 +449,98 @@ class ErasureAfterMergeTests(PeopleApiTestCase):
         source, target, identity_id = self.build(tenant_id, link_to_source=False)
         self.erase(tenant_id, identity_id)
         self.assert_erased(tenant_id, [source, target])
+
+
+class MembersListTests(PeopleApiTestCase):
+    """ADM-MEM-05's list, bounded, masked, and honest about what it cannot answer.
+
+    The design specifies seven columns and this module owns two. The rest belong to MOD-017,
+    MOD-018 and MOD-020/MOD-022, and a surface composes them from each module's own list
+    route -- so the response has to say which columns it cannot answer, or a page renders an
+    empty cell as a fact about a member.
+    """
+
+    def test_the_count_is_of_the_match_and_the_total_is_of_the_tenant(self):
+        """"Showing 1-50 of 18 matching · 4,812 total" -- the difference is the point.
+
+        A filtered list that reports only its own length implies the records that did not
+        match do not exist, which is the same lie as an empty state that does not name its
+        filters.
+        """
+        tenant_id = self.tenant()
+        self.plain_subject(tenant_id, "Ahmad Nabulsi")
+        self.plain_subject(tenant_id, "Lina Haddad")
+        head = self.headers(tenant_id)
+
+        everything = self.client.get("/people", headers=head)
+        self.assertEqual(everything.status_code, 200, everything.text)
+        self.assertEqual(everything.json()["total"], 2, everything.text)
+        self.assertEqual(everything.json()["matching"], 2, everything.text)
+
+        # A lifecycle filter nobody matches: the total stays, the match goes to zero.
+        filtered = self.client.get("/people?lifecycle_state=cancelled", headers=head).json()
+        self.assertEqual(filtered["total"], 2, filtered)
+        self.assertEqual(filtered["matching"], 0, filtered)
+        self.assertEqual(filtered["people"], [], filtered)
+
+    def test_a_limit_outside_the_ceiling_refuses_rather_than_clamping(self):
+        tenant_id = self.tenant()
+        head = self.headers(tenant_id)
+        for query in ("limit=0", "limit=201"):
+            refused = self.client.get(f"/people?{query}", headers=head)
+            self.assertEqual(refused.status_code, 422, f"{query}: {refused.text}")
+            self.assertEqual(refused.json()["error"], "bad_limit", query)
+
+    def test_an_unknown_lifecycle_state_refuses_rather_than_returning_nothing(self):
+        """`state=activ` and "nobody is active" are different answers.
+
+        A list that renders both as an empty table is a list nobody can trust, which is the
+        rule MOD-017's own listing reads were written against.
+        """
+        tenant_id = self.tenant()
+        refused = self.client.get(
+            "/people?lifecycle_state=activ", headers=self.headers(tenant_id))
+        self.assertEqual(refused.status_code, 422, refused.text)
+
+    def test_it_is_masked_like_every_other_read_in_this_module(self):
+        """A routine AAL-1 session gets the legal name masked, not omitted.
+
+        `legal_name` is `identity`-classified, which `people.person.read` alone does not
+        open -- and the list is a read path like any other, so the same two halves of the
+        mask apply. A list that returned in the clear what the record masks would be the
+        lateral read path this module's review was written against.
+        """
+        tenant_id = self.tenant()
+        self.subject(tenant_id)
+        routine = self.scoped(tenant_id, ["people.person.read"])
+        listed = self.client.get("/people", headers=routine)
+        self.assertEqual(listed.status_code, 200, listed.text)
+        self.assertEqual(len(listed.json()["people"]), 1, listed.text)
+        self.assertEqual(listed.json()["people"][0]["legal_name"], visibility.MASK)
+
+    def test_it_says_which_columns_it_cannot_answer_and_that_there_is_no_search(self):
+        """Named rather than omitted, so a surface cannot render silence as a fact."""
+        tenant_id = self.tenant()
+        body = self.client.get("/people", headers=self.headers(tenant_id)).json()
+        self.assertEqual(
+            sorted(body["columns_this_module_cannot_answer"]),
+            ["balance", "club", "last_visit", "plan", "renews"], body)
+        self.assertIn("ENG-01", body["search_is_not_available_because"])
+
+    def test_a_merged_person_is_not_on_the_list(self):
+        """A merged record points at its survivor; listing both would be listing one twice."""
+        tenant_id = self.tenant()
+        source = self.plain_subject(tenant_id, "Omar Zaid")
+        target = self.plain_subject(tenant_id, "Omar Zayd")
+        head = self.headers(tenant_id)
+        merged = self.client.post("/people/merges", json={
+            "source_person_id": source, "target_person_id": target,
+            "reason": "same person, two records", **self.correlation()},
+            headers=self.headers(tenant_id))
+        self.assertEqual(merged.status_code, 201, merged.text)
+        listed = self.client.get("/people", headers=head).json()
+        self.assertEqual([p["person_id"] for p in listed["people"]], [target], listed)
+        self.assertEqual(listed["total"], 1, listed)
 
 
 if __name__ == "__main__":

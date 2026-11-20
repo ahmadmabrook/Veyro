@@ -63,6 +63,10 @@ export default async function RootLayout({
       // authorize -- which is why it is present for every signed-in reader.
       { href: "/account", label: "nav.account", allowed: true },
       { href: "/organization", label: "nav.organization", allowed: organization.allowed },
+      // **Members before People.** ADM-MEM-05 is the members list an operator opens;
+      // `/people` is the duplicate queue and the record behind it. Both need the same
+      // permission, so they share a gate answer.
+      { href: "/members", label: "nav.members", allowed: people.allowed },
       { href: "/people", label: "nav.people", allowed: people.allowed },
       { href: "/schedule", label: "nav.schedule", allowed: schedule.allowed },
       { href: "/access", label: "nav.access", allowed: access.allowed },

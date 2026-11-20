@@ -258,6 +258,118 @@ def get_person(
     return visibility.apply_record(record, masks)
 
 
+#: What a members list may be bounded to. Larger than a page on purpose: the design's own
+#: scale note says "Filters query server-side, the count states matches against total,
+#: selection is bounded to the loaded page" and "there is no state where 4,812 rows render".
+PEOPLE_PAGE = 200
+
+
+def list_people(
+    pool: Pool, tenant_id: str, *, masked_fields: tuple[str, ...],
+    held_permissions: set[str], lifecycle_state: str | None = None,
+    tag_key: str | None = None, limit: int = 50,
+) -> dict[str, Any]:
+    """The members list ADM-MEM-05 specifies, bounded to the columns this module owns.
+
+    **The design names seven columns and this module can answer two of them.** MEMBER and
+    STATE are MOD-014's; PLAN and RENEWS are MOD-017's, BALANCE is MOD-018's, LAST VISIT is
+    MOD-020's or MOD-022's, and CLUB is a home-club concept no module has. Paragraph 1300 bars
+    cross-domain write-table access and this read does not reach across it: the surface
+    composes the other columns from each owning module's own list route, the way the Member
+    360 already composes its blocks, and `columns_this_module_cannot_answer` says which ones
+    so a page cannot quietly render an empty cell as a fact.
+
+    **This is a list, not a search.** MOD-014's standing gap records why there is no free-text
+    search here: paragraph 4218 puts a permission-aware index with a mandatory query pre-filter
+    in ENG-01, and a `LIKE` scan presented as search is a read path with no freshness contract
+    and no pre-filter. The design's search field is therefore unanswerable by this build, and
+    saying so is better than a box that scans.
+
+    Masked like every other read in this module -- the gate's fields and the caller's class
+    permissions both, as required arguments, because a read path that can be called without
+    them is a read path somebody calls without them.
+    """
+    if lifecycle_state is not None and lifecycle_state not in lifecycle.MEMBER_STATES:
+        raise InvalidRequest(f"unknown_lifecycle_state_{lifecycle_state}")
+    if limit < 1 or limit > PEOPLE_PAGE:
+        raise InvalidRequest("bad_limit")
+    readable = visibility.readable_classes(frozenset(held_permissions))
+    masks = _masks(masked_fields, readable)
+
+    where = ["p.merge_status = 'active'"]
+    args: list[Any] = []
+    if lifecycle_state is not None:
+        where.append("m.lifecycle_state = %s")
+        args.append(lifecycle_state)
+    if tag_key is not None:
+        where.append(
+            "EXISTS (SELECT 1 FROM plt01.ppl_tags t"
+            " WHERE t.person_id = p.person_id AND t.tag_key = %s AND t.removed_at IS NULL)")
+        args.append(tag_key)
+
+    with tenant_scope(pool, tenant_id) as conn:
+        # **The total is of the tenant, and the count is of the match.** The design's own
+        # footer reads "Showing 1-50 of 18 matching · 4,812 total", and the difference is the
+        # whole point: a filtered list that reports only its own length implies the records
+        # that did not match do not exist.
+        total = conn.execute(
+            "SELECT count(*) FROM plt01.ppl_persons WHERE merge_status = 'active'"
+        ).fetchone()
+        matching = conn.execute(
+            "SELECT count(*) FROM plt01.ppl_persons p"
+            " LEFT JOIN plt01.ppl_member_profiles m ON m.person_id = p.person_id"
+            f" WHERE {' AND '.join(where)}",
+            tuple(args),
+        ).fetchone()
+        rows = conn.execute(
+            "SELECT p.person_id, p.legal_name, p.preferred_name, p.date_of_birth,"
+            " m.lifecycle_state, m.member_number, m.joined_on"
+            " FROM plt01.ppl_persons p"
+            " LEFT JOIN plt01.ppl_member_profiles m ON m.person_id = p.person_id"
+            f" WHERE {' AND '.join(where)}"
+            # Ordered, because an unordered list makes the planner the author -- MOD-018's
+            # `chart_for` finding, and a list a reader pages through needs a stable order.
+            " ORDER BY coalesce(m.joined_on, p.created_at::date) DESC, p.person_id"
+            " LIMIT %s",
+            (*args, limit),
+        ).fetchall()
+
+    people = [
+        visibility.apply_record(
+            {
+                "person_id": str(r[0]),
+                "legal_name": r[1],
+                "preferred_name": r[2],
+                "date_of_birth": r[3].isoformat() if r[3] else None,
+                "lifecycle_state": r[4],
+                "member_number": r[5],
+                "joined_on": r[6].isoformat() if r[6] else None,
+            },
+            masks,
+        )
+        for r in rows
+    ]
+    return {
+        "people": people,
+        "matching": int(matching[0]) if matching else 0,
+        "total": int(total[0]) if total else 0,
+        "limit": limit,
+        #: Named rather than omitted. A column rendered empty reads as "this member has none".
+        "columns_this_module_cannot_answer": {
+            "plan": "membership.record.read (MOD-017)",
+            "renews": "membership.record.read (MOD-017)",
+            "balance": "finance.ledger.read (MOD-018)",
+            "last_visit": "no per-person visit read exists in this build",
+            "club": "no home-club concept exists in this build",
+        },
+        #: The design's search field. Unanswerable here, and why.
+        "search_is_not_available_because":
+            "paragraph 4218 puts a permission-aware search index with a mandatory query "
+            "pre-filter in ENG-01, which is not built; a LIKE scan presented as search would "
+            "be a read path with no freshness contract and no pre-filter",
+    }
+
+
 def update_person(
     pool: Pool, tenant_id: str, person_id: str, *, expected_version: int, actor_id: str,
     correlation_id: str, legal_name: str | None = None, preferred_name: str | None = None,

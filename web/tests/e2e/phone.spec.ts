@@ -44,6 +44,7 @@ const surfaces: [string, string][] = [
   ["the privacy board", "/privacy"],
   ["the messages board", "/notifications"],
   ["the integrations board", "/integrations"],
+  ["the members list", "/members"],
   ["your account", "/account"],
 ];
 

@@ -667,6 +667,42 @@ secondary fragment is visible; at 503px two are hidden and their values read und
 A droppable value is in the DOM twice and visible once — which is what makes the collapse a
 stylesheet rule rather than a measurement, and a measurement is wrong on the first paint.
 
+## The first screen built from its design
+
+`/members` is ADM-MEM-05, and it is the first screen in this app that started from the design
+rather than from what a backend module's routes could answer. The specification is pinned in
+`src/design/screens.generated.json`: seven columns, a search field, three quick filters with
+counts, a saved-view control, a bounded bulk selection, an export behind an approval, Compact
+density at 1440, and a scale rule — "There is no state where 4,812 rows render."
+
+**Four of the seven columns are built and three are named as missing.** MEMBER and STATE are
+MOD-014's own; PLAN and RENEWS are MOD-017's, composed from its own list route and indexed by
+person — one extra request for the page, not one per row, which is what paragraph 1300
+actually permits: it bars a cross-domain *join*, not a surface that asks twice. CLUB, BALANCE
+and LAST VISIT have no read in this build, so they are in a block headed "what this screen
+does not do yet" with the product's own reason beside each, rather than rendered as empty
+columns. **An empty cell reads as a fact about the member.** The same block carries the search
+field, the quick filters, the saved views, the bulk bar and the export — each absent rather
+than drawn, because a control that does nothing is worse than one that is not there.
+
+It needed a backend read: `GET /people`, bounded and ordered, masked like every other read in
+MOD-014 — the gate's fields and the caller's class permissions both, as required arguments —
+and returning the **match and the total as two numbers**, which is the design's own footer and
+the difference between a filtered list and a list that implies the records which did not match
+do not exist. Both of those are mutation-proven: dropping the mask and reporting the total as
+the match each turn the suite red.
+
+**And building it found that no screen could set its own density.** The generated selector was
+`:root[data-density="compact"]`, which matches only `<html>` — so a page setting the attribute
+on its own wrapper read as Compact in the markup and rendered at the Default 40px row height.
+`LAYOUTS` assigns a density per *surface* and ADM-MEM-05 assigns one per *screen*, so the
+selector is an attribute one now. Found by measuring the rendered rows, not by reading the
+stylesheet.
+
+One stale string went with it: a withheld identity field said "This app has no step-up form
+yet", which stopped being true the day the step-up shipped. It is the Member 360's "not built
+in this repository" again, and it was found by rendering the same component somewhere new.
+
 ## What this does not yet cover
 
 - **Twenty-one screens of a hundred and seventy.** `contracts/ui/screen-contracts.yaml` lists

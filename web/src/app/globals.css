@@ -952,3 +952,42 @@ a {
   padding-block-end: var(--space-2);
   border-block-end: 1px solid var(--color-border-subtle);
 }
+
+/* --- The filter bar ------------------------------------------------------
+ *
+ * §28: "Quick chips for the two or three filters that matter per surface; '＋ Filter' for
+ * everything else; applied filters always render as removable chips with a count and a Clear
+ * all. No module invents its own filter UI." What exists here is the chip half, as links
+ * rather than controls so a filtered list works with no JavaScript and can be sent to
+ * somebody. The count and the removable-chip half need filters this build can apply.
+ */
+.ds-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.ds-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  min-block-size: var(--density-control);
+  padding-inline: var(--space-3);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-button);
+  background: var(--color-surface-default);
+  color: var(--color-text-secondary);
+  text-decoration: none;
+  font-size: var(--type-label-size);
+  font-weight: var(--type-label-weight);
+}
+
+.ds-filter-chip:hover {
+  background: var(--color-surface-hover);
+  color: var(--color-text-primary);
+}
+
+.ds-filter-chip[aria-current="page"] {
+  background: var(--color-surface-selected);
+  color: var(--color-text-primary);
+  border-color: var(--color-border-strong);
+}

@@ -603,6 +603,24 @@ const MUTATIONS = [
     grep: "says reachability is worked out rather than stored",
   },
   {
+    id: "members-mask-printed-raw",
+    why: "a masked name is marked and explained, not printed as three asterisks -- the same "
+      + "fact rendered as a glitch",
+    file: "src/app/members/page.tsx",
+    from: "                    {isWithheld(row.preferred_name ?? row.legal_name) ? (",
+    to: "                    {false ? (",
+    grep: "marks a withheld name",
+  },
+  {
+    id: "members-total-is-the-match",
+    why: "a filtered list that reports only its own length implies the records that did not "
+      + "match do not exist",
+    file: "src/app/members/page.tsx",
+    from: '          <span className="data">{formatInteger(page.total, "latn")}</span>{" "}',
+    to: '          <span className="data">{formatInteger(page.matching, "latn")}</span>{" "}',
+    grep: "keeps the tenant's total",
+  },
+  {
     id: "account-own-revoke-leaves-a-dead-page",
     why: "revoking your own device ends the session that pressed the button, so a success "
       + "message returns to a page with no session to render it -- the reader sees nothing "

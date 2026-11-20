@@ -185,10 +185,15 @@ function buildCss() {
     const wanted = BODY_RAMP.indexOf("type.body") + step;
     const body = BODY_RAMP[Math.min(Math.max(wanted, 0), BODY_RAMP.length - 1)];
     const [px, lh] = ds.TYPE_SCALE.find(([n]) => n === body)[1].split("/").map((s) => s.trim());
+    // **An attribute selector, not a `:root` one.** LAYOUTS assigns a density per *surface*
+    // and ADM-MEM-05 assigns Compact to a *screen*, so a density has to apply to a subtree --
+    // and `:root[data-density="compact"]` matches only `<html>`, so a page that set it on its
+    // own wrapper got the default row height while reading as compact. Found by measuring the
+    // rendered rows rather than by reading the stylesheet: 40px where the source says 34.
     const selector =
       mode.mode === "Default"
-        ? ':root, :root[data-density="default"]'
-        : `:root[data-density="${mode.mode.toLowerCase()}"]`;
+        ? ':root, [data-density="default"]'
+        : `[data-density="${mode.mode.toLowerCase()}"]`;
     lines.push(
       `${selector} {`,
       `  --density-row: ${row}px;`,
