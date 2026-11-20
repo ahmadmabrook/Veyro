@@ -58,13 +58,25 @@ export type MembershipSummary = {
 };
 
 export type Visits = {
+  /** The day the locations share. A caller's `on` when it named one. */
   date: string;
   weekday: string;
+  /**
+   * True where the tenant's clubs are on two dates at once.
+   *
+   * A club's day is local to its own zone, so a tenant spanning zones genuinely has two
+   * todays for a few hours. The headline date is one of them and this says so, rather than
+   * letting one club's date stand for all of them.
+   */
+  local_days_differ: boolean;
   entries: number;
   locations: {
     location_id: string;
     location_name: string;
     timezone: string;
+    /** The day *this* club's figure is about, resolved in its own zone. */
+    date: string;
+    weekday: string;
     entries: number;
     usual_for_this_weekday: number | null;
     weekdays_compared: number;

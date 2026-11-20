@@ -1811,49 +1811,89 @@ def visits_on(
     says how many actually carried data -- a tenant four days old has no baseline and must not
     be shown one.
     """
-    on = on or datetime.now(UTC).date()
     if compare_weeks < 1 or compare_weeks > 26:
         raise InvalidRequest("bad_compare_weeks")
-    prior = [on - timedelta(days=7 * back) for back in range(1, compare_weeks + 1)]
     with tenant_scope(pool, tenant_id) as conn:
+        # **"Today" is each location's own, and the first version took it from UTC.** The
+        # comparison in the filter is a *local* date -- `occurred_at AT TIME ZONE
+        # l.timezone` -- and the value it was compared against was `datetime.now(UTC).date()`.
+        # Those agree for most of the day and disagree for the hours a club's local date has
+        # already turned over: at 23:17 UTC an entry at a UTC+3 club has local date tomorrow,
+        # so the day's count missed it and the location dropped out of the response
+        # altogether. CI found it because CI runs at whatever hour it runs; this repository's
+        # own rules file records the mirror of it ("a fixture that takes its own today from
+        # the local clock disagrees with a service that takes it from UTC... CI never saw it,
+        # because CI runs in UTC").
+        #
+        # The docstring above already said what the rule is -- "a tenant with clubs in two
+        # zones has two todays" -- so the fix is to mean it: each location's day is resolved
+        # in its own zone, and `on` overrides it only when a caller names a date.
+        #
+        # **Every location is listed, including one with nothing today.** The previous query
+        # filtered events and grouped, so a club with no entries was absent rather than zero
+        # -- which on a visits board reads as a club that does not exist.
         rows = conn.execute(
-            "SELECT z.location_id, l.location_name, l.timezone,"
-            " count(*) FILTER (WHERE (e.occurred_at AT TIME ZONE l.timezone)::date = %s),"
-            " count(*) FILTER (WHERE (e.occurred_at AT TIME ZONE l.timezone)::date"
-            "                        = ANY(%s)),"
-            " count(DISTINCT (e.occurred_at AT TIME ZONE l.timezone)::date)"
-            "   FILTER (WHERE (e.occurred_at AT TIME ZONE l.timezone)::date = ANY(%s))"
-            " FROM plt01.acc_events e"
-            " JOIN plt01.acc_zones z ON z.zone_id = e.zone_id"
-            " JOIN plt01.locations l ON l.location_id = z.location_id"
-            " WHERE e.direction = 'entry'"
-            "   AND (e.occurred_at AT TIME ZONE l.timezone)::date = ANY(%s)"
-            " GROUP BY z.location_id, l.location_name, l.timezone"
-            " ORDER BY l.location_name, z.location_id",
-            (on, prior, prior, [on, *prior]),
+            "WITH loc AS ("
+            "  SELECT l.location_id, l.location_name, l.timezone,"
+            "         coalesce(%s::date, (now() AT TIME ZONE l.timezone)::date) AS today"
+            "  FROM plt01.locations l"
+            "), ev AS ("
+            "  SELECT z.location_id AS loc_id,"
+            "         (e.occurred_at AT TIME ZONE loc.timezone)::date AS local_date"
+            "  FROM plt01.acc_events e"
+            "  JOIN plt01.acc_zones z ON z.zone_id = e.zone_id"
+            "  JOIN loc ON loc.location_id = z.location_id"
+            "  WHERE e.direction = 'entry'"
+            ")"
+            " SELECT loc.location_id, loc.location_name, loc.timezone, loc.today,"
+            "   count(ev.loc_id) FILTER (WHERE ev.local_date = loc.today),"
+            "   count(ev.loc_id) FILTER (WHERE ev.local_date = ANY(p.prior)),"
+            "   count(DISTINCT ev.local_date) FILTER (WHERE ev.local_date = ANY(p.prior))"
+            " FROM loc"
+            " CROSS JOIN LATERAL ("
+            "   SELECT array_agg(loc.today - (7 * g)::integer) AS prior"
+            "   FROM generate_series(1, %s) AS g"
+            " ) p"
+            " LEFT JOIN ev ON ev.loc_id = loc.location_id"
+            " GROUP BY loc.location_id, loc.location_name, loc.timezone, loc.today"
+            " ORDER BY loc.location_name, loc.location_id",
+            (on, compare_weeks),
         ).fetchall()
     locations: list[dict[str, Any]] = []
     total = 0
     for row in rows:
-        days_seen = int(row[5])
+        local_day = row[3]
+        days_seen = int(row[6])
         locations.append({
             "location_id": str(row[0]), "location_name": str(row[1]),
-            "timezone": str(row[2]), "entries": int(row[3]),
+            "timezone": str(row[2]),
+            # The day this club's figure is about, which is not always the day the next
+            # club's figure is about.
+            "date": local_day.isoformat(), "weekday": local_day.strftime("%A"),
+            "entries": int(row[4]),
             # The mean over the days that actually carried entries, so a tenant with three
             # weeks of history is compared against three rather than against four with a zero.
             "usual_for_this_weekday": (
-                round(int(row[4]) / days_seen) if days_seen else None),
+                round(int(row[5]) / days_seen) if days_seen else None),
             "weekdays_compared": days_seen,
         })
-        total += int(row[3])
+        total += int(row[4])
+    # The top-level day is the one the locations share. A tenant whose clubs span zones can
+    # be on two dates at once for a few hours, and `local_days_differ` says so rather than
+    # letting one club's date stand for all of them.
+    days = {row[3] for row in rows}
+    headline = on or (min(days) if days else datetime.now(UTC).date())
     return {
-        "date": on.isoformat(), "weekday": on.strftime("%A"),
+        "date": headline.isoformat(), "weekday": headline.strftime("%A"),
+        "local_days_differ": len(days) > 1,
         "compare_weeks": compare_weeks,
         "entries": total,
         "locations": locations,
         "a_day_is_local_to_each_location":
             "Each location's day is computed in its own timezone, so the total sums each "
-            "club's own local day rather than one instant range.",
+            "club's own local day rather than one instant range. Where no date is asked for, "
+            "each club's today is resolved in its own zone: for a few hours a tenant whose "
+            "clubs span zones is on two dates at once, and local_days_differ says so.",
         "entries_are_events_not_decisions":
             "An entry is a recorded acc_event. A granted decision nobody walked through is "
             "not a visit.",
@@ -1887,13 +1927,19 @@ def person_attendance(
     The day is local to the location whose door they walked through -- `acc_events.occurred_at`
     is an instant and the club has a timezone, so "19d ago" is a count of local days.
     """
-    as_of = as_of or datetime.now(UTC).date()
     if weeks < 1 or weeks > 52:
         raise InvalidRequest("bad_weeks")
     with tenant_scope(pool, tenant_id) as conn:
+        # **"19 days ago" is counted in the club's local days, so both ends have to be in
+        # them.** `last_entry_on` is the local date of the last entry and `as_of` was
+        # `datetime.now(UTC).date()`, which agree for most of the day and disagree for the
+        # hours after a club's local date has turned over -- at 23:17 UTC a UTC+3 club is
+        # already on tomorrow, so the subtraction returned **-1 days since** the member's
+        # last visit. Today is now read in the same zone as the entry it is measured from.
+        # A caller that names `as_of` still gets the date they named.
         last = conn.execute(
             "SELECT (e.occurred_at AT TIME ZONE l.timezone)::date, l.location_name,"
-            "       e.occurred_at"
+            "       e.occurred_at, (now() AT TIME ZONE l.timezone)::date"
             " FROM plt01.acc_events e"
             " JOIN plt01.acc_zones z ON z.zone_id = e.zone_id"
             " JOIN plt01.locations l ON l.location_id = z.location_id"
@@ -1904,8 +1950,11 @@ def person_attendance(
             # **No entry is not a zero rate.** A member who has never used a door and one who
             # came daily until last month are different facts, and `null` is what keeps them
             # apart; a surface rendering 0 would say the second never trained.
+            #
+            # With no entry there is no club whose zone could settle "today", so this one
+            # falls back to UTC -- and nothing here subtracts from it.
             return {
-                "person_id": person_id, "as_of": as_of.isoformat(),
+                "person_id": person_id, "as_of": (as_of or datetime.now(UTC).date()).isoformat(),
                 "last_entry_on": None, "last_entry_at": None, "last_location": None,
                 "days_since": None, "entries_in_window": 0, "weeks": weeks,
                 "entries_per_week": None,
@@ -1913,7 +1962,8 @@ def person_attendance(
                     "No entry has ever been recorded for this person, so there is no rate. "
                     "That is not the same as a member who stopped coming.",
             }
-        last_on, last_location, last_at = last
+        last_on, last_location, last_at, today_there = last
+        as_of = as_of or today_there
         window_start = last_on - timedelta(days=7 * weeks)
         counted = conn.execute(
             "SELECT count(*)"
@@ -1937,6 +1987,9 @@ def person_attendance(
         "the_rate_ends_at_the_last_visit":
             "entries_per_week counts the weeks before last_entry_on, not before as_of, so a "
             "gap does not shrink the habit it interrupted.",
+        "the_day_is_local_to_the_door_they_used":
+            "days_since counts local days at the club whose door recorded the last entry, "
+            "and as_of is today in that same zone unless a caller named a date.",
     }
 
 

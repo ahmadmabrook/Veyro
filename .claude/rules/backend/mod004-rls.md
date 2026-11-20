@@ -820,3 +820,22 @@ is faster than a dev server. Three things came out of it and all three were wort
     limit that trips during ordinary use is a limit somebody will raise to infinity rather
     than investigate" -- so the override is per process, bounded, and `config.load_settings`
     refuses it unless `VEYRO_ENV` is `local`.
+
+
+**A local date and a UTC date are two frames, and a query that mixes them is wrong for a few
+hours a day.** This file already records the fixture half of it -- "a test fixture that takes
+its own `today` from the local clock disagrees with a service that takes it from UTC... CI
+never saw it, because CI runs in UTC". The service half is worse, because CI *does* see it and
+only sometimes: `visits_on` filtered on `(occurred_at AT TIME ZONE l.timezone)::date` and
+compared it against `datetime.now(UTC).date()`, and `person_attendance` subtracted a UTC today
+from a local last-entry date. Both agree for most of the day. In the hours after a club's local
+date has turned over -- 23:17 UTC at a UTC+3 club -- the visit count read zero and the location
+vanished from the response, and `days_since` answered **-1 days since** the member's last
+visit. Both functions' own docstrings already stated the rule they broke.
+
+**A single timezone makes the regression test flaky, which is what the bug was made of.** The
+test that catches this uses two clubs: `Pacific/Kiritimati` (UTC+14, ahead of the UTC date
+whenever the UTC hour is at least 10) and `Etc/GMT+12` (UTC-12, behind it whenever the hour is
+under 12). The two windows cover the clock, so at every instant at least one club is on a
+different date from UTC and the old code fails on it. Mutation-proven: restoring
+`(now() AT TIME ZONE 'UTC')::date` fails four of them.

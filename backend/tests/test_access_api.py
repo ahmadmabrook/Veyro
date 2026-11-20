@@ -1069,6 +1069,85 @@ class VisitTests(AccessApiTestCase):
             headers=self.headers(floor["tenant_id"]))
         self.assertEqual(recorded.status_code, 201, recorded.text)
 
+    def test_todays_entry_is_counted_whatever_hour_in_utc_the_suite_runs(self):
+        """**The regression, and it is deterministic at every hour.**
+
+        The day in the query is each club's *local* date and "today" was
+        `datetime.now(UTC).date()`. Those agree for most of the day and disagree once a club's
+        local date has turned over -- at 23:17 UTC a UTC+3 club is already on tomorrow, so an
+        entry recorded a moment ago fell on a date the filter was not asking about, the count
+        read zero and the location dropped out of the response altogether. CI found it;
+        nothing here had, because the bug is only reachable in some hours and this suite had
+        never been run in one of them.
+
+        **A single zone makes this test flaky, which is what the bug was made of**, so it uses
+        two: `Pacific/Kiritimati` is UTC+14 and ahead of the UTC date whenever the UTC hour is
+        at least 10, and `Etc/GMT+12` is UTC-12 and behind it whenever the UTC hour is under
+        12. The two windows cover the clock, so at every instant at least one of these clubs
+        is on a different date from UTC and the old code fails on it.
+        """
+        tenant_id = self.tenant()
+        clubs = []
+        for zone_name in ("Pacific/Kiritimati", "Etc/GMT+12"):
+            location_id = self.location(tenant_id, timezone=zone_name)
+            device_id = self.live_device(tenant_id, location_id)
+            zone_id = self.zone(tenant_id, location_id)
+            point_id = self.point(tenant_id, zone_id, device_id)
+            self.policy(tenant_id, zone_id)
+            person_id = self.person(tenant_id)
+            credential_id, value = self.credential(tenant_id, person_id)
+            club = {"tenant_id": tenant_id, "location_id": location_id,
+                    "point_id": point_id, "person_id": person_id,
+                    "credential_id": credential_id, "credential_value": value,
+                    "timezone": zone_name}
+            self.entry(club)
+            clubs.append(club)
+
+        read = self.client.get("/access/visits", headers=self.headers(tenant_id))
+        self.assertEqual(read.status_code, 200, read.text)
+        body = read.json()
+        for club in clubs:
+            row = next(
+                (r for r in body["locations"] if r["location_id"] == club["location_id"]),
+                None)
+            self.assertIsNotNone(
+                row, f"{club['timezone']} is missing from {body['locations']}")
+            assert row is not None
+            self.assertEqual(row["entries"], 1, f"{club['timezone']}: {row}")
+            # Each club's row says which day its own figure is about.
+            self.assertEqual(row["timezone"], club["timezone"])
+            self.assertTrue(row["date"])
+        self.assertEqual(body["entries"], 2, body)
+        # Two zones fourteen and twelve hours apart are never on the same date.
+        self.assertTrue(body["local_days_differ"], body)
+
+    def test_days_since_is_never_negative_whatever_hour_the_suite_runs(self):
+        """A member who walked in a moment ago came in **today**, not tomorrow.
+
+        `days_since` subtracted a UTC today from a local last-entry date, so in the hours
+        after a club's date turned over it answered -1 -- which a surface would render as
+        "-1 days ago". Two zones again, for the same reason: one of them is always on a
+        different date from UTC.
+        """
+        tenant_id = self.tenant()
+        for zone_name in ("Pacific/Kiritimati", "Etc/GMT+12"):
+            location_id = self.location(tenant_id, timezone=zone_name)
+            device_id = self.live_device(tenant_id, location_id)
+            zone_id = self.zone(tenant_id, location_id)
+            point_id = self.point(tenant_id, zone_id, device_id)
+            self.policy(tenant_id, zone_id)
+            person_id = self.person(tenant_id)
+            credential_id, value = self.credential(tenant_id, person_id)
+            self.entry({"tenant_id": tenant_id, "point_id": point_id,
+                        "credential_value": value})
+            read = self.client.get(
+                f"/access/attendance?person_id={person_id}",
+                headers=self.headers(tenant_id))
+            self.assertEqual(read.status_code, 200, read.text)
+            body = read.json()
+            self.assertEqual(body["days_since"], 0, f"{zone_name}: {body}")
+            self.assertEqual(body["as_of"], body["last_entry_on"], f"{zone_name}: {body}")
+
     def test_an_entry_today_is_counted_against_its_own_location(self):
         floor = self.floor()
         self.entry(floor)
