@@ -463,6 +463,22 @@ function Shell({
     <div className="stack">
       <PageHeader title={t(locale, "catalog.title")} {...(figures ? { figures } : {})} />
       {children}
+
+      {/* **What ADM-POS-01 and ADM-POS-03 draw and this build has no read for.** The
+          members list set the precedent and the reason is the same: a column rendered
+          empty reads as a fact about the product rather than about the screen, and a
+          reader comparing this with the design needs to know which of the two it is. */}
+      <section className="page-section">
+        <h2 style={{ margin: 0 }}>{t(locale, "catalog.notYet")}</h2>
+        <dl className="facts">
+          <dt className="muted">{t(locale, "catalog.noStockTitle")}</dt>
+          <dd style={{ margin: 0 }}>{t(locale, "catalog.noStockWhy")}</dd>
+          <dt className="muted">{t(locale, "catalog.noTaxTitle")}</dt>
+          <dd style={{ margin: 0 }}>{t(locale, "catalog.noTaxWhy")}</dd>
+          <dt className="muted">{t(locale, "catalog.noThresholdTitle")}</dt>
+          <dd style={{ margin: 0 }}>{t(locale, "catalog.noThresholdWhy")}</dd>
+        </dl>
+      </section>
       {/* **The lead paragraph moved to the foot.** The design's page header is a title and a
           line of figures -- every drawn canvas does the same -- so an explanation of what the
           screen is was pushing the data a manager opens the page for below the fold. What is

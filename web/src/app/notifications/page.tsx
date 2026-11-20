@@ -436,6 +436,19 @@ function Shell({
     <div className="stack">
       <PageHeader title={t(locale, "notify.title")} {...(figures ? { figures } : {})} />
       {children}
+
+      {/* **What ADM-COM-02 and ADM-COM-04 draw and this build has no read for.** Named here
+          rather than left to be noticed, which is the members list's precedent: an absent
+          block reads as a fact about the product rather than about the screen. */}
+      <section className="page-section">
+        <h2 style={{ margin: 0 }}>{t(locale, "notify.notYet")}</h2>
+        <dl className="facts">
+          <dt className="muted">{t(locale, "notify.noMatrixTitle")}</dt>
+          <dd style={{ margin: 0 }}>{t(locale, "notify.noMatrixWhy")}</dd>
+          <dt className="muted">{t(locale, "notify.noPairTitle")}</dt>
+          <dd style={{ margin: 0 }}>{t(locale, "notify.noPairWhy")}</dd>
+        </dl>
+      </section>
       {/* **The lead paragraph moved to the foot.** The design's page header is a title and a
           line of figures -- every drawn canvas does the same -- so an explanation of what the
           screen is was pushing the data a manager opens the page for below the fold. What is

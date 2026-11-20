@@ -308,9 +308,9 @@ corresponds to them. The others map loosely:
 | `/people` | ADM-MEM-11 Merge duplicate members (partially) | partial — the duplicate queue only |
 | `/organization` | ADM-SET-01, ADM-SET-02 | the hierarchy, with a figures line; the opening hours and floor capacity ADM-SET-02 draws have no read |
 | `/access` | **none** | a zone list, which the design has no canvas for |
-| `/catalog` | ADM-POS-01, ADM-POS-03 | partial — per-club stock and the discount thresholds are MOD-016 gaps |
+| `/catalog` | ADM-POS-01, ADM-POS-03 | partial, and the three absent columns are named on the screen |
 | `/finance` | **none** | MOD-018's general ledger. It was counted as ADM-PAY-01 and is a different subject; `/payments` is that screen now |
-| `/notifications` | ADM-COM-02, ADM-COM-04 | partial — no per-event channel matrix, because no recipient preference surface writes |
+| `/notifications` | ADM-COM-02, ADM-COM-04 | partial, and both absences are named on the screen |
 | `/configuration`, `/privacy`, `/operations`, `/fleet/{id}`, `/integrations` | **none** | module surfaces with no design |
 | `/account` | MBR-33 Security and devices (Member surface) | the registry leaves MBR-33 unspecified; built to this app's own conventions |
 
@@ -661,3 +661,24 @@ number on the same axis, and a fleet board where no device is a door cannot show
 door" is different from zero. The fixture now seeds a failed charge, a refund approved by a
 second identity, and a dispute — **the rule this repository already records five times over:
 the fixture carries both members of the pair the distinction is about.**
+
+
+### What a screen cannot do is on the screen
+
+Four boards now carry a "what this screen does not do yet" block, which the members list
+established and the directive asks for in as many words: *record precise missing information
+rather than inventing*. Each entry names the design's own requirement and the product reason
+it is unmet, so a reader comparing a page with its canvas can tell a screen's gap from a
+module's.
+
+| Screen | Named | Why |
+| --- | --- | --- |
+| `/members` | search, quick filters, three columns, saved views, bulk actions, export | ENG-01's index, cross-module filters, and reads that do not exist |
+| `/payments` | the refund, the export, by location | tier 3 *and* tier 4 with no form; an object store; a billing account has no location |
+| `/catalog` | per-club stock, a tax figure, discount thresholds | MOD-016 is the catalogue and the price — no inventory, no rate, no tenant-wide threshold |
+| `/notifications` | the per-event channel matrix, the language pair | MOD-013's preferences are per recipient; a template version is keyed on locale and enforces no pairing |
+
+The Member 360 does the same thing from the other side: its foot names the areas MOD-014's
+projection cannot read **and** says which of them this page answers itself on its own tabs,
+because a gaps list that contradicts the tab beside it is the stale-list defect this screen
+already paid for once.
