@@ -196,7 +196,19 @@ export function formatInteger(value, numbering, grouping = true) {
  * Minor units because every amount in this product is an integer count of them -- MOD-015's
  * rule, which the whole money stack holds. There is no float anywhere in this function.
  */
-export function formatMoney(amountMinor, currency, numbering, locale) {
+/**
+ * The parts of a money value, for the renderings that style them differently.
+ *
+ * **`MoneyValue`'s `aggregate` kind needs this**: "fils de-emphasised, never truncated", drawn
+ * as `JOD 41,280 .00` with the decimals at 14px against the major part's 21px. One formatted
+ * string cannot be styled in two sizes, and a component that re-split it on the decimal
+ * separator would be parsing its own output -- which breaks the moment the separator is the
+ * Arabic one.
+ *
+ * Same rounding, same table, same everything as `formatMoney`; that function is written in
+ * terms of this one so the two can never disagree.
+ */
+export function moneyParts(amountMinor, currency, numbering) {
   const exponent = CURRENCY_MINOR_UNITS[currency];
   const digits = CURRENCY_DISPLAY_DIGITS[currency];
   if (exponent === undefined || digits === undefined) {
@@ -204,16 +216,7 @@ export function formatMoney(amountMinor, currency, numbering, locale) {
   }
   if (digits > exponent) throw new ConventionError("display precision exceeds stored precision");
   checkNumbering(numbering);
-  const loc = parseLocale(locale);
   const minorTotal = requireInt(amountMinor);
-  // **Round on the magnitude, so the carry reaches the major part**: 999 fils is 1.00 and not
-  // 0.100. Half away from zero, which is `money.round_half_up`'s rule and therefore the only
-  // rounding rule in this build -- MOD-016 shipped a second one and a reviewer found it
-  // disagreeing with the first on ordinary inputs.
-  //
-  // Sub-display amounts are reachable: proration divides and `allocate` splits by largest
-  // remainder. A column of shown line amounts therefore need not sum to the shown total,
-  // which is the ordinary property of any rounded display; the minor units are the record.
   const dropped = exponent - digits;
   let magnitude = Math.abs(minorTotal);
   if (dropped) {
@@ -221,16 +224,22 @@ export function formatMoney(amountMinor, currency, numbering, locale) {
     magnitude = Math.floor((magnitude + Math.floor(scale / 2)) / scale);
   }
   const scale = 10 ** digits;
-  const major = Math.floor(magnitude / scale);
-  const minor = magnitude % scale;
-  let amount = formatInteger(major, numbering);
-  if (digits) {
-    const separator = numbering === "arab" ? ARABIC_DECIMAL : ".";
-    amount += separator + shapeDigits(String(minor).padStart(digits, "0"), numbering);
-  }
-  const sign = minorTotal < 0 ? "-" : "";
-  const text = `${currency} ${sign}${amount}`;
-  return loc === "ar" ? isolate(text, "ltr") : text;
+  return {
+    code: currency,
+    sign: minorTotal < 0 ? "-" : "",
+    major: formatInteger(Math.floor(magnitude / scale), numbering),
+    /** Already padded, and the separator with it: "٫٠٠" in Arabic numerals, ".00" in Latin. */
+    minor: digits
+      ? (numbering === "arab" ? ARABIC_DECIMAL : ".")
+        + shapeDigits(String(magnitude % scale).padStart(digits, "0"), numbering)
+      : "",
+  };
+}
+
+export function formatMoney(amountMinor, currency, numbering, locale) {
+  const { code, sign, major, minor } = moneyParts(amountMinor, currency, numbering);
+  const text = `${code} ${sign}${major}${minor}`;
+  return parseLocale(locale) === "ar" ? isolate(text, "ltr") : text;
 }
 
 /**

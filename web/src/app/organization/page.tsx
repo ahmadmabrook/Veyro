@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { Banner } from "@/components/ds/banner";
+import { PageHeader } from "@/components/ds/page-header";
 import { DataGrid } from "@/components/ds/data-grid";
 import { t, type Locale, type MessageKey } from "@/i18n/locale";
 import { ApiError, currentSession, gate } from "@/lib/api";
@@ -74,9 +75,6 @@ export default async function OrganizationPage() {
 
   return (
     <Shell locale={locale}>
-      <p className="muted" style={{ margin: 0 }}>
-        {text("org.lead")}
-      </p>
       {tree.length === 0 ? (
         <Banner severity="info">{text("org.none")}</Banner>
       ) : (
@@ -193,8 +191,10 @@ function OrganizationCard({ node, locale }: { node: OrganizationTree; locale: Lo
 function Shell({ locale, children }: { locale: Locale; children: React.ReactNode }) {
   return (
     <div className="stack">
-      <h1 style={{ margin: 0 }}>{t(locale, "org.title")}</h1>
+      <PageHeader title={t(locale, "org.title")} />
       {children}
+      {/* The lead moved to the foot; see `PageHeader`. */}
+      <p className="ds-screen-note">{t(locale, "org.lead")}</p>
     </div>
   );
 }

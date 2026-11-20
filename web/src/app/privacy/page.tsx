@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { Banner } from "@/components/ds/banner";
+import { PageHeader } from "@/components/ds/page-header";
 import { DataGrid } from "@/components/ds/data-grid";
 import { Prose } from "@/components/prose";
 import { formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
@@ -426,11 +427,14 @@ export default async function PrivacyPage() {
 function Shell({ locale, children }: { locale: Locale; children: React.ReactNode }) {
   return (
     <div className="stack">
-      <h1 style={{ margin: 0 }}>{t(locale, "privacy.title")}</h1>
-      <p className="muted" style={{ margin: 0 }}>
-        {t(locale, "privacy.lead")}
-      </p>
+      <PageHeader title={t(locale, "privacy.title")} />
       {children}
+      {/* **The lead paragraph moved to the foot.** The design's page header is a title and a
+          line of figures -- every drawn canvas does the same -- so an explanation of what the
+          screen is was pushing the data a manager opens the page for below the fold. What is
+          kept is the half that is a product disclosure rather than a description, and it
+          answers a question here instead of delaying one. */}
+      <p className="ds-screen-note">{t(locale, "privacy.lead")}</p>
     </div>
   );
 }

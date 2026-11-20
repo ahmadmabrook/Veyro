@@ -193,3 +193,50 @@ test.describe("presentation", () => {
     expect(button!.height).toBeGreaterThanOrEqual(44);
   });
 });
+
+test.describe("the typeface", () => {
+  test("IBM Plex is actually loaded, not merely declared", async ({ page }) => {
+    // **The defect this exists for.** `globals.css` named `"IBM Plex Sans"` from the first
+    // commit and nothing ever loaded it, so every screen in this product rendered in the
+    // system face while the stylesheet said otherwise -- and no assertion could see it,
+    // because `getComputedStyle` reports the *declared* family whether or not the browser
+    // found a face for it. The only thing that catches it is asking the font loader.
+    await useOwnerSession(page);
+    await page.goto("/");
+    await page.evaluate(() => document.fonts.ready);
+    const loaded = await page.evaluate(() =>
+      [...document.fonts].map((face) => ({ family: face.family, status: face.status })));
+    const families = new Set(
+      loaded.filter((f) => f.status === "loaded").map((f) => f.family));
+    // The three faces the design's own preamble asks for.
+    expect([...families].some((f) => /Plex Sans/i.test(f)), `loaded: ${[...families]}`)
+      .toBe(true);
+    expect([...families].some((f) => /Plex Mono/i.test(f)), `loaded: ${[...families]}`)
+      .toBe(true);
+  });
+
+  test("the body renders in the loaded face rather than falling back", async ({ page }) => {
+    await useOwnerSession(page);
+    await page.goto("/");
+    await page.evaluate(() => document.fonts.ready);
+    const family = await page.evaluate(() => getComputedStyle(document.body).fontFamily);
+    // `next/font` self-hosts under a generated name, so the assertion is that the first
+    // family in the stack is the variable this app sets rather than a system fallback.
+    expect(family).not.toMatch(/^system-ui/);
+    const usable = await page.evaluate(() =>
+      document.fonts.check(`${getComputedStyle(document.body).fontSize} ${
+        getComputedStyle(document.body).fontFamily}`));
+    expect(usable, "the computed body font must resolve to a face the browser has").toBe(true);
+  });
+
+  test("a money figure and an id are set in the mono face", async ({ page }) => {
+    // `type.data` is "Mono tabular. Money, counts, sets, reps, macros, IDs. The reason
+    // columns align." A money figure in the proportional face is a column that does not.
+    await useOwnerSession(page);
+    await page.goto("/");
+    await page.evaluate(() => document.fonts.ready);
+    const family = await page.locator(".ds-metric-value").first()
+      .evaluate((el) => getComputedStyle(el).fontFamily);
+    expect(family).toMatch(/Plex_Mono|Plex Mono|mono/i);
+  });
+});

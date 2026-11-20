@@ -28,7 +28,9 @@ body {
   margin: 0;
   background: var(--color-surface-canvas);
   color: var(--color-text-primary);
-  font-family: "IBM Plex Sans", system-ui, sans-serif;
+  /* The self-hosted face, with the declared name after it so a reader who already has IBM
+     Plex installed gets it and everyone else gets the one this app ships. */
+  font-family: var(--font-plex-sans), "IBM Plex Sans", system-ui, sans-serif;
   font-size: var(--type-body-size);
   line-height: var(--type-body-line);
   font-weight: var(--type-body-weight);
@@ -43,7 +45,7 @@ body {
  * `src/design/type.mjs`; this is the body default.
  */
 :root[lang="ar"] body {
-  font-family: "IBM Plex Sans Arabic", system-ui, sans-serif;
+  font-family: var(--font-plex-arabic), "IBM Plex Sans Arabic", system-ui, sans-serif;
   line-height: calc(var(--type-body-line) + 0.15);
 }
 
@@ -82,7 +84,7 @@ h2 {
  * keep the column aligned and the same width.
  */
 .data {
-  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-family: var(--font-plex-mono), "IBM Plex Mono", ui-monospace, monospace;
   font-size: var(--type-data-size);
   line-height: var(--type-data-line);
   font-weight: var(--type-data-weight);
@@ -90,7 +92,7 @@ h2 {
 }
 
 :root[lang="ar"] .data {
-  font-family: "IBM Plex Sans Arabic", system-ui, sans-serif;
+  font-family: var(--font-plex-arabic), "IBM Plex Sans Arabic", system-ui, sans-serif;
   font-variant-numeric: tabular-nums;
 }
 
@@ -346,7 +348,7 @@ a {
 /* Money and numeric columns stay end-aligned on the LOGICAL end, so they mirror. */
 .ds-col-money {
   text-align: end;
-  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-family: var(--font-plex-mono), "IBM Plex Mono", ui-monospace, monospace;
   font-size: var(--type-data-size);
   font-weight: var(--type-data-weight);
 }
@@ -541,12 +543,32 @@ a {
   align-items: start;
 }
 
+/* **184 at Compact, 240 at Default and above, 212 in Arabic at Compact.** The Command
+ * Center's own note: "RAIL WIDTH · 184 expanded at Compact density (this screen) · 240 at
+ * Default and above per Foundations §09 · 56 collapsed at all densities. The Arabic build is
+ * +28 on the Compact figure = 212." Arabic needs the room because Plex Sans Arabic sets
+ * wider at the same size and a rail that clipped a label would be a rail nobody can read.
+ */
+/* **On the grid container, not the rail.** The track is `var(--shell-rail)` on
+ * `.ds-shell-body`, so a value set on the rail itself is read too late -- the parent has
+ * already sized the column. `:has()` is what lets the shell see a density its own content
+ * set, which is where a screen declares one. */
+.ds-shell-body:has([data-density="compact"]) {
+  --shell-rail: 184px;
+}
+
+[dir="rtl"] .ds-shell-body:has([data-density="compact"]) {
+  --shell-rail: 212px;
+}
+
 .ds-shell-rail {
   position: sticky;
   inset-block-start: 0;
   block-size: 100dvh;
   overflow-y: auto;
-  padding: var(--space-4) var(--space-3);
+  /* `padding:10px 0` -- each item carries its own inline padding so a selected row's ground
+     reaches the rail's edges. */
+  padding-block: 10px;
   border-inline-end: 1px solid var(--color-border-default);
   background: var(--color-surface-default);
 }
@@ -645,6 +667,31 @@ a {
     border-inline-end: 0;
     border-block-start: 1px solid var(--color-border-default);
     z-index: 20;
+    /* **The bar scrolls inside itself rather than widening the page.** `BREAKPOINTS` puts a
+       bottom nav of five here and this build has more sections than five, so the row is
+       wider than a phone -- and a fixed element wider than the viewport is what makes the
+       whole document scroll sideways. Found by measuring, after the rail gained icons. */
+    overflow-x: auto;
+    max-inline-size: 100vw;
+  }
+
+  /* The group headings are a vertical device: in a row they read as items. */
+  .ds-shell-rail .ds-rail-group {
+    display: none;
+  }
+
+  .ds-shell-rail .ds-rail-list {
+    flex-direction: row;
+    inline-size: auto;
+  }
+
+  .ds-shell-rail .ds-rail-list a {
+    flex-direction: column;
+    gap: 2px;
+    padding: var(--space-2);
+    border-inline-start: 0;
+    margin-inline-start: 0;
+    white-space: nowrap;
   }
 
   .ds-shell-rail .ds-rail-label {
@@ -673,18 +720,49 @@ a {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
+  /* No gap: the canvas separates rows with each item's own 7px padding, which is what lets
+     the selected row's ground run edge to edge rather than floating as a pill. */
 }
 
+/* A rail item, to the canvas's own measurements:
+ *
+ *     display:flex;gap:9px;align-items:center;padding:7px 16px
+ *     icon  11px mono, warm.500, 13px slot      label 12/1.3 400, warm.800
+ *     selected: ink.50 ground, 2px ink.600 edge pulled into the gutter,
+ *               icon and label both ink.600, label 500
+ *
+ * The selected edge is `margin-inline-start:-2px` so the mark sits in the rail's own padding
+ * rather than indenting the row -- which is what keeps every label on one optical line.
+ */
 .ds-rail-list a {
-  display: block;
-  padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-button);
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px var(--space-4);
   color: var(--color-text-secondary);
   text-decoration: none;
   font-size: var(--type-label-size);
-  font-weight: var(--type-label-weight);
-  letter-spacing: var(--type-label-tracking);
+  line-height: 1.3;
+  font-weight: var(--type-body-weight);
+  letter-spacing: 0;
+  border-inline-start: 2px solid transparent;
+  margin-inline-start: -2px;
+}
+
+.ds-rail-list a .ds-icon {
+  color: var(--color-text-tertiary);
+  flex-shrink: 0;
+}
+
+.ds-rail-label {
+  flex: 1;
+  min-inline-size: 0;
+}
+
+.ds-rail-count {
+  font-size: var(--type-caption-size);
+  line-height: 1.4;
+  color: var(--color-text-tertiary);
 }
 
 .ds-rail-list a:hover {
@@ -694,7 +772,49 @@ a {
 
 .ds-rail-list a[aria-current="page"] {
   background: var(--color-surface-selected);
-  color: var(--color-text-primary);
+  border-inline-start-color: var(--color-action-default);
+  color: var(--color-action-default);
+  font-weight: var(--type-label-weight);
+}
+
+.ds-rail-list a[aria-current="page"] .ds-icon,
+.ds-rail-list a[aria-current="page"] .ds-rail-count {
+  color: var(--color-action-default);
+}
+
+/* The group heading: mono, uppercase, tracked, and the one above the first group sits
+ * tighter than the rest -- `6px 16px 8px` against `14px 16px 8px`. */
+.ds-rail-group {
+  font-family: var(--font-plex-mono), "IBM Plex Mono", ui-monospace, monospace;
+  font-size: var(--type-eyebrow-size);
+  line-height: 1.4;
+  font-weight: var(--type-eyebrow-weight);
+  letter-spacing: var(--type-eyebrow-tracking);
+  text-transform: uppercase;
+  /* **`text.tertiary`, not the warm.500 the canvas writes.** The canvas sets this label at
+   * `#85807a`, and the foundations' own contrast matrix rules that out: "warm.500 measures
+   * 3.88:1 on warm.0 and is available only for large text, icons paired with a label, and
+   * non-essential decoration." A 9.5px tracked label is small text, and the matrix is "part
+   * of the token set, not documentation about it -- a token pairing that is not in here is
+   * not approved for use, and CI checks it on every change." The rule wins over the drawing;
+   * axe found it the moment the rail shipped. `text.tertiary` is the stated floor. */
+  color: var(--color-text-tertiary);
+  padding: 14px var(--space-4) 8px;
+}
+
+.ds-rail-list > .ds-rail-section:first-child .ds-rail-group {
+  padding-block-start: 6px;
+}
+
+/* The group label is a block inside its list item; the items are the nested list. */
+.ds-rail-group {
+  display: block;
+}
+
+.ds-rail-items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
 }
 
 .ds-rail-chrome {
@@ -994,22 +1114,21 @@ a {
 
 /* --- The Command Center: MetricCell, AttentionRow, AITreatment -------------
  *
- * ADM-CC-01..05. Every length here is a generated token, and the three breakpoint literals
- * are the ones `tests/unit/shell-tokens.test.mjs` compares against `--bp-*` so a media query
- * -- which cannot read a custom property -- cannot drift from the scale.
+ * ADM-CC-01..05, to the canvas's own measurements. Every length below is read off the drawn
+ * HTML and every colour resolves to a token; where the canvas writes a raw hex it is a value
+ * from the ramp, named here rather than repeated.
  */
 
-/* The metric row. Four at bp.lg, 2x2 at bp.md, one scrolling row at bp.sm.
- *
- * The horizontal scroll at the narrowest width is the design's single exception to its own
- * rule and it states the reason: "the one place horizontal scroll is right, because they are
- * peers with no comparison axis". Everywhere else in this build a sideways-scrolling data
- * region is the defect DataGrid's column priority exists to remove.
- */
+/* The metric row is a bordered grid whose **1px gaps are the dividers**, each cell on its own
+ * ground. Cell borders would double at every seam and miss one at each end. */
 .ds-metric-row {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: var(--space-4);
+  gap: 1px;
+  background: var(--color-border-default);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-input);
+  overflow: hidden;
 }
 
 @media (max-width: 1199px) {
@@ -1024,8 +1143,6 @@ a {
     grid-auto-columns: 72%;
     grid-template-columns: none;
     overflow-x: auto;
-    /* The gutter, so the last card does not sit against the screen edge. */
-    padding-inline-end: var(--space-4);
     scroll-snap-type: inline mandatory;
   }
 
@@ -1035,139 +1152,261 @@ a {
 }
 
 .ds-metric {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
+  background: var(--color-surface-default);
+  padding: 13px 15px;
   min-inline-size: 0;
 }
 
+/* `font:500 9.5px/1.4 Mono; letter-spacing:.07em` — the eyebrow register. */
 .ds-metric-label {
+  font-family: var(--font-plex-mono), "IBM Plex Mono", ui-monospace, monospace;
   font-size: var(--type-eyebrow-size);
-  line-height: var(--type-eyebrow-line);
+  line-height: 1.4;
   font-weight: var(--type-eyebrow-weight);
-  letter-spacing: var(--type-eyebrow-tracking);
+  letter-spacing: 0.07em;
   text-transform: uppercase;
   color: var(--color-text-secondary);
 }
 
+/* `font:500 21px/1.15 Mono` — **mono, not sans**. It is what makes four figures align. */
 .ds-metric-value {
-  font-size: var(--type-h2-size);
-  line-height: var(--type-h2-line);
-  font-weight: var(--type-h2-weight);
-  letter-spacing: var(--type-h2-tracking);
+  font-family: var(--font-plex-mono), "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 21px;
+  line-height: 1.15;
+  font-weight: var(--type-data-weight);
+  font-variant-numeric: tabular-nums;
   color: var(--color-text-primary);
+  margin-block-start: 7px;
 }
 
-/* DS-CL-01: "Stale demotes the value from text.primary to text.secondary and replaces the
- * comparison line with a timestamp in warning." No new token -- existing semantic tokens in
- * a new arrangement, which is what made it a missing variant rather than a defect. */
 .ds-metric[data-freshness="stale"] .ds-metric-value {
   color: var(--color-text-secondary);
 }
 
 .ds-metric-provenance {
+  margin-block-start: 5px;
   font-size: var(--type-caption-size);
-  line-height: var(--type-caption-line);
+  line-height: 1.3;
   color: var(--color-semantic-warning);
 }
 
-.ds-metric-comparison,
-.ds-metric-unavailable {
-  margin: 0;
+.ds-metric-comparison {
+  display: flex;
+  gap: 7px;
+  align-items: baseline;
+  flex-wrap: wrap;
+  margin-block-start: 5px;
   font-size: var(--type-caption-size);
-  line-height: var(--type-caption-line);
+  line-height: 1.3;
   color: var(--color-text-secondary);
 }
 
-/* The unavailable state carries prose where a figure would be, so it needs the room a figure
- * had -- otherwise the row's four cells stop being the same height and the eye reads the
- * short one as the broken one. */
+/* The delta carries the one semantic colour on this row. The value above it never does:
+ * "the metrics do not turn red -- they are still facts". */
+.ds-metric-delta {
+  font-weight: var(--type-data-weight);
+}
+
+.ds-metric-delta[data-tone="down"] {
+  color: var(--color-semantic-warning);
+}
+
+.ds-metric-delta[data-tone="up"] {
+  color: var(--color-semantic-success);
+}
+
 .ds-metric-unavailable {
+  margin: 7px 0 0;
+  font-size: var(--type-caption-size);
+  line-height: 1.4;
+  color: var(--color-text-secondary);
   text-wrap: pretty;
 }
 
-/* --- The attention queue -------------------------------------------------
- *
- * §38's contract: "Each row is an article with the headline as its label; the queue is a list
- * with a live count. Severity is edge-mark and category chip and wording -- never the bar
- * alone. RTL: edge-mark moves to the logical start, amount to the logical end. Below bp.sm
- * the action row stacks and the primary becomes full-width."
+/* --- MoneyValue, §39 -----------------------------------------------------
+ * "Always three-letter code plus two decimals, tabular figures, end-aligned."
  */
-.ds-queue {
-  list-style: none;
-  margin: 0;
-  padding: 0;
+.ds-money {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* `aggregate · fils de-emphasised, never truncated` — 14px against the major part's 21. */
+.ds-money-minor {
+  font-size: 0.66em;
+  color: var(--color-text-tertiary);
+}
+
+.ds-money[data-kind="owed"],
+.ds-money[data-kind="refunded"] {
+  color: var(--color-text-critical);
+}
+
+.ds-money-restricted,
+.ds-money-na {
+  color: var(--color-text-tertiary);
+}
+
+/* --- The attention queue, §38 --------------------------------------------- */
+.ds-queue-head {
   display: flex;
-  flex-direction: column;
   gap: var(--space-3);
+  align-items: baseline;
+  flex-wrap: wrap;
 }
 
 .ds-queue-counts {
   margin: 0;
+  font-family: var(--font-plex-mono), "IBM Plex Mono", ui-monospace, monospace;
   font-size: var(--type-caption-size);
-  line-height: var(--type-caption-line);
+  line-height: 1.4;
   color: var(--color-text-secondary);
 }
 
-/* The edge-mark is an inline style from `edgeMark()`, the same function the grid uses, so the
- * padding has to leave room for it on the logical start edge. */
+.ds-queue-aside {
+  margin-inline-start: auto;
+  font-size: var(--type-caption-size);
+  line-height: 1.4;
+}
+
+/* One container, rows divided by a hairline. */
+.ds-queue {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-input);
+  background: var(--color-surface-default);
+  overflow: hidden;
+}
+
+.ds-queue > li + li .ds-attention {
+  border-block-start: 1px solid var(--color-border-subtle);
+}
+
 .ds-attention {
   display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  padding: var(--space-3) var(--space-4);
-  background: var(--color-surface-default);
-  border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-card);
+  align-items: stretch;
+}
+
+/* A 3px block that runs the row's full height, severity-coloured. */
+.ds-attention-edge {
+  inline-size: 3px;
+  flex-shrink: 0;
+  background: transparent;
+}
+
+.ds-attention[data-severity="critical"] .ds-attention-edge {
+  background: var(--color-semantic-error);
+}
+
+.ds-attention[data-severity="attention"] .ds-attention-edge {
+  background: var(--color-semantic-warning);
+}
+
+.ds-attention[data-severity="info"] .ds-attention-edge {
+  background: var(--color-semantic-info);
+}
+
+.ds-attention-body {
+  flex: 1;
+  min-inline-size: 0;
+  padding: 13px 15px;
 }
 
 .ds-attention-eyebrow {
   display: flex;
+  gap: 9px;
+  align-items: center;
   flex-wrap: wrap;
-  align-items: baseline;
-  gap: var(--space-2);
-  font-size: var(--type-caption-size);
-  line-height: var(--type-caption-line);
 }
 
+/* A bordered pill in the severity's own ink — §38: "severity is edge-mark and category chip
+ * and wording — never the bar alone". */
 .ds-attention-category {
+  font-family: var(--font-plex-mono), "IBM Plex Mono", ui-monospace, monospace;
   font-size: var(--type-eyebrow-size);
+  line-height: 1.4;
   font-weight: var(--type-eyebrow-weight);
-  letter-spacing: var(--type-eyebrow-tracking);
+  letter-spacing: 0.07em;
   text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 3px;
+  border: 1px solid currentColor;
+  color: var(--color-text-secondary);
+}
+
+.ds-attention[data-severity="critical"] .ds-attention-category {
+  color: var(--color-semantic-error);
+}
+
+.ds-attention[data-severity="attention"] .ds-attention-category {
+  color: var(--color-semantic-warning);
+}
+
+.ds-attention-when {
+  font-family: var(--font-plex-mono), "IBM Plex Mono", ui-monospace, monospace;
+  font-size: var(--type-caption-size);
+  line-height: 1.4;
   color: var(--color-text-secondary);
 }
 
 /* "Amount to the logical end", which mirrors on its own under `dir="rtl"`. */
 .ds-attention-money {
   margin-inline-start: auto;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  font-size: 15px;
+  line-height: 1.2;
+  font-weight: var(--type-data-weight);
+}
+
+.ds-attention[data-severity="critical"] .ds-attention-money .ds-money {
+  color: var(--color-semantic-error);
+}
+
+.ds-attention-meaning {
+  font-family: var(--font-plex-mono), "IBM Plex Mono", ui-monospace, monospace;
+  font-size: var(--type-eyebrow-size);
+  line-height: 1.4;
+  font-weight: var(--type-body-weight);
+  color: var(--color-text-secondary);
 }
 
 .ds-attention-headline {
-  margin: 0;
-  font-size: var(--type-h3-size);
-  line-height: var(--type-h3-line);
+  margin: 7px 0 0;
+  font-size: 15.5px;
+  line-height: 1.35;
   font-weight: var(--type-h3-weight);
   letter-spacing: var(--type-h3-tracking);
+  color: var(--color-text-primary);
 }
 
 .ds-attention-evidence {
-  margin: 0;
+  margin: 4px 0 0;
+  font-size: var(--type-bodySm-size);
+  line-height: 1.62;
   color: var(--color-text-secondary);
+  max-inline-size: 88ch;
   text-wrap: pretty;
-  max-width: 72ch;
 }
 
 .ds-attention-actions {
   display: flex;
-  flex-wrap: wrap;
   gap: var(--space-2);
+  margin-block-start: 11px;
+  flex-wrap: wrap;
+  align-items: center;
 }
 
 .ds-attention-owner {
-  margin: 0;
+  margin: 11px 0 0;
+  font-family: var(--font-plex-mono), "IBM Plex Mono", ui-monospace, monospace;
   font-size: var(--type-caption-size);
-  line-height: var(--type-caption-line);
+  line-height: 1.4;
+  /* The canvas writes warm.500 here too; same matrix, same answer. */
+  color: var(--color-text-tertiary);
 }
 
 @media (max-width: 599px) {
@@ -1180,6 +1419,36 @@ a {
   .ds-attention-money {
     margin-inline-start: 0;
   }
+}
+
+/* --- The period toggle ---------------------------------------------------
+ * `Today | 7 days | Month`, selected bordered, the others plain.
+ */
+.ds-segmented {
+  display: inline-flex;
+  gap: var(--space-1);
+  align-items: center;
+}
+
+.ds-segmented a {
+  font-size: var(--type-label-size);
+  line-height: 1;
+  font-weight: var(--type-body-weight);
+  color: var(--color-text-secondary);
+  padding: 8px 10px;
+  border-radius: var(--radius-button);
+  border: 1px solid transparent;
+  text-decoration: none;
+}
+
+.ds-segmented a[aria-current="page"] {
+  font-weight: var(--type-label-weight);
+  color: var(--color-text-primary);
+  border-color: var(--color-border-strong);
+}
+
+.ds-segmented a:hover {
+  background: var(--color-surface-hover);
 }
 
 /* --- The AI panel --------------------------------------------------------
@@ -1195,12 +1464,13 @@ a {
   gap: var(--space-2);
   padding: var(--space-4);
   border: 1px solid var(--color-semantic-ai-border);
-  border-radius: var(--radius-card);
+  border-radius: var(--radius-input);
   background: var(--color-semantic-ai-wash);
 }
 
 .ds-ai-eyebrow {
   margin: 0;
+  font-family: var(--font-plex-mono), "IBM Plex Mono", ui-monospace, monospace;
   font-size: var(--type-eyebrow-size);
   line-height: var(--type-eyebrow-line);
   font-weight: var(--type-eyebrow-weight);
@@ -1212,21 +1482,16 @@ a {
 .ds-ai-body {
   color: var(--color-text-primary);
   text-wrap: pretty;
-  max-width: 72ch;
+  max-inline-size: 72ch;
+  font-size: var(--type-bodySm-size);
+  line-height: 1.62;
 }
 
 .ds-ai-body > p {
   margin: 0;
 }
 
-/* --- The collections chart ------------------------------------------------
- *
- * "Three consecutive weeks below the 12-week average. The last bar is a partial week and is
- * marked, not extrapolated." The bars are a list of rows rather than an SVG, because at
- * bp.xs the design drops a 12-bar comparison to "a sparkline plus the stated conclusion in
- * words, since a 12-bar comparison at 360px is decoration" -- and a row list degrades to
- * that honestly, where an SVG would need a second implementation.
- */
+/* --- The collections chart ------------------------------------------------ */
 .ds-bars {
   list-style: none;
   margin: 0;
@@ -1238,7 +1503,7 @@ a {
 
 .ds-bar {
   display: grid;
-  grid-template-columns: 11ch minmax(0, 1fr) 12ch;
+  grid-template-columns: 11ch minmax(0, 1fr) 14ch;
   align-items: center;
   gap: var(--space-2);
   font-size: var(--type-caption-size);
@@ -1379,4 +1644,186 @@ a {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
+}
+
+/* --- The global chrome, §21 ---------------------------------------------
+ *
+ * The Command Center canvas draws it at 48px with these exact measurements, and they are
+ * the ones here. Every colour is a token; the raw values in the canvas are the ramp.
+ */
+.ds-chrome {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 14px;
+  /* A minimum rather than a fixed height: at phone width the account controls drop to a
+     second line, and a 48px box with more in it than fits is what pushes a page sideways. */
+  min-block-size: 48px;
+  padding-inline: var(--space-4);
+  background: var(--color-surface-default);
+  border-block-end: 1px solid var(--color-border-default);
+}
+
+.ds-chrome-brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+/* 22x22, radius 4, the ink ground. A mark rather than a logo: there is no brand asset. */
+.ds-chrome-mark {
+  inline-size: 22px;
+  block-size: 22px;
+  border-radius: 4px;
+  background: var(--color-text-primary);
+  color: var(--color-text-inverse);
+  font-size: var(--type-label-size);
+  font-weight: var(--type-label-weight);
+  line-height: 22px;
+  text-align: center;
+  letter-spacing: -0.02em;
+}
+
+.ds-chrome-org {
+  font-size: var(--type-h4-size);
+  line-height: 1.2;
+  font-weight: var(--type-label-weight);
+  letter-spacing: -0.012em;
+  color: var(--color-text-primary);
+}
+
+.ds-chrome-divider {
+  inline-size: 1px;
+  block-size: 20px;
+  background: var(--color-border-default);
+}
+
+/* A statement, not a control: there is no scope to switch to, so there is no caret. */
+.ds-chrome-scope {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 10px;
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-button);
+  font-size: var(--type-label-size);
+  line-height: 1;
+  color: var(--color-text-primary);
+}
+
+.ds-chrome-end {
+  margin-inline-start: auto;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  min-inline-size: 0;
+}
+
+/* The avatar: 26px, a circle, the warm ramp. Initials rather than a photo -- there is no
+ * object store, and a broken image is worse than initials. */
+.ds-chrome-avatar {
+  inline-size: 26px;
+  block-size: 26px;
+  border-radius: 50%;
+  background: var(--p-warm-300);
+  border: 1px solid var(--color-border-default);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--type-caption-size);
+  font-weight: var(--type-label-weight);
+  color: var(--color-text-secondary);
+  text-decoration: none;
+}
+
+/* Icons mirror or do not, per §15's two lists. The ones that do turn around under rtl. */
+[dir="rtl"] .ds-icon[data-mirrors="true"] {
+  transform: scaleX(-1);
+}
+
+@media (max-width: 599px) {
+  .ds-chrome-scope,
+  .ds-chrome-divider {
+    display: none;
+  }
+}
+
+/* The page header row: title and sub-line at the inline start, the period toggle at the end,
+ * both sitting on the same baseline. `align-items:flex-end` is what puts a 24px title and an
+ * 11.5px chip on one optical line. */
+.ds-page-head {
+  display: flex;
+  gap: var(--space-4);
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+
+.ds-page-head-text {
+  flex: 1;
+  min-inline-size: 280px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+/* The current period, which is the only one this build can answer. Not a link, because there
+ * is nowhere else to go: a segment that did nothing would be the dead control the rest of
+ * this surface refuses to draw. */
+.ds-segment-current {
+  font-size: var(--type-label-size);
+  line-height: 1;
+  font-weight: var(--type-label-weight);
+  color: var(--color-text-primary);
+  padding: 8px 11px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-button);
+}
+
+/* A section title that shares a baseline with its own counts: `font:500 14.5px/1.3`. The
+ * canvas's "Needs you now" is a heading at body-plus rather than at `type.h2` -- the queue
+ * below it is the weight on the page, and a 20px heading over it would compete. */
+.ds-section-title {
+  margin: 0;
+  font-size: 14.5px;
+  line-height: 1.3;
+  font-weight: var(--type-label-weight);
+  letter-spacing: 0;
+  color: var(--color-text-primary);
+  padding: 0;
+  border: 0;
+}
+
+/* The canvas stacks its sections at 18px, not at the shell's 24 gutter. */
+.ds-page-section {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.ds-page-head-end {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+/* The figures line under a page title: `type.bodySm` in the secondary ink, which is what the
+ * canvas sets it at. Never a paragraph of prose -- see `PageHeader`. */
+.ds-page-figures {
+  margin: 0;
+  font-size: var(--type-bodySm-size);
+  line-height: 1.5;
+  color: var(--color-text-secondary);
+}
+
+/* A screen's own disclosure, at the foot. Smaller than body and in the secondary ink: it is
+ * something a reader consults, not something they read first. */
+.ds-screen-note {
+  margin: 0;
+  font-size: var(--type-bodySm-size);
+  line-height: 1.6;
+  color: var(--color-text-secondary);
+  max-inline-size: 88ch;
+  text-wrap: pretty;
 }

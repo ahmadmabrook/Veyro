@@ -48,16 +48,20 @@ export function MetricCell({
   label,
   value,
   comparison,
+  /** The delta's own tone: `up`, `down` or none. Semantic colour, never the value's. */
+  delta,
   freshness = "live",
   provenance,
   unavailableBecause,
 }: {
-  /** The eyebrow: "COLLECTED · MONTH TO DATE". */
+  /** The eyebrow: "COLLECTED · MONTH TO DATE". Mono, tracked, uppercase. */
   label: string;
-  /** The figure, already formatted in the locale's own numerals. */
+  /** The figure. Mono at 21px — `MoneyValue(aggregate)` where it is money. */
   value?: ReactNode;
-  /** The line under the value: "↓ 7.8% vs July · pace to 63.1k". */
+  /** The line under the value: "vs July · pace to 63.1k". */
   comparison?: ReactNode;
+  /** "↓ 7.8%" — set in the semantic tone its direction earns. */
+  delta?: { text: string; tone: "up" | "down" };
   freshness?: Freshness;
   /** When stale: what the figure is as of. Rendered as text, per the accessibility note. */
   provenance?: string;
@@ -75,16 +79,24 @@ export function MetricCell({
         <p className="ds-metric-unavailable">{unavailableBecause}</p>
       ) : (
         <>
-          {/* `.data` is tabular and mono, which is what makes four of these align. */}
-          <div className="ds-metric-value data">{value}</div>
+          <div className="ds-metric-value">{value}</div>
           {stale ? (
             // "Replaces the comparison line with a timestamp in warning." The comparison is
             // not shown beside a stale figure at all: a change computed from a figure that is
             // forty minutes old is a change nobody can act on.
             <div className="ds-metric-provenance">{provenance}</div>
           ) : (
-            comparison !== undefined ? (
-              <div className="ds-metric-comparison">{comparison}</div>
+            delta !== undefined || comparison !== undefined ? (
+              // The canvas: `display:flex;gap:7px;align-items:baseline;margin-top:5px`, the
+              // delta in mono and the sentence beside it in sans.
+              <div className="ds-metric-comparison">
+                {delta ? (
+                  <span className="ds-metric-delta data" data-tone={delta.tone}>
+                    {delta.text}
+                  </span>
+                ) : null}
+                {comparison !== undefined ? <span>{comparison}</span> : null}
+              </div>
             ) : null
           )}
         </>
@@ -96,10 +108,15 @@ export function MetricCell({
 /**
  * The metric row. Four cells at bp.lg, 2×2 at bp.md, one horizontally scrolling row at bp.sm.
  *
- * That last one is the design's single exception to its own rule, and it says why: "Metrics
- * scroll horizontally as a single row of cards — the one place horizontal scroll is right,
- * because they are peers with no comparison axis." Everywhere else in this build a horizontal
- * scrollbar on data is the defect the DataGrid's column priority exists to remove.
+ * **It is a bordered grid whose 1px gaps are the dividers.** The canvas:
+ * `grid-template-columns:repeat(4,minmax(0,1fr));gap:1px;background:rgba(23,23,26,.12);
+ * border:1px solid rgba(23,23,26,.14);border-radius:4px;overflow:hidden`, each cell on its
+ * own `warm.0` ground. Drawing the rules as cell borders instead would double them at every
+ * seam and leave one missing at each end.
+ *
+ * The horizontal scroll at the narrowest width is the design's single exception to its own
+ * rule and it says why: "the one place horizontal scroll is right, because they are peers
+ * with no comparison axis."
  */
 export function MetricRow({
   children,

@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { Banner } from "@/components/ds/banner";
+import { PageHeader } from "@/components/ds/page-header";
 import { DataGrid } from "@/components/ds/data-grid";
 import { formatInteger, t, type MessageKey } from "@/i18n/locale";
 import { ApiError, currentSession, gate } from "@/lib/api";
@@ -64,10 +65,7 @@ export default async function ConfigurationPage({
 
   return (
     <div className="stack">
-      <h1 style={{ margin: 0 }}>{text("config.title")}</h1>
-      <p className="muted" style={{ margin: 0 }}>
-        {text("config.lead")}
-      </p>
+      <PageHeader title={text("config.title")} />
 
       <section className="page-section">
         <h2 id="config-heading" style={{ margin: 0 }}>

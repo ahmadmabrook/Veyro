@@ -91,30 +91,30 @@ describe("composing the membership column", () => {
 });
 
 describe("the subtitle's counts", () => {
-  const row = (state: string | null) => ({
-    person_id: `p-${state}-${Math.random()}`,
-    legal_name: "Someone",
-    preferred_name: null,
-    date_of_birth: null,
-    lifecycle_state: state,
-    member_number: null,
-    joined_on: null,
-  });
 
-  it("counts by state, largest first", () => {
-    expect(stateCounts([row("active"), row("lead"), row("active")])).toEqual([
+  it("orders the tenant's states largest first", () => {
+    expect(stateCounts({ active: 2, lead: 1 })).toEqual([
       { state: "active", count: 2 },
       { state: "lead", count: 1 },
     ]);
   });
 
-  it("counts a person with no member profile as its own answer, not as zero", () => {
-    // A person with no member profile is a real row on this list -- a lead who has not been
-    // given one -- and folding them into a state they are not in would be a wrong number.
-    expect(stateCounts([row(null)])).toEqual([{ state: "unknown", count: 1 }]);
+  it("breaks a tie by name, so the sub-line does not reshuffle between loads", () => {
+    expect(stateCounts({ paused: 1, former: 1 }).map((s) => s.state))
+      .toEqual(["former", "paused"]);
   });
 
-  it("is empty for an empty page rather than inventing a zero per state", () => {
-    expect(stateCounts([])).toEqual([]);
+  it("keeps `none` as its own figure, because the parts have to sum to the total", () => {
+    // A person with no member profile is a real row on this list -- a lead who has not been
+    // given one -- and a sub-line whose figures did not add up would send a reader looking
+    // for the ones it left out.
+    expect(stateCounts({ active: 3, none: 1 })).toEqual([
+      { state: "active", count: 3 },
+      { state: "none", count: 1 },
+    ]);
+  });
+
+  it("is empty for a tenant with nobody in it, rather than inventing a zero per state", () => {
+    expect(stateCounts({})).toEqual([]);
   });
 });

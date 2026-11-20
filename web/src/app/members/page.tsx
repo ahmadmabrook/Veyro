@@ -103,33 +103,30 @@ export default async function MembersPage({
   }
 
   const held = membershipsByPerson(memberships);
-  const counts = stateCounts(page.people);
+  const counts = stateCounts(page.by_state);
 
   return (
     <Shell locale={locale}>
-      <section className="page-section">
-        <h2 id="members-heading" style={{ margin: 0 }}>{text("members.title")}</h2>
+      <section className="ds-page-section">
+        <h2 id="members-heading" className="ds-visually-hidden">{text("members.title")}</h2>
 
-        {/* The design's subtitle is "4,812 active · 312 expired · 68 frozen · all
-            locations" -- per-state counts over the tenant. This build has no grouped count,
-            so the figures here are the page's and the caption says so. A summary that
-            reported the loaded page as the tenant would be a wrong number rather than a
-            missing one. */}
-        <dl className="facts">
-          <dt className="muted">{text("members.onThisPage")}</dt>
-          <dd style={{ margin: 0 }}>
-            {counts.length === 0
-              ? "—"
-              : counts.map(({ state, count }, index) => (
-                  <span key={state}>
-                    {index > 0 ? " · " : ""}
-                    <span className="data">{formatInteger(count, "latn")}</span>{" "}
-                    {state}
-                  </span>
-                ))}
-            <div className="muted" style={caption}>{text("members.scope")}</div>
-          </dd>
-        </dl>
+        {/* **The design's own sub-line**: "4,812 active · 312 expired · 68 frozen · all
+            locations". Counted over the tenant rather than over the loaded page -- the first
+            version summed the fifty rows on screen and captioned the fact, which was honest
+            and was still the wrong number in the place a manager reads the business. */}
+        <p className="muted" style={{ margin: 0 }}>
+          {counts.length === 0
+            ? "\u2014"
+            : counts.map(({ state, count }, index) => (
+                <span key={state}>
+                  {index > 0 ? " \u00b7 " : ""}
+                  <span className="data">{formatInteger(count, "latn")}</span>{" "}
+                  {state === "none" ? text("members.noProfile") : state}
+                </span>
+              ))}
+          {" \u00b7 "}
+          {text("members.scope")}
+        </p>
 
         {/* The one filter this screen can really apply, because MOD-014 owns the state. It is
             a set of links rather than a form: a filter that works without JavaScript is the
@@ -323,10 +320,17 @@ function Shell({
   // the row height, the spacing step and the body type step and nothing else -- colour,
   // radius, anatomy and hierarchy are invariant, which is what makes a density a density
   // rather than a fifth theme.
+  // **No explanatory lead.** The design's header is a title and a sub-line of figures; a
+  // paragraph describing what the screen is belongs in this file's own comments, not above
+  // the data. What the screen *cannot* do is still stated, at the bottom, where it answers a
+  // question rather than delaying one.
   return (
     <div className="stack" data-density="compact">
-      <h1 style={{ margin: 0 }}>{t(locale, "members.title")}</h1>
-      <p className="muted" style={{ margin: 0 }}>{t(locale, "members.lead")}</p>
+      <div className="ds-page-head">
+        <div className="ds-page-head-text">
+          <h1 style={{ margin: 0 }}>{t(locale, "members.title")}</h1>
+        </div>
+      </div>
       {children}
     </div>
   );

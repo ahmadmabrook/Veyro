@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-import { edgeMark, type Severity } from "@/components/ds/status-badge";
+import type { Severity } from "@/components/ds/status-badge";
 
 /**
  * AttentionRow — §38, "the component the whole Admin rests on".
@@ -40,19 +40,38 @@ import { edgeMark, type Severity } from "@/components/ds/status-badge";
 
 export function AttentionQueue({
   heading,
+  title,
   counts,
+  aside,
   children,
 }: {
-  /** The id of the heading above the queue, for the list's accessible name. */
+  /** The id of the heading, for the list's accessible name. */
   heading: string;
+  /**
+   * The heading itself, which shares a baseline with the counts.
+   *
+   * The canvas: `display:flex;gap:10px;align-items:baseline;margin-bottom:9px` with
+   * `Needs you now` at 14.5/1.3 and `9 open · 2 critical` in mono beside it. Stacking them
+   * reads as a section heading over a caption, which is a different and heavier shape.
+   */
+  title: ReactNode;
   /** "9 open · 2 critical · 4 assigned to others" — the live count the contract requires. */
   counts: ReactNode;
+  /** The end of the header row: "Show resolved today" in the canvas. */
+  aside?: ReactNode;
   children: ReactNode;
 }) {
   return (
     <>
-      <p className="ds-queue-counts">{counts}</p>
-      {/* A list, so the count is announced and the rows are navigable as a set. */}
+      <div className="ds-queue-head">
+        {title}
+        <p className="ds-queue-counts">{counts}</p>
+        {aside ? <div className="ds-queue-aside">{aside}</div> : null}
+      </div>
+      {/* **One bordered container, rows divided by a hairline** -- not a stack of cards.
+          The canvas: `border:1px solid …;border-radius:4px;background:warm.0;overflow:hidden`
+          with each row after the first carrying `border-top`. Separate cards would put a
+          double rule and two radii at every seam. */}
       <ul className="ds-queue" aria-labelledby={heading}>
         {children}
       </ul>
@@ -74,17 +93,17 @@ export function AttentionRow({
   /** Used for the headline's id, so the article can be labelled by it. */
   id: string;
   severity: Severity;
-  /** The category chip. Part of the severity signal, not decoration. */
+  /** The category chip — a bordered pill in the severity's own ink. */
   category: string;
   /** The age and scope: "2h ago · Khalda, Abdoun". */
   when: string;
-  /** A figure and what it means: "JOD 312.00" + "at risk". Logical end, so it mirrors. */
+  /** A figure and what it means. Logical end, so it mirrors. */
   money?: { amount: ReactNode; meaning: string };
   /** The fact, never a metric name. */
   headline: string;
   /** Plain-language evidence: what happened, and what is already handled. */
   evidence: string;
-  /** Resolution action first, then the secondary route. */
+  /** Resolution action first, then the secondary route, then the ghost. */
   actions?: ReactNode;
   /** Who owns it, or "unassigned". The design renders both rather than hiding one. */
   owner?: string;
@@ -94,25 +113,30 @@ export function AttentionRow({
       <article
         className="ds-attention"
         aria-labelledby={`${id}-headline`}
-        style={edgeMark(severity)}
         data-severity={severity}
       >
-        <div className="ds-attention-eyebrow">
-          <span className="ds-attention-category">{category}</span>
-          <span className="muted">{when}</span>
-          {money ? (
-            <span className="ds-attention-money">
-              <span className="data">{money.amount}</span>{" "}
-              <span className="muted">{money.meaning}</span>
-            </span>
-          ) : null}
+        {/* **A 3px block, not a border.** The canvas draws it as its own flex child so it
+            runs the row's full height whatever the content does; a `border-inline-start`
+            would stop at the padding box and leave the mark short on a tall row. */}
+        <span className="ds-attention-edge" aria-hidden="true" />
+        <div className="ds-attention-body">
+          <div className="ds-attention-eyebrow">
+            <span className="ds-attention-category">{category}</span>
+            <span className="ds-attention-when">{when}</span>
+            {money ? (
+              <span className="ds-attention-money">
+                {money.amount}{" "}
+                <span className="ds-attention-meaning">{money.meaning}</span>
+              </span>
+            ) : null}
+          </div>
+          <h3 id={`${id}-headline`} className="ds-attention-headline">
+            {headline}
+          </h3>
+          <p className="ds-attention-evidence">{evidence}</p>
+          {actions ? <div className="ds-attention-actions">{actions}</div> : null}
+          {owner ? <p className="ds-attention-owner">{owner}</p> : null}
         </div>
-        <h3 id={`${id}-headline`} className="ds-attention-headline">
-          {headline}
-        </h3>
-        <p className="ds-attention-evidence">{evidence}</p>
-        {actions ? <div className="ds-attention-actions">{actions}</div> : null}
-        {owner ? <p className="ds-attention-owner muted">{owner}</p> : null}
       </article>
     </li>
   );

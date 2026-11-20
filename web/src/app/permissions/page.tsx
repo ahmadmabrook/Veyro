@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { Banner } from "@/components/ds/banner";
+import { PageHeader } from "@/components/ds/page-header";
 import { DataGrid } from "@/components/ds/data-grid";
 import { formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
 import { ApiError, currentSession, gate, type GateAnswer } from "@/lib/api";
@@ -96,10 +97,7 @@ export default async function PermissionsPage() {
 
   return (
     <div className="stack">
-      <h1 style={{ margin: 0 }}>{text("perms.title")}</h1>
-      <p className="muted" style={{ margin: 0 }}>
-        {text("perms.lead")}
-      </p>
+      <PageHeader title={text("perms.title")} />
 
       <section className="page-section">
         <h2 style={{ margin: 0 }}>{text("perms.mine")}</h2>

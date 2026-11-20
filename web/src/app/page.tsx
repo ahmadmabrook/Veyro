@@ -1,6 +1,6 @@
-import Link from "next/link";
-
 import { AITreatment } from "@/components/ds/ai-treatment";
+import { Button } from "@/components/ds/button";
+import { MoneyValue } from "@/components/ds/money-value";
 import { AttentionQueue, AttentionRow } from "@/components/ds/attention-row";
 import { Banner } from "@/components/ds/banner";
 import { MetricCell, MetricRow } from "@/components/ds/metric-cell";
@@ -134,9 +134,9 @@ export default async function CommandCentre() {
     formatMoney(amountMinor, currency, numbering, locale);
 
   const items = orderQueue([
-    ...moneyItems(dunning, locale, money),
+    ...moneyItems(dunning, locale),
     ...complianceItems(filings, locale),
-    ...retentionItems(membership, locale, money),
+    ...retentionItems(membership, locale),
     ...staffingItems(unstaffed, locale),
   ]);
   const counts = queueCounts(items);
@@ -157,7 +157,10 @@ export default async function CommandCentre() {
     // confirms: "Command Center runs Compact, Member 360 runs Default, and both use the same
     // components with no anatomy changes."
     <div className="stack" data-density="compact">
-      <header className="page-section">
+      {/* The canvas's header row: `display:flex;gap:16px;align-items:flex-end;flex-wrap:wrap`
+          with the title and its sub-line on the left and the period toggle at the end. */}
+      <header className="ds-page-head">
+        <div className="ds-page-head-text">
         <h1 style={{ margin: 0 }}>
           {/* **`head.key`, not a hard-coded clear heading.** The first version branched on
               the count here and threw away the key `heading()` had just chosen -- so a
@@ -187,10 +190,23 @@ export default async function CommandCentre() {
             {text(complete ? "cc.headingClearBody" : "cc.headingPartialBody")}
           </p>
         ) : null}
+        </div>
+        {/* **Today · 7 days · Month.** Links rather than controls, so the period survives
+            being sent to somebody and works with no JavaScript -- and only `Month` is
+            answerable today, which is why the other two are named in the gaps rather than
+            drawn as segments that change nothing. */}
+        <nav className="ds-segmented" aria-label={text("cc.period")}>
+          <span aria-current="page" className="ds-segment-current">
+            {text("cc.periodMonth")}
+          </span>
+        </nav>
       </header>
 
-      <section className="page-section" aria-labelledby="cc-metrics">
-        <h2 id="cc-metrics">{text("cc.metrics")}</h2>
+      {/* **No visible heading over the metrics.** The canvas puts the row straight under the
+          sub-line: the four labels are the heading, and a "Today's figures" above them would
+          be the sentence said twice. The group keeps its accessible name, which is what a
+          screen reader needs and a sighted reader already has. */}
+      <section aria-label={text("cc.metrics")}>
         <MetricRow label={text("cc.metrics")}>
           <CollectedMetric panel={collections} locale={locale} money={money} />
           <MembersMetric panel={membership} locale={locale} numbering={numbering} />
@@ -211,11 +227,11 @@ export default async function CommandCentre() {
           empty state must not look like. The refusals below are rendered either way, because
           a category somebody cannot see is a fact about the page rather than about the day. */}
       {items.length === 0 && complete ? null : (
-      <section className="page-section" aria-labelledby="cc-queue">
-        <h2 id="cc-queue">{text("cc.queue")}</h2>
+      <section className="ds-page-section" aria-labelledby="cc-queue">
         {items.length === 0 ? null : (
           <AttentionQueue
             heading="cc-queue"
+            title={<h2 id="cc-queue" className="ds-section-title">{text("cc.queue")}</h2>}
             counts={fill(locale, "cc.queueCounts", {
               open: counts.open,
               critical: counts.critical,
@@ -235,11 +251,19 @@ export default async function CommandCentre() {
                 headline={item.title}
                 evidence={item.body}
                 {...(item.owner ? { owner: item.owner } : {})}
-                actions={item.actions.map((action) => (
+                // **Real buttons, primary first.** The canvas draws a filled primary, an
+                // outlined secondary and a ghost -- `Button(primary, secondary, ghost)` is in
+                // its own component list. A row of identical outline chips reads as three
+                // equal options, which is the opposite of what a resolution action is.
+                actions={item.actions.map((action, index) => (
                   action.href === undefined ? null : (
-                    <Link key={action.href} href={action.href} className="ds-filter-chip">
-                      {t(locale, action.label)}
-                    </Link>
+                    <Button
+                      key={action.href}
+                      href={action.href}
+                      variant={index === 0 ? "primary" : "secondary"}
+                      size="sm"
+                      label={t(locale, action.label)}
+                    />
                   )
                 ))}
               />
@@ -331,22 +355,32 @@ function CollectedMetric({
         <MetricCell
           key={block.currency}
           label={blocks.length === 1 ? label : `${label} · ${block.currency}`}
-          value={money(block.collected_minor, block.currency)}
+          // `MoneyValue(aggregate)`: the fils de-emphasised, never truncated.
+          value={
+            <MoneyValue
+              kind="aggregate"
+              amountMinor={block.collected_minor}
+              currency={block.currency}
+            />
+          }
+          {...(block.change_bp === null
+            ? {}
+            : {
+                delta: {
+                  text: `${block.change_bp > 0 ? "\u2191" : "\u2193"} ${
+                    formatInteger(Math.abs(block.change_bp) / 100, "latn")}%`,
+                  // Down is the warning tone and up is the success one. The *value* above
+                  // carries neither: "the metrics do not turn red -- they are still facts".
+                  tone: block.change_bp > 0 ? ("up" as const) : ("down" as const),
+                },
+              })}
           comparison={
             <>
               {/* `null` is not zero: a tenant with nothing last month cannot say whether this
                   month is down, and a 0% would read as "unchanged". */}
-              {block.change_bp === null ? (
-                t(locale, "cc.noBaseline")
-              ) : (
-                <>
-                  {block.change_bp > 0 ? "↑" : "↓"}{" "}
-                  <span className="data">
-                    {formatInteger(Math.abs(block.change_bp) / 100, "latn")}%
-                  </span>{" "}
-                  {t(locale, "cc.vsLastMonth")}
-                </>
-              )}
+              {block.change_bp === null
+                ? t(locale, "cc.noBaseline")
+                : t(locale, "cc.vsLastMonth")}
               {" · "}
               {t(locale, "cc.pace")}{" "}
               <span className="data">{money(block.pace_minor, block.currency)}</span>
@@ -572,7 +606,6 @@ function categoryLabel(category: string): MessageKey {
 function moneyItems(
   panel: Panel<DunningCases>,
   locale: "en" | "ar",
-  money: (minor: number, currency: string) => string,
 ): AttentionItem[] {
   if (!panel.allowed || panel.data === null || panel.data.count === 0) return [];
   const at = panel.data.at_risk[0];
@@ -583,7 +616,20 @@ function moneyItems(
     severity: "critical",
     when: t(locale, "cc.scope"),
     ...(at
-      ? { money: { amount: money(at.amount_minor, at.currency), meaning: "cc.atRisk" as const } }
+      ? {
+          money: {
+            // `owed` — critical, and always with a status word nearby, which is what
+            // "at risk" is. §39: never a bare number.
+            amount: (
+              <MoneyValue
+                kind="owed"
+                amountMinor={at.amount_minor}
+                currency={at.currency}
+              />
+            ),
+            meaning: "cc.atRisk" as const,
+          },
+        }
       : {}),
     title: fill(locale, "cc.moneyTitle", { count: panel.data.count }),
     body: t(locale, "cc.moneyBody"),
@@ -610,7 +656,6 @@ function complianceItems(
 function retentionItems(
   panel: Panel<MembershipSummary>,
   locale: "en" | "ar",
-  money: (minor: number, currency: string) => string,
 ): AttentionItem[] {
   if (!panel.allowed || panel.data === null) return [];
   const expiring = panel.data.expiring;
@@ -624,7 +669,14 @@ function retentionItems(
     ...(value
       ? {
           money: {
-            amount: money(value.amount_minor, value.currency),
+            // `neutral` — a renewal value is a fact rather than money anybody is owed.
+            amount: (
+              <MoneyValue
+                kind="neutral"
+                amountMinor={value.amount_minor}
+                currency={value.currency}
+              />
+            ),
             meaning: "cc.renewalValue" as const,
           },
         }

@@ -108,8 +108,15 @@ test.describe("the Command Center", () => {
     // this asserts alongside the measured border.
     const money = row(page, "money");
     await expect(money).toHaveAttribute("data-severity", "critical");
-    const edge = await money.evaluate((el) => getComputedStyle(el).borderInlineStartWidth);
-    expect(edge).toBe("3px");
+    // **The edge is a 3px block, not a border**, so it runs the row's full height whatever
+    // the content does -- a `border-inline-start` stops at the padding box and leaves the
+    // mark short on a tall row. Measuring the block is measuring what a reader sees.
+    const edge = await money.locator(".ds-attention-edge").evaluate((el) => {
+      const box = el.getBoundingClientRect();
+      return { width: Math.round(box.width), colour: getComputedStyle(el).backgroundColor };
+    });
+    expect(edge.width).toBe(3);
+    expect(edge.colour).not.toBe("rgba(0, 0, 0, 0)");
     await expect(money.locator(".ds-attention-category")).toHaveText(/MONEY/i);
   });
 

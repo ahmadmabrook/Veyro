@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { Banner } from "@/components/ds/banner";
 import { DataGrid } from "@/components/ds/data-grid";
 import { formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
+import { PageHeader } from "@/components/ds/page-header";
 import { ApiError, currentSession, gate } from "@/lib/api";
 import { readFleet, type FleetView } from "@/lib/fleet";
 import { presentation } from "@/lib/preferences";
@@ -59,7 +60,24 @@ export default async function FleetPage() {
   const attention = new Set(fleet.needs_attention);
 
   return (
-    <Shell locale={locale}>
+    <Shell
+      locale={locale}
+      // The board's own three answers, as figures: how many devices, how many need somebody,
+      // and when the reachability was worked out. The last is the one a reader has to have:
+      // nothing polls, so the board is "as of" when it loaded.
+      figures={
+        <>
+          <span className="data">{formatInteger(fleet.devices.length, "latn")}</span>{" "}
+          {text("fleet.counted")}
+          {" \u00b7 "}
+          <span className="data">{formatInteger(attention.size, "latn")}</span>{" "}
+          {text("fleet.attention").toLocaleLowerCase(locale)}
+          {" \u00b7 "}
+          {text("fleet.asOf")}{" "}
+          <span className="data" dir="ltr">{utcStamp(new Date().toISOString())}</span>
+        </>
+      }
+    >
       <section className="page-section">
         <h2 style={{ margin: 0 }}>{text("fleet.attention")}</h2>
         <p className="muted" style={{ margin: 0 }}>
@@ -171,14 +189,23 @@ labelledBy="fleet-heading"
   );
 }
 
-function Shell({ locale, children }: { locale: Locale; children: React.ReactNode }) {
+function Shell({
+  locale,
+  children,
+  figures,
+}: {
+  locale: Locale;
+  children: React.ReactNode;
+  figures?: React.ReactNode;
+}) {
   return (
     <div className="stack">
-      <h1 style={{ margin: 0 }}>{t(locale, "fleet.title")}</h1>
-      <p className="muted" style={{ margin: 0 }}>
-        {t(locale, "fleet.lead")}
-      </p>
+      <PageHeader title={t(locale, "fleet.title")} {...(figures ? { figures } : {})} />
       {children}
+      {/* The lead moved to the foot. It is a disclosure rather than a description --
+          reachability is derived at read time and nothing polls -- so it answers a question
+          here instead of delaying the board. See `PageHeader`. */}
+      <p className="ds-screen-note">{t(locale, "fleet.lead")}</p>
     </div>
   );
 }

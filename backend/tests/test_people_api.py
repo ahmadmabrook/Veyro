@@ -545,3 +545,62 @@ class MembersListTests(PeopleApiTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class MembersSubLineTests(PeopleApiTestCase):
+    """ADM-MEM-05's sub-line: "4,812 active · 312 expired · 68 frozen · all locations".
+
+    **Counted over the tenant, not over the page.** A surface that summed its fifty loaded
+    rows would report the page as the business, which is the same defect as summing a bounded
+    list to get a month -- and the figure sits under a heading that says "all locations".
+    """
+
+    def test_the_states_are_counted_over_the_tenant_and_sum_to_the_total(self):
+        tenant_id = self.tenant()
+        for state in ("active", "active", "lead", "cancelled"):
+            person_id = self.plain_subject(tenant_id, f"P{uuid.uuid4().hex[:6]}")
+            self.client.post(f"/people/{person_id}/member-profile", json={
+                "lifecycle_state": state, **self.correlation()},
+                headers=self.headers(tenant_id))
+        # One person with no member profile at all, which has to be counted somewhere.
+        self.plain_subject(tenant_id, f"P{uuid.uuid4().hex[:6]}")
+        read = self.client.get(
+            "/people?limit=1", headers=self.scoped(tenant_id, ["people.person.read"]))
+        self.assertEqual(read.status_code, 200, read.text)
+        body = read.json()
+        self.assertEqual(body["by_state"].get("active"), 2)
+        self.assertEqual(body["by_state"].get("lead"), 1)
+        self.assertEqual(body["by_state"].get("cancelled"), 1)
+        # **A person with no profile is `none`, not missing.** A sub-line whose parts did not
+        # sum would send a reader looking for the ones it left out.
+        self.assertEqual(body["by_state"].get("none"), 1)
+        self.assertEqual(sum(body["by_state"].values()), body["total"])
+
+    def test_the_counts_do_not_move_with_the_page_size(self):
+        tenant_id = self.tenant()
+        for _ in range(3):
+            person_id = self.plain_subject(tenant_id, f"P{uuid.uuid4().hex[:6]}")
+            self.client.post(f"/people/{person_id}/member-profile", json={
+                "lifecycle_state": "active", **self.correlation()},
+                headers=self.headers(tenant_id))
+        head = self.scoped(tenant_id, ["people.person.read"])
+        one = self.client.get("/people?limit=1", headers=head).json()
+        many = self.client.get("/people?limit=50", headers=head).json()
+        self.assertEqual(one["by_state"], many["by_state"])
+        self.assertEqual(len(one["people"]), 1)
+
+    def test_a_filtered_list_still_counts_every_state(self):
+        """The sub-line is about the tenant, so a filter must not narrow it -- otherwise
+        clicking "lead" would make the other states read as zero."""
+        tenant_id = self.tenant()
+        for state in ("active", "lead"):
+            person_id = self.plain_subject(tenant_id, f"P{uuid.uuid4().hex[:6]}")
+            self.client.post(f"/people/{person_id}/member-profile", json={
+                "lifecycle_state": state, **self.correlation()},
+                headers=self.headers(tenant_id))
+        read = self.client.get(
+            "/people?lifecycle_state=lead",
+            headers=self.scoped(tenant_id, ["people.person.read"])).json()
+        self.assertEqual(read["matching"], 1)
+        self.assertEqual(read["by_state"].get("active"), 1)
+        self.assertEqual(read["by_state"].get("lead"), 1)

@@ -37,6 +37,8 @@ export type MembersPage = {
   matching: number;
   total: number;
   limit: number;
+  /** Per lifecycle state over the whole tenant. Every key sums into `total`. */
+  by_state: Record<string, number>;
   columns_this_module_cannot_answer: Record<string, string>;
   search_is_not_available_because: string;
 };
@@ -88,18 +90,21 @@ export function membershipsByPerson(
 /**
  * The subtitle the design states: "4,812 active · 312 expired · 68 frozen · all locations".
  *
- * **Computed from the page, and the page says so.** The real figures are counts over the whole
- * tenant per state, which needs a grouped count this build's list route does not do — so the
- * surface would otherwise be reporting the loaded page's composition as the tenant's. Naming
- * the scope is the difference between a summary and a wrong number.
+ * **Counted over the tenant, which took a backend read.** The design's own sub-line is
+ * "4,812 active · 312 expired · 68 frozen · all locations" -- a statement about the business,
+ * under a heading that says "all locations". The first version counted the loaded page and
+ * said so in a caption, which was honest and was still the wrong number on the screen;
+ * `GET /people` now returns a grouped count and this orders it for rendering.
+ *
+ * **A person with no member profile counts as `none` rather than vanishing**, so the parts
+ * sum to the total. A sub-line whose figures did not add up would send a reader looking for
+ * the ones it left out.
  */
-export function stateCounts(rows: MemberRow[]): { state: string; count: number }[] {
-  const counts = new Map<string, number>();
-  for (const row of rows) {
-    const state = row.lifecycle_state ?? "unknown";
-    counts.set(state, (counts.get(state) ?? 0) + 1);
-  }
-  return [...counts.entries()]
+export function stateCounts(byState: Record<string, number>): {
+  state: string;
+  count: number;
+}[] {
+  return Object.entries(byState)
     .map(([state, count]) => ({ state, count }))
     .sort((a, b) => b.count - a.count || a.state.localeCompare(b.state));
 }

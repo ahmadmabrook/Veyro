@@ -1,3 +1,5 @@
+import { RailGroup, RailItem } from "@/components/ds/chrome";
+import type { IconName } from "@/components/ds/icon";
 import { NavLink } from "@/components/nav-link";
 import { t, type Locale, type MessageKey } from "@/i18n/locale";
 
@@ -32,22 +34,53 @@ import { t, type Locale, type MessageKey } from "@/i18n/locale";
  * `contracts/ui/design-compliance.md` rather than approximated with a cut-off at eight that
  * would hide pages a reader can open.
  */
-export type NavItem = { href: string; label: MessageKey; allowed: boolean };
+export type NavItem = {
+  href: string;
+  label: MessageKey;
+  allowed: boolean;
+  /** The group heading this item sits under: OPERATE, PEOPLE, MONEY, DELIVER, SETTINGS. */
+  group: MessageKey;
+  icon: IconName;
+  /** "4,812" beside Members. Absent where there is nothing to count. */
+  count?: string;
+};
 
+/**
+ * **Grouped, which is what makes a rail of thirteen readable.** The canvas puts its items
+ * under four mono, tracked, uppercase headings, and a flat list of fifteen links is a list
+ * rather than a shape. The groups render in the order their first permitted item appears,
+ * and a group whose every item is refused does not render at all -- a heading over nothing
+ * is the same defect as a section heading over an empty panel.
+ */
 export function AppNav({ locale, items }: { locale: Locale; items: NavItem[] }) {
   const visible = items.filter((item) => item.allowed);
   if (visible.length === 0) return null;
+  const groups: { label: MessageKey; items: NavItem[] }[] = [];
+  for (const item of visible) {
+    const last = groups[groups.length - 1];
+    if (last !== undefined && last.label === item.group) last.items.push(item);
+    else groups.push({ label: item.group, items: [item] });
+  }
   return (
     <ul className="ds-rail-list" aria-label={t(locale, "nav.label")}>
-      {visible.map((item) => (
-        <li key={item.href}>
-          <NavLink href={item.href}>
-            {/* The label is hidden at the collapsed width and present at every other, which is
-                what "collapses to icons" means for a rail whose items have no icons yet: the
-                accessible name survives the collapse because it is the link's own text. */}
-            <span className="ds-rail-label">{t(locale, item.label)}</span>
-          </NavLink>
-        </li>
+      {groups.map((group) => (
+        <RailGroup
+          key={group.label}
+          id={`rail-${group.label.replace(".", "-")}`}
+          label={t(locale, group.label)}
+        >
+          {group.items.map((item) => (
+            <li key={item.href}>
+              <NavLink href={item.href}>
+                <RailItem
+                  icon={item.icon}
+                  label={t(locale, item.label)}
+                  {...(item.count === undefined ? {} : { count: item.count })}
+                />
+              </NavLink>
+            </li>
+          ))}
+        </RailGroup>
       ))}
     </ul>
   );

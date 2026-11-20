@@ -40,6 +40,7 @@ export function AdminShell({
   children,
   inspector,
   banner,
+  chrome,
 }: {
   /** The rail of eight, generated from role and scope. Not a static tree with disabled rows. */
   rail: ReactNode;
@@ -48,9 +49,18 @@ export function AdminShell({
   inspector?: ReactNode;
   /** The global banner slot: fixed, above the rail, and it does not scroll away. */
   banner?: ReactNode;
+  /**
+   * §21's first layer: the 48px bar above the rail and the content both.
+   *
+   * **Above the rail, not beside it.** The canvas draws the mark, the tenant and the scope
+   * spanning the full width with the rail beginning underneath -- so the scope a reader is
+   * in is stated once for the whole window rather than per pane.
+   */
+  chrome?: ReactNode;
 }) {
   return (
     <div className="ds-shell" data-has-inspector={inspector ? "true" : "false"}>
+      {chrome ?? null}
       {banner ? <div className="ds-shell-banner">{banner}</div> : null}
       <div className="ds-shell-body">
         <nav className="ds-shell-rail" aria-label="Sections">

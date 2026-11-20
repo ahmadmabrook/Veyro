@@ -229,10 +229,14 @@ export default async function SchedulePage({
           {/* **Footer-anchored**, which the canvas states: the problem is stated once under
               the week rather than inferred from marks scattered across it. */}
           {problems.length > 0 ? (
-            <section className="page-section" aria-labelledby="schedule-problems">
-              <h2 id="schedule-problems">{text("schedule.problems")}</h2>
+            <section className="ds-page-section" aria-labelledby="schedule-problems">
               <AttentionQueue
                 heading="schedule-problems"
+                title={
+                  <h2 id="schedule-problems" className="ds-section-title">
+                    {text("schedule.problems")}
+                  </h2>
+                }
                 counts={fill(locale, "schedule.problemCount", { count: problems.length })}
               >
                 {problems.map((session) => (

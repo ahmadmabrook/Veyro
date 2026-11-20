@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 import type { MessageKey } from "@/i18n/locale";
 import type { Severity } from "@/components/ds/status-badge";
 
@@ -94,8 +96,14 @@ export type AttentionItem = {
   severity: Severity;
   /** The eyebrow's right half: "2h ago · Khalda, Abdoun". */
   when: string;
-  /** A money figure and what it means: "JOD 312.00 at risk". */
-  money?: { amount: string; meaning: MessageKey };
+  /**
+   * A money figure and what it means: "JOD 312.00 at risk".
+   *
+   * A node rather than a string, because §39 forbids a bare number: the amount is a
+   * `MoneyValue` of a declared kind, and `owed` is set in the critical ink while a renewal
+   * value is neutral. A string here would make the kind unexpressible.
+   */
+  money?: { amount: ReactNode; meaning: MessageKey };
   title: string;
   /** The paragraph that explains what happened and what is already handled. */
   body: string;

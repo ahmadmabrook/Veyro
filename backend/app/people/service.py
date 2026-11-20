@@ -321,6 +321,22 @@ def list_people(
             f" WHERE {' AND '.join(where)}",
             tuple(args),
         ).fetchone()
+        # **The sub-line ADM-MEM-05 draws**: "4,812 active · 312 expired · 68 frozen · all
+        # locations". It is a count over the whole tenant, not over the page -- a surface that
+        # summed the fifty rows it loaded would report the page as the business, which is the
+        # same defect as summing a bounded list to get a month. One grouped query.
+        #
+        # **A person with no member profile is counted under `none`** rather than dropped, so
+        # the figures add up to `total`: a lead who has never been sold anything is a person
+        # this tenant has, and a sub-line whose parts did not sum would invite the reader to
+        # look for the missing ones.
+        by_state = conn.execute(
+            "SELECT coalesce(m.lifecycle_state, 'none'), count(*)"
+            " FROM plt01.ppl_persons p"
+            " LEFT JOIN plt01.ppl_member_profiles m ON m.person_id = p.person_id"
+            " WHERE p.merge_status = 'active'"
+            " GROUP BY 1 ORDER BY 1"
+        ).fetchall()
         rows = conn.execute(
             "SELECT p.person_id, p.legal_name, p.preferred_name, p.date_of_birth,"
             " m.lifecycle_state, m.member_number, m.joined_on"
@@ -353,6 +369,9 @@ def list_people(
         "people": people,
         "matching": int(matching[0]) if matching else 0,
         "total": int(total[0]) if total else 0,
+        #: Per lifecycle state over the whole tenant, which is the design's own sub-line and
+        #: the count beside each quick filter. Every key sums into `total`.
+        "by_state": {str(r[0]): int(r[1]) for r in by_state},
         "limit": limit,
         #: Named rather than omitted. A column rendered empty reads as "this member has none".
         "columns_this_module_cannot_answer": {

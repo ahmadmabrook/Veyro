@@ -1409,8 +1409,20 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
   });
 
   // Last, so it sees everything above. The timeline, the dispatched outbox and the sweeps on
-  // the operations board are all this tick's work.
-  const tick = runWorkerTick(tenantId);
+  // the operations board are all these ticks' work.
+  //
+  // **Ticks until the outbox is empty, not once.** `dispatch_pending` claims a batch, so one
+  // tick drains a batch -- and the moment this fixture seeded more events than that, the
+  // operations board showed a pending backlog and its "the relay drained it" assertion
+  // failed. That is a property of the batch size rather than of the relay, which is exactly
+  // what the board exists *not* to report: a pending event that persists is supposed to mean
+  // a worker that is down. Every job is idempotent, so a second pass is free by construction.
+  let tick = runWorkerTick(tenantId);
+  for (let pass = 0; pass < 5; pass += 1) {
+    const pending = await call("/events/health", { ...as(token) });
+    if ((pending.pending_events ?? 0) === 0) break;
+    tick = runWorkerTick(tenantId);
+  }
 
   return {
     templateId: template.template_id,

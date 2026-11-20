@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { Banner } from "@/components/ds/banner";
 import { DataGrid } from "@/components/ds/data-grid";
 import { formatInteger, t, type MessageKey } from "@/i18n/locale";
+import { PageHeader } from "@/components/ds/page-header";
 import { ApiError, currentSession, gate } from "@/lib/api";
 import { listDuplicateCandidates, type DuplicateCandidate } from "@/lib/people";
 import { presentation } from "@/lib/preferences";
@@ -44,10 +45,21 @@ export default async function PeoplePage() {
 
   return (
     <div className="stack">
-      <h1 style={{ margin: 0 }}>{text("people.title")}</h1>
-      <p className="muted" style={{ margin: 0 }}>
-        {text("people.lead")}
-      </p>
+      {/* **A title and figures, never a paragraph.** What this screen is lives in this
+          file's comments; what it cannot do is at the foot. See `PageHeader`. */}
+      <PageHeader
+        title={text("people.title")}
+        figures={
+          may.allowed && failed === null ? (
+            <>
+              <span className="data">{formatInteger(candidates.length, "latn")}</span>{" "}
+              {text("people.pairsWaiting")}
+              {" \u00b7 "}
+              {text("members.scope")}
+            </>
+          ) : undefined
+        }
+      />
       <section className="page-section">
         <h2 id="duplicates-heading" style={{ margin: 0 }}>
           {text("people.duplicates")}
@@ -111,6 +123,9 @@ labelledBy="duplicates-heading"
           />
         )}
       </section>
+      {/* The lead moved to the foot: it says there is no search and why, which is a
+          disclosure rather than a description of the screen. See `PageHeader`. */}
+      <p className="ds-screen-note">{text("people.lead")}</p>
     </div>
   );
 }
