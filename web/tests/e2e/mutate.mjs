@@ -600,6 +600,57 @@ const MUTATIONS = [
     grep: "says reachability is worked out rather than stored",
   },
   {
+    id: "membership-blocks-ask-their-own-gate",
+    why: "three permissions, three blocks -- a reader may hold the person read and none of "
+      + "MOD-017, and 'this member has no invoices' is a different fact from 'you may not "
+      + "see them'",
+    file: "src/components/membership-panels.tsx",
+    from: "  if (allowed) return <>{children}</>;",
+    to: "  if (true) return <>{children}</>;",
+    grep: "is told each block is refused",
+  },
+  {
+    id: "membership-money-uses-the-currency-exponent",
+    why: "an amount is an integer count of minor units and JOD has three of them, so a "
+      + "hard-coded /100 renders 45.000 dinars as 450.00 -- and every assertion about the "
+      + "word 'price' passes either way",
+    file: "src/lib/membership.ts",
+    from: '    return formatMoney(minor, currency, "latn", "en");',
+    to: "    return `${(minor / 100).toFixed(2)} ${currency}`;",
+    grep: "renders the agreed price",
+  },
+  {
+    id: "membership-credit-note-is-not-outstanding",
+    why: "a credit note is stored positive and is a reduction, so counting one as outstanding "
+      + "moves the total the wrong way by twice its value",
+    file: "src/lib/membership.ts",
+    from: '  return invoice.document_kind === "invoice" && !SETTLED.has(invoice.payment_status);',
+    to: "  return !SETTLED.has(invoice.payment_status);",
+    runner: "vitest",
+    grep: "never counts a credit note",
+  },
+  {
+    id: "membership-facts-are-label-and-value-rows",
+    why: "`.facts` is a two-column grid whose items are the dt and dd themselves, so a div "
+      + "around each pair is valid HTML that puts both labels on one row with their values "
+      + "beneath -- a rendering defect no assertion about the text can see",
+    file: "src/components/membership-panels.tsx",
+    from: '        <dt className="muted">{text("membership.accounts")}</dt>',
+    to: '        <div><dt className="muted">{text("membership.accounts")}</dt></div>\n'
+      + '        <div><dt className="muted">{text("membership.outstanding")}</dt></div>',
+    grep: "label and value, not side by side",
+  },
+  {
+    id: "membership-two-numbers-disclosed",
+    why: "two human-facing member numbers from two modules sit on one page with nothing "
+      + "relating them, and a front desk asking for 'your membership number' can be handed "
+      + "either",
+    file: "src/components/membership-panels.tsx",
+    from: '        {text("membership.twoNumbers")}',
+    to: "        {null}",
+    grep: "two member numbers on this page",
+  },
+  {
     id: "device-label-parity",
     why: "the fixture's device label must equal the app's, or every sign-in is challenged and "
       + "the suite spends a single-use recovery code per run",

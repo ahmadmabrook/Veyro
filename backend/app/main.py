@@ -5974,6 +5974,42 @@ def create_app(
             tenant_pool, tenant_id, require_uuid(membership_id, "membership_id"),
             moment=moment)
 
+    # ------------------------------------------------------------ MOD-017, the reads
+    #
+    # Until these existed the module could only be read by somebody who already held the id,
+    # so nothing could list a member's memberships, grants, accounts or invoices -- the same
+    # "a writer with no reader" gap `GET /brands` closed for MOD-004. Each is gated on the
+    # permission that already describes it: `finance.account.read` is literally "See a member
+    # billing account, **its invoices** and its schedule", so no permission is invented here.
+    #
+    # **A person id is a filter, never an authorization.** Passing one narrows the list; it
+    # does not make a weaker permission sufficient, and it does not reach anything about the
+    # person. MOD-014 answers who they are, through its own gate.
+
+    @app.get("/memberships")
+    def list_memberships(
+        tenant_id: TenantId, session: Session, person_id: str | None = None,
+        status: str | None = None, limit: int = 50,
+    ) -> dict[str, Any]:
+        """The tenant's memberships, newest first, optionally one person's."""
+        permit(session, "membership.record.read")
+        return commercial.list_memberships(
+            tenant_pool, tenant_id,
+            person_id=optional_uuid(person_id, "person_id"), status=status, limit=limit)
+
+    @app.get("/memberships/{membership_id}")
+    def get_membership(
+        tenant_id: TenantId, session: Session, membership_id: str
+    ) -> dict[str, Any]:
+        """One membership with the agreement it was sold on, its terms and its history.
+
+        The history's medical-hold reasons are masked here exactly as `membership_as_of`
+        masks them, because a health fact is a health fact whatever read returns it.
+        """
+        permit(session, "membership.record.read")
+        return commercial.get_membership(
+            tenant_pool, tenant_id, require_uuid(membership_id, "membership_id"))
+
 
     # ------------------------------------------------------------ MOD-017, entitlements
     #
@@ -5981,6 +6017,24 @@ def create_app(
     # entitlement is what a tenant's Veyro subscription allows. These are what a member may
     # do. The two are different things owed to different parties, and one prefix for both
     # would read as one surface.
+
+    @app.get("/member-entitlements")
+    def list_entitlement_grants(
+        tenant_id: TenantId, session: Session, person_id: str | None = None,
+        membership_id: str | None = None, status: str | None = None, limit: int = 50,
+    ) -> dict[str, Any]:
+        """What members may use, with each grant's remaining balance.
+
+        The balance is summed without sweeping lapsed holds, because a sweep writes -- see
+        `list_entitlement_grants`. A draw settles against the number taken under the grant's
+        own lock, which is the only one that decides anything.
+        """
+        permit(session, "membership.entitlement.read")
+        return commercial.list_entitlement_grants(
+            tenant_pool, tenant_id,
+            person_id=optional_uuid(person_id, "person_id"),
+            membership_id=optional_uuid(membership_id, "membership_id"),
+            status=status, limit=limit)
 
     @app.post("/member-entitlements/policies", status_code=201)
     def define_entitlement_policy(
@@ -6067,6 +6121,17 @@ def create_app(
 
     # ------------------------------------------------------------ MOD-017, COM-03
 
+    @app.get("/finance/accounts")
+    def list_billing_accounts(
+        tenant_id: TenantId, session: Session, person_id: str | None = None,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        """Member billing accounts. `person_id` is who *pays*, which is not always who trains."""
+        permit(session, "finance.account.read")
+        return commercial.list_billing_accounts(
+            tenant_pool, tenant_id,
+            person_id=optional_uuid(person_id, "person_id"), limit=limit)
+
     @app.post("/finance/accounts", status_code=201)
     def create_billing_account(
         tenant_id: TenantId, session: Session, body: BillingAccountBody
@@ -6126,6 +6191,19 @@ def create_app(
             idempotency_key=body.idempotency_key,
             actor_id=session["identity_id"], correlation_id=body.correlation_id,
         )
+
+    @app.get("/finance/invoices")
+    def list_invoices(
+        tenant_id: TenantId, session: Session, billing_account_id: str | None = None,
+        person_id: str | None = None, payment_status: str | None = None, limit: int = 50,
+    ) -> dict[str, Any]:
+        """Issued documents with what has been paid against each. There is no draft state."""
+        permit(session, "finance.account.read")
+        return commercial.list_invoices(
+            tenant_pool, tenant_id,
+            billing_account_id=optional_uuid(billing_account_id, "billing_account_id"),
+            person_id=optional_uuid(person_id, "person_id"),
+            payment_status=payment_status, limit=limit)
 
     @app.get("/finance/invoices/{invoice_id}")
     def read_invoice(

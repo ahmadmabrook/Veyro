@@ -324,6 +324,14 @@ WRITE_ROUTES = [
     ("post", f"/memberships/{_ID}/cancel",
      {"reason": "moving away", "idempotency_key": "sweep-c1", **_CORR}),
     ("get", f"/memberships/{_ID}/as-of?moment=2026-03-01", None),
+    # MOD-017's listing reads. These are the routes that make the module observable at all,
+    # and each is gated on the permission whose own description already covers it -- so a
+    # session holding nothing must be refused all five, which is what this sweep proves.
+    ("get", "/memberships", None),
+    ("get", f"/memberships/{_ID}", None),
+    ("get", "/member-entitlements", None),
+    ("get", "/finance/accounts", None),
+    ("get", "/finance/invoices", None),
     ("post", "/member-entitlements/policies",
      {"policy_key": "sweep.classes", "display_name": "Classes",
       "entitlement_type": "class_credit", **_CORR}),

@@ -2126,6 +2126,18 @@ Known gaps, deliberate:
   of MOD-017's nineteen is among them, so a member's timeline shows no agreement, no freeze and
   no invoice. Adding one is a `Projection` with a summary somebody wrote, which is the review
   point MOD-014 names.
+- **Two human-facing member numbers, from two modules, with nothing relating them.**
+  `mem_memberships.membership_number` is this module's and `ppl_member_profiles.member_number`
+  is MOD-014's; both are the kind of number somebody reads out at a front desk, and a member
+  with both has two. Found by rendering them on one page. Relating them is a product decision
+  -- which of the two is *the* number -- so it is disclosed on the surface rather than guessed
+  at here.
+- **The listing reads exist now and they are reads only.** `GET /memberships`,
+  `GET /memberships/{id}`, `GET /member-entitlements`, `GET /finance/accounts` and
+  `GET /finance/invoices` make the module observable; nothing on the surface *writes* to it.
+  Selling a membership, freezing one, cancelling one, issuing an invoice and taking a payment
+  are all built on the server and none has a form, which is the same gap the hierarchy has and
+  for the same reason: every one of those writes is a stepped-up financial permission.
 
 **MOD-018 (COM-04 financial ledger, member wallet and revenue recognition) -- implemented,
 gated and reviewed.** Fifteen `led_` tables in `plt01` under the same forced RLS,
@@ -3373,7 +3385,8 @@ navigation whose every entry is present exactly when the gate allows the page be
 MOD-004's hierarchy -- the organization, its brands, its sites with the timezone MOD-019 reads
 every rota window in, and the legal entity MOD-017 numbers invoices per; MOD-008's roles, the
 permissions this session actually holds and the hash-chained audit log; MOD-014's duplicate
-queue and Member 360; MOD-019's schedule board and session detail with MOD-020's roster on
+queue and Member 360, with MOD-017's membership, entitlement and billing blocks composed onto
+it; MOD-019's schedule board and session detail with MOD-020's roster on
 it; MOD-005's configuration and feature-flag board; MOD-021's fleet board and
 device detail; an operations board over MOD-010's event plane, MOD-011's objectives and the
 worker's own scheduled jobs; and MOD-022's door board and zone detail, which read the real
@@ -3644,9 +3657,76 @@ has, which is the same shape as a test that passes vacuously. The flat config in
 `web/eslint.config.mjs` is the migration; its first run found four unused imports and
 variables, and it is in `npm run verify` and in the CI job now.
 
+**The membership and billing blocks are the first surface that composes two modules, and
+building them needed five routes that did not exist.** MOD-017 shipped with no listing route of
+any kind: every read took an id the caller already had to know, so a membership, a grant, a
+billing account and an invoice were each reachable only by having just written one. That is the
+"a writer with no reader" gap `GET /brands` closed for MOD-004, two years of modules later and
+four times over, and the remedy was the same -- routes on the server rather than inference in
+the client. `GET /memberships`, `GET /memberships/{id}`, `GET /member-entitlements`,
+`GET /finance/accounts` and `GET /finance/invoices`, each on the permission whose own
+description already covered it, so nothing in the catalogue moved.
+
+Four things about those reads are worth carrying:
+
+  * **None of them returns a name, an address or a birth date.** `membership.record.read` is
+    routine and AAL 1 -- a front desk and a turnstile hold it -- so a membership list carrying
+    the member's legal name would be a lateral read path around `people.person.read`, which is
+    MOD-010's `events.event.read` finding exactly. A test asserts the absence by *name*, not by
+    field list, on all four list routes.
+  * **A filter value outside its domain refuses.** `status=actve` and "this member has no
+    active membership" are different answers and a list that renders both as an empty table is
+    a surface nobody can trust.
+  * **Every list is bounded and ordered.** Unbounded is a bulk export and a denial of service
+    at once; unordered makes the planner the author, which is MOD-018's `chart_for` finding.
+  * **The balance is `entitlements.balance_of`, not a `sum()` in the SQL.** Both are addition
+    today, which is why writing the second one was tempting -- and a balance with two
+    definitions has two answers the day either moves, which this module's own invoice list says
+    one function up.
+
+The page composes rather than joins. Paragraph 1300 bars a cross-domain read, so MOD-014's
+projection says in its own `sections` block that it does not read MOD-017; a *surface* has no
+such restriction and every reason to compose, so it calls each module's routes through each
+module's gate and renders them beside the person. Three gates, asked separately, because a
+reader may hold any subset -- a coach sees the membership and not the money -- and a refused
+block says it was refused rather than rendering empty.
+
+**And a second money formatter was written and deleted in the same change.** `money()` took
+`Intl`'s own currency exponent, divided by it and formatted with `Intl.NumberFormat` -- a
+second implementation of money rendering, in the one place this repository already has a
+*cross-runtime* parity test. `tests/unit/conventions-parity.test.mjs` spawns Python and
+compares `src/i18n/conventions.mjs` against `backend/app/l10n/conventions.py` character for
+character, bidi controls included, because the design system requires numerals "applied
+identically on screen, receipt, export and PDF" and a receipt is rendered by the backend. Two
+implementations pass their own tests forever while drifting apart -- which is the argument this
+same change wrote into `list_entitlement_grants` about `balance_of` versus a `sum()` in SQL,
+one file over. It delegates to `formatMoney` now, with `latn` because the numeral system is a
+tenant setting this build does not carry, and a fallback for a currency outside the supported
+table rather than a 500 on a member's record. **Found by reading the test directory, not by a
+failure**: `Intl` and `formatMoney` agree on JOD's three minor digits, so every assertion
+passed either way.
+
+**Looking at the rendered blocks found two more.** `.facts` is a two-column grid whose items
+are the `dt` and the `dd` themselves, so wrapping each pair in a `<div>` -- valid HTML, and the
+obvious way to group them -- makes the div the grid item and puts both labels on one row with
+their values beneath. No assertion about text can see that, so the test asserts the geometry:
+the second label's box is below the first's, not beside it. And the invoice was due the day it
+was issued, because the fixture set both dates to the same value, so the "due" caption repeated
+the date above it; a payment term of zero is a real `payment_terms_days` value and not the one
+anybody means.
+
+**And looking at it found a defect nothing else would have.** The page now carries two
+human-facing member numbers: MOD-014's `ppl_member_profiles.member_number` on the profile and
+MOD-017's `mem_memberships.membership_number` on the agreement. Nothing in this build relates
+them, both are the kind of number a member reads out at a front desk, and the first version of
+the fixture gave them the same value -- which hid it. They are rendered as different numbers
+with a caption saying so. The test that proves no MOD-017 data leaks to a refused reader
+initially asserted the *wrong* number and failed for that reason, which is the confusion
+arriving in the evidence before it could arrive in the product.
+
 Known gaps: the surface covers the sign-in, the step-up, MOD-004, MOD-008, MOD-010, MOD-011,
-MOD-005, MOD-014, MOD-019, MOD-021 and MOD-022, plus MOD-020's roster on a session. The other
-eight implemented modules have no screens yet,
+MOD-005, MOD-014, MOD-017, MOD-019, MOD-021 and MOD-022, plus MOD-020's roster on a session.
+The other seven implemented modules have no screens yet,
 which is the bulk of the remaining work; MOD-019's own surface is read-only -- publishing a
 schedule, substituting an instructor and cancelling a session are all built on the server and
 none has a form, which is the same gap the hierarchy has and for the same reason: every one of
@@ -3666,8 +3746,8 @@ is part of it. So "implemented" above is accurate about the server plane and inc
 the product for every module except MOD-022, and the backlog has two halves.
 
 The first is the screens the eighteen built modules do not have. `web/` covers the sign-in, the
-step-up, MOD-004, MOD-005, MOD-008, MOD-010, MOD-011, MOD-014, MOD-019, MOD-020's roster,
-MOD-021 and MOD-022; `contracts/ui/screen-contracts.yaml` names the rest, and
+step-up, MOD-004, MOD-005, MOD-008, MOD-010, MOD-011, MOD-014, MOD-017, MOD-019, MOD-020's
+roster, MOD-021 and MOD-022; `contracts/ui/screen-contracts.yaml` names the rest, and
 the work is per module rather than per screen because each one needs its gate, its masked
 fields and its failure states wired the way those are. The second is the modules themselves: MOD-023 (Coach Workspace, which
 needs MOD-014 and MOD-008, both built) is the next eligible one, and MOD-006 is the Compose

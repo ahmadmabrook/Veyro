@@ -1,7 +1,7 @@
 import { test as setup } from "@playwright/test";
 
 import { fixture } from "./fixture-env";
-import { OWNER_STATE, READER_STATE, signIn } from "./sign-in";
+import { DESK_STATE, OWNER_STATE, READER_STATE, signIn } from "./sign-in";
 
 /**
  * Sign in once per run and save the cookie, rather than once per test.
@@ -14,9 +14,12 @@ import { OWNER_STATE, READER_STATE, signIn } from "./sign-in";
  * get. **The suite had a cap on how many tests it could contain**, which is the kind of
  * failure that reads as flakiness and gets retried rather than fixed.
  *
- * Two states, because the gated-navigation assertions need a session that cannot read
- * everything: the owner holds all 202 permissions and the reader holds `access.zone.read` and
- * not `tenancy.organization.read`.
+ * Three states, because the negative proofs need permission subsets that contradict each
+ * other. The owner holds all 202. The reader holds `access.zone.read` and **not**
+ * `people.person.read`, which is what makes the navigation filter and the record refusal
+ * provable. The front desk holds `people.person.read` and **nothing** of MOD-017, which is the
+ * only subset that can prove the membership blocks' own gates -- with no person read the
+ * page's gate answers first and the spec proves the wrong refusal.
  */
 setup("sign in as the owner", async ({ page }) => {
   await signIn(page);
@@ -27,4 +30,12 @@ setup("sign in as a reader who may not read the hierarchy", async ({ page }) => 
   const creds = fixture();
   await signIn(page, { email: creds.readerEmail, password: creds.readerPassword });
   await page.context().storageState({ path: READER_STATE });
+});
+
+setup("sign in as a front desk who may read a person and none of their money", async ({
+  page,
+}) => {
+  const creds = fixture();
+  await signIn(page, { email: creds.deskEmail, password: creds.deskPassword });
+  await page.context().storageState({ path: DESK_STATE });
 });

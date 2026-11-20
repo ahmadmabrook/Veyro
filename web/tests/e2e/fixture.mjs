@@ -314,7 +314,12 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
       // both and so can only ever prove the unmasked half -- the same reason this identity
       // exists at all.
       permissions: ["devices.type.publish", "access.policy.publish", "access.zone.read",
-                    "scheduling.schedule.read"],
+                    "scheduling.schedule.read",
+                    // **A contract version is two acts by two people, by constraint.**
+                    // `mem_contract_versions_publisher_is_not_author` compares the two
+                    // identities, so the owner cannot publish what the owner drafted and a
+                    // fixture with one session could not write this fixture at all.
+                    "membership.contract.publish"],
       correlation_id: cid(),
     },
   });
@@ -742,6 +747,190 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
               correlation_id: cid() } },
   );
 
+  // ------------------------------------------------------------- a third identity: the desk
+  //
+  // **Three identities, because two negative proofs need contradictory permission sets.** The
+  // reader proves the navigation filter and the record refusal *by not holding*
+  // `people.person.read`; the membership blocks' own gates can only be proved by a session
+  // that holds it and holds none of MOD-017 -- otherwise the page's gate answers first and the
+  // spec proves the wrong refusal, which is the "a probe answered by a sibling" trap one layer
+  // up from the schema. One identity cannot be both, and the first attempt at this made the
+  // reader hold it and broke two people specs, which is how the contradiction surfaced.
+  const deskEmail = `desk+${Date.now()}@veyro.invalid`;
+  const deskPassword = `e2e-${randomUUID()}`;
+  await call("/identities", {
+    method: "POST", tenant: tenantId,
+    body: { display_name: "E2E Front Desk", correlation_id: cid(), email: deskEmail,
+            password: deskPassword },
+  });
+  const deskSignIn = await call("/auth/login", {
+    method: "POST", tenant: tenantId,
+    body: { identifier: deskEmail, password: deskPassword, correlation_id: cid() },
+  });
+  const deskSession = await call("/auth/session", { ...as(deskSignIn.token) });
+  const deskRole = await call("/authz/roles", {
+    method: "POST", ...as(token),
+    body: {
+      role_key: `desk_${Date.now()}`, display_name: "Front desk",
+      // A receptionist: may look somebody up, may see none of their money.
+      permissions: ["people.person.read"],
+      correlation_id: cid(),
+    },
+  });
+  await call("/authz/assignments", {
+    method: "POST", ...as(token),
+    body: { identity_id: deskSession.identity_id, role_key: deskRole.role_key,
+            correlation_id: cid() },
+  });
+  // Its browser device, like the other two: the label is per identity, so this is a third
+  // device to MOD-007 and an unconfirmed one would be challenged on every sign-in.
+  await confirmWebDevice(
+    tenantId, deskSession.identity_id, deskSignIn.token, deskEmail, deskPassword);
+
+  // ---------------------------------------------------------------- MOD-017, a membership
+  //
+  // The member's agreement, what it entitles them to, and one invoice that has been paid.
+  // Three blocks on the member's page read this, each through its own gate, so the fixture
+  // has to carry all three -- a page with an empty entitlement table cannot show the
+  // difference between "nothing granted" and "you may not see it".
+  // **A second organization, deliberately without one.** The legal entity below makes the
+  // first organization billable, which is what MOD-017 needs -- and it took away the empty
+  // state the organization board's own disclosure exists for ("no legal entity yet, so this
+  // organization cannot be invoiced"). Keeping both means both are rendered and both are
+  // proved. Found by the organization spec failing the moment MOD-017 was seeded.
+  await call("/organizations", {
+    method: "POST", ...as(token),
+    body: { legal_name: "Veyro Holdings Ltd", country_code: "JO", correlation_id: cid() },
+  });
+  const entity = await call("/legal-entities", {
+    method: "POST", ...as(token),
+    body: { organization_id: org.organization_id, registered_name: "Veyro Sites Ltd",
+            tax_number: "JO-5550001", correlation_id: cid() },
+  });
+  // A membership is sold against a catalogue variant with a live price, and `create_agreement`
+  // takes its figures from the price resolution rather than from the caller -- a reviewer
+  // found an agreement citing a receipt for 45.00 and recording 4.50.
+  const product = await call("/catalog/products", {
+    method: "POST", ...as(token),
+    body: {
+      product_key: `gold${Date.now().toString(36)}`, product_type: "membership",
+      texts: [{ locale: "en", display_name: "Gold membership" }],
+      variants: [{ variant_key: "monthly", display_name: "Monthly", term_days: 30 }],
+      correlation_id: cid(),
+    },
+  });
+  const priceBook = await call("/catalog/price-books", {
+    method: "POST", ...as(token),
+    body: { price_book_key: `std${Date.now().toString(36)}`, display_name: "Standard",
+            currency: "JOD", effective_from: "2026-01-01T00:00:00+00:00",
+            correlation_id: cid() },
+  });
+  await call(`/catalog/price-books/${priceBook.price_book_id}/activate`, {
+    method: "POST", ...as(token), body: { correlation_id: cid() },
+  });
+  await call("/catalog/prices", {
+    method: "POST", ...as(token),
+    body: { price_book_id: priceBook.price_book_id,
+            variant_id: product.variants[0].variant_id, amount_minor: 45000,
+            effective_from: "2026-01-01T00:00:00+00:00", correlation_id: cid() },
+  });
+  await call(`/catalog/products/${product.product_id}/publish`, {
+    method: "POST", ...as(token), body: { expected_version: 1, correlation_id: cid() },
+  });
+
+  const contractKey = `terms${Date.now().toString(36)}`;
+  const version = await call("/memberships/contract-versions", {
+    method: "POST", ...as(token),
+    body: { contract_key: contractKey, body: "Standard membership terms.",
+            correlation_id: cid() },
+  });
+  // Published by the *second* identity. See the role above.
+  await call(`/memberships/contract-versions/${version.contract_version_id}/publish`, {
+    method: "POST", ...as(publisherToken), body: { correlation_id: cid() },
+  });
+  const terms = await call("/memberships/terms", {
+    method: "POST", ...as(token),
+    body: { product_id: product.product_id, contract_key: contractKey,
+            membership_kind: "recurring", billing_period: "monthly",
+            correlation_id: cid() },
+  });
+  // **Ninety days ago.** A freeze has to start inside the contract year it is decided in, and
+  // a membership starting today leaves no room for the lifecycle history this page renders.
+  const startedOn = new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10);
+  const agreement = await call("/memberships/agreements", {
+    method: "POST", ...as(token),
+    body: { person_id: person.person_id, membership_terms_id: terms.membership_terms_id,
+            variant_id: product.variants[0].variant_id, amount_minor: 45000,
+            currency: "JOD", starts_on: startedOn, correlation_id: cid() },
+  });
+  await call(`/memberships/agreements/${agreement.agreement_id}/sign`, {
+    method: "POST", ...as(token),
+    body: { signature_kind: "click_through",
+            signature_evidence_ref: `s3://signatures/${agreement.agreement_id}`,
+            signed_by_person_id: person.person_id, correlation_id: cid() },
+  });
+  const membership = await call("/memberships", {
+    method: "POST", ...as(token),
+    body: { agreement_id: agreement.agreement_id, // **Deliberately not "M-00042".** MOD-014's member profile carries that one, and the
+            // two are different human-facing numbers owned by different modules with nothing
+            // relating them -- a fixture that gave both the same value would hide the fact.
+            membership_number: "GOLD-00042",
+            idempotency_key: randomUUID(), correlation_id: cid() },
+  });
+
+  const entitlementPolicy = await call("/member-entitlements/policies", {
+    method: "POST", ...as(token),
+    body: { policy_key: "classes", display_name: "Group classes",
+            entitlement_type: "class_credit", correlation_id: cid() },
+  });
+  await call("/member-entitlements/grants", {
+    method: "POST", ...as(token),
+    body: { person_id: person.person_id, policy_id: entitlementPolicy.policy_id,
+            membership_id: membership.membership_id, source_kind: "membership",
+            valid_from: "2026-01-01T00:00:00+00:00", quantity: 10,
+            reason: "ten classes with the membership", correlation_id: cid() },
+  });
+
+  const account = await call("/finance/accounts", {
+    method: "POST", ...as(token),
+    body: { payer_person_id: person.person_id, account_number: "A-00042",
+            currency: "JOD", legal_entity_id: entity.legal_entity_id,
+            correlation_id: cid() },
+  });
+  const series = await call("/finance/fiscal-series", {
+    method: "POST", ...as(token),
+    body: { legal_entity_id: entity.legal_entity_id, series_code: "INV",
+            correlation_id: cid() },
+  });
+  const invoice = await call("/finance/invoices", {
+    method: "POST", ...as(token),
+    body: {
+      billing_account_id: account.billing_account_id, series_id: series.series_id,
+      lines: [{ description: "Gold membership, monthly", quantity: 1,
+                unit_net_minor: 45000, tax_rate_bp: 1600 }],
+      // **Fourteen days, not the issue date.** Both were `startedOn` at first, which rendered
+      // a due date identical to the issue date right beneath it -- a payment term of zero,
+      // which is a real `payment_terms_days` value and not the one anybody means.
+      issued_on: startedOn,
+      due_on: new Date(Date.parse(startedOn) + 14 * 86400000).toISOString().slice(0, 10),
+      jurisdiction: "JO",
+      idempotency_key: randomUUID(), correlation_id: cid(),
+    },
+  });
+  // Paid in full, so the board has a settled document beside the outstanding figure. An
+  // invoice nobody paid would make the "outstanding" cell the only interesting one.
+  const intent = await call("/finance/payment-intents", {
+    method: "POST", ...as(token),
+    body: { billing_account_id: account.billing_account_id,
+            invoice_id: invoice.invoice_id, amount_minor: invoice.gross_minor,
+            method: "card", provider_key: "acme.payments",
+            idempotency_key: randomUUID(), correlation_id: cid() },
+  });
+  await call(`/finance/payment-intents/${intent.intent_id}/settle`, {
+    method: "POST", ...as(token),
+    body: { outcome: "succeeded", correlation_id: cid() },
+  });
+
   // **A consumer the relay can route to.** Without one the outbox is fanned out to nobody and
   // the operations board has no deliveries to show -- which hides the half of that screen
   // that is still a standing gap: a delivery is created and never handled, because no name in
@@ -770,12 +959,18 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
     pendingDeviceId: pending.device_id,
     duplicateCandidates: candidates.length,
     twinPersonId: twin.person_id,
+    deskEmail,
+    deskPassword,
     publisherEmail: secondEmail,
     publisherPassword: secondPassword,
     locationId: location.location_id,
     zoneId: zone.zone_id,
     pointId: point.point_id,
     personId: person.person_id,
+    membershipId: membership.membership_id,
+    membershipNumber: "GOLD-00042",
+    invoiceNumber: invoice.document_number,
+    invoiceGrossMinor: invoice.gross_minor,
     credentialId: credential.credential_id,
     decisionCode: decision.code,
     ownerEmail,
@@ -805,6 +1000,8 @@ if (invokedDirectly) {
       `VEYRO_E2E_PENDING_DEVICE_ID=${fixture.pendingDeviceId}`,
       `VEYRO_E2E_READER_EMAIL=${fixture.publisherEmail}`,
       `VEYRO_E2E_READER_PASSWORD=${fixture.publisherPassword}`,
+      `VEYRO_E2E_DESK_EMAIL=${fixture.deskEmail}`,
+      `VEYRO_E2E_DESK_PASSWORD=${fixture.deskPassword}`,
       `VEYRO_E2E_LOCATION_ID=${fixture.locationId}`,
       `VEYRO_E2E_SESSION_ID=${fixture.firstSessionId}`,
       `VEYRO_E2E_BOOKED_SESSION_ID=${fixture.bookedSessionId}`,

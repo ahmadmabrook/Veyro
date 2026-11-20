@@ -2042,3 +2042,232 @@ class ReviewRegressionTests(CommercialApiTestCase):
         self.assertEqual(balance.status_code, 200, balance.text)
         self.assertEqual(balance.json()["balance"], 2)
         self.assertEqual(balance.json()["held"], 0)
+
+
+class ListingReadTests(CommercialApiTestCase):
+    """MOD-017's listing reads -- the routes that make the module observable.
+
+    Until these existed every read took an id the caller already had, so nothing could answer
+    "what memberships does this person have" or "what has this account been invoiced". These
+    tests are written as the two things most likely to be wrong about a listing route: that it
+    returns somebody else's rows, and that it returns a field it has no business returning.
+    """
+
+    def test_a_membership_appears_in_the_list_with_its_agreement_and_its_terms(self):
+        tenant_id = self.tenant()
+        made = self.membership(tenant_id)
+        listed = self.client.get(
+            "/memberships", headers=self.scoped(tenant_id, ["membership.record.read"]))
+        self.assertEqual(listed.status_code, 200, listed.text)
+        rows = listed.json()["memberships"]
+        row = next(r for r in rows if r["membership_id"] == made["membership_id"])
+        # The figures come from the agreement, which is what was actually sold.
+        self.assertEqual(row["amount_minor"], 4500)
+        self.assertEqual(row["currency"], "JOD")
+        self.assertEqual(row["membership_kind"], "recurring")
+        self.assertEqual(row["status"], "active")
+        self.assertEqual(row["person_id"], made["person_id"])
+
+    def test_the_person_filter_excludes_another_members_membership(self):
+        """The filter is the whole point of the route on a member's page."""
+        tenant_id = self.tenant()
+        mine = self.membership(tenant_id)
+        theirs = self.membership(tenant_id)
+        head = self.scoped(tenant_id, ["membership.record.read"])
+        listed = self.client.get(
+            f"/memberships?person_id={mine['person_id']}", headers=head)
+        self.assertEqual(listed.status_code, 200, listed.text)
+        ids = [r["membership_id"] for r in listed.json()["memberships"]]
+        self.assertIn(mine["membership_id"], ids)
+        self.assertNotIn(theirs["membership_id"], ids)
+
+    def test_no_listing_read_returns_anything_about_the_person(self):
+        """A lateral read path around `people.person.read` is the shape to refuse.
+
+        MOD-010 shipped one: a routine `events.event.read` returned another module's
+        restricted fields out of the outbox, and a reviewer read consent and DSAR history with
+        it after being refused by the owning routes. A membership list carrying the member's
+        legal name would be the same defect, with `membership.record.read` -- which a front
+        desk and a turnstile hold -- as the key.
+        """
+        tenant_id = self.tenant()
+        name = f"Helena Kowalczyk {uuid.uuid4().hex[:6]}"
+        owner = self.headers(tenant_id)
+        person_id = self.person(tenant_id, name=name)
+        # The person is real and the name is readable through MOD-014's own gate ...
+        through_people = self.client.get(f"/people/{person_id}", headers=owner)
+        self.assertEqual(through_people.status_code, 200, through_people.text)
+        self.assertIn(name.split()[0], through_people.text)
+        # ... and appears in none of MOD-017's reads, for anybody, at any assurance.
+        billing = self.billing(tenant_id, person_id)
+        self.invoice(tenant_id, billing)
+        policy_id = self.policy(tenant_id)
+        self.entitlement_grant(tenant_id, policy_id, person_id)
+        head = self.scoped(tenant_id, [
+            "membership.record.read", "finance.account.read",
+            "membership.entitlement.read"])
+        for path in (f"/memberships?person_id={person_id}",
+                     f"/member-entitlements?person_id={person_id}",
+                     f"/finance/accounts?person_id={person_id}",
+                     f"/finance/invoices?person_id={person_id}"):
+            answer = self.client.get(path, headers=head)
+            self.assertEqual(answer.status_code, 200, answer.text)
+            self.assertNotIn(name, answer.text, path)
+            self.assertNotIn(name.split()[0], answer.text, path)
+
+    def test_a_status_outside_the_domain_refuses_rather_than_returning_nothing(self):
+        """`status=actve` and "no active membership" are different answers.
+
+        A list that rendered both as an empty table would be a surface nobody can trust, and
+        the typo is the realistic input -- a hand-built query string, or a client sending a
+        label instead of a value.
+        """
+        tenant_id = self.tenant()
+        head = self.scoped(tenant_id, ["membership.record.read"])
+        refused = self.client.get("/memberships?status=actve", headers=head)
+        self.assertEqual(refused.status_code, 422, refused.text)
+        self.assertEqual(refused.json()["error"], "bad_status")
+        allowed = self.client.get("/memberships?status=active", headers=head)
+        self.assertEqual(allowed.status_code, 200, allowed.text)
+
+    def test_an_unknown_payment_status_refuses_too(self):
+        tenant_id = self.tenant()
+        head = self.scoped(tenant_id, ["finance.account.read"])
+        refused = self.client.get("/finance/invoices?payment_status=settled", headers=head)
+        self.assertEqual(refused.status_code, 422, refused.text)
+        self.assertEqual(refused.json()["error"], "bad_payment_status")
+
+    def test_a_limit_outside_the_ceiling_refuses(self):
+        """Unbounded is a bulk export and a denial of service at once."""
+        tenant_id = self.tenant()
+        head = self.scoped(tenant_id, ["membership.record.read", "finance.account.read"])
+        for path in ("/memberships?limit=0", "/memberships?limit=10000",
+                     "/finance/invoices?limit=201"):
+            refused = self.client.get(path, headers=head)
+            self.assertEqual(refused.status_code, 422, f"{path}: {refused.text}")
+            self.assertEqual(refused.json()["error"], "bad_limit", path)
+
+    def test_a_full_page_says_it_was_truncated(self):
+        """A page that fills exactly is indistinguishable from the whole answer otherwise."""
+        tenant_id = self.tenant()
+        self.membership(tenant_id)
+        self.membership(tenant_id)
+        head = self.scoped(tenant_id, ["membership.record.read"])
+        one = self.client.get("/memberships?limit=1", headers=head)
+        self.assertEqual(one.status_code, 200, one.text)
+        self.assertEqual(one.json()["count"], 1)
+        self.assertTrue(one.json()["truncated"])
+        many = self.client.get("/memberships?limit=50", headers=head)
+        self.assertFalse(many.json()["truncated"])
+
+    def test_a_medical_holds_reason_is_masked_in_the_detail_read_too(self):
+        """A health fact is a health fact whatever read returns it.
+
+        `membership_as_of` masks it and this read is new, so the question is whether the mask
+        travelled with the data or stayed with the function that happened to have it. The
+        entry stays visible, because a hold a reader cannot see at all is a gap in a dispute
+        record -- MOD-014's rule, applied here.
+        """
+        tenant_id = self.tenant()
+        made = self.membership(tenant_id)
+        owner = self.headers(tenant_id)
+        frozen = self.client.post(
+            f"/memberships/{made['membership_id']}/freeze", json={
+                "freeze_kind": "medical_hold", "starts_on": day(-1), "days": 14,
+                "reason": "chemotherapy on Tuesdays",
+                # A locator, never the note: the constraint requires one for a medical hold
+                # precisely so the diagnosis lives somewhere this module cannot read.
+                "evidence_ref": "s3://evidence/note-1",
+                "idempotency_key": f"mh-{uuid.uuid4().hex[:8]}", **self.correlation()},
+            headers=owner)
+        self.assertEqual(frozen.status_code, 201, frozen.text)
+        detail = self.client.get(
+            f"/memberships/{made['membership_id']}",
+            headers=self.scoped(tenant_id, ["membership.record.read"]))
+        self.assertEqual(detail.status_code, 200, detail.text)
+        self.assertNotIn("chemotherapy", detail.text)
+        hold = next(h for h in detail.json()["history"]
+                    if h["change_kind"] == "medical_hold")
+        self.assertTrue(hold["reason_withheld"])
+        self.assertIn("redacted", hold["reason"])
+        self.assertEqual(hold["to_status"], "frozen")
+
+    def test_an_invoice_list_reports_the_stored_payment_status(self):
+        """Not one recomputed here: a second definition of a balance disagrees with the first.
+
+        MOD-018 shipped exactly that pair -- `_expected_in_drawer` and `account_balance` --
+        and they disagreed on any back-dated journal.
+        """
+        tenant_id = self.tenant()
+        settled = self.paid(tenant_id)
+        head = self.scoped(tenant_id, ["finance.account.read"])
+        listed = self.client.get(
+            f"/finance/invoices?billing_account_id={settled['billing']['billing_account_id']}",
+            headers=head)
+        self.assertEqual(listed.status_code, 200, listed.text)
+        row = next(r for r in listed.json()["invoices"]
+                   if r["invoice_id"] == settled["invoice"]["invoice_id"])
+        self.assertEqual(row["payment_status"], "paid")
+        self.assertEqual(row["paid_minor"], settled["invoice"]["gross_minor"])
+        self.assertEqual(row["document_kind"], "invoice")
+        one = self.client.get(
+            f"/finance/invoices/{settled['invoice']['invoice_id']}", headers=head)
+        self.assertEqual(one.json()["payment_status"], row["payment_status"])
+
+    def test_a_grant_list_reports_the_balance_and_says_it_is_unswept(self):
+        tenant_id = self.tenant()
+        person_id = self.person(tenant_id)
+        policy_id = self.policy(tenant_id)
+        grant_id = self.entitlement_grant(tenant_id, policy_id, person_id)
+        listed = self.client.get(
+            f"/member-entitlements?person_id={person_id}",
+            headers=self.scoped(tenant_id, ["membership.entitlement.read"]))
+        self.assertEqual(listed.status_code, 200, listed.text)
+        row = next(r for r in listed.json()["grants"] if r["grant_id"] == grant_id)
+        self.assertEqual(row["balance"], 10)
+        self.assertEqual(row["held"], 0)
+        self.assertTrue(row["is_counted"])
+        self.assertEqual(row["status"], "active")
+        self.assertEqual(row["entitlement_type"], "class_credit")
+        # Stated rather than implied: the swept figure is `entitlement_balance`, which writes.
+        self.assertTrue(listed.json()["balance_is_unswept"])
+
+    def test_a_billing_account_list_filters_on_who_pays(self):
+        tenant_id = self.tenant()
+        payer = self.person(tenant_id)
+        other = self.person(tenant_id)
+        mine = self.billing(tenant_id, payer)
+        theirs = self.billing(tenant_id, other)
+        listed = self.client.get(
+            f"/finance/accounts?person_id={payer}",
+            headers=self.scoped(tenant_id, ["finance.account.read"]))
+        self.assertEqual(listed.status_code, 200, listed.text)
+        ids = [a["billing_account_id"] for a in listed.json()["accounts"]]
+        self.assertIn(mine["billing_account_id"], ids)
+        self.assertNotIn(theirs["billing_account_id"], ids)
+
+    def test_the_membership_read_does_not_also_buy_the_finance_read(self):
+        """Two permissions, because MOD-013 shipped one that bought its sibling's data.
+
+        `GET /notifications/channels` was gated on `notifications.template.read`, so "see the
+        templates" also read what every message costs the tenant. Here the equivalent mistake
+        would let a front desk holding only the membership read see every invoice.
+        """
+        tenant_id = self.tenant()
+        made = self.membership(tenant_id)
+        head = self.scoped(tenant_id, ["membership.record.read"])
+        self.assertEqual(self.client.get("/memberships", headers=head).status_code, 200)
+        self.assertEqual(
+            self.client.get(f"/memberships/{made['membership_id']}",
+                            headers=head).status_code, 200)
+        for path in ("/finance/invoices", "/finance/accounts", "/member-entitlements"):
+            refused = self.client.get(path, headers=head)
+            self.assertEqual(refused.status_code, 403, f"{path}: {refused.text}")
+
+    def test_an_unknown_membership_is_a_404_and_a_malformed_id_is_a_422(self):
+        tenant_id = self.tenant()
+        head = self.scoped(tenant_id, ["membership.record.read"])
+        missing = self.client.get(f"/memberships/{uuid.uuid4()}", headers=head)
+        self.assertEqual(missing.status_code, 404, missing.text)
+        malformed = self.client.get("/memberships/not-a-uuid", headers=head)
+        self.assertEqual(malformed.status_code, 422, malformed.text)

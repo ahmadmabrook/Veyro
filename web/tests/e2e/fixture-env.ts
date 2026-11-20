@@ -42,6 +42,14 @@ export type Fixture = {
    */
   readerEmail: string;
   readerPassword: string;
+  /**
+   * A third identity holding `people.person.read` and nothing of MOD-017. The reader proves
+   * the people gate by *not* holding the person read; the membership blocks' own gates can
+   * only be proved by a session that holds it and holds none of MOD-017. One identity cannot
+   * be both, which is why there are three.
+   */
+  deskEmail: string;
+  deskPassword: string;
 };
 
 const FILENAME = ".env.e2e.local";
@@ -87,6 +95,8 @@ export function fixture(): Fixture {
     "VEYRO_E2E_PENDING_DEVICE_ID",
     "VEYRO_E2E_READER_EMAIL",
     "VEYRO_E2E_READER_PASSWORD",
+    "VEYRO_E2E_DESK_EMAIL",
+    "VEYRO_E2E_DESK_PASSWORD",
     "VEYRO_E2E_LOCATION_ID",
     "VEYRO_E2E_SESSION_ID",
     "VEYRO_E2E_BOOKED_SESSION_ID",
@@ -110,5 +120,7 @@ export function fixture(): Fixture {
     pendingDeviceId: env.VEYRO_E2E_PENDING_DEVICE_ID!,
     readerEmail: env.VEYRO_E2E_READER_EMAIL!,
     readerPassword: env.VEYRO_E2E_READER_PASSWORD!,
+    deskEmail: env.VEYRO_E2E_DESK_EMAIL!,
+    deskPassword: env.VEYRO_E2E_DESK_PASSWORD!,
   };
 }

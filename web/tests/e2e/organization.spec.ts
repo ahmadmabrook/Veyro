@@ -42,15 +42,34 @@ test.describe("the organization surface", () => {
     await expect(page.locator("html")).toHaveAttribute("dir", "rtl");
     await expect(page.getByText("المؤسسة").first()).toBeVisible();
     await expect(page.getByText("Asia/Amman")).toHaveAttribute("dir", "ltr");
-    await expect(page.getByText("JO", { exact: true })).toHaveAttribute("dir", "ltr");
+    // **Every country code, not the first one.** The fixture has two organizations now (one
+    // with a legal entity and one without, so both states are rendered), and asserting a
+    // single match would pass while the second mirrored. The count check is what stops the
+    // loop passing vacuously if the selector ever matches nothing.
+    const codes = page.getByText("JO", { exact: true });
+    expect(await codes.count()).toBeGreaterThan(0);
+    for (const code of await codes.all()) {
+      await expect(code).toHaveAttribute("dir", "ltr");
+    }
   });
 
   test("says there is no legal entity rather than leaving a blank", async ({ page }) => {
     // **The emptiness is the fact.** COM-03-R07 numbers an invoice per legal entity, so a
     // tenant without one cannot be billed at all -- and a page that showed an empty list
     // would read as "nothing to see here".
+    //
+    // The fixture now has two organizations for exactly this: one with an entity, because
+    // MOD-017 cannot issue an invoice without one, and one without, because seeding the first
+    // took this assertion away the moment MOD-017 was added. Both states are on the page.
     await expect(page.getByText(/No legal entity yet/)).toBeVisible();
     await expect(page.getByText(/numbered per entity/)).toBeVisible();
+  });
+
+  test("renders the legal entity of the organization that has one", async ({ page }) => {
+    // The populated half, which no assertion covered while nothing filled the table. A
+    // registered name and a tax number are what an invoice is numbered and filed against.
+    await expect(page.getByText("Veyro Sites Ltd").first()).toBeVisible();
+    await expect(page.getByText("JO-5550001")).toBeVisible();
   });
 
   test("is reachable from the navigation, which marks where you are", async ({ page }) => {

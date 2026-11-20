@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { Alert } from "@/components/controls";
+import { MembershipPanels } from "@/components/membership-panels";
 import { Withheld } from "@/components/withheld";
 import { formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
 import { ApiError, currentSession, gate } from "@/lib/api";
@@ -117,6 +118,12 @@ export default async function Member360Page({
           </dl>
         )}
       </section>
+
+      {/* MOD-017, composed rather than joined. The projection above cannot read these
+          tables -- paragraph 1300 bars a cross-domain read and its `sections` block says so --
+          but a surface can call both modules through both gates, which is where the member's
+          agreement belongs: beside the person it is with. */}
+      <MembershipPanels personId={personId} locale={locale} />
 
       <section className="panel stack">
         <h2 style={{ margin: 0 }}>{text("member.notes")}</h2>

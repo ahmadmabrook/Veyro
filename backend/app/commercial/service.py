@@ -3035,3 +3035,361 @@ def get_invoice(pool: Pool, tenant_id: str, invoice_id: str) -> dict[str, Any]:
              "tax_minor": int(line[6]), "gross_minor": int(line[7])}
             for line in lines],
     }
+
+
+# ------------------------------------------------------------------ reads
+#
+# **MOD-017 had no listing route of any kind.** Every read in the module above takes an id the
+# caller already has to know, so a membership, an agreement, a grant, a billing account and an
+# invoice were each reachable only by having just written one. That is the "a writer with no
+# reader" shape `GET /brands` had in MOD-004 -- a module whose state cannot be observed is a
+# module whose state nobody can check -- and the remedy is the same: a route, rather than a
+# client that infers the ids from somewhere else.
+#
+# Three rules hold for everything in this section.
+#
+# **Nothing here returns a name, an address, a birth date or anything else about a person.**
+# MOD-014 owns those columns and applies `Decision.mask` to them on the way out, filtered by
+# the caller's assurance. A membership list carrying the member's legal name beside the id
+# would be a lateral read path around `people.person.read` -- MOD-010's `events.event.read`
+# finding in this module's clothes, where one routine permission returned another module's
+# restricted fields. A surface that wants both calls both modules, each through its own gate.
+#
+# **Every list is bounded and ordered.** Unbounded is a bulk export and a denial of service at
+# once, so `limit` is checked against a ceiling rather than passed through; unordered makes the
+# query planner the author, which is MOD-018's `chart_for` finding, and here it would also make
+# pagination meaningless. The order is newest first on a stable column with the primary key as
+# the tiebreak, because two memberships created in one transaction share `created_at`.
+#
+# **A filter value outside its domain refuses rather than returning nothing.** `status=actve`
+# and "this member has no active membership" are different answers, and a list that renders
+# both as an empty table is a surface that cannot be trusted. This is the same judgement as
+# MOD-016's `Eligibility.blocks_redemption`: a value nobody thought about must refuse.
+
+#: The most rows any list in this module will return. A page is what a person reads; a figure
+#: larger than this is a report, and a report is a different kind of read with a different
+#: permission behind it.
+LIST_LIMIT = 200
+
+MEMBERSHIP_STATUSES = frozenset({
+    "pending", "active", "frozen", "grace", "suspended", "cancelled", "expired",
+    "transferred"})
+GRANT_STATUSES = frozenset({"active", "exhausted", "expired", "revoked"})
+INVOICE_PAYMENT_STATUSES = frozenset({
+    "unpaid", "part_paid", "paid", "overdue", "written_off", "credited"})
+
+
+def _bounded(limit: int) -> int:
+    if limit < 1 or limit > LIST_LIMIT:
+        raise InvalidRequest("bad_limit")
+    return limit
+
+
+def _one_of(value: str | None, allowed: frozenset[str], error: str) -> str | None:
+    if value is not None and value not in allowed:
+        raise InvalidRequest(error)
+    return value
+
+
+def list_memberships(
+    pool: Pool, tenant_id: str, *, person_id: str | None = None,
+    status: str | None = None, limit: int = 50,
+) -> dict[str, Any]:
+    """The memberships in this tenant, newest first, optionally one person's.
+
+    `status` is the **cached** status, which answers "now". A dispute about what was true on a
+    past date is `membership_as_of`, which replays the history instead -- and the two disagree
+    on purpose for a future-dated cancellation, because nothing in this build applies one when
+    its notice runs out.
+    """
+    limit = _bounded(limit)
+    _one_of(status, MEMBERSHIP_STATUSES, "bad_status")
+    where = ["true"]
+    params: list[Any] = []
+    if person_id is not None:
+        where.append("m.person_id = %s")
+        params.append(person_id)
+    if status is not None:
+        where.append("m.status = %s")
+        params.append(status)
+    params.append(limit)
+    with tenant_scope(pool, tenant_id) as conn:
+        rows = conn.execute(
+            "SELECT m.membership_id, m.person_id, m.membership_number, m.status,"
+            " m.starts_on, m.ends_on, m.current_period_start, m.current_period_end,"
+            " m.status_effective_on, m.agreement_id, a.amount_minor, a.currency,"
+            " a.minimum_term_ends_on, t.membership_kind, t.billing_period, t.is_off_peak"
+            " FROM plt01.mem_memberships m"
+            " JOIN plt01.mem_agreements a ON a.agreement_id = m.agreement_id"
+            " JOIN plt01.mem_membership_terms t"
+            "   ON t.membership_terms_id = a.membership_terms_id"
+            f" WHERE {' AND '.join(where)}"
+            " ORDER BY m.created_at DESC, m.membership_id DESC LIMIT %s",
+            tuple(params),
+        ).fetchall()
+    return {
+        "memberships": [
+            {"membership_id": str(r[0]), "person_id": str(r[1]),
+             "membership_number": str(r[2]), "status": str(r[3]),
+             "starts_on": r[4].isoformat(), "ends_on": r[5].isoformat() if r[5] else None,
+             "current_period_start": r[6].isoformat() if r[6] else None,
+             "current_period_end": r[7].isoformat() if r[7] else None,
+             "status_effective_on": r[8].isoformat(), "agreement_id": str(r[9]),
+             "amount_minor": int(r[10]), "currency": str(r[11]),
+             "minimum_term_ends_on": r[12].isoformat() if r[12] else None,
+             "membership_kind": str(r[13]), "billing_period": str(r[14]),
+             "is_off_peak": bool(r[15])}
+            for r in rows],
+        "count": len(rows), "limit": limit,
+        "truncated": len(rows) == limit,
+    }
+
+
+def get_membership(pool: Pool, tenant_id: str, membership_id: str) -> dict[str, Any]:
+    """One membership with the agreement it was sold on and the terms that agreement cites.
+
+    The figures come from the agreement rather than from the product, because an agreement
+    snapshots what was actually sold: re-reading today's price would answer a different
+    question from the one a member's contract answers.
+    """
+    with tenant_scope(pool, tenant_id) as conn:
+        row = conn.execute(
+            "SELECT m.person_id, m.membership_number, m.status, m.starts_on, m.ends_on,"
+            " m.current_period_start, m.current_period_end, m.status_effective_on,"
+            " m.version, a.agreement_id, a.amount_minor, a.currency, a.starts_on,"
+            " a.ends_on, a.minimum_term_ends_on, a.status, a.signed_at, a.signature_kind,"
+            " a.price_resolution_id, a.contract_version_id, t.membership_terms_id,"
+            " t.contract_key, t.membership_kind, t.billing_period, t.installment_count,"
+            " t.prepaid_days, t.is_off_peak, t.product_id"
+            " FROM plt01.mem_memberships m"
+            " JOIN plt01.mem_agreements a ON a.agreement_id = m.agreement_id"
+            " JOIN plt01.mem_membership_terms t"
+            "   ON t.membership_terms_id = a.membership_terms_id"
+            " WHERE m.membership_id = %s",
+            (membership_id,),
+        ).fetchone()
+        if row is None:
+            raise NotFound("membership_not_found")
+        changes = conn.execute(
+            "SELECT change_kind, from_status, to_status, effective_on, decided_at, reason"
+            " FROM plt01.mem_lifecycle_changes WHERE membership_id = %s"
+            " ORDER BY effective_on DESC, decided_at DESC",
+            (membership_id,),
+        ).fetchall()
+    return {
+        "membership_id": membership_id, "person_id": str(row[0]),
+        "membership_number": str(row[1]), "status": str(row[2]),
+        "starts_on": row[3].isoformat(), "ends_on": row[4].isoformat() if row[4] else None,
+        "current_period_start": row[5].isoformat() if row[5] else None,
+        "current_period_end": row[6].isoformat() if row[6] else None,
+        "status_effective_on": row[7].isoformat(), "version": int(row[8]),
+        "agreement": {
+            "agreement_id": str(row[9]), "amount_minor": int(row[10]),
+            "currency": str(row[11]), "starts_on": row[12].isoformat(),
+            "ends_on": row[13].isoformat() if row[13] else None,
+            "minimum_term_ends_on": row[14].isoformat() if row[14] else None,
+            "status": str(row[15]),
+            "signed_at": row[16].isoformat() if row[16] else None,
+            "signature_kind": str(row[17]) if row[17] else None,
+            "price_resolution_id": str(row[18]) if row[18] else None,
+            "contract_version_id": str(row[19]),
+        },
+        "terms": {
+            "membership_terms_id": str(row[20]), "contract_key": str(row[21]),
+            "membership_kind": str(row[22]), "billing_period": str(row[23]),
+            "installment_count": int(row[24]) if row[24] is not None else None,
+            "prepaid_days": int(row[25]) if row[25] is not None else None,
+            "is_off_peak": bool(row[26]), "product_id": str(row[27]),
+        },
+        # The same masking `membership_as_of` applies, for the same reason and to the same
+        # kinds: a medical hold's reason is a health fact whatever column it is in, and it is
+        # unreadable at every assurance level this build can reach.
+        "history": [
+            {"change_kind": str(c[0]), "from_status": str(c[1]), "to_status": str(c[2]),
+             "effective_on": c[3].isoformat(), "decided_at": c[4].isoformat(),
+             "reason": _reason_or_mask(str(c[0]), str(c[5])),
+             "reason_withheld": str(c[0]) in HEALTH_REASON_KINDS}
+            for c in changes],
+    }
+
+
+def list_entitlement_grants(
+    pool: Pool, tenant_id: str, *, person_id: str | None = None,
+    membership_id: str | None = None, status: str | None = None, limit: int = 50,
+) -> dict[str, Any]:
+    """What a member may use, with the remaining balance summed from the ledger.
+
+    **The balance here is read, not settled.** `entitlement_balance` sweeps lapsed holds first
+    and therefore writes, which is why it takes an actor; a list that swept would write one
+    ledger row per expired hold per page view. So a held quantity on this list can be stale in
+    the member's favour -- it may include holds that have since lapsed -- and the number that
+    settles a draw is the one `reserve_entitlement` computes under the grant's own lock.
+    """
+    limit = _bounded(limit)
+    _one_of(status, GRANT_STATUSES, "bad_status")
+    where = ["true"]
+    params: list[Any] = []
+    if person_id is not None:
+        where.append("g.person_id = %s")
+        params.append(person_id)
+    if membership_id is not None:
+        where.append("g.membership_id = %s")
+        params.append(membership_id)
+    if status is not None:
+        where.append("g.status = %s")
+        params.append(status)
+    params.append(limit)
+    with tenant_scope(pool, tenant_id) as conn:
+        rows = conn.execute(
+            "SELECT g.grant_id, g.person_id, g.membership_id, g.is_counted,"
+            " g.granted_quantity, g.valid_from, g.valid_to, g.status, g.source_kind,"
+            " g.brand_id, g.location_id, g.usable_from_minute, g.usable_to_minute,"
+            " p.policy_key, p.display_name, p.entitlement_type"
+            " FROM plt01.mem_entitlement_grants g"
+            " JOIN plt01.mem_entitlement_policies p ON p.policy_id = g.policy_id"
+            f" WHERE {' AND '.join(where)}"
+            " ORDER BY g.created_at DESC, g.grant_id DESC LIMIT %s",
+            tuple(params),
+        ).fetchall()
+        # **The arithmetic is `entitlements.balance_of`, not a `sum()` in the SQL.** Both are
+        # addition today, which is exactly why writing the second one is tempting and why it
+        # is wrong: a balance with two definitions has two answers the day either moves, and
+        # this module's own invoice list says so one function down. The movements come back
+        # raw and the domain function adds them, so a grant's balance here and a grant's
+        # balance under the draw lock are the same expression.
+        ids = [str(r[0]) for r in rows]
+        moved: dict[str, list[entitlements.Movement]] = {i: [] for i in ids}
+        holds: dict[str, list[int]] = {i: [] for i in ids}
+        if ids:
+            for m in conn.execute(
+                "SELECT grant_id, movement_kind, delta"
+                " FROM plt01.mem_entitlement_ledger WHERE grant_id = ANY(%s)",
+                (ids,),
+            ).fetchall():
+                moved[str(m[0])].append(entitlements.Movement(str(m[1]), int(m[2])))
+            for h in conn.execute(
+                "SELECT grant_id, quantity FROM plt01.mem_entitlement_reservations"
+                " WHERE grant_id = ANY(%s) AND status = 'held'",
+                (ids,),
+            ).fetchall():
+                holds[str(h[0])].append(int(h[1]))
+    return {
+        "grants": [
+            {"grant_id": str(r[0]), "person_id": str(r[1]),
+             "membership_id": str(r[2]) if r[2] else None,
+             "is_counted": bool(r[3]),
+             "granted_quantity": int(r[4]) if r[4] is not None else None,
+             "valid_from": r[5].isoformat(),
+             "valid_to": r[6].isoformat() if r[6] else None,
+             "status": str(r[7]), "source_kind": str(r[8]),
+             "brand_id": str(r[9]) if r[9] else None,
+             "location_id": str(r[10]) if r[10] else None,
+             "usable_from_minute": int(r[11]) if r[11] is not None else None,
+             "usable_to_minute": int(r[12]) if r[12] is not None else None,
+             "policy_key": str(r[13]), "display_name": str(r[14]),
+             "entitlement_type": str(r[15]),
+             "balance": (entitlements.balance_of(moved[str(r[0])])
+                         if r[3] else None),
+             "held": (entitlements.held_quantity(holds[str(r[0])])
+                      if r[3] else None)}
+            for r in rows],
+        "count": len(rows), "limit": limit, "truncated": len(rows) == limit,
+        "balance_is_unswept": True,
+    }
+
+
+def list_billing_accounts(
+    pool: Pool, tenant_id: str, *, person_id: str | None = None, limit: int = 50,
+) -> dict[str, Any]:
+    """The billing accounts in this tenant, optionally those one person pays for.
+
+    `payer_person_id` is who pays, which is not always who trains: COM-03-R01's household and
+    corporate accounts are exactly the case where the two differ, so this filter answers "what
+    does this person pay for" and not "who is billed for this member".
+    """
+    limit = _bounded(limit)
+    where = ["true"]
+    params: list[Any] = []
+    if person_id is not None:
+        where.append("payer_person_id = %s")
+        params.append(person_id)
+    params.append(limit)
+    with tenant_scope(pool, tenant_id) as conn:
+        rows = conn.execute(
+            "SELECT billing_account_id, payer_person_id, account_kind, account_number,"
+            " currency, legal_entity_id, status, payment_terms_days, closed_at"
+            " FROM plt01.fin_billing_accounts"
+            f" WHERE {' AND '.join(where)}"
+            " ORDER BY created_at DESC, billing_account_id DESC LIMIT %s",
+            tuple(params),
+        ).fetchall()
+    return {
+        "accounts": [
+            {"billing_account_id": str(r[0]), "payer_person_id": str(r[1]),
+             "account_kind": str(r[2]), "account_number": str(r[3]),
+             "currency": str(r[4]), "legal_entity_id": str(r[5]), "status": str(r[6]),
+             "payment_terms_days": int(r[7]),
+             "closed_at": r[8].isoformat() if r[8] else None}
+            for r in rows],
+        "count": len(rows), "limit": limit, "truncated": len(rows) == limit,
+    }
+
+
+def list_invoices(
+    pool: Pool, tenant_id: str, *, billing_account_id: str | None = None,
+    person_id: str | None = None, payment_status: str | None = None, limit: int = 50,
+) -> dict[str, Any]:
+    """Issued documents, newest first, with what has been paid against each.
+
+    **`payment_status` is the stored figure, not one recomputed here.** `_apply_to_invoice`
+    maintains it inside the transaction of every payment, credit note and refund, which is
+    what makes it the answer rather than a cache: a list that re-derived it would be a second
+    definition of the same balance, and MOD-018's till close shipped exactly that pair and
+    disagreed with itself.
+
+    There is no draft state in this module, so every row here is a document that was issued
+    and numbered. A correction is a credit note, which appears as its own row with
+    `document_kind = 'credit_note'` and a `credits_invoice_id`.
+    """
+    limit = _bounded(limit)
+    _one_of(payment_status, INVOICE_PAYMENT_STATUSES, "bad_payment_status")
+    where = ["true"]
+    params: list[Any] = []
+    if billing_account_id is not None:
+        where.append("i.billing_account_id = %s")
+        params.append(billing_account_id)
+    if person_id is not None:
+        where.append("b.payer_person_id = %s")
+        params.append(person_id)
+    if payment_status is not None:
+        where.append("i.payment_status = %s")
+        params.append(payment_status)
+    params.append(limit)
+    with tenant_scope(pool, tenant_id) as conn:
+        rows = conn.execute(
+            "SELECT i.invoice_id, i.billing_account_id, b.payer_person_id,"
+            " i.document_number, i.document_kind, i.net_minor, i.tax_minor, i.gross_minor,"
+            " i.currency, i.issued_on, i.due_on, i.payment_status, i.fiscal_status,"
+            " i.credits_invoice_id,"
+            " coalesce((SELECT sum(p.amount_minor) FROM plt01.fin_payments p"
+            "            WHERE p.invoice_id = i.invoice_id), 0)"
+            " FROM plt01.fin_invoices i"
+            " JOIN plt01.fin_billing_accounts b"
+            "   ON b.billing_account_id = i.billing_account_id"
+            f" WHERE {' AND '.join(where)}"
+            " ORDER BY i.issued_on DESC, i.serial DESC, i.invoice_id DESC LIMIT %s",
+            tuple(params),
+        ).fetchall()
+    return {
+        "invoices": [
+            {"invoice_id": str(r[0]), "billing_account_id": str(r[1]),
+             "payer_person_id": str(r[2]), "document_number": str(r[3]),
+             "document_kind": str(r[4]), "net_minor": int(r[5]), "tax_minor": int(r[6]),
+             "gross_minor": int(r[7]), "currency": str(r[8]),
+             "issued_on": r[9].isoformat(), "due_on": r[10].isoformat(),
+             "payment_status": str(r[11]), "fiscal_status": str(r[12]),
+             "credits_invoice_id": str(r[13]) if r[13] else None,
+             "paid_minor": int(r[14])}
+            for r in rows],
+        "count": len(rows), "limit": limit, "truncated": len(rows) == limit,
+    }

@@ -12,6 +12,7 @@ import { fixture } from "./fixture-env";
  */
 export const OWNER_STATE = "playwright/.auth/owner.json";
 export const READER_STATE = "playwright/.auth/reader.json";
+export const DESK_STATE = "playwright/.auth/desk.json";
 
 /**
  * Sign in through the real form.
@@ -90,4 +91,15 @@ export function useOwnerSession(page: Page): Promise<void> {
 /** The reader: `access.zone.read` and not `tenancy.organization.read`. */
 export function useReaderSession(page: Page): Promise<void> {
   return adopt(page, READER_STATE);
+}
+
+/**
+ * The front desk: `people.person.read` and nothing of MOD-017.
+ *
+ * The one subset that can prove the membership blocks' own gates. With no person read the
+ * page's gate answers first and the spec proves the wrong refusal; with any MOD-017 read the
+ * blocks render and there is no refusal to prove at all.
+ */
+export function useDeskSession(page: Page): Promise<void> {
+  return adopt(page, DESK_STATE);
 }
