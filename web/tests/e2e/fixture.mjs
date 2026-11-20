@@ -1509,6 +1509,10 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
     membershipId: membership.membership_id,
     retiredAccountId: retiring.account_id,
     productId: product.product_id,
+    // ADM-PAY-03's subject: the invoice that was paid, has a fiscal rejection on it and
+    // carries a dispute and a refund -- which is every state the screen draws except a
+    // credit note, in one document.
+    invoiceId: invoice.invoice_id,
     closingPeriodKey: backDatedKey,
     liveHoldId: liveHold.hold_id,
     membershipNumber: "GOLD-00042",
@@ -1549,6 +1553,7 @@ if (invokedDirectly) {
       `VEYRO_E2E_SESSION_ID=${fixture.firstSessionId}`,
       `VEYRO_E2E_BOOKED_SESSION_ID=${fixture.bookedSessionId}`,
       `VEYRO_E2E_PRODUCT_ID=${fixture.productId}`,
+      `VEYRO_E2E_INVOICE_ID=${fixture.invoiceId}`,
       "# A person can type these. Nothing in the suite uses them; they exist so the product",
       "# can be opened and looked at, which is how four of this surface's defects were found.",
       `VEYRO_E2E_EASY_EMAIL=${fixture.easyEmail}`,

@@ -1989,6 +1989,9 @@ a {
 .ds-record-band[data-tone="critical"] { color: var(--color-semantic-error); }
 .ds-record-band[data-tone="warning"] { color: var(--color-semantic-warning); }
 .ds-record-band[data-tone="neutral"] { color: var(--color-text-tertiary); }
+/* ADM-PAY-03 asks for this on one document and ADM-MEM-01 forbids it in a list.
+   See `record-header.tsx` for why both are right. */
+.ds-record-band[data-tone="success"] { color: var(--color-semantic-success); }
 
 .ds-record-subline {
   margin: 4px 0 0;

@@ -52,6 +52,8 @@ export type Fixture = {
   deskPassword: string;
   /** The published membership product MOD-016's board opens, with one variant and one price. */
   productId: string;
+  /** ADM-PAY-03's subject: paid, fiscally rejected, with a refund and a dispute on it. */
+  invoiceId: string;
   // **The account spec takes no credential from here, deliberately.** Every one of its
   // writes is destructive -- a trust that cannot be asserted twice, a revoke that locks the
   // subject out of the product for good -- so it registers a subject per test through the
@@ -106,6 +108,7 @@ export function fixture(): Fixture {
     "VEYRO_E2E_DESK_EMAIL",
     "VEYRO_E2E_DESK_PASSWORD",
     "VEYRO_E2E_PRODUCT_ID",
+    "VEYRO_E2E_INVOICE_ID",
     "VEYRO_E2E_LOCATION_ID",
     "VEYRO_E2E_SESSION_ID",
     "VEYRO_E2E_BOOKED_SESSION_ID",
@@ -132,5 +135,6 @@ export function fixture(): Fixture {
     deskEmail: env.VEYRO_E2E_DESK_EMAIL!,
     deskPassword: env.VEYRO_E2E_DESK_PASSWORD!,
     productId: env.VEYRO_E2E_PRODUCT_ID!,
+    invoiceId: env.VEYRO_E2E_INVOICE_ID!,
   };
 }

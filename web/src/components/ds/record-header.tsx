@@ -23,12 +23,19 @@ import type { ReactNode } from "react";
  *
  * **The band is a word, not a colour.** `PAYMENT OVERDUE` is set in the error ink with a
  * border in the same ink and no fill -- which is the design's rule for a status that must
- * survive monochrome and colour-blindness, and the reason the canvas's note says "No green
- * badges": paid, active and granted are the expected cases, and decorating them makes a
- * genuinely overdue row harder to spot. So there is no `tone: "success"`.
+ * survive monochrome and colour-blindness.
+ *
+ * **`success` exists and is almost always wrong.** ADM-MEM-01's note is explicit -- "No green
+ * badges. Paid, active and granted are the expected cases, and decorating them makes a
+ * genuinely overdue row harder to spot" -- and that is about a *record among records*, where
+ * the absence of a band is the signal. ADM-PAY-03 asks for the opposite on an invoice and is
+ * equally explicit: "Paid — status badge in success". The difference is the subject: one
+ * document's own state is what that screen is about, and there is no row beside it for a
+ * green badge to dilute. Two canvases, two rules, and the tone is the caller's to choose
+ * because only the caller knows which case it is in.
  */
 
-export type BandTone = "critical" | "warning" | "neutral";
+export type BandTone = "critical" | "warning" | "neutral" | "success";
 
 export function RecordHeader({
   name,

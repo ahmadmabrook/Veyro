@@ -88,7 +88,12 @@ export function TimelineItem({
   money,
   meta,
 }: {
-  /** "06:12" — mono, and the caller decides which zone it is in and says so. */
+  /**
+   * "06:12" — mono, and the caller decides which zone it is in and says so.
+   *
+   * Empty where the instant is a date with no time of day, in which case `day` takes the
+   * clock's place rather than sitting under a blank line.
+   */
   time: string;
   /** "today", "31 Jul" — the bucket, under the clock. */
   day: string;
@@ -101,8 +106,18 @@ export function TimelineItem({
   return (
     <li className="ds-timeline-item">
       <div className="ds-timeline-when">
-        <span className="ds-timeline-clock data" dir="ltr">{time}</span>
-        <span className="ds-timeline-day data" dir="ltr">{day}</span>
+        {/* **An empty clock is not a blank line.** Some instants are dates: an invoice's
+            issue date is a `date` column, so there is no time of day to show, and the
+            gutter rendered an empty row above the day. Where there is no clock the day
+            takes its place, which is what a reader expects of a date-only row. */}
+        {time === "" ? (
+          <span className="ds-timeline-clock data" dir="ltr">{day}</span>
+        ) : (
+          <>
+            <span className="ds-timeline-clock data" dir="ltr">{time}</span>
+            <span className="ds-timeline-day data" dir="ltr">{day}</span>
+          </>
+        )}
       </div>
       <span className="ds-timeline-spine" data-tone={tone} aria-hidden="true" />
       <div className="ds-timeline-body">

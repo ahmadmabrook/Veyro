@@ -300,6 +300,7 @@ corresponds to them. The others map loosely:
 | `/schedule` | ADM-SCH-01 Class schedule · week grid | **built from the canvas** |
 | `/schedule/{id}` | ADM-SCH-02 Class detail and roster | **rebuilt** — the band, four MetricCells, the roster; the three actions are stepped-up writes with no form |
 | `/payments` | ADM-PAY-01 Payments ledger | **built from the canvas** — four kinds on one axis, signed; refund and export are named as absent |
+| `/finance/invoices/{id}` | ADM-PAY-03 Invoice detail | **built from the canvas** — lines, the life, the filing; no edit at any permission, which is the canvas's own rule and this schema's property |
 | `/fleet` | ADM-ACC-01 Access control dashboard | **rebuilt** — the finding as the title, CLUB and TODAY columns |
 | `/access/{id}` | ADM-ACC-02 Access denial log | **rebuilt** — the policy/fault split, counted by MOD-022's own codes |
 | `/permissions` | ADM-STF-04, ADM-SET-08 | **rebuilt** — the capability matrix, roles across the top |
@@ -334,8 +335,8 @@ of the directive asks for; this section is the implementation column.
 | Specified in the design folder | **167** |
 | `NO-UI` — the registry says no screen is needed | 8 |
 | Genuinely unspecified (`ADM-CRM-05`, `ADM-POS-02`, `MBR-33`) | 3 |
-| **Routes in `web/`** | **23** |
-| Of those, built or rebuilt from their design | **11** |
+| **Routes in `web/`** | **24** |
+| Of those, built or rebuilt from their design | **12** |
 
 So the remaining frontend work is **implementing specified screens**, not inventing around a
 registry — which is the correction at the top of this file, and it is per screen rather than
@@ -682,3 +683,30 @@ The Member 360 does the same thing from the other side: its foot names the areas
 projection cannot read **and** says which of them this page answers itself on its own tabs,
 because a gaps list that contradicts the tab beside it is the stale-list defect this screen
 already paid for once.
+
+
+### A read with no reader is the same gap as a writer with no reader
+
+`GET /finance/invoices/{id}/history` was built with a docstring naming ADM-PAY-03 by id and
+saying what it is for — *"ADM-PAY-03's middle section"* — and nothing had ever rendered it.
+MOD-017's own record names the opposite shape (a module whose state cannot be observed is a
+module nobody can check) and this is its mirror: **a read nobody renders is a read nobody
+sized**, and every invoice in this product was a figure with no way in.
+
+The screen is now `/finance/invoices/{id}`, linked from the member's billing tab. Four
+defects came out of building it, every one found by opening the page:
+
+- the heading printed twice, because the panel and the `Timeline` both carried it;
+- a date-only instant rendered an empty clock above its day — `issued_on` is a `date`
+  column, so there is no time of day, and `TimelineItem` now lets the day take the clock's
+  place;
+- `MoneyValue(aggregate)` split the decimals on a total sitting in a list of plain figures,
+  so the sum read as a different kind of number from its parts;
+- a permission name printed with its backticks.
+
+And one place where two canvases disagree and both are right: ADM-PAY-03's state note is
+*"Paid — status badge in success"* while ADM-MEM-01's is *"No green badges"*. The difference
+is the subject. A member's record sits among records, where a green badge dilutes the overdue
+one; an invoice's own state is what its screen is about and there is no row beside it. The
+`success` tone exists, is documented as almost always wrong, and is used on exactly one
+screen.

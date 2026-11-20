@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { Banner } from "@/components/ds/banner";
 import { formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
 import { gateAll, failureMessage } from "@/lib/api";
@@ -362,7 +364,12 @@ async function Finance({ personId, locale }: { personId: string; locale: Locale 
             {invoices.map((invoice) => (
               <tr key={invoice.invoice_id}>
                 <td style={cell}>
-                  <span className="data" dir="ltr">{invoice.document_number}</span>
+                  {/* **A row that leads somewhere.** ADM-PAY-03 is the invoice's own
+                      screen and both its reads were built long before anything rendered
+                      them, so every invoice in this app was a figure with no way in. */}
+                  <Link href={`/finance/invoices/${invoice.invoice_id}`}>
+                    <span className="data" dir="ltr">{invoice.document_number}</span>
+                  </Link>
                   {invoice.document_kind === "invoice" ? null : (
                     <div className="muted" style={caption}>
                       {text("membership.creditNote")}
