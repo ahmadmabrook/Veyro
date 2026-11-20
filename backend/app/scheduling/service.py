@@ -1998,7 +1998,17 @@ def schedule_for(
             " s.local_date, s.capacity, s.overbook_places, s.status, s.dst_adjusted,"
             " coalesce((SELECT sum(h.places) FROM plt01.sch_capacity_holds h"
             "            WHERE h.session_id = s.session_id"
-            "              AND h.status IN ('held', 'attended')), 0)"
+            "              AND h.status IN ('held', 'attended')), 0),"
+            # **The live staff assignment, which is what ADM-SCH-01's ClassCell carries.**
+            # `superseded_at IS NULL` is what "has a coach" means: a substitution supersedes
+            # the outgoing hold and leaves the row, so counting rows would show a class whose
+            # coach went home ill as staffed. Aggregated rather than joined, because a class
+            # may be taught by two and a join would duplicate the session.
+            " (SELECT string_agg(r.display_name, ', ' ORDER BY r.display_name)"
+            "    FROM plt01.sch_session_resources a"
+            "    JOIN plt01.sch_resources r ON r.resource_id = a.resource_id"
+            "   WHERE a.session_id = s.session_id AND a.resource_kind = 'staff'"
+            "     AND a.superseded_at IS NULL)"
             " FROM plt01.sch_sessions s"
             " JOIN plt01.sch_templates t ON t.template_id = s.template_id"
             " WHERE s.location_id = %s AND s.local_date >= %s AND s.local_date <= %s"
@@ -2016,8 +2026,14 @@ def schedule_for(
              "ends_at": r[4].isoformat(), "local_date": r[5].isoformat(),
              "capacity": int(r[6]), "places": int(r[6]) + int(r[7]),
              "held": int(r[10]), "free": max(0, int(r[6]) + int(r[7]) - int(r[10])),
-             "status": str(r[8]), "dst_adjusted": bool(r[9])}
-            for r in rows]}
+             "status": str(r[8]), "dst_adjusted": bool(r[9]),
+             # `None` rather than an empty string: a class with no coach is a gap somebody
+             # has to fill, and a blank cell reads as a name nobody typed.
+             "staff": str(r[11]) if r[11] else None}
+            for r in rows],
+        "staff_is_the_live_assignment":
+            "A substitution supersedes the outgoing assignment and leaves the row, so staff "
+            "is null only when no live staff assignment exists."}
 
 
 def detect_session_conflicts(

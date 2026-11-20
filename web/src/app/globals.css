@@ -1281,3 +1281,102 @@ a {
     text-align: start;
   }
 }
+
+/* --- ADM-SCH-01: the week grid ------------------------------------------
+ *
+ * `WeekGrid(7x4, horizontal scroll below bp.lg) · ClassCell ... · severity on the cell
+ * edge-mark only, never the cell fill`.
+ *
+ * **The sideways scroll is sanctioned here and in exactly one other place.** Seven columns of
+ * classes do not collapse into one the way a table's low-priority columns do -- a Tuesday is
+ * not a lower-priority Monday -- so the design names the scroll rather than a collapse. The
+ * metric row on the Command Center is the other; everywhere else a sideways-scrolling data
+ * region is the defect `DataGrid`'s column priority exists to remove.
+ */
+.ds-week-scroll {
+  overflow-x: auto;
+}
+
+.ds-week-scroll:focus-visible {
+  outline: var(--focus-ring-width) solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+.ds-week {
+  border-collapse: collapse;
+  inline-size: 100%;
+  /* Seven day columns plus the time column, each wide enough for a class name and a coach.
+     Below bp.lg the table exceeds the viewport and the region above scrolls, which is what
+     the design asks for. */
+  min-inline-size: 64rem;
+  table-layout: fixed;
+}
+
+.ds-week th,
+.ds-week td {
+  text-align: start;
+  vertical-align: top;
+  padding: var(--space-2);
+  border-block-start: 1px solid var(--color-border-subtle);
+}
+
+.ds-week thead th {
+  font-size: var(--type-eyebrow-size);
+  line-height: var(--type-eyebrow-line);
+  font-weight: var(--type-eyebrow-weight);
+  letter-spacing: var(--type-eyebrow-tracking);
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+  border-block-start: none;
+  border-block-end: 1px solid var(--color-border-default);
+}
+
+/* The site's own today, marked rather than coloured. */
+.ds-week thead th[aria-current="date"] {
+  color: var(--color-text-primary);
+}
+
+.ds-week-time-head {
+  inline-size: 7rem;
+}
+
+.ds-week-time {
+  inline-size: 7rem;
+  font-size: var(--type-caption-size);
+  line-height: var(--type-caption-line);
+  color: var(--color-text-secondary);
+  font-weight: var(--type-label-weight);
+}
+
+/* **An edge-mark, never a fill.** The background here is the surface and nothing else sets
+ * it: a grid of tinted blocks is a heat map, and a week with three marked classes would read
+ * as a week three-quarters wrong. */
+.ds-class-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-inline-start: var(--space-2);
+  background: var(--color-surface-default);
+  border-radius: var(--radius-input);
+}
+
+.ds-class-name {
+  font-size: var(--type-label-size);
+  line-height: var(--type-label-line);
+  font-weight: var(--type-label-weight);
+}
+
+.ds-class-coach,
+.ds-class-fill,
+.ds-class-note {
+  font-size: var(--type-caption-size);
+  line-height: var(--type-caption-line);
+}
+
+/* Two classes in one slot: a gym with two studios runs two at six o'clock, and a grid that
+ * kept the last one would silently drop the other. */
+.stack-tight {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}

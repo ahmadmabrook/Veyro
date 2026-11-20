@@ -1166,6 +1166,60 @@ class ConcurrencyTests(SchedulingApiTestCase):
         self.assertEqual(detail["held"], 2, detail)
 
 
+class CalendarStaffTests(SchedulingApiTestCase):
+    """ADM-SCH-01's ClassCell carries the coach, so the calendar has to answer it.
+
+    The grid is `name · coach · fill` per cell, and a board that fetched one session read per
+    cell to get the coach would make a week of classes a week of requests.
+    """
+
+    def test_the_calendar_names_the_live_coach(self) -> None:
+        gym = self.gym()
+        self.generate(gym, self.published(gym))
+        read = self.client.get(
+            f"/scheduling/calendar?location_id={gym['location_id']}"
+            f"&from_date={day(0)}&to_date={day(30)}",
+            headers=self.headers(gym["tenant_id"]))
+        self.assertEqual(read.status_code, 200, read.text)
+        for session in read.json()["sessions"]:
+            self.assertIsNotNone(session["staff"], session)
+
+    def test_a_substitution_moves_the_name_rather_than_adding_one(self) -> None:
+        """A superseded assignment is not a coach, and it is still a row."""
+        gym = self.gym()
+        session_id = self.a_session(gym)
+        cover = self.resource(gym["tenant_id"], "staff", "COVER-CAL",
+                              display_name="Dana Cover",
+                              location_id=gym["location_id"])
+        owner = self.headers(gym["tenant_id"])
+        swapped = self.client.post(
+            f"/scheduling/sessions/{session_id}/substitute", json={
+                "replacement_resource_id": cover, "reason": "the coach is ill",
+                **self.correlation()}, headers=owner)
+        self.assertEqual(swapped.status_code, 200, swapped.text)
+        read = self.client.get(
+            f"/scheduling/calendar?location_id={gym['location_id']}"
+            f"&from_date={day(0)}&to_date={day(30)}", headers=owner)
+        row = next(x for x in read.json()["sessions"] if x["session_id"] == session_id)
+        self.assertEqual(row["staff"], "Dana Cover")
+
+    def test_a_class_with_no_staff_requirement_reports_null_not_blank(self) -> None:
+        """A blank reads as a name nobody typed; null is a gap somebody has to fill."""
+        gym = self.gym()
+        self.generate(gym, self.published(gym, requirements=[
+            {"kind": "service", "quantity": 1, "resource_id": gym["service"]},
+            {"kind": "room", "quantity": 1, "resource_id": gym["studio"]},
+        ]))
+        read = self.client.get(
+            f"/scheduling/calendar?location_id={gym['location_id']}"
+            f"&from_date={day(0)}&to_date={day(30)}",
+            headers=self.headers(gym["tenant_id"]))
+        rows = read.json()["sessions"]
+        self.assertGreater(len(rows), 0)
+        for session in rows:
+            self.assertIsNone(session["staff"], session)
+
+
 class UnstaffedSessionTests(SchedulingApiTestCase):
     """ADM-CC-01's STAFFING item: "Spin 19:00 Thursday has no coach -- 18 members booked"."""
 

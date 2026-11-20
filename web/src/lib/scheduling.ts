@@ -33,6 +33,15 @@ export type ScheduledSession = {
   status: string;
   /** The occurrence was stepped because its local time did not exist that day. */
   dst_adjusted: boolean;
+  /**
+   * The live coach, or null where no live staff assignment exists.
+   *
+   * Null rather than an empty string, because a class with no coach is a gap somebody has to
+   * fill and a blank reads as a name nobody typed. A substitution supersedes the outgoing
+   * assignment and leaves the row, so this is the *live* one -- counting rows would show a
+   * class whose coach went home ill as staffed.
+   */
+  staff: string | null;
 };
 
 export type Calendar = {
@@ -125,4 +134,107 @@ export function needsAttention(session: ScheduledSession): boolean {
   // ordinary. What is worth a second look is one that was moved by a clock change, because
   // the members booked into it were told a time that no longer exists.
   return session.dst_adjusted && session.status !== "cancelled";
+}
+
+// ------------------------------------------------------------ ADM-SCH-01's week grid
+//
+// The canvas is a 7-column grid of days with a row per local start time, and these are the
+// decisions behind it: which days the week holds, which rows exist, where each session goes,
+// and the three figures in the header. They are here rather than in the page so they can be
+// tested without a browser -- the week-boundary cases especially, which are the ones a
+// rendered screenshot would not make obvious.
+
+/** A day in the grid, keyed by the site's own local date. */
+export type WeekDay = { date: string; label: string; today: boolean };
+
+/**
+ * The seven local dates from `from`, inclusive.
+ *
+ * **Date arithmetic in UTC on a date-only string, deliberately.** `local_date` is already the
+ * site's own calendar date -- MOD-019 computed it in the session's zone -- so the only job
+ * here is to walk seven days from it. Constructing a `Date` from a bare `YYYY-MM-DD` parses
+ * as UTC midnight, and adding days in UTC never crosses a clock change; doing the same in the
+ * host's local zone gives six days or eight on the two nights a year it shifts.
+ */
+export function weekDays(from: string, locale: "en" | "ar", todayLocal: string): WeekDay[] {
+  const start = Date.parse(`${from}T00:00:00Z`);
+  return Array.from({ length: 7 }, (_, offset) => {
+    const at = new Date(start + offset * 86_400_000);
+    const date = at.toISOString().slice(0, 10);
+    return {
+      date,
+      label: new Intl.DateTimeFormat(locale === "ar" ? "ar" : "en-GB", {
+        timeZone: "UTC", weekday: "short", day: "numeric",
+      }).format(at),
+      today: date === todayLocal,
+    };
+  });
+}
+
+/**
+ * The grid: one row per distinct local start time, each with one slot per day.
+ *
+ * **Bucketed by the local clock, not the instant.** MOD-019 stores a UTC instant *and* the
+ * local facts it came from because neither is derivable from the other, and a grid that
+ * bucketed by the UTC hour would put a Monday 00:30 class in Sunday's column and under the
+ * wrong row. `local_date` is the column and the local wall time is the row.
+ *
+ * A session outside the seven days is dropped rather than forced into an edge column, which
+ * is what a `from` that does not match the data would otherwise produce.
+ */
+export function weekRows(
+  sessions: ScheduledSession[],
+  days: WeekDay[],
+  localTime: (session: ScheduledSession) => string,
+): { time: string; cells: (ScheduledSession[] | null)[] }[] {
+  const column = new Map(days.map((day, index) => [day.date, index]));
+  const byTime = new Map<string, (ScheduledSession[] | null)[]>();
+  for (const session of sessions) {
+    const index = column.get(session.local_date);
+    if (index === undefined) continue;
+    const time = localTime(session);
+    let row = byTime.get(time);
+    if (row === undefined) {
+      row = days.map(() => null);
+      byTime.set(time, row);
+    }
+    // A slot can hold more than one class: two studios run at six o'clock, and a grid that
+    // kept the last one would silently drop the other. `publishing.assess` shipped exactly
+    // that defect -- a dict keyed on the start instant -- and which class vanished depended
+    // on row order.
+    row[index] = [...(row[index] ?? []), session];
+  }
+  return [...byTime.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([time, cells]) => ({ time, cells }));
+}
+
+/**
+ * The three figures in ADM-SCH-01's header: "54 classes · 1 without a coach" and
+ * "78% average fill".
+ *
+ * **The average is over the week on screen**, which is exact: the calendar read is bounded by
+ * its date window rather than by a row limit, so every session in the week is here. That is
+ * the difference between this and summing a paginated list, which reports the first page as
+ * the whole.
+ *
+ * **A session with no places is excluded from the average rather than counted as zero.** A
+ * cancelled class is not a class nobody came to.
+ */
+export function weekSummary(sessions: ScheduledSession[]): {
+  classes: number;
+  unstaffed: number;
+  averageFillPercent: number | null;
+} {
+  const live = sessions.filter((session) => session.status !== "cancelled");
+  const withPlaces = live.filter((session) => session.places > 0);
+  const held = withPlaces.reduce((total, session) => total + session.held, 0);
+  const places = withPlaces.reduce((total, session) => total + session.places, 0);
+  return {
+    classes: live.length,
+    unstaffed: live.filter((session) => session.staff === null).length,
+    // Null rather than zero where there is nothing to average: "0% fill" is a claim about a
+    // week, and an empty week has not made one.
+    averageFillPercent: places === 0 ? null : Math.round((held / places) * 100),
+  };
 }

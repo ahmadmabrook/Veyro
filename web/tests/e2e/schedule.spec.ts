@@ -28,17 +28,16 @@ test.describe("the schedule board", () => {
     await page.goto("/schedule");
   });
 
-  test("lists the week the fixture's own rule generated", async ({ page }) => {
+  test("is a week grid of seven day columns, not a list", async ({ page }) => {
+    // **ADM-SCH-01 specifies a grid and this was a list**, which the compliance ledger
+    // carried as a fidelity gap. "What is on at six o'clock on Thursday" is a scan down a
+    // column in one and a search through forty rows in the other.
     await expect(page.getByRole("heading", { name: "Schedule", level: 1 })).toBeVisible();
-    // **Not an exact count.** One daily rule over seven days generates seven occurrences, and
-    // the board shows today onwards -- so the number drops by one each time UTC midnight
-    // passes between seeding and reading. That is the same "green depends on when it ran"
-    // shape as the fleet board's `Online`, and asserting 7 would make this spec fail at
-    // 00:00 UTC for a reason that has nothing to do with the product.
-    const rows = page.getByRole("row").filter({ hasText: "Evening yoga flow" });
-    const count = await rows.count();
-    expect(count).toBeGreaterThan(0);
-    expect(count).toBeLessThanOrEqual(7);
+    const headers = await page.locator(".ds-week thead th").allInnerTexts();
+    // Seven days plus the time column, whose own header is for a screen reader.
+    expect(headers).toHaveLength(8);
+    const days = headers.slice(1).filter((text) => text.trim().length > 0);
+    expect(days).toHaveLength(7);
   });
 
   test("renders every session in the site's timezone, not in UTC", async ({ page }) => {
@@ -46,12 +45,74 @@ test.describe("the schedule board", () => {
     // Asia/Amman, so the stored instant is 15:00 UTC -- and the first version of this board
     // sliced the ISO string and rendered `15:00` under a heading promising the site's own
     // timezone. Every other assertion in this file passed while it did.
-    const rows = page.getByRole("row").filter({ hasText: "Evening yoga flow" });
-    const times = await rows.locator("td").first().allInnerTexts();
+    //
+    // In a grid the time is the *row header*, which makes the assertion stronger: a session
+    // bucketed by its UTC hour would sit under a 15:00 row rather than merely print one.
+    const times = await page.locator(".ds-week-time").allInnerTexts();
     expect(times.length).toBeGreaterThan(0);
-    for (const text of times) {
-      expect(text, "a session is shown at its local time").toContain("18:00");
-    }
+    expect(times).toContain("18:00");
+    expect(times).not.toContain("15:00");
+  });
+
+  test("a class cell carries its coach and its fill, which the design's ClassCell names",
+    async ({ page }) => {
+      const cell = page.locator(".ds-class-cell").filter({ hasText: "Evening yoga flow" })
+        .first();
+      // The live assignment, which needed the calendar read to return it: one request for
+      // the week rather than one per cell.
+      await expect(cell.locator(".ds-class-coach")).not.toBeEmpty();
+      await expect(cell.locator(".ds-class-fill")).toContainText("/12");
+    });
+
+  test("severity is an edge-mark and never a cell fill", async ({ page }) => {
+    // The canvas, in as many words: "severity on the cell edge-mark only, never the cell
+    // fill". A grid of tinted blocks is a heat map, and a week with three marked classes
+    // would read as a week three-quarters wrong.
+    const spin = page.locator(".ds-class-cell").filter({ hasText: "Spin" }).first();
+    const [edge, background] = await spin.evaluate((el) => [
+      getComputedStyle(el).borderInlineStartWidth,
+      getComputedStyle(el).backgroundColor,
+    ]);
+    expect(edge).toBe("3px");
+    const plain = page.locator(".ds-class-cell").filter({ hasText: "Evening yoga flow" })
+      .first();
+    const ordinary = await plain.evaluate((el) => getComputedStyle(el).backgroundColor);
+    expect(background, "a severe cell is not tinted").toBe(ordinary);
+  });
+
+  test("a class with no coach says so rather than leaving the cell blank", async ({ page }) => {
+    // Null rather than an empty string, all the way from the read: a class with no coach is
+    // a gap somebody has to fill, and a blank reads as a name nobody typed.
+    const spin = page.locator(".ds-class-cell").filter({ hasText: "Spin" }).first();
+    await expect(spin.locator(".ds-class-coach")).toHaveText("No coach");
+  });
+
+  test("anchors the week's problems under the grid rather than only marking them",
+    async ({ page }) => {
+      // `AttentionRow(condensed, footer-anchored)`. The problem is stated once under the
+      // week rather than inferred from marks scattered across it.
+      const problems = page.locator("section").filter({
+        has: page.getByRole("heading", { name: "What needs you this week" }) });
+      await expect(problems).toBeVisible();
+      await expect(problems.locator(".ds-attention").first()).toContainText("Spin");
+    });
+
+  test("the grid is named once, not captioned twice", async ({ page }) => {
+    // A caption that repeats the heading is the sentence said twice -- invisible to a
+    // sighted reader and heard in full by a screen-reader user. This component shipped it:
+    // a hidden caption *and* a hidden time-column header both carrying the page's title.
+    await expect(page.locator(".ds-week")).toHaveAccessibleName("Schedule");
+    expect(await page.getByText("Schedule", { exact: true }).count()).toBeLessThanOrEqual(2);
+  });
+
+  test("the day view is the same read over one column", async ({ page }) => {
+    await page.getByRole("link", { name: "Day" }).click();
+    await expect(page.locator(".ds-week thead th")).toHaveCount(2);
+  });
+
+  test("names the view and the write it does not have", async ({ page }) => {
+    await expect(page.locator("main")).toContainText("The Coaches view");
+    await expect(page.locator("main")).toContainText("Add a class");
   });
 
   test("names the site's own timezone, because every occurrence was converted in it", async ({
@@ -75,8 +136,10 @@ test.describe("the schedule board", () => {
     // **The last occurrence, not the first.** The fixture substitutes the instructor on the
     // first one, so it holds the stand-in -- which is the next test's subject. This one is
     // the ordinary case: the rule's own requirements, held by the resources it named.
-    const rows = page.getByRole("row").filter({ hasText: "Evening yoga flow" });
-    await rows.last().getByRole("link").click();
+    // In a grid the sessions are cells rather than rows, and the last column is the last
+    // day of the week -- which is the occurrence no substitution touched.
+    const cells = page.locator(".ds-class-cell").filter({ hasText: "Evening yoga flow" });
+    await cells.last().getByRole("link").click();
     await expect(page.getByRole("heading", { name: "Evening yoga flow", level: 1 }))
       .toBeVisible();
     const holds = page
@@ -130,8 +193,8 @@ test.describe("the schedule board", () => {
   test("says nothing has changed on a session nothing changed", async ({ page }) => {
     // The seventh occurrence, which no substitution touched. An empty list would read as
     // "there is no record", which is a different fact from "nothing happened".
-    const rows = page.getByRole("row").filter({ hasText: "Evening yoga flow" });
-    await rows.last().getByRole("link").click();
+    const cells = page.locator(".ds-class-cell").filter({ hasText: "Evening yoga flow" });
+    await cells.last().getByRole("link").click();
     const changes = page
       .locator("section")
       .filter({ has: page.getByRole("heading", { name: "What changed" }) });

@@ -1,38 +1,63 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { AttentionQueue, AttentionRow } from "@/components/ds/attention-row";
 import { Banner } from "@/components/ds/banner";
-import { DataGrid } from "@/components/ds/data-grid";
-import { formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
+import { ClassCell, WeekGrid } from "@/components/ds/week-grid";
+import { fill, formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
 import { ApiError, currentSession, gate } from "@/lib/api";
 import { listLocations, type Location } from "@/lib/organization";
 import { presentation } from "@/lib/preferences";
-import { needsAttention, readCalendar } from "@/lib/scheduling";
+import {
+  needsAttention,
+  readCalendar,
+  weekDays,
+  weekRows,
+  weekSummary,
+  type ScheduledSession,
+} from "@/lib/scheduling";
 import { inZone } from "@/lib/time";
 
 /**
- * The week's schedule at one site: MOD-019's calendar, rendered as the board it is for.
+ * ADM-SCH-01 · CLASS SCHEDULE · WEEK GRID · CM · COMPACT.
  *
- * **A site has to be chosen before there is anything to show**, and the site is where the
- * timezone lives. MOD-019 reads every rota window and converts every occurrence in the
- * location's own zone, so a board that rendered instants without saying which zone they are
- * in would be inviting the one mistake the module is built to avoid. The zone is on the page.
+ * **This was a list and the design specifies a grid**, which the compliance ledger recorded
+ * as a fidelity gap from the day the design folder was read properly. The canvas is
+ * "CANVAS 1 · SCHEDULING · KHALDA · WEEK OF 18 AUGUST", seven day columns with a row per
+ * local start time, and it names its own components:
  *
- * **Three numbers per session, because capacity alone is not what a booking is counted
- * against.** `places` is the capacity plus whatever overbooking was declared, `held` is a sum
- * over the hold rows rather than a counter anybody stores, and `free` is the module's own
- * answer -- a surface that subtracted for itself would render a negative number for a session
- * whose overbooking was reduced after the holds were taken.
+ * > AdminShell · WeekGrid(7×4, horizontal scroll below bp.lg) · ClassCell ×13 (1 unstaffed,
+ * > 1 full, 1 low-fill) · AttentionRow(condensed, footer-anchored) · Compact density ·
+ * > **severity on the cell edge-mark only, never the cell fill**
  *
- * **`dst_adjusted` is the one flag worth marking.** A full class is ordinary and a cancelled
- * one is a decision somebody made; an occurrence stepped forward because its local time did
- * not exist that day is a session whose members were told a time that is not when it happens.
- * Nothing else on this board is an alert, deliberately.
+ * A list and a grid answer different questions. "What is on at six o'clock on Thursday" is a
+ * scan down a column in one and a search through forty rows in the other, and the design's
+ * own heading -- "The week, with one problem in it" -- is a sentence only a grid can earn.
+ *
+ * What is built and what is named:
+ *
+ * - **The header's three figures**: how many classes, how many without a coach, and the
+ *   average fill. All three are exact, because the calendar read is bounded by its date
+ *   window rather than by a row limit.
+ * - **The coach in every cell**, which needed the calendar read to return the live staff
+ *   assignment. `superseded_at IS NULL` is what "has a coach" means.
+ * - **Week and Day**, which are the same read over different spans. **Coaches is named as
+ *   missing**: that view is a grid of rota rows rather than of sessions, and nothing here
+ *   reads a resource's availability.
+ * - **"Add a class" is named as missing.** Publishing a schedule is a stepped-up permission
+ *   with no form in this app, which is the same gap the hierarchy has.
+ *
+ * Everything the list got right is kept, and all of it was hard-won: the zone is the site's
+ * own and every instant is converted in it (a class at 18:00 in Amman read as 15:00 under a
+ * heading promising the site's timezone, and 140 green assertions did not notice); `free` is
+ * the module's own answer rather than `places - held`; and `dst_adjusted` is the one flag
+ * worth marking, because a class moved by a clock change is one whose members were told a
+ * time that is not when it happens.
  */
 export default async function SchedulePage({
   searchParams,
 }: {
-  searchParams: Promise<{ site?: string; from?: string }>;
+  searchParams: Promise<{ site?: string; from?: string; span?: string }>;
 }) {
   const { locale } = await presentation();
   const text = (key: MessageKey) => t(locale, key);
@@ -77,7 +102,10 @@ export default async function SchedulePage({
   // reads at once. `from` is a date rather than an instant: the calendar is addressed by the
   // site's own local dates, which is what `local_date` on each session is.
   const from = isDate(params.from) ? params.from : today();
-  const to = addDays(from, 6);
+  // Week or day: the same read over a different span, which is the half of the design's view
+  // toggle this build can answer. A day is one column rather than a different grid.
+  const span = params.span === "day" ? "day" : "week";
+  const to = addDays(from, span === "day" ? 0 : 6);
   const calendar = await readCalendar(chosen, from, to).catch(toNull);
   if (calendar === null) {
     return (
@@ -87,18 +115,42 @@ export default async function SchedulePage({
     );
   }
 
+  const summary = weekSummary(calendar.sessions);
+  const localDate = (session: ScheduledSession) =>
+    inZone(session.starts_at, calendar.timezone).date;
+  const localTime = (session: ScheduledSession) =>
+    inZone(session.starts_at, calendar.timezone).time;
+  // **Today in the site's zone, not in the host's.** The column marked "today" is the one a
+  // reader at that club is standing in, and a board in Amman read from a UTC server is three
+  // hours out for three hours a night.
+  const todayAtSite = inZone(new Date().toISOString(), calendar.timezone).date;
+  const days = weekDays(from, locale, todayAtSite).slice(0, span === "day" ? 1 : 7);
+  const rows = weekRows(calendar.sessions, days, localTime);
+  // The sessions a reader has to act on, which the design anchors under the grid as a
+  // condensed row rather than scattering marks across the week.
+  const problems = calendar.sessions.filter(
+    (session) => session.staff === null || needsAttention(session));
+
   return (
     <Shell locale={locale}>
-      <dl className="facts">
-        <dt className="muted">{text("schedule.site")}</dt>
-        <dd style={{ margin: 0 }}>{calendar.location_name}</dd>
-        <dt className="muted">{text("schedule.timezone")}</dt>
-        <dd style={{ margin: 0 }}>
-          <span className="data" dir="ltr">
-            {calendar.timezone}
-          </span>
-        </dd>
-      </dl>
+      {/* The design's own sub-line: the site, the span and the average fill. */}
+      <p className="muted" style={{ margin: 0 }}>
+        {calendar.location_name}
+        {" · "}
+        <span className="data" dir="ltr">{from}</span>
+        {" – "}
+        <span className="data" dir="ltr">{to}</span>
+        {summary.averageFillPercent === null
+          ? null
+          : <>
+              {" · "}
+              {fill(locale, "schedule.averageFill",
+                { percent: summary.averageFillPercent })}
+            </>}
+        {" · "}
+        {t(locale, "schedule.timezone")}{" "}
+        <span className="data" dir="ltr">{calendar.timezone}</span>
+      </p>
 
       {sites !== null && sites.length > 1 ? (
         <nav
@@ -111,95 +163,127 @@ export default async function SchedulePage({
         </nav>
       ) : null}
 
+      {/* Week · Day. Links rather than controls, so the view survives being sent to
+          somebody and works with no JavaScript -- the same decision the members list's
+          filters make. `Coaches` is in the gaps below: it is a grid of rota rows rather
+          than of sessions, and nothing here reads a resource's availability. */}
+      <nav aria-label={text("schedule.views")} className="ds-filter-bar">
+        <Link
+          href={`/schedule?site=${chosen}&from=${from}`}
+          aria-current={span === "week" ? "page" : undefined}
+          className="ds-filter-chip"
+        >
+          {text("schedule.week")}
+        </Link>
+        <Link
+          href={`/schedule?site=${chosen}&from=${from}&span=day`}
+          aria-current={span === "day" ? "page" : undefined}
+          className="ds-filter-chip"
+        >
+          {text("schedule.day")}
+        </Link>
+      </nav>
+
       {calendar.sessions.length === 0 ? (
         <Banner severity="info">{text("schedule.empty")}</Banner>
       ) : (
         <>
-          <DataGrid
-            caption={text("schedule.title")}
-labelledBy="schedule-heading"
-            rows={calendar.sessions}
-            rowKey={(session) => session.session_id}
-            // A session stepped forward because its local time did not exist that day is one
-            // whose members were told a time that is not when it happens. A full class is
-            // ordinary and a cancelled one is a decision somebody made, so neither is marked.
-            rowSeverity={(session) => (needsAttention(session) ? "attention" : null)}
-            columns={[
-              {
-                header: text("schedule.when"),
-                kind: "date",
-                priority: 1,
-                // **In the site's zone, which is what the heading promises.** Slicing the ISO
-                // string renders the UTC wall time: a class at 18:00 in Amman read as 15:00,
-                // under a page that says it is showing the site's own timezone.
-                render: (session) => (
-                  <>
-                    <span className="data" dir="ltr">
-                      {inZone(session.starts_at, calendar.timezone).date}
-                    </span>{" "}
-                    <span className="data" dir="ltr">
-                      {inZone(session.starts_at, calendar.timezone).time}
-                    </span>
-                  </>
-                ),
-              },
-              {
-                header: text("schedule.session"),
-                kind: "text",
-                priority: 1,
-                render: (session) => (
-                  <>
-                    <Link href={`/schedule/${session.session_id}`}>{session.display_name}</Link>
-                    {needsAttention(session) ? (
-                      <div className="muted" style={{ fontSize: "var(--type-label-size)" }}>
-                        {text("schedule.dstMoved")}
-                      </div>
-                    ) : null}
-                  </>
-                ),
-              },
-              {
-                header: text("schedule.free"),
-                kind: "text",
-                // Priority 1: whether a class can still be booked is the question a coach or
-                // a front desk opens this board to answer.
-                priority: 1,
-                render: (session) =>
-                  session.free === 0 ? (
-                    <span className="muted">{text("schedule.full")}</span>
-                  ) : (
-                    <span className="data">{formatInteger(session.free, "latn")}</span>
-                  ),
-              },
-              {
-                header: text("schedule.status"),
-                kind: "status",
-                priority: 2,
-                render: (session) => session.status,
-              },
-              {
-                header: text("schedule.held"),
-                kind: "text",
-                priority: 3,
-                render: (session) => (
-                  <span className="data">{formatInteger(session.held, "latn")}</span>
-                ),
-              },
-              {
-                header: text("schedule.places"),
-                kind: "text",
-                priority: 3,
-                render: (session) => (
-                  <span className="data">{formatInteger(session.places, "latn")}</span>
-                ),
-              },
-            ]}
+          <WeekGrid
+            labelledBy="schedule-heading"
+            timeHeader={text("schedule.time")}
+            days={days}
+            rows={rows.map((row) => ({
+              time: row.time,
+              cells: row.cells.map((slot) =>
+                slot === null ? null : (
+                  <div key={slot[0]!.session_id} className="stack-tight">
+                    {slot.map((session) => (
+                      <ClassCell
+                        key={session.session_id}
+                        name={session.display_name}
+                        href={`/schedule/${session.session_id}`}
+                        // Never blank: a class with no coach is a gap somebody has to fill.
+                        coach={session.staff ?? text("schedule.noCoach")}
+                        fill={`${formatInteger(session.held, "latn")}/${
+                          formatInteger(session.places, "latn")}`}
+                        // **An edge-mark, never a fill.** A class with no coach is the
+                        // design's own severe cell; a full class is ordinary and a
+                        // cancelled one is a decision somebody made.
+                        severity={
+                          session.staff === null
+                            ? "critical"
+                            : needsAttention(session)
+                              ? "attention"
+                              : null
+                        }
+                        {...(needsAttention(session)
+                          ? { note: text("schedule.dstMoved") }
+                          : {})}
+                      />
+                    ))}
+                  </div>
+                )),
+            }))}
           />
+
+          {/* **Footer-anchored**, which the canvas states: the problem is stated once under
+              the week rather than inferred from marks scattered across it. */}
+          {problems.length > 0 ? (
+            <section className="page-section" aria-labelledby="schedule-problems">
+              <h2 id="schedule-problems">{text("schedule.problems")}</h2>
+              <AttentionQueue
+                heading="schedule-problems"
+                counts={fill(locale, "schedule.problemCount", { count: problems.length })}
+              >
+                {problems.map((session) => (
+                  <AttentionRow
+                    key={session.session_id}
+                    id={`sch-${session.session_id}`}
+                    severity={session.staff === null ? "critical" : "attention"}
+                    category={text(
+                      session.staff === null ? "cc.catStaffing" : "schedule.clockChange")}
+                    when={`${localDate(session)} ${localTime(session)}`}
+                    headline={session.display_name}
+                    // **Two bodies.** "0 places are held, so somebody is expecting a
+                    // class" is a sentence that contradicts itself, and the empty case is
+                    // the one worth saying something useful about -- the same correction
+                    // the Command Center's staffing row needed.
+                    evidence={
+                      session.staff === null
+                        ? session.held > 0
+                          ? fill(locale, "schedule.noCoachBody", { held: session.held })
+                          : text("schedule.noCoachBodyEmpty")
+                        : text("schedule.dstBody")
+                    }
+                    actions={
+                      <Link
+                        href={`/schedule/${session.session_id}`}
+                        className="ds-filter-chip"
+                      >
+                        {text("cc.openIt")}
+                      </Link>
+                    }
+                  />
+                ))}
+              </AttentionQueue>
+            </section>
+          ) : null}
+
           {/* **What "Taken" and "Free" are.** Without this a reader takes them for stored
               counters, and the one thing MOD-019 refuses to keep is a `held_count`. */}
           <p className="muted" style={{ margin: 0 }}>
             {text("schedule.heldExplained")}
           </p>
+
+          <section className="page-section">
+            <h2>{text("cc.gaps")}</h2>
+            <dl className="facts">
+              <dt className="muted">{text("schedule.coachesView")}</dt>
+              <dd style={{ margin: 0 }}>{text("schedule.coachesViewWhy")}</dd>
+              <dt className="muted">{text("schedule.addClass")}</dt>
+              <dd style={{ margin: 0 }}>{text("schedule.addClassWhy")}</dd>
+            </dl>
+          </section>
         </>
       )}
     </Shell>
