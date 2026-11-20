@@ -857,3 +857,135 @@ class PermissionClassTests(CatalogApiTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CatalogReadTests(CatalogApiTestCase):
+    """The reads a catalogue board needs, and the claim none of them makes.
+
+    **`resolve_price` is the sale, not a lookup**: it redeems the coupon it applies, so a
+    surface that wanted to show what something costs could not ask the one route that answers
+    authoritatively. These reads answer the part that is a fact about a stored row -- what was
+    written, in which book, in what window -- and say in the payload that a row in its window
+    is not the resolved price.
+    """
+
+    def test_a_product_read_carries_its_variants(self):
+        tenant_id = self.tenant()
+        made = self.product(tenant_id, variants=[
+            {"variant_key": "single", "display_name": "One hour", "term_days": 1},
+            {"variant_key": "ten", "display_name": "Ten hours", "entitlement_quantity": 10},
+        ])
+        read = self.client.get(
+            f"/catalog/products/{made['product_id']}",
+            headers=self.scoped(tenant_id, ["catalog.product.read"]))
+        self.assertEqual(read.status_code, 200, read.text)
+        body = read.json()
+        self.assertEqual(body["display_name"], "Personal training")
+        keys = [v["variant_key"] for v in body["variants"]]
+        self.assertEqual(sorted(keys), ["single", "ten"])
+        ten = next(v for v in body["variants"] if v["variant_key"] == "ten")
+        self.assertEqual(ten["entitlement_quantity"], 10)
+
+    def test_the_product_read_does_not_also_buy_the_price_read(self):
+        """MOD-013's finding: a permission's name is a claim about what it is for.
+
+        `GET /notifications/channels` was gated on the *template* read, so "see the
+        templates" also read what every message costs the tenant. A product read that
+        returned prices would be the same mistake one module over.
+        """
+        tenant_id = self.tenant()
+        made = self.product(tenant_id)
+        book_id = self.book(tenant_id)
+        self.price(tenant_id, book_id, made["variants"][0]["variant_id"], 4500)
+        head = self.scoped(tenant_id, ["catalog.product.read"])
+        read = self.client.get(f"/catalog/products/{made['product_id']}", headers=head)
+        self.assertEqual(read.status_code, 200, read.text)
+        self.assertNotIn("4500", read.text)
+        self.assertNotIn("amount_minor", read.text)
+        self.assertEqual(self.client.get("/catalog/prices", headers=head).status_code, 403)
+
+    def test_a_price_listing_says_which_rows_are_in_their_window(self):
+        tenant_id = self.tenant()
+        made = self.product(tenant_id)
+        book_id = self.book(tenant_id)
+        variant_id = made["variants"][0]["variant_id"]
+        self.price(tenant_id, book_id, variant_id, 4500)
+        listed = self.client.get(
+            f"/catalog/prices?variant_id={variant_id}",
+            headers=self.scoped(tenant_id, ["catalog.price.read"]))
+        self.assertEqual(listed.status_code, 200, listed.text)
+        rows = listed.json()["prices"]
+        self.assertEqual(len(rows), 1, rows)
+        self.assertEqual(rows[0]["amount_minor"], 4500)
+        self.assertTrue(rows[0]["in_window"])
+        self.assertEqual(rows[0]["variant_key"], "single")
+        # Stated rather than implied: three things decide a sale's price and this is one.
+        self.assertTrue(listed.json()["in_window_is_not_the_resolved_price"])
+
+    def test_a_superseded_price_is_hidden_by_default_and_listable_on_request(self):
+        """The old row stays, because that is what makes last March's order re-derivable.
+
+        `cat_prices` has no UPDATE grant on its figures, so a re-pricing is a new row. Showing
+        every row by default would bury the live one; hiding them entirely would hide the
+        history that is the point.
+        """
+        tenant_id = self.tenant()
+        made = self.product(tenant_id)
+        book_id = self.book(tenant_id)
+        variant_id = made["variants"][0]["variant_id"]
+        first = self.price(tenant_id, book_id, variant_id, 4500)
+        # **A supersession names the replacement row, it does not carry a new figure.** The
+        # replacement is written first and then pointed at, which is what keeps both rows
+        # immutable -- `cat_prices` has no UPDATE grant on its amounts.
+        replacement = self.price(
+            tenant_id, book_id, variant_id, 5000, "2026-06-01T00:00:00+00:00")
+        superseded = self.client.post(
+            f"/catalog/prices/{first['price_id']}/supersede",
+            json={"replacement_price_id": replacement["price_id"], **self.correlation()},
+            headers=self.headers(tenant_id))
+        self.assertEqual(superseded.status_code, 200, superseded.text)
+        head = self.scoped(tenant_id, ["catalog.price.read"])
+        live = self.client.get(f"/catalog/prices?variant_id={variant_id}", headers=head)
+        self.assertEqual([r["amount_minor"] for r in live.json()["prices"]], [5000])
+        every = self.client.get(
+            f"/catalog/prices?variant_id={variant_id}&include_superseded=true", headers=head)
+        amounts = sorted(r["amount_minor"] for r in every.json()["prices"])
+        self.assertEqual(amounts, [4500, 5000])
+        old = next(r for r in every.json()["prices"] if r["amount_minor"] == 4500)
+        self.assertIsNotNone(old["superseded_by"])
+        self.assertFalse(old["in_window"])
+
+    def test_a_promotion_listing_carries_its_window(self):
+        """An expired promotion stops applying because the resolver reads the window.
+
+        Nothing retires it, so a board showing `status: active` with no dates says a campaign
+        is running when it ended in March. The listing never returned the window at all.
+        """
+        tenant_id = self.tenant()
+        live = self.promotion(tenant_id)
+        expired = self.promotion(
+            tenant_id, effective_from="2026-01-01T00:00:00+00:00",
+            effective_to="2026-02-01T00:00:00+00:00")
+        listed = self.client.get(
+            "/catalog/promotions",
+            headers=self.scoped(tenant_id, ["catalog.promotion.read"]))
+        self.assertEqual(listed.status_code, 200, listed.text)
+        rows = {r["promotion_id"]: r for r in listed.json()}
+        self.assertTrue(rows[live]["in_window"])
+        self.assertEqual(rows[live]["status"], "active")
+        # Active and over: the pair that makes the window worth returning.
+        self.assertFalse(rows[expired]["in_window"])
+        self.assertEqual(rows[expired]["status"], "active")
+        self.assertIsNotNone(rows[expired]["effective_to"])
+
+    def test_an_unknown_product_is_a_404_and_a_bad_limit_refuses(self):
+        tenant_id = self.tenant()
+        head = self.scoped(tenant_id, ["catalog.product.read", "catalog.price.read"])
+        self.assertEqual(
+            self.client.get(f"/catalog/products/{uuid.uuid4()}", headers=head).status_code,
+            404)
+        self.assertEqual(
+            self.client.get("/catalog/products/not-a-uuid", headers=head).status_code, 422)
+        refused = self.client.get("/catalog/prices?limit=501", headers=head)
+        self.assertEqual(refused.status_code, 422, refused.text)
+        self.assertEqual(refused.json()["error"], "bad_limit")

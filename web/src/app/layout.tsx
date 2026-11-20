@@ -37,7 +37,7 @@ export default async function RootLayout({
   if (session) {
     const [
       organization, people, access, permissions, devices, operations, schedule, configuration,
-      finance,
+      finance, catalog,
     ] = await Promise.all([
       gate("tenancy.organization.read"),
       gate("people.person.read"),
@@ -48,6 +48,7 @@ export default async function RootLayout({
       gate("scheduling.schedule.read"),
       gate("config.definition.read"),
       gate("finance.ledger.read"),
+      gate("catalog.product.read"),
     ]);
     items = [
       // The overview is this session's own page -- what it is and what it may do -- so it
@@ -60,6 +61,7 @@ export default async function RootLayout({
       { href: "/fleet", label: "nav.devices", allowed: devices.allowed },
       { href: "/permissions", label: "nav.permissions", allowed: permissions.allowed },
       { href: "/configuration", label: "nav.configuration", allowed: configuration.allowed },
+      { href: "/catalog", label: "nav.catalog", allowed: catalog.allowed },
       { href: "/finance", label: "nav.finance", allowed: finance.allowed },
       { href: "/operations", label: "nav.operations", allowed: operations.allowed },
     ];

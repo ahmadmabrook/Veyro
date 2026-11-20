@@ -838,6 +838,28 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
     method: "POST", ...as(token), body: { expected_version: 1, correlation_id: cid() },
   });
 
+  // **Two promotions, one live and one that ended while still reading as active.** Nothing
+  // retires a promotion when its window closes -- the resolver reads the window -- so
+  // `status: active` on a campaign that finished in February is the ordinary state of this
+  // table, and a board showing the status alone says a campaign is running when it is not.
+  // One of each is the only way that distinction is on the screen rather than in a comment.
+  for (const [key, name, from, to] of [
+    [`live${Date.now().toString(36)}`, "January sale", "2026-01-01T00:00:00+00:00", null],
+    [`past${Date.now().toString(36)}`, "New year offer", "2026-01-01T00:00:00+00:00",
+     "2026-02-01T00:00:00+00:00"],
+  ]) {
+    const promo = await call("/catalog/promotions", {
+      method: "POST", ...as(token),
+      body: { promotion_key: key, display_name: name, promotion_kind: "automatic",
+              percent_bp: 1000, effective_from: from,
+              ...(to === null ? {} : { effective_to: to }),
+              correlation_id: cid() },
+    });
+    await call(`/catalog/promotions/${promo.promotion_id}/activate`, {
+      method: "POST", ...as(token), body: { correlation_id: cid() },
+    });
+  }
+
   const contractKey = `terms${Date.now().toString(36)}`;
   const version = await call("/memberships/contract-versions", {
     method: "POST", ...as(token),
@@ -1013,6 +1035,7 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
     personId: person.person_id,
     membershipId: membership.membership_id,
     retiredAccountId: retiring.account_id,
+    productId: product.product_id,
     closingPeriodKey: backDatedKey,
     membershipNumber: "GOLD-00042",
     invoiceNumber: invoice.document_number,
@@ -1051,6 +1074,7 @@ if (invokedDirectly) {
       `VEYRO_E2E_LOCATION_ID=${fixture.locationId}`,
       `VEYRO_E2E_SESSION_ID=${fixture.firstSessionId}`,
       `VEYRO_E2E_BOOKED_SESSION_ID=${fixture.bookedSessionId}`,
+      `VEYRO_E2E_PRODUCT_ID=${fixture.productId}`,
       "",
     ].join("\n"),
     { mode: 0o600 },

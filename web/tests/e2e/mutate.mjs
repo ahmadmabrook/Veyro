@@ -600,6 +600,45 @@ const MUTATIONS = [
     grep: "says reachability is worked out rather than stored",
   },
   {
+    id: "catalog-promotion-needs-window-and-status",
+    why: "nothing retires a promotion when its window closes, so a board showing the status "
+      + "alone says a campaign is running when it ended in February",
+    file: "src/lib/catalog.ts",
+    from: '  return promotion.status === "active" && promotion.in_window;',
+    to: '  return promotion.status === "active";',
+    runner: "vitest",
+    grep: "needs both the status and the window",
+  },
+  {
+    id: "catalog-percent-is-not-basis-points",
+    why: "1000 basis points is ten percent, and rendering the stored number is off by a "
+      + "hundred -- the units mistake this build's money rules exist to prevent",
+    file: "src/lib/catalog.ts",
+    from: "    return { kind: \"percent\", percent: promotion.percent_bp / 100 };",
+    to: "    return { kind: \"percent\", percent: promotion.percent_bp };",
+    runner: "vitest",
+    grep: "converts basis points",
+  },
+  {
+    id: "catalog-sellable-needs-an-active-book",
+    why: "a price in its window in a book nobody activated prices nothing, so a published "
+      + "product with only that price is a till that cannot sell it",
+    file: "src/lib/catalog.ts",
+    from: '      p.price_book_status === "active" &&',
+    to: "",
+    runner: "vitest",
+    grep: "price whose book was never activated",
+  },
+  {
+    id: "catalog-says-a-row-is-not-the-resolved-price",
+    why: "three things decide what a sale costs and a stored row answers one -- a figure "
+      + "without that sentence reads as a promise only the sale can make",
+    file: "src/app/catalog/page.tsx",
+    from: '              {text("catalog.notThePrice")}',
+    to: "              {null}",
+    grep: "is not the resolved price",
+  },
+  {
     id: "finance-closing-period-takes-no-trade",
     why: "`closing` is the state that surprises -- it admits the close's own entries and no "
       + "trade at all -- so a board reasoning from the status alone gets the one case that "

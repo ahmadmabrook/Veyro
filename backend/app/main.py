@@ -5513,6 +5513,15 @@ def create_app(
             tenant_pool, tenant_id, status=status, locale=locale, limit=limit
         )
 
+    @app.get("/catalog/products/{product_id}")
+    def get_catalog_product(
+        tenant_id: TenantId, session: Session, product_id: str, locale: str = "en",
+    ) -> dict[str, Any]:
+        """One product with its variants. A price needs `catalog.price.read`, not this."""
+        permit(session, "catalog.product.read")
+        return catalog.get_product(
+            tenant_pool, tenant_id, require_uuid(product_id, "product_id"), locale=locale)
+
     @app.post("/catalog/products/{product_id}/publish")
     def publish_product(
         tenant_id: TenantId, session: Session, product_id: str, body: VersionedBody
@@ -5577,6 +5586,20 @@ def create_app(
             tenant_pool, tenant_id, require_uuid(price_book_id, "price_book_id"),
             actor_id=session["identity_id"], correlation_id=body.correlation_id,
         )
+
+    @app.get("/catalog/prices")
+    def list_catalog_prices(
+        tenant_id: TenantId, session: Session, price_book_id: str | None = None,
+        variant_id: str | None = None, include_superseded: bool = False,
+        limit: int = 100,
+    ) -> dict[str, Any]:
+        """The price rows that were written. `resolve_price` is the sale, not a lookup."""
+        permit(session, "catalog.price.read")
+        return catalog.list_prices(
+            tenant_pool, tenant_id,
+            price_book_id=optional_uuid(price_book_id, "price_book_id"),
+            variant_id=optional_uuid(variant_id, "variant_id"),
+            include_superseded=include_superseded, limit=limit)
 
     @app.post("/catalog/prices", status_code=201)
     def create_price(

@@ -1888,6 +1888,27 @@ Known gaps, deliberate:
   or books a session, so the ledger is what COM-01 and OPS-01 will write to -- the same shape as
   MOD-012's `validated` install state and MOD-014's contact verification, and for the same
   reason.
+- **The catalogue can be read now, and `resolve_price` is still the only authority.**
+  `GET /catalog/products/{id}` carries a product's variants and `GET /catalog/prices` the
+  rows written against them, which is what a board needs -- but a row in its window is not
+  the resolved price: the book must also be active and must win the priority comparison
+  against every other book matching the sale's seven dimensions. `list_prices` returns
+  `in_window_is_not_the_resolved_price` so a surface says that rather than letting a figure
+  read as a promise. The product read deliberately carries **no** figure, because a price
+  needs `catalog.price.read` and returning both would make "see the catalog" buy "see what
+  every sale costs" -- MOD-013's `GET /notifications/channels` finding one module over.
+- **`list_promotions` never returned the promotion's own window**, which made the listing
+  unable to tell a live campaign from one that ended: nothing retires a promotion when its
+  window closes, because the resolver reads the window, so `status = 'active'` on a campaign
+  that finished in February is the ordinary state of that table. The window and a derived
+  `in_window` are returned now, for the same reason MOD-018 derives `admits_trade` -- the
+  implication is the fact, and a reader deriving it from two timestamps gets the open-ended
+  case wrong.
+- **A published product can stop being sellable with nothing changing its status.**
+  `publish_product` refuses one with no live price and nothing re-checks afterwards, so a
+  price superseded later, or a book nobody activated, leaves a published product the till
+  cannot sell. Nothing on the server notices; the board computes it from the two reads above,
+  which is a surface closing a gap rather than hiding one.
 - **A `manual` promotion is storable and unreachable.** `_applicable_promotions` excludes it
   along with `coupon`, because the whole meaning of the kind is "somebody applies this by hand"
   and nothing in this module does. The manual path here is `pricing.override`, which needs a
@@ -3704,6 +3725,29 @@ module's gate and renders them beside the person. Three gates, asked separately,
 reader may hold any subset -- a coach sees the membership and not the money -- and a refused
 block says it was refused rather than rendering empty.
 
+**MOD-016's board is three claims the module refuses to make, made legible.** No figure on
+it is "the price": `resolve_price` is the sale, because it redeems the coupon it applies, so
+the route that answers authoritatively cannot be called as a lookup. What a board can show is
+what was written, and the page says which of the three conditions it has checked -- the row's
+window, the book's status, and the priority comparison it cannot do.
+
+Two findings came out of building it, and one is in the existing read:
+
+  * **`list_promotions` never returned the promotion's own window.** Nothing retires a
+    promotion when its window closes, so a board showing `status: active` says a campaign is
+    running when it finished in February -- and the listing had no way to say otherwise. The
+    fixture seeds one live promotion and one that ended while still reading as active,
+    because with only a live one the distinction is a comment rather than a behaviour.
+  * **A published product can stop being sellable with nothing changing its status**, and
+    nothing on the server notices. The board computes it from the product read and the price
+    read, and names the right next action: `not_published` and `no_live_price` send somebody
+    to two different forms.
+
+And a third thing worth stating because it is a units trap rather than a product one: a
+promotion's `percent_bp` is basis points, so rendering the stored number puts `1000` on screen
+for ten percent. That is MOD-015's money discipline one field over, and an assertion about the
+word "worth" passes either way.
+
 **MOD-018's board is the period lock, made visible for the first time.** A closed period
 refuses a posting and `closing` admits the close's own entries and no trade at all, so an
 accountant beginning a month-end close is deliberately stopping that entity's till -- and
@@ -3771,8 +3815,8 @@ initially asserted the *wrong* number and failed for that reason, which is the c
 arriving in the evidence before it could arrive in the product.
 
 Known gaps: the surface covers the sign-in, the step-up, MOD-004, MOD-008, MOD-010, MOD-011,
-MOD-005, MOD-014, MOD-017, MOD-018, MOD-019, MOD-021 and MOD-022, plus MOD-020's roster on a
-session. The other six implemented modules have no screens yet,
+MOD-005, MOD-014, MOD-016, MOD-017, MOD-018, MOD-019, MOD-021 and MOD-022, plus MOD-020's
+roster on a session. The other five implemented modules have no screens yet,
 which is the bulk of the remaining work; MOD-019's own surface is read-only -- publishing a
 schedule, substituting an instructor and cancelling a session are all built on the server and
 none has a form, which is the same gap the hierarchy has and for the same reason: every one of
@@ -3792,8 +3836,9 @@ is part of it. So "implemented" above is accurate about the server plane and inc
 the product for every module except MOD-022, and the backlog has two halves.
 
 The first is the screens the eighteen built modules do not have. `web/` covers the sign-in, the
-step-up, MOD-004, MOD-005, MOD-008, MOD-010, MOD-011, MOD-014, MOD-017, MOD-018, MOD-019,
-MOD-020's roster, MOD-021 and MOD-022; `contracts/ui/screen-contracts.yaml` names the rest, and
+step-up, MOD-004, MOD-005, MOD-008, MOD-010, MOD-011, MOD-014, MOD-016, MOD-017, MOD-018,
+MOD-019, MOD-020's roster, MOD-021 and MOD-022; `contracts/ui/screen-contracts.yaml` names
+the rest, and
 the work is per module rather than per screen because each one needs its gate, its masked
 fields and its failure states wired the way those are. The second is the modules themselves: MOD-023 (Coach Workspace, which
 needs MOD-014 and MOD-008, both built) is the next eligible one, and MOD-006 is the Compose

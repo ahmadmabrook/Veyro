@@ -50,6 +50,8 @@ export type Fixture = {
    */
   deskEmail: string;
   deskPassword: string;
+  /** The published membership product MOD-016's board opens, with one variant and one price. */
+  productId: string;
 };
 
 const FILENAME = ".env.e2e.local";
@@ -97,6 +99,7 @@ export function fixture(): Fixture {
     "VEYRO_E2E_READER_PASSWORD",
     "VEYRO_E2E_DESK_EMAIL",
     "VEYRO_E2E_DESK_PASSWORD",
+    "VEYRO_E2E_PRODUCT_ID",
     "VEYRO_E2E_LOCATION_ID",
     "VEYRO_E2E_SESSION_ID",
     "VEYRO_E2E_BOOKED_SESSION_ID",
@@ -122,5 +125,6 @@ export function fixture(): Fixture {
     readerPassword: env.VEYRO_E2E_READER_PASSWORD!,
     deskEmail: env.VEYRO_E2E_DESK_EMAIL!,
     deskPassword: env.VEYRO_E2E_DESK_PASSWORD!,
+    productId: env.VEYRO_E2E_PRODUCT_ID!,
   };
 }

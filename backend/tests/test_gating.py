@@ -85,6 +85,8 @@ READ_ROUTES = [
     ("get", f"/people/{_ID}/timeline", None),
     ("get", f"/people/{_ID}/360", None),
     ("get", "/catalog/products", None),
+    ("get", f"/catalog/products/{_ID}", None),
+    ("get", "/catalog/prices", None),
     ("get", "/catalog/price-books", None),
     ("get", "/catalog/promotions", None),
     ("get", f"/catalog/resolutions/{_ID}", None),

@@ -1361,14 +1361,142 @@ def list_promotions(pool: Pool, tenant_id: str, *, limit: int = 50) -> list[dict
         rows = conn.execute(
             "SELECT promotion_id, promotion_key, display_name, promotion_kind, percent_bp,"
             " amount_minor, currency, stacking_group, priority, approval_threshold_bp,"
-            " status FROM plt01.cat_promotions ORDER BY promotion_key LIMIT %s",
+            " status, effective_from, effective_to"
+            " FROM plt01.cat_promotions ORDER BY promotion_key LIMIT %s",
             (max(1, min(limit, 500)),),
         ).fetchall()
+    now = datetime.now(UTC)
     return [{"promotion_id": str(r[0]), "promotion_key": r[1], "display_name": r[2],
              "promotion_kind": r[3], "percent_bp": r[4],
              "amount_minor": int(r[5]) if r[5] is not None else None, "currency": r[6],
              "stacking_group": r[7], "priority": int(r[8]),
-             "approval_threshold_bp": int(r[9]), "status": r[10]} for r in rows]
+             "approval_threshold_bp": int(r[9]), "status": r[10],
+             # **The window, which this listing never returned.** An expired promotion stops
+             # applying because the resolver reads the window, not because anything retires
+             # it -- so a board showing `status: active` with no dates says a campaign is
+             # running when it ended in March. `in_window` is derived here for the same
+             # reason MOD-018 derives `admits_trade`: the implication is the fact, and a
+             # reader deriving it from two timestamps gets the open-ended case wrong.
+             "effective_from": r[11].isoformat(),
+             "effective_to": r[12].isoformat() if r[12] else None,
+             "in_window": r[11] <= now and (r[12] is None or r[12] > now)}
+            for r in rows]
+
+
+def get_product(
+    pool: Pool, tenant_id: str, product_id: str, *, locale: str = "en",
+) -> dict[str, Any]:
+    """One product with its variants, which is what a price attaches to.
+
+    **Variants, and deliberately not their prices.** A price needs `catalog.price.read` and
+    this route is gated on `catalog.product.read`; returning both would make "see the product
+    catalog" also buy "see what every sale costs", which is MOD-013's finding -- its
+    `GET /notifications/channels` was gated on the *template* read, so seeing the templates
+    also read what every message costs the tenant. A surface that wants both asks twice.
+    """
+    with tenant_scope(pool, tenant_id) as conn:
+        row = conn.execute(
+            "SELECT p.product_key, p.product_type, p.status, p.merchandising_rank,"
+            " p.tax_category_id, p.version, t.display_name, t.description"
+            " FROM plt01.cat_products p"
+            " LEFT JOIN plt01.cat_product_texts t"
+            "   ON t.product_id = p.product_id AND t.locale = %s"
+            " WHERE p.product_id = %s",
+            (locale, product_id),
+        ).fetchone()
+        if row is None:
+            raise NotFound("product_not_found")
+        variants = conn.execute(
+            "SELECT variant_id, variant_key, display_name, entitlement_quantity,"
+            " term_days, sku, status, merchandising_rank"
+            " FROM plt01.cat_variants WHERE product_id = %s"
+            " ORDER BY merchandising_rank, variant_key",
+            (product_id,),
+        ).fetchall()
+    return {
+        "product_id": product_id, "product_key": str(row[0]),
+        "product_type": str(row[1]), "status": str(row[2]),
+        "merchandising_rank": int(row[3]),
+        "tax_category_id": str(row[4]) if row[4] else None,
+        "version": int(row[5]),
+        "display_name": row[6], "description": row[7],
+        "text_locale": locale if row[6] is not None else None,
+        "variants": [
+            {"variant_id": str(v[0]), "variant_key": str(v[1]), "display_name": str(v[2]),
+             "entitlement_quantity": int(v[3]) if v[3] is not None else None,
+             "term_days": int(v[4]) if v[4] is not None else None,
+             "sku": str(v[5]) if v[5] else None, "status": str(v[6]),
+             "merchandising_rank": int(v[7])}
+            for v in variants],
+    }
+
+
+def list_prices(
+    pool: Pool, tenant_id: str, *, price_book_id: str | None = None,
+    variant_id: str | None = None, include_superseded: bool = False, limit: int = 100,
+) -> dict[str, Any]:
+    """The price rows that were written, which is not the same as what a sale resolves to.
+
+    **`in_window` is about this row, not about the sale.** A price is in force only if its own
+    window is open *and* its book is active *and* the book wins the priority comparison against
+    every other book that matches the sale's seven dimensions. This read answers the first of
+    those three and says so, because a board that labelled a row "the price" would be making a
+    claim only `resolve_price` can make -- and `resolve_price` is the sale: it redeems the
+    coupon it applies, so it is not available as a lookup.
+
+    **A superseded price is excluded by default and listable on request.** `cat_prices` has no
+    UPDATE grant on its figures, so a re-pricing is a new row and the old one stays -- which is
+    what makes an order from last March re-derivable. Showing them all by default would bury
+    the live row; hiding them entirely would hide the history that is the point.
+    """
+    if limit < 1 or limit > 500:
+        raise InvalidRequest("bad_limit")
+    where = ["true"]
+    params: list[Any] = []
+    if price_book_id is not None:
+        where.append("p.price_book_id = %s")
+        params.append(price_book_id)
+    if variant_id is not None:
+        where.append("p.variant_id = %s")
+        params.append(variant_id)
+    if not include_superseded:
+        where.append("p.superseded_by IS NULL")
+    params.append(limit)
+    with tenant_scope(pool, tenant_id) as conn:
+        rows = conn.execute(
+            "SELECT p.price_id, p.price_book_id, p.variant_id, p.amount_minor, p.currency,"
+            " p.effective_from, p.effective_to, p.superseded_by, p.superseded_at,"
+            " b.price_book_key, b.status, b.priority, b.channel, b.customer_segment,"
+            " v.variant_key, v.product_id"
+            " FROM plt01.cat_prices p"
+            " JOIN plt01.cat_price_books b ON b.price_book_id = p.price_book_id"
+            " JOIN plt01.cat_variants v ON v.variant_id = p.variant_id"
+            f" WHERE {' AND '.join(where)}"
+            " ORDER BY b.price_book_key, v.variant_key, p.effective_from DESC, p.price_id"
+            " LIMIT %s",
+            tuple(params),
+        ).fetchall()
+    now = datetime.now(UTC)
+    return {
+        "prices": [
+            {"price_id": str(r[0]), "price_book_id": str(r[1]), "variant_id": str(r[2]),
+             "amount_minor": int(r[3]), "currency": str(r[4]),
+             "effective_from": r[5].isoformat(),
+             "effective_to": r[6].isoformat() if r[6] else None,
+             "superseded_by": str(r[7]) if r[7] else None,
+             "superseded_at": r[8].isoformat() if r[8] else None,
+             "price_book_key": str(r[9]), "price_book_status": str(r[10]),
+             "price_book_priority": int(r[11]), "channel": str(r[12]),
+             "customer_segment": str(r[13]),
+             "variant_key": str(r[14]), "product_id": str(r[15]),
+             "in_window": (r[7] is None and r[5] <= now
+                           and (r[6] is None or r[6] > now))}
+            for r in rows],
+        "count": len(rows), "limit": limit, "truncated": len(rows) == limit,
+        # Said in the payload rather than left to the reader: three things decide a sale's
+        # price and this read answers one of them.
+        "in_window_is_not_the_resolved_price": True,
+    }
 
 
 # ------------------------------------------------------------------------------ helpers
