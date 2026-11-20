@@ -141,14 +141,29 @@ test.describe("the membership blocks on a member's page", () => {
     // `outstanding` is not `status !== "paid"`: a credited or written-off document is settled
     // too, and counting either would put money on the screen nobody is going to collect.
     //
-    // **The fixture now seeds one paid invoice and one unpaid one**, which makes this a real
-    // assertion rather than a zero: the figure must be the unpaid document's gross and not
-    // the sum of both, and a page that reported "1 outstanding" would pass a count check
-    // while saying nothing about the money.
+    // **The arithmetic is unit-tested and this is about the rendering**, which is why the
+    // figure is checked as a relationship rather than pinned. An exact amount here asserts
+    // the seed: adding one invoice to the fixture broke this test while the page was right,
+    // and this spec's sibling in `finance.spec.ts` already carries that lesson in its own
+    // comment about totals. `outstandingMinor` is proved in `tests/component/membership`.
+    //
+    // What is left for a browser to prove: the page renders *money* rather than a count of
+    // documents, and it is not simply everything that was ever billed -- the fixture settles
+    // one invoice in full, so a figure equal to the total billed would mean `isOutstanding`
+    // had let a paid document through.
     const outstanding = page.getByRole("term").filter({ hasText: "Outstanding" });
     await expect(outstanding).toBeVisible();
     const value = outstanding.locator("xpath=following-sibling::dd[1]");
-    await expect(value).toContainText("30.16");
+    const owed = Number(((await value.textContent()) ?? "").replace(/[^0-9.]/g, ""));
+    expect(owed, "a money figure, not a count of documents").toBeGreaterThan(0);
+    expect(String(owed), "money carries minor units").toMatch(/\./);
+
+    const billed = (await page.locator(".ds-money").allTextContents())
+      .map((text) => Number(text.replace(/[^0-9.]/g, "")))
+      .filter((n) => Number.isFinite(n) && n > 0);
+    expect(billed.length, "the tab shows the documents behind the figure").toBeGreaterThan(1);
+    expect(owed, "a settled document is not outstanding")
+      .toBeLessThan(billed.reduce((sum, n) => sum + n, 0));
   });
 
   test("says the blocks are composed here rather than joined on the server", async ({

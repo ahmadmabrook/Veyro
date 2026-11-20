@@ -87,6 +87,7 @@ export function DataGrid<Row>({
   state = { kind: "ready" },
   restrictedLabel = "restricted",
   totalLabel = "Total",
+  countLabel,
   density = "compact",
 }: {
   /** The accessible name. A grid without one is a table a screen reader cannot introduce. */
@@ -110,6 +111,14 @@ export function DataGrid<Row>({
   restrictedLabel?: string;
   /** The row header for the totals row, when the grid has one. */
   totalLabel?: string;
+  /**
+   * The count under the grid, as a whole phrase: "2 sources", "14 rows".
+   *
+   * A string rather than a number because §25 asks the count to state what it is, and the
+   * number's position in that sentence differs by language -- which is the same reason the
+   * Command Center passes its queue counts already filled rather than as three integers.
+   */
+  countLabel?: string;
   density?: "compact" | "default" | "touch" | "spacious";
 }) {
   // Priority 1 columns are the ones that survive every width; the rest fold into the primary
@@ -267,7 +276,15 @@ export function DataGrid<Row>({
           loading…
         </div>
       ) : (
-        <div className="ds-grid-count">{rows.length}</div>
+        // **§25: "the count always states what is selected."** A bare numeral states
+        // nothing -- "2" under a table is a stray character to a reader who has not been
+        // told what it counts. So a caller passes the whole phrase, formatted and localised
+        // in its own locale, the way the Command Center's queue passes its counts.
+        //
+        // Without one this falls back to the number, which is what every grid in this build
+        // rendered before the slot existed. That fallback is a known gap rather than a
+        // default worth keeping: `contracts/ui/design-compliance.md` carries the list.
+        <div className="ds-grid-count">{countLabel ?? rows.length}</div>
       )}
     </div>
   );

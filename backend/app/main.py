@@ -6606,6 +6606,23 @@ def create_app(
         return commercial.collections_summary(
             tenant_pool, tenant_id, as_of=as_of, weeks=weeks, week_start=week_start)
 
+    @app.get("/reports/revenue")
+    def read_revenue_report(
+        tenant_id: TenantId, session: Session, as_of: date | None = None,
+    ) -> dict[str, Any]:
+        """ADM-RPT-02: collected, invoiced, outstanding and refunded, and what earned it.
+
+        Four figures rather than one labelled "revenue", which the canvas gives its own
+        reason for: "A report showing one number labelled revenue is the reason operators
+        cannot reconcile their own books."
+
+        Gated on `finance.revenue.read`, the same permission as `/finance/collections`: this
+        is the same money read at a different grain, and a second permission for it would be
+        a role that can see the month's total but not what made it up.
+        """
+        permit(session, "finance.revenue.read")
+        return commercial.revenue_report(tenant_pool, tenant_id, as_of=as_of)
+
     @app.get("/finance/dunning-cases")
     def read_dunning_cases(
         tenant_id: TenantId, session: Session, status: str = "open", limit: int = 50,

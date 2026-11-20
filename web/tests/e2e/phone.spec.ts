@@ -42,6 +42,12 @@ const surfaces: [string, string][] = [
   ["the finance board", "/finance"],
   ["the catalog board", "/catalog"],
   ["a product", `/catalog?product=${creds.productId}`],
+  ["the reports index", "/reports"],
+  // **The revenue report's grid grows a column per legal entity**, so it is the one table
+  // here whose width depends on the tenant rather than on the design. The entity columns are
+  // priority 3 and drop first, which is what this asserts in practice.
+  ["the revenue report", "/reports/revenue"],
+  ["the membership report", "/reports/membership"],
   // The widest table in the app: twenty areas against a column of prose.
   ["the privacy board", "/privacy"],
   ["the messages board", "/notifications"],

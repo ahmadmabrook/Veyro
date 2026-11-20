@@ -158,6 +158,13 @@ export default async function RootLayout({
       { href: "/payments", label: "nav.payments", allowed: payments.allowed,
         group: "nav.groupMoney", icon: "payments" },
       { href: "/finance", label: "nav.finance", allowed: finance.allowed,
+        group: "nav.groupMoney", icon: "payments" },
+      // **Reports is in the canvas's own MONEY group**, and the index gates itself: every
+      // entry asks the gate about the report behind it, so a session with no report to open
+      // still reaches a page that says which ones this build cannot produce at all. Gating
+      // the rail entry on one report's permission would hide that from the reader who most
+      // needs it.
+      { href: "/reports", label: "nav.reports", allowed: true,
         group: "nav.groupMoney", icon: "reports" },
       { href: "/catalog", label: "nav.catalog", allowed: catalog.allowed,
         group: "nav.groupMoney", icon: "point-of-sale" },

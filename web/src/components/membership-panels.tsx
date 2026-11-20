@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { Banner } from "@/components/ds/banner";
+import { MoneyValue } from "@/components/ds/money-value";
 import { formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
 import { gateAll, failureMessage } from "@/lib/api";
 import {
@@ -25,6 +26,14 @@ import {
  * block. A *surface* has no such restriction and every reason to compose: it calls each
  * module's own routes, through each module's own gate, and renders the result beside the
  * person MOD-014 answered for. That is where the two belong together.
+ *
+ * **Every figure here is a `MoneyValue`**, which it was not: this block formatted each
+ * amount into a plain string and put it in a `.data` span. §39 is explicit -- "never a bare
+ * number in a money column" -- and the kind is what carries the meaning: `owed` sets the
+ * outstanding figure in the critical ink, `aggregate` de-emphasises the minor units so a
+ * column of amounts aligns on the major, and `notApplicable` renders the em-dash for a
+ * member with no billing account rather than a zero that reads as "nothing owed". Found by
+ * a test looking for `.ds-money` on this tab and finding none.
  *
  * **Three gates, asked separately.** `membership.record.read`, `membership.entitlement.read`
  * and `finance.account.read` are three permissions and a reader may hold any subset -- a coach
@@ -186,9 +195,8 @@ async function Memberships({ personId, locale }: { personId: string; locale: Loc
                 )}
               </td>
               <td style={cell}>
-                <span className="data" dir="ltr">
-                  {money(row.amount_minor, row.currency)}
-                </span>
+                <MoneyValue kind="aggregate" amountMinor={row.amount_minor}
+                  currency={row.currency} />
                 {row.minimum_term_ends_on === null ? null : (
                   <div className="muted" style={caption}>
                     {text("membership.minimumTerm")}{" "}
@@ -337,9 +345,13 @@ async function Finance({ personId, locale }: { personId: string; locale: Locale 
         </dd>
         <dt className="muted">{text("membership.outstanding")}</dt>
         <dd style={{ margin: 0 }}>
-          <span className="data" dir="ltr">
-            {currency === "" ? "—" : money(owed, currency)}
-          </span>
+          {currency === "" ? (
+            // No account, so no currency: `notApplicable` is the kind for a figure that
+            // does not exist, and it renders the em-dash rather than a zero.
+            <MoneyValue kind="notApplicable" />
+          ) : (
+            <MoneyValue kind="owed" amountMinor={owed} currency={currency} />
+          )}
         </dd>
       </dl>
       {invoices.length === 0 ? (
@@ -384,14 +396,12 @@ async function Finance({ personId, locale }: { personId: string; locale: Locale 
                   </div>
                 </td>
                 <td style={cell}>
-                  <span className="data" dir="ltr">
-                    {money(invoice.gross_minor, invoice.currency)}
-                  </span>
+                  <MoneyValue kind="aggregate" amountMinor={invoice.gross_minor}
+                    currency={invoice.currency} />
                 </td>
                 <td style={cell}>
-                  <span className="data" dir="ltr">
-                    {money(invoice.paid_minor, invoice.currency)}
-                  </span>
+                  <MoneyValue kind="aggregate" amountMinor={invoice.paid_minor}
+                    currency={invoice.currency} />
                 </td>
                 <td style={cell}>{invoice.payment_status}</td>
                 <td style={cell}>{invoice.fiscal_status}</td>

@@ -25,3 +25,22 @@ export function Prose({ children }: { children: string }) {
     </>
   );
 }
+
+/**
+ * `Prose` in a paragraph of its own.
+ *
+ * **`Prose` is a fragment of inline spans, and that is easy to miss.** Every existing call
+ * site puts it inside a block that already exists -- a `dd`, a grid cell -- so it had never
+ * needed a wrapper. Used bare at the top level of a page it renders as a run of inline text,
+ * and four of them in a row become one paragraph: "...add up to the invoiced total.The design
+ * breaks this down by club." Found by looking at the page.
+ *
+ * So the block form exists rather than a comment telling the next caller to remember a `<p>`.
+ */
+export function ProseNote({ children }: { children: string }) {
+  return (
+    <p className="ds-note">
+      <Prose>{children}</Prose>
+    </p>
+  );
+}

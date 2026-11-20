@@ -2403,3 +2403,83 @@ a {
   font-size: var(--type-caption-size);
   color: var(--color-text-secondary);
 }
+
+/* ------------------------------------------------------------------ ADM-RPT-01, the index
+ *
+ * A list of reports, each a name, the line that says what is in it, and the roles the canvas
+ * prints at the row's end. The rows are separated by a rule rather than carded: the canvas
+ * draws them inside one bordered panel, and a card each would make six reports read as six
+ * unrelated things.
+ */
+.ds-report-list {
+  list-style: none;
+  /* The panel needs room from the lead above it and from the next section's heading, which
+     carries its own separation as a rule rather than a margin. Without it the heading sits
+     flush on the last row and reads as part of the list. Found by looking at the page. */
+  margin: var(--space-5) 0 var(--space-6);
+  padding: 0;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-card);
+  background: var(--color-surface-default);
+  overflow: hidden;
+}
+
+.ds-report-row {
+  display: flex;
+  gap: 16px;
+  align-items: baseline;
+  padding: 13px 16px;
+  border-block-end: 1px solid var(--color-border-subtle);
+}
+
+.ds-report-row:last-child {
+  border-block-end: 0;
+}
+
+.ds-report-main {
+  flex: 1;
+  min-inline-size: 0;
+}
+
+.ds-report-name {
+  font-size: var(--type-h4-size);
+  line-height: var(--type-h4-line);
+  font-weight: var(--type-h4-weight);
+  color: var(--color-text-link);
+}
+
+.ds-report-summary {
+  margin: 3px 0 0;
+  font-size: var(--type-bodySm-size);
+  line-height: var(--type-bodySm-line);
+  color: var(--color-text-secondary);
+}
+
+/* The roles sit at the logical end, so they mirror under `dir="rtl"` on their own. */
+.ds-report-roles {
+  flex-shrink: 0;
+  font-size: var(--type-eyebrow-size);
+  line-height: var(--type-eyebrow-line);
+  font-weight: var(--type-eyebrow-weight);
+  letter-spacing: 0.09em;
+  color: var(--color-text-tertiary);
+}
+
+@media (max-width: 599px) {
+  /* The roles drop under the name rather than squeezing the summary to two words. */
+  .ds-report-row {
+    flex-wrap: wrap;
+  }
+}
+
+/* An explanatory paragraph under a section: what a figure is, or what the screen cannot do.
+ * Secondary rather than tertiary, because these are read rather than scanned, and the
+ * contrast matrix puts the light end of the ramp out of reach for small text anyway. */
+.ds-note {
+  margin: 10px 0 0;
+  max-inline-size: 78ch;
+  font-size: var(--type-bodySm-size);
+  line-height: var(--type-bodySm-line);
+  color: var(--color-text-secondary);
+  text-wrap: pretty;
+}

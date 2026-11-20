@@ -710,3 +710,140 @@ is the subject. A member's record sits among records, where a green badge dilute
 one; an invoice's own state is what its screen is about and there is no row beside it. The
 `success` tone exists, is documented as almost always wrong, and is used on exactly one
 screen.
+
+## The canvases render, so the comparison is mechanical — `web/tests/visual/visual.mjs`
+
+The audit above compared routes against the registry and the screen-by-screen pass compared
+pages against canvases by reading them. Neither is a measurement. The canvases in
+`veyro-product-experience-design/project/` are **not flat mockups**: `support.js` is a design
+runtime that resolves every `{{ }}` placeholder and `sc-for` loop against React 18 from
+unpkg, so a canvas can be rendered in a real browser and a screen can be put beside its own
+approved drawing.
+
+The harness does two things and keeps them apart:
+
+1. **It renders both sides and writes them out**, so somebody looks. Every rendering defect
+   ever found in this surface was found by looking — a schedule board three hours wrong under
+   a heading naming the right timezone, seven screens scrolling sideways at phone width, a
+   metric value wrapping over two lines in Arabic. Four layers of green assertions saw none.
+2. **It extracts a computed style inventory from each side and diffs the sets.** No
+   element-to-element mapping is needed, and it catches the class a screenshot comparison
+   argues about: a weight, a size, a leading, a colour, a radius, a border.
+
+### It classifies rather than lists, and that is the whole difficulty
+
+**A raw diff produces findings whose correction would undo the design system.** The canvases
+are a sequence and the later ones correct the earlier ones. Two live cases, both from
+ADM-CC-01:
+
+| The canvas draws | The token tables say | Who is right |
+| --- | --- | --- |
+| page title at `500 24px/28.32px` | `type.h1` is "26 / 1.15 — Page title. One per screen." | the table; the app renders 26 |
+| 27 small-text elements in `#85807a` | `warm.500` — "FAIL under 18.66px on every surface. Large text, disabled controls and decoration only." | the table; matching it ships a measured AA failure |
+| body prose at weight `450` | `TYPE_SCALE` defines 400 and 500 | the table |
+
+The design system says this about its own history, in VALIDATE-1: the first specimens used
+light greys for member IDs, branch names and timestamps measuring 2.34:1 to 4.12:1, and *"had
+they been adopted as drawn they would have propagated into every surface in the product —
+precisely the retrofit-after-hi-fi failure that VALIDATE-1 exists to prevent."*
+
+So an unmatched declaration is a **deviation** only when the token tables sanction it;
+otherwise it is reported as **prototype drift** or as a pairing the **contrast matrix bars**.
+Both stay visible and neither is silently dropped. Thirty-nine raw differences on ADM-CC-01
+became sixteen worth reading.
+
+A type declaration is matched as a whole step — weight, size and leading ratio together.
+Matching on size alone calls an 11px glyph set at 11/11 the same thing as `type.caption` at
+11/1.40, which is how a prototype's incidental line-height gets reported as a specification.
+
+### What it found on ADM-CC-01, and what was fixed
+
+- **The queue has two row heights and this had one.** The canvas's own component list is
+  `AttentionRow ×5 (2 full, 2 condensed, 1 collapsed group)`. A condensed row is one line —
+  chip, headline, owner, one action — and it is what the queue uses for an item that needs
+  somebody but needs no explaining. The evidence sentence stays as the row's accessible
+  description rather than vanishing.
+- **Staffing escalated to `critical` and the canvas draws it `info`** — with eighteen members
+  booked. The severity is about what the item *is*, not how many it touches. `info` existed
+  in the scale and nothing used it.
+- **A UUID is not a label.** The collections breakdown printed `legal_entity_id`, so the one
+  figure naming a part of the business named it with 36 hex characters. Resolved through
+  `tenancy.organization.read` where the reader holds it, the id shown where they do not —
+  the same four lines `/finance` already uses.
+
+**Still open on this screen**, and named rather than approximated: the collapsed group row
+(*"Show 4 lower-priority items · inventory, document expiry, two coach notes"*), the resolved
+drawer, the global search entry and Tasks/Alerts in the chrome, and the twelve-week
+collections chart, which renders as a list of twelve rows rather than as bars.
+
+## ADM-RPT-01 … 05 — reports
+
+Built: the index and two reports. The read behind the revenue report was new.
+
+- **ADM-RPT-01 · index** — `/reports`. Gated per entry, which is the canvas's own point: *"A
+  Club Manager opening this screen sees four reports, not six. The two financial ones are
+  absent — not listed and locked."* **An absent module is a different absence from a refused
+  permission**, so Attendance, Coaching, Leads and Tax are named with the module each needs
+  rather than quietly missing — otherwise they read as four more grants to go and ask for,
+  which is false.
+- **ADM-RPT-02 · revenue** — `/reports/revenue`, over a new `GET /reports/revenue`. Four
+  figures because the canvas argues for four: *"Collected and invoiced are separate columns
+  because they are separate facts. A report showing one number labelled 'revenue' is the
+  reason operators cannot reconcile their own books."*
+- **ADM-RPT-03 · membership** — `/reports/membership`. Joins, leaves and net.
+
+Three decisions worth carrying:
+
+- **BY SOURCE is COM-02-R01's own vocabulary, not a taxonomy invented here.** An invoice line
+  carries a `variant_id`, a variant belongs to a product and a product has one of eight
+  declared types — so the split is a join. A line with no variant is its own row rather than
+  dropped or guessed at, which is what makes the sources add up. Classifying free-text
+  descriptions would be MOD-016's "a control decided by matching words in prose" on a revenue
+  report.
+- **Outstanding carries no comparison and says why.** The other three are flows; outstanding
+  is a position — what this month's invoices owe *now*. The comparable figure is a balance as
+  it stood a month ago, which this read does not reconstruct.
+- **ADM-RPT-03's churn chart is refused, twice over.** `mem_lifecycle_changes.reason` is free
+  prose, not a coded reason, so the five named bars would mean classifying what somebody
+  typed. And the prose is not shown either: MOD-017's own review rule is *"a health fact is a
+  health fact whatever column it is in"* — a freeze's reason is masked for exactly that, and
+  `membership.record.read` is routine and tenant-wide.
+
+**ADM-RPT-05, the export gate, is not built and the screen says why.** The canvas puts a
+tier-4 gate in front of every export of personal or financial data: a written reason recorded
+and visible to the tenant, an option to leave contact details out, and step-up before the file
+is produced. Nothing here exports anything, so the gate has nothing to stand in front of — and
+a button producing a file without that record would be the control removed rather than the
+feature added.
+
+### What building them found elsewhere
+
+- **The billing tab rendered every money figure as a plain string.** §39 is explicit — *"never
+  a bare number in a money column"* — and the kind is what carries the meaning: `owed` sets
+  the outstanding figure in the critical ink, `aggregate` de-emphasises the minor units so a
+  column aligns on the major, `notApplicable` renders the em-dash for a member with no
+  account rather than a zero that reads as "nothing owed". Found by a test looking for
+  `.ds-money` on that tab and finding none.
+- **`DataGrid` rendered a bare numeral under every grid in the app.** §25: *"the count always
+  states what is selected."* "2" under a table is a stray character to a reader who has not
+  been told what it counts. The component now takes the phrase; **33 call sites still pass
+  none and fall back to the number**, which is this ledger's open item rather than a default
+  worth keeping.
+- **`Prose` is a fragment of inline spans**, so four of them at the top level of a page became
+  one paragraph: *"...add up to the invoiced total.The design breaks this down by club."*
+  `ProseNote` is the block form, so the next page cannot make the same mistake.
+- **Two e2e tests asserted the seed rather than the product.** Adding one invoice to the
+  fixture broke a trial-balance figure and an outstanding figure while both pages were right.
+  `finance.spec.ts` already carried that lesson in its own comment about totals and had left
+  three amounts beside it pinned. Both are relationships now — revenue exceeds clearing
+  because revenue is earned at issue and clearing moves only on payment — with the exact
+  postings proved against a real database on the backend.
+
+## TestSprite
+
+The CLI is installed and authenticated against the owner's own workspace (Starter, 400
+credits a month, local tunnel available), and this repository already carries one run under
+`qa/testsprite/` from 2026-10-15. It is the independent layer the directive requires, and
+what it can reach is bounded by one thing worth stating: a frontend run reaches this machine
+through a tunnel and signs in with the fixture's synthetic credentials for a throwaway local
+tenant, which every fixture run rotates.

@@ -1165,6 +1165,51 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
             idempotency_key: randomUUID(), correlation_id: cid() },
   });
 
+  // **An invoice issued inside the current month, citing the catalogue variant it sold.**
+  //
+  // Two reasons, and both were found by opening ADM-RPT-02 and looking at it. The revenue
+  // report reads month to date, and the two invoices above are back-dated 90 and 45 days --
+  // so every figure on that screen was JOD 0.00 and the page could not be seen working at
+  // all. And BY SOURCE splits revenue by the product type behind each line, which it reaches
+  // through `variant_id`: a line with none is attributed to nothing and lands in the
+  // "raised by hand" row. With only hand-written lines seeded, the one column that makes
+  // that report a report had exactly one value, and a test asserting the split would have
+  // been asserting the fallback.
+  //
+  // So: a line that cites the Gold membership variant, and a second with no variant at all,
+  // which is the pair the distinction is about. This repository's own rule, from the
+  // mutation sweeps: a fixture carrying one of a kind renders and demonstrates nothing.
+  const thisMonth = await call("/finance/invoices", {
+    method: "POST", ...as(token),
+    body: {
+      billing_account_id: account.billing_account_id, series_id: series.series_id,
+      lines: [
+        { description: "Gold membership, monthly", quantity: 1,
+          unit_net_minor: 45000, tax_rate_bp: 1600,
+          variant_id: product.variants[0].variant_id },
+        { description: "Joining fee", quantity: 1, unit_net_minor: 1500, tax_rate_bp: 1600 },
+      ],
+      issued_on: isoDay(0),
+      due_on: isoDay(14),
+      jurisdiction: "JO",
+      idempotency_key: randomUUID(), correlation_id: cid(),
+    },
+  });
+  // Part paid, so OUTSTANDING carries a figure beside COLLECTED rather than a zero. An
+  // invoice paid in full would make three of the report's four cells agree, which is the
+  // one arrangement that cannot show they are four different facts.
+  const monthIntent = await call("/finance/payment-intents", {
+    method: "POST", ...as(token),
+    body: { billing_account_id: account.billing_account_id,
+            invoice_id: thisMonth.invoice_id, amount_minor: 20000,
+            method: "card", provider_key: "acme.payments",
+            idempotency_key: randomUUID(), correlation_id: cid() },
+  });
+  await call(`/finance/payment-intents/${monthIntent.intent_id}/settle`, {
+    method: "POST", ...as(token),
+    body: { outcome: "succeeded", correlation_id: cid() },
+  });
+
   // **One invoice the tax authority rejected**, which is ADM-CC-01's COMPLIANCE row. The
   // fiscal state and the payment state move independently -- the migration says so at
   // length -- so this one is *paid* and unfiled, which is exactly the case the design's own

@@ -3983,6 +3983,248 @@ def _collected_between(conn: Connection, span: reporting.Span) -> dict[str, int]
     return out
 
 
+def revenue_report(
+    pool: Pool, tenant_id: str, *, as_of: date | None = None,
+) -> dict[str, Any]:
+    """ADM-RPT-02: what was collected, what was invoiced, what is still owed, what went back.
+
+    **Four columns because they are four facts.** The canvas says so in its own words --
+    "Collected and invoiced are separate columns because they are separate facts. A report
+    showing one number labelled 'revenue' is the reason operators cannot reconcile their own
+    books." Collected is money received (`fin_payments` less settled refunds); invoiced is
+    money billed (`fin_invoices`, less credit notes, which MOD-017 stores positive and always
+    reads as a reduction); outstanding is what those invoices still owe; refunded is what went
+    back. A tenant that invoiced 41,592 and collected 41,280 is owed 312, and only a report
+    carrying both can say that.
+
+    **By source is COM-02-R01's own vocabulary, not a taxonomy invented here.** The design's
+    rows are Memberships, Personal training, Classes and Retail; an invoice line carries a
+    `variant_id`, a variant belongs to a product and a product has a `product_type` from a
+    closed set of eight. So the split is a join rather than a guess -- which matters, because
+    the alternative is classifying free-text descriptions, and a revenue report that sorted
+    "PT block of 10" into Retail by a keyword would be a confident wrong answer about money.
+    A line with no variant is its own row rather than being dropped or assigned: an invoice
+    raised by hand is real revenue and silently losing it would make the sources disagree with
+    the total.
+
+    **Outstanding is floored per invoice, not in aggregate.** An overpaid invoice owes nothing;
+    summing signed differences would let it cancel out a genuinely unpaid one and report a
+    tenant as settled while an invoice goes unchased.
+
+    **Every figure is bounded at both ends and compared against the same point last month.**
+    MOD-011's `evaluate_budget` read a one-sided window and reported a January budget 45%
+    consumed as 143%, then wrote three insert-only alert rows about it.
+    """
+    as_of = as_of or _today()
+    this = reporting.month_to_date(as_of)
+    before = reporting.comparable_previous_month(as_of)
+    with tenant_scope(pool, tenant_id) as conn:
+        collected = {
+            name: _collected_between(conn, span)
+            for name, span in (("this", this), ("previous", before))
+        }
+        invoiced = {name: _invoiced_between(conn, span)
+                    for name, span in (("this", this), ("previous", before))}
+        refunded = {name: _refunded_between(conn, span)
+                    for name, span in (("this", this), ("previous", before))}
+        outstanding = _outstanding_for(conn, this)
+        sources = {name: _by_source_between(conn, span)
+                   for name, span in (("this", this), ("previous", before))}
+        entity_sources = _by_source_and_entity(conn, this)
+    currencies = sorted(
+        {c for group in (collected, invoiced, refunded) for by in group.values() for c in by}
+        | set(outstanding)
+    )
+    types = sorted({t for by in sources.values() for (t, c) in by})
+
+    def source_rows(currency: str) -> list[dict[str, Any]]:
+        rows = []
+        for product_type in types:
+            now = sources["this"].get((product_type, currency), 0)
+            then = sources["previous"].get((product_type, currency), 0)
+            if now == 0 and then == 0:
+                continue
+            rows.append({
+                "product_type": product_type,
+                "net_minor": now,
+                "previous_minor": then,
+                "change_bp": reporting.change_bp(now, then),
+                "by_legal_entity": [
+                    {"legal_entity_id": entity, "net_minor": amount}
+                    for (t, c, entity), amount in sorted(entity_sources.items())
+                    if t == product_type and c == currency],
+            })
+        return rows
+
+    return {
+        "as_of": as_of.isoformat(),
+        "month_to_date": {"first": this.first.isoformat(), "last": this.last.isoformat(),
+                          "days": this.days},
+        "comparable_previous_month": {
+            "first": before.first.isoformat(), "last": before.last.isoformat(),
+            "days": before.days, "clamped": before.days != this.days},
+        "currencies": [
+            {
+                "currency": currency,
+                "collected_minor": collected["this"].get(currency, 0),
+                "collected_previous_minor": collected["previous"].get(currency, 0),
+                "collected_change_bp": reporting.change_bp(
+                    collected["this"].get(currency, 0),
+                    collected["previous"].get(currency, 0)),
+                "invoiced_minor": invoiced["this"].get(currency, 0),
+                "invoiced_previous_minor": invoiced["previous"].get(currency, 0),
+                "invoiced_change_bp": reporting.change_bp(
+                    invoiced["this"].get(currency, 0), invoiced["previous"].get(currency, 0)),
+                # Outstanding is a position, not a flow: it is what the invoices issued in this
+                # window still owe *now*, so there is no previous-month figure to compare it
+                # against. One would be the balance as it stood a month ago, which is a
+                # different question and needs the payments that have landed since.
+                "outstanding_minor": outstanding.get(currency, 0),
+                "refunded_minor": refunded["this"].get(currency, 0),
+                "refunded_previous_minor": refunded["previous"].get(currency, 0),
+                # **The figure the sources add up to, stated rather than left to be derived.**
+                # `invoiced_minor` is gross and a source row is net, so a reader checking the
+                # breakdown against the headline figure finds it short by the tax -- which
+                # reads as a breakdown that lost a row. Revenue is net by convention here
+                # (MOD-011's `gross_margin` reads invoices net of tax and of the partner
+                # share, because tax is collected on somebody else's behalf), so the sources
+                # are net and the total they make is returned beside them.
+                "invoiced_net_minor": sum(
+                    amount for (_, c), amount in sources["this"].items() if c == currency),
+                "by_source": source_rows(currency),
+            }
+            for currency in currencies],
+        "outstanding_is_a_position":
+            "outstanding_minor is what the invoices issued in this window still owe as of "
+            "now, not a figure for the window. It carries no previous-month comparison "
+            "because the comparable number is a balance as it stood then, which this read "
+            "does not reconstruct.",
+        "unattributed_source_is_a_row":
+            "An invoice line with no variant cannot be attributed to a product type and is "
+            "returned as the `unattributed` source rather than dropped, so the sources sum to "
+            "invoiced_net_minor exactly.",
+        "sources_are_net":
+            "A source row is net of tax, and invoiced_minor is gross. Tax is collected on "
+            "somebody else's behalf and is not revenue, so the breakdown is net and "
+            "invoiced_net_minor is the figure it adds up to.",
+        "by_location_is_unavailable":
+            "The design breaks this down by club. Money here carries a legal entity, and "
+            "MOD-004's hierarchy puts brands and locations under one -- so three clubs under "
+            "a single entity are one row. by_legal_entity is what the data supports.",
+    }
+
+
+def _invoiced_between(conn: Connection, span: reporting.Span) -> dict[str, int]:
+    """Invoices issued in `span`, less credit notes issued in it, per currency.
+
+    A credit note is stored positive and always read as a reduction -- MOD-017's rule, and
+    MOD-011's `gross_margin` was blind to exactly this and reported a 50% margin on a period
+    that earned nothing.
+    """
+    out: dict[str, int] = {}
+    for kind, sign in (("invoice", 1), ("credit_note", -1)):
+        rows = conn.execute(
+            "SELECT currency, sum(gross_minor) FROM plt01.fin_invoices"
+            " WHERE document_kind = %s AND issued_on >= %s AND issued_on <= %s"
+            " GROUP BY currency",
+            (kind, span.first, span.last),
+        ).fetchall()
+        for row in rows:
+            out[str(row[0])] = out.get(str(row[0]), 0) + sign * int(row[1])
+    return out
+
+
+def _refunded_between(conn: Connection, span: reporting.Span) -> dict[str, int]:
+    """Refunds settled in `span`, per currency, as a positive figure."""
+    rows = conn.execute(
+        "SELECT p.currency, sum(r.amount_minor) FROM plt01.fin_refunds r"
+        " JOIN plt01.fin_payments p ON p.payment_id = r.payment_id"
+        " WHERE r.status = 'succeeded'"
+        "   AND r.settled_at::date >= %s AND r.settled_at::date <= %s"
+        " GROUP BY p.currency",
+        (span.first, span.last),
+    ).fetchall()
+    return {str(r[0]): int(r[1]) for r in rows}
+
+
+def _outstanding_for(conn: Connection, span: reporting.Span) -> dict[str, int]:
+    """What the invoices issued in `span` still owe, floored per invoice.
+
+    Floored per invoice because an overpaid one owes nothing: summing signed differences lets
+    it cancel a genuinely unpaid invoice and reports the tenant settled while one goes
+    unchased.
+    """
+    rows = conn.execute(
+        # **`fin_payments` has no status column**, by design: the table has no UPDATE grant at
+        # all, so a row exists only because the money arrived and a payment recorded in error
+        # is reversed by a refund rather than edited. Filtering on one would have been a
+        # predicate against a column that is not there.
+        "SELECT i.currency, greatest("
+        "   i.gross_minor"
+        "   - coalesce((SELECT sum(p.amount_minor) FROM plt01.fin_payments p"
+        "       WHERE p.invoice_id = i.invoice_id), 0)"
+        "   + coalesce((SELECT sum(r.amount_minor) FROM plt01.fin_refunds r"
+        "       JOIN plt01.fin_payments rp ON rp.payment_id = r.payment_id"
+        "       WHERE rp.invoice_id = i.invoice_id AND r.status = 'succeeded'), 0)"
+        "   - coalesce((SELECT sum(c.gross_minor) FROM plt01.fin_invoices c"
+        "       WHERE c.credits_invoice_id = i.invoice_id"
+        "         AND c.document_kind = 'credit_note'), 0)"
+        " , 0)"
+        " FROM plt01.fin_invoices i"
+        " WHERE i.document_kind = 'invoice'"
+        "   AND i.issued_on >= %s AND i.issued_on <= %s",
+        (span.first, span.last),
+    ).fetchall()
+    out: dict[str, int] = {}
+    for row in rows:
+        out[str(row[0])] = out.get(str(row[0]), 0) + int(row[1])
+    return out
+
+
+_SOURCE_SELECT = (
+    " FROM plt01.fin_invoice_lines l"
+    " JOIN plt01.fin_invoices i ON i.invoice_id = l.invoice_id"
+    " LEFT JOIN plt01.cat_variants v ON v.variant_id = l.variant_id"
+    " LEFT JOIN plt01.cat_products pr ON pr.product_id = v.product_id"
+    " WHERE i.document_kind = 'invoice'"
+    "   AND i.issued_on >= %s AND i.issued_on <= %s"
+)
+
+
+def _by_source_between(
+    conn: Connection, span: reporting.Span,
+) -> dict[tuple[str, str], int]:
+    """Net revenue per (product type, currency) for invoices issued in `span`."""
+    rows = conn.execute(
+        "SELECT coalesce(pr.product_type, 'unattributed'), i.currency, sum(l.net_minor)"
+        + _SOURCE_SELECT
+        + " GROUP BY 1, 2",
+        (span.first, span.last),
+    ).fetchall()
+    return {(str(r[0]), str(r[1])): int(r[2]) for r in rows}
+
+
+def _by_source_and_entity(
+    conn: Connection, span: reporting.Span,
+) -> dict[tuple[str, str, str], int]:
+    """The same split, broken down by the billing account's legal entity."""
+    rows = conn.execute(
+        "SELECT coalesce(pr.product_type, 'unattributed'), i.currency,"
+        " b.legal_entity_id, sum(l.net_minor)"
+        " FROM plt01.fin_invoice_lines l"
+        " JOIN plt01.fin_invoices i ON i.invoice_id = l.invoice_id"
+        " JOIN plt01.fin_billing_accounts b"
+        "   ON b.billing_account_id = i.billing_account_id"
+        " LEFT JOIN plt01.cat_variants v ON v.variant_id = l.variant_id"
+        " LEFT JOIN plt01.cat_products pr ON pr.product_id = v.product_id"
+        " WHERE i.document_kind = 'invoice'"
+        "   AND i.issued_on >= %s AND i.issued_on <= %s"
+        " GROUP BY 1, 2, 3",
+        (span.first, span.last),
+    ).fetchall()
+    return {(str(r[0]), str(r[1]), str(r[2])): int(r[3]) for r in rows}
+
+
 def membership_summary(
     pool: Pool, tenant_id: str, *, as_of: date | None = None, expiring_within_days: int = 7,
 ) -> dict[str, Any]:

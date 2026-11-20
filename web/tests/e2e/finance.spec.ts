@@ -108,24 +108,45 @@ test.describe("the finance board", () => {
     // substring, so `"REV"` matches CONTRA (whose kind is `contra_revenue`) and REV-OLD as
     // well -- and `.first()` then asserted against whichever the chart's ordering put first.
     // Matching the account code cell exactly is the only form that names one row.
-    const clearing = balance
-      .getByRole("row")
-      .filter({ has: page.getByText("CLEARING", { exact: true }) });
-    await expect(clearing).toContainText("JOD 52.20");
-    const revenue = balance
-      .getByRole("row")
-      .filter({ has: page.getByText("REV", { exact: true }) });
-    // **Both invoices' net, because revenue is earned when a document is issued and not when
-    // it is paid.** The fixture issues the 45.000 membership and a 26.000 personal-training
-    // invoice that is overdue and in recovery; CLEARING above carries only the first, because
-    // only the first was paid. Those two cells disagreeing is exactly the confusion MOD-017
-    // keeps apart -- "membership state, billing state and access state are related but never
-    // conflated" -- so asserting both is the point rather than an inconvenience.
-    await expect(revenue).toContainText("JOD 71.00");
-    const tax = balance
-      .getByRole("row")
-      .filter({ has: page.getByText("TAX", { exact: true }) });
-    await expect(tax).toContainText("JOD 11.36");
+    // **Revenue exceeds clearing, and that gap is the assertion.** Revenue is earned when a
+    // document is issued; `provider_clearing` moves only when one is paid. The fixture
+    // issues more than it collects -- an overdue invoice in recovery and a part-paid one --
+    // so the two cells disagree, which is exactly the confusion MOD-017 keeps apart:
+    // "membership state, billing state and access state are related but never conflated".
+    //
+    // **Stated as a relationship rather than three amounts**, which is this test's own
+    // lesson applied one block further down: the totals above were un-pinned for being "one
+    // figure that moves every time the fixture seeds another document", and these three were
+    // left pinned and duly broke the next time it did. The exact postings are proved against
+    // a real database in `backend/tests/test_ledger_api.py`.
+    const figure = async (code: string) => {
+      const row = balance.getByRole("row").filter({ has: page.getByText(code, { exact: true }) });
+      const cells = (await row.locator("td").allInnerTexts())
+        .map((text) => text.trim())
+        .filter((text) => /JOD/.test(text))
+        .map((text) => Number(text.replace(/[^0-9.]/g, "")));
+      return cells;
+    };
+    // An exact cell, not a substring: Playwright's `hasText` is a case-insensitive substring,
+    // so "REV" matches CONTRA (kind `contra_revenue`) and REV-OLD as well.
+    // A trial balance row is a debit cell and a credit cell; a row missing one has not
+    // rendered, which is a failure rather than a value to compare against.
+    const rowCells = async (code: string) => {
+      const found = await figure(code);
+      expect(found.length, `${code} has a debit and a credit cell`).toBe(2);
+      return { debit: found[0] as number, credit: found[1] as number };
+    };
+    const clearing = await rowCells("CLEARING");
+    const revenue = await rowCells("REV");
+    const tax = await rowCells("TAX");
+
+    expect(clearing.debit, "a card payment lands in clearing").toBeGreaterThan(0);
+    // Nothing has relieved it: there is no settlement import in this build, so the payout
+    // line that would move it to the bank has never been written.
+    expect(clearing.credit, "no settlement has moved it to the bank").toBe(0);
+    expect(revenue.credit, "revenue is earned at issue, so it outruns what was collected")
+      .toBeGreaterThan(clearing.debit);
+    expect(tax.credit, "tax is credited on every issued document").toBeGreaterThan(0);
   });
 
   test("marks a retired account rather than letting it read as live", async ({ page }) => {

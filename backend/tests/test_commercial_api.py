@@ -2997,6 +2997,159 @@ class CommandCentreReadTests(CommercialApiTestCase):
             self.assertNotIn(name.split()[0], answer.text, path)
 
 
+class RevenueReportTests(CommercialApiTestCase):
+    """ADM-RPT-02's read, which has to actually run against the schema.
+
+    **Every assertion here exists because lint cannot see a column name.** `ruff` and `mypy`
+    pass on a query naming a column that does not exist, and this repository has already
+    shipped one -- a read against `acc_credentials.rotating_window_seconds`, a column taken
+    from a module's prose rather than its migration. These tests execute the SQL, so a wrong
+    name is a failure rather than a 500 somebody finds by opening a page.
+
+    The one that matters most: `fin_payments` has no `status` column. The table has no UPDATE
+    grant at all, so a row exists only because the money arrived, and the first version of
+    the outstanding query filtered on `p.status = 'succeeded'`.
+    """
+
+    def report(self, tenant_id: str, **params: str) -> dict:
+        query = "&".join(f"{k}={v}" for k, v in params.items())
+        read = self.client.get(
+            f"/reports/revenue{'?' + query if query else ''}",
+            headers=self.scoped(tenant_id, ["finance.revenue.read"]))
+        self.assertEqual(read.status_code, 200, read.text)
+        return dict(read.json())
+
+    def currency_block(self, report: dict, currency: str = "JOD") -> dict:
+        blocks = [b for b in report["currencies"] if b["currency"] == currency]
+        self.assertTrue(blocks, f"no {currency} block in {report['currencies']}")
+        return dict(blocks[0])
+
+    #: The helper issues every invoice on 2026-01-01, and a payment's `received_at` is
+    #: `now()` and not settable -- so the invoice side of this report and the collected side
+    #: fall in different months, and each assertion has to ask for its own window. Reading
+    #: both through one `as_of` is how a test asserts a zero and calls it agreement.
+    INVOICE_MONTH = "2026-01-31"
+
+    def test_the_query_runs_against_the_real_schema(self):
+        """The whole read, end to end, on a tenant that has billed and been paid.
+
+        The point of this one is that it executes. `fin_payments` has no `status` column and
+        the first version of the outstanding query filtered on one; lint passed.
+        """
+        tenant_id = self.tenant()
+        self.paid(tenant_id)
+        report = self.report(tenant_id, as_of=self.INVOICE_MONTH)
+        self.assertIn("currencies", report)
+        self.assertIn("outstanding_is_a_position", report)
+
+    def test_collected_and_invoiced_are_separate_figures(self):
+        """The canvas's own reason for four columns, as arithmetic.
+
+        An invoice raised and left unpaid moves `invoiced` and not `collected`. A report
+        carrying one number labelled "revenue" cannot express that, which is the sentence the
+        design puts under this table.
+        """
+        tenant_id = self.tenant()
+        billing = self.billing(tenant_id, self.person(tenant_id))
+        self.invoice(tenant_id, billing, amount=4500, rate_bp=1600)
+        block = self.currency_block(self.report(tenant_id, as_of=self.INVOICE_MONTH))
+        self.assertEqual(block["collected_minor"], 0)
+        self.assertGreater(block["invoiced_minor"], 0)
+
+    def test_an_unpaid_invoice_is_outstanding_and_a_paid_one_is_not(self):
+        tenant_id = self.tenant()
+        billing = self.billing(tenant_id, self.person(tenant_id))
+        issued = self.invoice(tenant_id, billing, amount=4500, rate_bp=1600)
+        owed = self.currency_block(
+            self.report(tenant_id, as_of=self.INVOICE_MONTH))["outstanding_minor"]
+        self.assertEqual(owed, int(issued["gross_minor"]))
+
+        # Paid in full: outstanding is a position, so the payment counts against the January
+        # invoice whenever it landed. Collected is a flow and belongs to the month it landed
+        # in, which is why that half is read through today's window.
+        other = self.tenant()
+        self.paid(other)
+        january = self.currency_block(self.report(other, as_of=self.INVOICE_MONTH))
+        self.assertEqual(january["outstanding_minor"], 0)
+        self.assertGreater(self.currency_block(self.report(other))["collected_minor"], 0)
+
+    def test_outstanding_is_floored_per_invoice_so_an_overpayment_cannot_hide_a_debt(self):
+        """Summing signed differences lets an overpaid invoice cancel an unpaid one.
+
+        A tenant with one invoice overpaid by 100 and another unpaid by 100 is owed 100, not
+        nothing -- and a report saying nothing is owed is a report that stops somebody
+        chasing it.
+        """
+        tenant_id = self.tenant()
+        owner = self.headers(tenant_id)
+        billing = self.billing(tenant_id, self.person(tenant_id))
+        overpaid = self.invoice(tenant_id, billing, amount=1000, rate_bp=0)
+        intent = self.client.post("/finance/payment-intents", json={
+            "billing_account_id": billing["billing_account_id"],
+            "invoice_id": overpaid["invoice_id"],
+            "amount_minor": int(overpaid["gross_minor"]) + 10_000,
+            "method": "card", "provider_key": "acme.payments",
+            "idempotency_key": f"pi-{uuid.uuid4().hex[:8]}", **self.correlation()},
+            headers=owner)
+        self.assertEqual(intent.status_code, 201, intent.text)
+        settled = self.client.post(
+            f"/finance/payment-intents/{intent.json()['intent_id']}/settle",
+            json={"outcome": "succeeded", **self.correlation()}, headers=owner)
+        self.assertEqual(settled.status_code, 200, settled.text)
+
+        unpaid = self.invoice(tenant_id, billing, amount=1000, rate_bp=0)
+        owed = self.currency_block(
+            self.report(tenant_id, as_of=self.INVOICE_MONTH))["outstanding_minor"]
+        self.assertEqual(owed, int(unpaid["gross_minor"]))
+
+    def test_a_line_with_no_variant_is_its_own_source_rather_than_being_dropped(self):
+        """So the sources sum to the invoiced total.
+
+        An invoice raised by hand is real revenue. Dropping it would make a reader's own
+        addition disagree with the figure above the table, and assigning it to a product type
+        would be a confident wrong answer about which part of the business earned it.
+        """
+        tenant_id = self.tenant()
+        billing = self.billing(tenant_id, self.person(tenant_id))
+        self.invoice(tenant_id, billing, amount=4500, rate_bp=0)
+        block = self.currency_block(self.report(tenant_id, as_of=self.INVOICE_MONTH))
+        kinds = {row["product_type"] for row in block["by_source"]}
+        self.assertEqual(kinds, {"unattributed"})
+        # **Against the net, not the gross.** A source row is net of tax and
+        # `invoiced_minor` is gross, so a reader adding the breakdown up finds it short by
+        # the tax unless the figure it reconciles to is returned beside it. Found by
+        # rendering the report and checking the column by hand: 46.50 under a headline of
+        # 53.94 reads as a breakdown that lost a row.
+        self.assertEqual(
+            sum(row["net_minor"] for row in block["by_source"]), block["invoiced_net_minor"])
+
+    def test_the_sources_add_up_to_the_net_and_the_net_is_below_the_gross(self):
+        """The identity a reader checks a breakdown against, with tax actually charged."""
+        tenant_id = self.tenant()
+        billing = self.billing(tenant_id, self.person(tenant_id))
+        self.invoice(tenant_id, billing, amount=4500, rate_bp=1600)
+        block = self.currency_block(self.report(tenant_id, as_of=self.INVOICE_MONTH))
+        self.assertEqual(
+            sum(row["net_minor"] for row in block["by_source"]), block["invoiced_net_minor"])
+        self.assertLess(block["invoiced_net_minor"], block["invoiced_minor"])
+
+    def test_a_source_row_breaks_down_by_legal_entity(self):
+        tenant_id = self.tenant()
+        billing = self.billing(tenant_id, self.person(tenant_id))
+        self.invoice(tenant_id, billing, amount=4500, rate_bp=0)
+        block = self.currency_block(self.report(tenant_id, as_of=self.INVOICE_MONTH))
+        row = block["by_source"][0]
+        self.assertEqual(
+            [e["legal_entity_id"] for e in row["by_legal_entity"]],
+            [billing["legal_entity_id"]])
+
+    def test_the_report_needs_the_revenue_permission(self):
+        tenant_id = self.tenant()
+        refused = self.client.get(
+            "/reports/revenue", headers=self.scoped(tenant_id, ["membership.record.read"]))
+        self.assertEqual(refused.status_code, 403, refused.text)
+
+
 class PaymentsLedgerTests(CommercialApiTestCase):
     """ADM-PAY-01's read: money in, money out and money contested on one axis.
 
