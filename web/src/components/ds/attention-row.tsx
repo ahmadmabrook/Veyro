@@ -89,6 +89,7 @@ export function AttentionRow({
   evidence,
   actions,
   owner,
+  density = "full",
 }: {
   /** Used for the headline's id, so the article can be labelled by it. */
   id: string;
@@ -107,35 +108,69 @@ export function AttentionRow({
   actions?: ReactNode;
   /** Who owns it, or "unassigned". The design renders both rather than hiding one. */
   owner?: string;
+  /**
+   * `full` or `condensed` — ADM-CC-01's own component list is
+   * "AttentionRow ×5 (2 full, 2 condensed, 1 collapsed group)".
+   *
+   * **A condensed row is one line: chip, headline, owner, one action.** It is what the queue
+   * uses for an item that still needs somebody but does not need explaining -- a class with
+   * no coach, leads nobody has rung. Giving every row the full treatment is what makes a
+   * queue of nine unreadable, and dropping the small ones entirely is worse: the design's
+   * answer is a third height, not a cut.
+   *
+   * The evidence sentence is **not** rendered here, so a caller must still write one: it is
+   * the row's accessible description, and a condensed row that carried no explanation at all
+   * would be a headline with nowhere to go for anybody who needs more than a glance.
+   */
+  density?: "full" | "condensed";
 }) {
+  const condensed = density === "condensed";
   return (
     <li>
       <article
         className="ds-attention"
         aria-labelledby={`${id}-headline`}
+        {...(condensed ? { "aria-describedby": `${id}-evidence` } : {})}
         data-severity={severity}
+        data-density={density}
       >
         {/* **A 3px block, not a border.** The canvas draws it as its own flex child so it
             runs the row's full height whatever the content does; a `border-inline-start`
             would stop at the padding box and leave the mark short on a tall row. */}
         <span className="ds-attention-edge" aria-hidden="true" />
         <div className="ds-attention-body">
-          <div className="ds-attention-eyebrow">
-            <span className="ds-attention-category">{category}</span>
-            <span className="ds-attention-when">{when}</span>
-            {money ? (
-              <span className="ds-attention-money">
-                {money.amount}{" "}
-                <span className="ds-attention-meaning">{money.meaning}</span>
-              </span>
-            ) : null}
-          </div>
-          <h3 id={`${id}-headline`} className="ds-attention-headline">
-            {headline}
-          </h3>
-          <p className="ds-attention-evidence">{evidence}</p>
-          {actions ? <div className="ds-attention-actions">{actions}</div> : null}
-          {owner ? <p className="ds-attention-owner">{owner}</p> : null}
+          {condensed ? (
+            <div className="ds-attention-line">
+              <span className="ds-attention-category">{category}</span>
+              <h3 id={`${id}-headline`} className="ds-attention-headline">
+                {headline}
+              </h3>
+              <p id={`${id}-evidence`} className="ds-visually-hidden">
+                {evidence}
+              </p>
+              {owner ? <span className="ds-attention-owner">{owner}</span> : null}
+              {actions ? <span className="ds-attention-actions">{actions}</span> : null}
+            </div>
+          ) : (
+            <>
+              <div className="ds-attention-eyebrow">
+                <span className="ds-attention-category">{category}</span>
+                <span className="ds-attention-when">{when}</span>
+                {money ? (
+                  <span className="ds-attention-money">
+                    {money.amount}{" "}
+                    <span className="ds-attention-meaning">{money.meaning}</span>
+                  </span>
+                ) : null}
+              </div>
+              <h3 id={`${id}-headline`} className="ds-attention-headline">
+                {headline}
+              </h3>
+              <p className="ds-attention-evidence">{evidence}</p>
+              {actions ? <div className="ds-attention-actions">{actions}</div> : null}
+              {owner ? <p className="ds-attention-owner">{owner}</p> : null}
+            </>
+          )}
         </div>
       </article>
     </li>

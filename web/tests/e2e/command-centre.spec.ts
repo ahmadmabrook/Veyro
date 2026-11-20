@@ -120,6 +120,34 @@ test.describe("the Command Center", () => {
     await expect(money.locator(".ds-attention-category")).toHaveText(/MONEY/i);
   });
 
+  test("staffing is a condensed row in the info tone, as the canvas draws it", async ({
+    page,
+  }) => {
+    // ADM-CC-01's own component list: "AttentionRow ×5 (2 full, 2 condensed, 1 collapsed
+    // group)". STAFFING and LEADS are the condensed pair, and the canvas draws STAFFING in
+    // `info` **with eighteen members booked** -- so the severity is about what the item is,
+    // not how many it touches. This screen escalated it to `critical` once anybody was
+    // affected, which reads as a sensible rule and is not the one the design draws.
+    const staffing = row(page, "staffing");
+    await expect(staffing).toHaveAttribute("data-severity", "info");
+    await expect(staffing).toHaveAttribute("data-density", "condensed");
+
+    // One line: the chip, the headline and the action share a row rather than stacking.
+    const chip = await staffing.locator(".ds-attention-category").boundingBox();
+    const headline = await staffing.locator(".ds-attention-headline").boundingBox();
+    expect(chip).not.toBeNull();
+    expect(headline).not.toBeNull();
+    expect(Math.abs((chip!.y + chip!.height / 2) - (headline!.y + headline!.height / 2)))
+      .toBeLessThan(6);
+
+    // **The explanation is still there, for anybody who needs more than a glance.** A
+    // condensed row drops the paragraph from the page and keeps it as the row's accessible
+    // description -- dropping it outright would be a headline with nowhere to go.
+    const describedBy = await staffing.getAttribute("aria-describedby");
+    expect(describedBy).toBeTruthy();
+    await expect(page.locator(`#${describedBy}`)).not.toBeEmpty();
+  });
+
   test("the money figure sits at the logical end and names what it means", async ({ page }) => {
     const money = row(page, "money");
     await expect(money.locator(".ds-attention-money")).toContainText("at risk");

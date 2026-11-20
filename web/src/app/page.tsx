@@ -5,7 +5,8 @@ import { AttentionQueue, AttentionRow } from "@/components/ds/attention-row";
 import { Banner } from "@/components/ds/banner";
 import { MetricCell, MetricRow } from "@/components/ds/metric-cell";
 import { fill, formatInteger, formatMoney, t, type MessageKey } from "@/i18n/locale";
-import { ApiError, currentSession, gateAll } from "@/lib/api";
+import { ApiError, currentSession, gate, gateAll } from "@/lib/api";
+import { listLegalEntities, type LegalEntity } from "@/lib/organization";
 import {
   AI_PANEL,
   UNANSWERABLE,
@@ -130,6 +131,22 @@ export default async function CommandCentre() {
     read(maySchedule.allowed, () => readUnstaffed()),
   ]);
 
+  // **A UUID is not a label.** The collections block breaks down by legal entity, and the
+  // first version printed the entity's id -- so the one figure on this page that names a part
+  // of the business named it with 36 hex characters. `tenancy.organization.read` is MOD-004's
+  // and `finance.revenue.read` is MOD-015's, so a reader may hold the figure without the
+  // name: looked up when it can be, the id shown when it cannot. Exactly the arrangement
+  // `/finance` already makes for its trial balance, which is why this is the same four lines
+  // rather than a second way of doing it.
+  let entities: LegalEntity[] = [];
+  if ((await gate("tenancy.organization.read")).allowed) {
+    try {
+      entities = await listLegalEntities();
+    } catch {
+      entities = [];
+    }
+  }
+
   const money = (amountMinor: number, currency: string) =>
     formatMoney(amountMinor, currency, numbering, locale);
 
@@ -250,6 +267,7 @@ export default async function CommandCentre() {
                   : {})}
                 headline={item.title}
                 evidence={item.body}
+                {...(item.density ? { density: item.density } : {})}
                 {...(item.owner ? { owner: item.owner } : {})}
                 // **Real buttons, primary first.** The canvas draws a filled primary, an
                 // outlined secondary and a ghost -- `Button(primary, secondary, ghost)` is in
@@ -284,7 +302,7 @@ export default async function CommandCentre() {
       </section>
 
       {collections.allowed && collections.data ? (
-        <Charts data={collections.data} locale={locale} money={money} />
+        <Charts data={collections.data} locale={locale} money={money} entities={entities} />
       ) : null}
 
       <section className="page-section">
@@ -468,10 +486,13 @@ function Charts({
   data,
   locale,
   money,
+  entities,
 }: {
   data: Collections;
   locale: "en" | "ar";
   money: (minor: number, currency: string) => string;
+  /** Empty where the reader may not list them, which is a refusal rather than an absence. */
+  entities: LegalEntity[];
 }) {
   const block = data.collected[0];
   if (block === undefined) return null;
@@ -517,7 +538,12 @@ function Charts({
       <dl className="facts">
         {block.by_legal_entity.map((entity) => (
           <div key={entity.legal_entity_id} style={{ display: "contents" }}>
-            <dt className="muted data" dir="ltr">{entity.legal_entity_id}</dt>
+            <dt className="muted">
+              {entities.find((e) => e.legal_entity_id === entity.legal_entity_id)
+                ?.registered_name ?? (
+                <span className="data" dir="ltr">{entity.legal_entity_id}</span>
+              )}
+            </dt>
             <dd className="data" style={{ margin: 0 }}>
               {money(entity.collected_minor, block.currency)}
             </dd>
@@ -693,9 +719,15 @@ function staffingItems(panel: Panel<Unstaffed>, locale: "en" | "ar"): AttentionI
   return [{
     key: "cc-staffing",
     category: "staffing",
-    // A class with members booked is the urgent one, which is why the held count is in the
-    // body rather than only in the title: a gap nobody has booked is a different morning.
-    severity: panel.data.members_affected > 0 ? "critical" : "attention",
+    // **The canvas draws staffing in `info`, with eighteen members booked.** The first
+    // version here escalated to `critical` once anybody was affected, which reads as a
+    // sensible rule and disagrees with the one screen the design draws: MONEY and COMPLIANCE
+    // are error, RETENTION is warning, and STAFFING and LEADS are info even when a full
+    // class is waiting. The severity is about what the item *is*, not how many it touches --
+    // a class with no coach is a thing to assign, and colouring it like a failed payment is
+    // what teaches somebody to stop reading the colour.
+    severity: "info",
+    density: "condensed",
     when: `${panel.data.from_date} → ${panel.data.to_date}`,
     title: fill(locale, "cc.staffingTitle", { count: panel.data.count }),
     // Two bodies: "0 places are held across them" is a sentence with nothing in it, and the

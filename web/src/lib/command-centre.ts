@@ -110,6 +110,13 @@ export type AttentionItem = {
   actions: Action[];
   /** "unassigned", or who owns it. The design renders both. */
   owner?: string;
+  /**
+   * `full` or `condensed` — ADM-CC-01's component list is "AttentionRow ×5 (2 full,
+   * 2 condensed, 1 collapsed group)", and the canvas draws STAFFING and LEADS on one line.
+   * Absent means full, because a row that needs explaining is the default and the short
+   * form is the exception somebody opts into.
+   */
+  density?: "full" | "condensed";
 };
 
 /**

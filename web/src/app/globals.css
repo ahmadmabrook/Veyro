@@ -1312,6 +1312,45 @@ a {
   background: var(--color-semantic-info);
 }
 
+.ds-attention[data-severity="info"] .ds-attention-category {
+  color: var(--color-semantic-info);
+}
+
+/* The condensed row — ADM-CC-01's "2 full, 2 condensed". One line: chip, headline, owner,
+ * one action. The headline drops to body weight because at this height it is the whole row
+ * rather than the top of a block, and `min-inline-size:0` lets it ellipsize instead of
+ * pushing the action off the end. */
+.ds-attention[data-density="condensed"] .ds-attention-body {
+  padding: 9px 15px;
+}
+
+.ds-attention-line {
+  display: flex;
+  gap: 11px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.ds-attention[data-density="condensed"] .ds-attention-headline {
+  flex: 1;
+  min-inline-size: 0;
+  font-size: var(--type-body-size);
+  line-height: var(--type-body-line);
+  font-weight: var(--type-body-weight);
+  margin: 0;
+}
+
+.ds-attention[data-density="condensed"] .ds-attention-owner {
+  margin: 0;
+  margin-inline-start: auto;
+}
+
+.ds-attention[data-density="condensed"] .ds-attention-actions {
+  margin: 0;
+  display: inline-flex;
+  gap: 8px;
+}
+
 .ds-attention-body {
   flex: 1;
   min-inline-size: 0;
