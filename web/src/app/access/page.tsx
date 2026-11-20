@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { Banner } from "@/components/ds/banner";
+import { DataGrid } from "@/components/ds/data-grid";
 import { formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
 import { ApiError, currentSession, gate } from "@/lib/api";
 import { listZones, type ZoneSummary } from "@/lib/access";
@@ -60,37 +61,59 @@ export default async function DoorBoardPage() {
       {zones.length === 0 ? (
         <Banner severity="info">{text("access.empty")}</Banner>
       ) : (
-        <table
-          tabIndex={0}
-          aria-labelledby="doors-heading"
-          style={{ width: "100%", borderCollapse: "collapse" }}
-        >
-          <thead>
-            <tr>
-              <th scope="col" style={headCell}>
-                {text("access.zone")}
-              </th>
-              <th scope="col" style={headCell}>
-                {text("access.risk")}
-              </th>
-              <th scope="col" style={headCell}>
-                {text("access.readers")}
-              </th>
-              <th scope="col" style={headCell}>
-                {text("access.policy")}
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {zones.map((zone) => (
-              <tr key={zone.zone_id}>
-                <td style={cell}>
+        <DataGrid
+          caption={text("access.title")}
+labelledBy="doors-heading"
+          rows={zones}
+          rowKey={(zone) => zone.zone_id}
+          // A zone with no live policy decides nothing, which is the one row on this board
+          // somebody has to act on.
+          rowSeverity={(zone) => (zone.live_policy_version === null ? "critical" : null)}
+          columns={[
+            {
+              header: text("access.zone"),
+              kind: "text",
+              priority: 1,
+              render: (zone) => (
+                <>
                   <Link href={`/access/${zone.zone_id}`}>{zone.display_name}</Link>
-                  <div className="muted data" dir="ltr" style={{ fontSize: "var(--type-caption-size)" }}>
+                  <div
+                    className="muted data"
+                    dir="ltr"
+                    style={{ fontSize: "var(--type-caption-size)" }}
+                  >
                     {zone.zone_key}
                   </div>
-                </td>
-                <td style={cell}>
+                </>
+              ),
+            },
+            {
+              header: text("access.policy"),
+              kind: "status",
+              // Priority 1 with the zone: whether a door decides anything is the question,
+              // and a board that dropped it at a narrow width would read as a list of
+              // healthy zones.
+              priority: 1,
+              render: (zone) =>
+                zone.live_policy_version === null ? (
+                  <span style={{ color: "var(--color-text-critical)" }}>
+                    {text("access.noPolicy")}
+                  </span>
+                ) : (
+                  <>
+                    {text("access.policyVersion")}{" "}
+                    <span className="data">
+                      {formatInteger(zone.live_policy_version, "latn")}
+                    </span>
+                  </>
+                ),
+            },
+            {
+              header: text("access.risk"),
+              kind: "text",
+              priority: 2,
+              render: (zone) => (
+                <>
                   {text(`access.risk.${zone.risk_class}` as MessageKey)}
                   <div className="muted" style={{ fontSize: "var(--type-caption-size)" }}>
                     {text("access.offlineCeiling")}{" "}
@@ -99,34 +122,27 @@ export default async function DoorBoardPage() {
                     </span>{" "}
                     {text("access.hours")}
                   </div>
-                </td>
-                <td style={cell}>
-                  {/* Entry and exit counted separately, because they are different
-                      guarantees: a zone with no exit reader cannot measure occupancy, and
-                      one with no entry reader decides nothing at all. */}
+                </>
+              ),
+            },
+            {
+              header: text("access.readers"),
+              kind: "text",
+              priority: 3,
+              // Entry and exit counted separately, because they are different guarantees: a
+              // zone with no exit reader cannot measure occupancy, and one with no entry
+              // reader decides nothing at all.
+              render: (zone) => (
+                <>
                   <span className="data">{formatInteger(zone.entry_points, "latn")}</span>{" "}
                   {text("access.direction.entry")} ·{" "}
                   <span className="data">{formatInteger(zone.exit_points, "latn")}</span>{" "}
                   {text("access.direction.exit")}
-                </td>
-                <td style={cell}>
-                  {zone.live_policy_version === null ? (
-                    <span style={{ color: "var(--color-text-critical)" }}>
-                      {text("access.noPolicy")}
-                    </span>
-                  ) : (
-                    <>
-                      {text("access.policyVersion")}{" "}
-                      <span className="data">
-                        {formatInteger(zone.live_policy_version, "latn")}
-                      </span>
-                    </>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                </>
+              ),
+            },
+          ]}
+        />
       )}
     </Shell>
   );
@@ -146,18 +162,4 @@ function Shell({ locale, children }: { locale: Locale; children: React.ReactNode
   );
 }
 
-const headCell: React.CSSProperties = {
-  textAlign: "start",
-  padding: "var(--space-2) var(--space-3)",
-  borderBottom: "1px solid var(--color-border-default)",
-  background: "var(--color-surface-sunken)",
-  fontSize: "var(--type-label-size)",
-  fontWeight: "var(--type-label-weight)",
-};
 
-const cell: React.CSSProperties = {
-  textAlign: "start",
-  verticalAlign: "top",
-  padding: "var(--space-2) var(--space-3)",
-  borderBottom: "1px solid var(--color-border-subtle)",
-};

@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { Banner } from "@/components/ds/banner";
+import { DataGrid } from "@/components/ds/data-grid";
 import { formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
 import { ApiError, currentSession, gate } from "@/lib/api";
 import {
@@ -158,44 +159,55 @@ export default async function PermissionsPage() {
             {audit.length === 0 ? (
               <Banner severity="info">{text("perms.noAudit")}</Banner>
             ) : (
-              <table
-                tabIndex={0}
-                aria-labelledby="audit-heading"
-                style={{ width: "100%", borderCollapse: "collapse" }}
-              >
-                <thead>
-                  <tr>
-                    <th scope="col" style={headCell}>{text("perms.sequence")}</th>
-                    <th scope="col" style={headCell}>{text("perms.category")}</th>
-                    <th scope="col" style={headCell}>{text("perms.action")}</th>
-                    <th scope="col" style={headCell}>{text("perms.outcome")}</th>
-                    <th scope="col" style={headCell}>{text("perms.when")}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {audit.map((entry) => (
-                    <tr key={entry.sequence}>
-                      <td style={cell}>
-                        <span className="data">{formatInteger(entry.sequence, "latn")}</span>
-                      </td>
-                      <td style={cell}>{entry.category}</td>
-                      <td style={cell}>
-                        {/* A permission name is an identifier: ASCII, not translated, and it
-                            must not be reordered by the bidi algorithm in an Arabic page. */}
-                        <span className="data" dir="ltr">
-                          {entry.action}
-                        </span>
-                      </td>
-                      <td style={cell}>{entry.outcome}</td>
-                      <td style={cell}>
-                        <span className="data" dir="ltr">
-                          {utcStamp(entry.occurred_at)}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <DataGrid
+                caption={text("perms.audit")}
+labelledBy="audit-heading"
+                rows={audit}
+                rowKey={(entry) => String(entry.sequence)}
+                columns={[
+                  {
+                    header: text("perms.sequence"),
+                    kind: "text",
+                    // **Priority 1: the sequence is how an entry is referred to.** The grid
+                    // drops 3 then 2 as the viewport narrows, and whatever stays has to be
+                    // enough to identify a row on its own.
+                    priority: 1,
+                    render: (entry) => (
+                      <span className="data">{formatInteger(entry.sequence, "latn")}</span>
+                    ),
+                  },
+                  {
+                    header: text("perms.action"),
+                    kind: "text",
+                    priority: 1,
+                    // A permission name is an identifier: ASCII, not translated, and it must
+                    // not be reordered by the bidi algorithm in an Arabic page.
+                    render: (entry) => (
+                      <span className="data" dir="ltr">{entry.action}</span>
+                    ),
+                  },
+                  {
+                    header: text("perms.outcome"),
+                    kind: "status",
+                    priority: 2,
+                    render: (entry) => entry.outcome,
+                  },
+                  {
+                    header: text("perms.category"),
+                    kind: "text",
+                    priority: 3,
+                    render: (entry) => entry.category,
+                  },
+                  {
+                    header: text("perms.when"),
+                    kind: "date",
+                    priority: 2,
+                    render: (entry) => (
+                      <span className="data" dir="ltr">{utcStamp(entry.occurred_at)}</span>
+                    ),
+                  },
+                ]}
+              />
             )}
           </>
         )}
@@ -244,19 +256,5 @@ function failure(error: unknown): MessageKey {
     : "error.unexpected";
 }
 
-const headCell: React.CSSProperties = {
-  textAlign: "start",
-  padding: "var(--space-2) var(--space-3)",
-  borderBottom: "1px solid var(--color-border-default)",
-  background: "var(--color-surface-sunken)",
-  fontSize: "var(--type-label-size)",
-  fontWeight: "var(--type-label-weight)",
-};
 
-const cell: React.CSSProperties = {
-  textAlign: "start",
-  verticalAlign: "top",
-  padding: "var(--space-2) var(--space-3)",
-  borderBottom: "1px solid var(--color-border-subtle)",
-};
 

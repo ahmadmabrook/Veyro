@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { Banner } from "@/components/ds/banner";
+import { DataGrid } from "@/components/ds/data-grid";
 import { formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
 import { ApiError, currentSession, gate } from "@/lib/api";
 import {
@@ -147,62 +148,73 @@ export default async function OperationsPage() {
               {failingJobs(jobs).length > 0 ? (
                 <Banner severity="critical">{text("ops.workerFailing")}</Banner>
               ) : null}
-              <table
-                tabIndex={0}
-                aria-labelledby="worker-heading"
-                style={{ width: "100%", borderCollapse: "collapse" }}
-              >
-                <thead>
-                  <tr>
-                    <th scope="col" style={headCell}>{text("ops.job")}</th>
-                    <th scope="col" style={headCell}>{text("ops.every")}</th>
-                    <th scope="col" style={headCell}>{text("ops.runs")}</th>
-                    <th scope="col" style={headCell}>{text("ops.failed")}</th>
-                    <th scope="col" style={headCell}>{text("ops.mean")}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {jobs.jobs.map((job) => (
-                    <tr key={job.job}>
-                      <td style={cell}>
-                        <span className="data" dir="ltr">
-                          {job.job}
-                        </span>
+              <DataGrid
+                caption={text("ops.worker")}
+                labelledBy="worker-heading"
+                rows={jobs.jobs}
+                rowKey={(job) => job.job}
+                // A job with no recorded run over the window is a stopped worker, which is
+                // the first fault this page can diagnose rather than excuse.
+                rowSeverity={(job) => (job.failed > 0 ? "critical" : job.runs === 0 ? "attention" : null)}
+                columns={[
+                  {
+                    header: text("ops.job"),
+                    kind: "text",
+                    priority: 1,
+                    render: (job) => (
+                      <>
+                        <span className="data" dir="ltr">{job.job}</span>
                         <div className="muted" style={{ fontSize: "var(--type-label-size)" }}>
                           {job.summary}
                         </div>
-                      </td>
-                      <td style={cell}>
-                        <span className="data" dir="ltr">
-                          {formatInteger(job.every_seconds, "latn")}s
-                        </span>
-                      </td>
-                      {/* A zero is the answer rather than an absence, so it is rendered as
-                          words: "0" in a column of counts reads as "nothing happened to
-                          count", and here it means the worker never ran. */}
-                      <td style={cell}>
-                        {job.runs === 0 ? (
-                          <span className="muted">{text("ops.noRuns")}</span>
-                        ) : (
-                          <span className="data">{formatInteger(job.runs, "latn")}</span>
-                        )}
-                      </td>
-                      <td style={cell}>
-                        <span className="data">{formatInteger(job.failed, "latn")}</span>
-                      </td>
-                      <td style={cell}>
-                        {job.mean_duration_ms === null ? (
-                          <span className="muted">{"\u2014"}</span>
-                        ) : (
-                          <span className="data" dir="ltr">
-                            {job.mean_duration_ms}ms
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                      </>
+                    ),
+                  },
+                  {
+                    header: text("ops.runs"),
+                    kind: "text",
+                    priority: 1,
+                    // A zero is the answer rather than an absence, so it is rendered as
+                    // words: "0" in a column of counts reads as "nothing happened to count",
+                    // and here it means the worker never ran.
+                    render: (job) =>
+                      job.runs === 0 ? (
+                        <span className="muted">{text("ops.noRuns")}</span>
+                      ) : (
+                        <span className="data">{formatInteger(job.runs, "latn")}</span>
+                      ),
+                  },
+                  {
+                    header: text("ops.failed"),
+                    kind: "text",
+                    priority: 1,
+                    render: (job) => (
+                      <span className="data">{formatInteger(job.failed, "latn")}</span>
+                    ),
+                  },
+                  {
+                    header: text("ops.every"),
+                    kind: "text",
+                    priority: 3,
+                    render: (job) => (
+                      <span className="data" dir="ltr">
+                        {formatInteger(job.every_seconds, "latn")}s
+                      </span>
+                    ),
+                  },
+                  {
+                    header: text("ops.mean"),
+                    kind: "text",
+                    priority: 2,
+                    render: (job) =>
+                      job.mean_duration_ms === null ? (
+                        <span className="muted">{"\u2014"}</span>
+                      ) : (
+                        <span className="data" dir="ltr">{job.mean_duration_ms}ms</span>
+                      ),
+                  },
+                ]}
+              />
               <ul className="muted" style={{ margin: 0, paddingInlineStart: "var(--space-5)" }}>
                 {jobs.worker_gaps.map((gap) => (
                   <li key={gap}>{gap}</li>
@@ -225,40 +237,46 @@ export default async function OperationsPage() {
             letters.length === 0 ? (
               <Banner severity="info">{text("ops.noDeadLetters")}</Banner>
             ) : (
-              <table
-                tabIndex={0}
-                aria-labelledby="dead-letters-heading"
-                style={{ width: "100%", borderCollapse: "collapse" }}
-              >
-                <thead>
-                  <tr>
-                    <th scope="col" style={headCell}>{text("ops.consumer")}</th>
-                    <th scope="col" style={headCell}>{text("ops.attempts")}</th>
-                    <th scope="col" style={headCell}>{text("ops.reason")}</th>
-                    <th scope="col" style={headCell}>{text("ops.quarantined")}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {letters.map((letter) => (
-                    <tr key={letter.dead_letter_id}>
-                      <td style={cell}>
-                        <span className="data" dir="ltr">
-                          {letter.consumer}
-                        </span>
-                      </td>
-                      <td style={cell}>
-                        <span className="data">{formatInteger(letter.attempts, "latn")}</span>
-                      </td>
-                      <td style={cell}>{letter.reason}</td>
-                      <td style={cell}>
-                        <span className="data" dir="ltr">
-                          {utcStamp(letter.quarantined_at)}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <DataGrid
+                caption={text("ops.deadLetters")}
+                labelledBy="dead-letters-heading"
+                rows={letters}
+                rowKey={(letter) => letter.dead_letter_id}
+                // A dead letter is a fault whatever else is true, so every row carries it.
+                rowSeverity={() => "critical"}
+                columns={[
+                  {
+                    header: text("ops.consumer"),
+                    kind: "text",
+                    priority: 1,
+                    render: (letter) => (
+                      <span className="data" dir="ltr">{letter.consumer}</span>
+                    ),
+                  },
+                  {
+                    header: text("ops.reason"),
+                    kind: "text",
+                    priority: 1,
+                    render: (letter) => letter.reason,
+                  },
+                  {
+                    header: text("ops.attempts"),
+                    kind: "text",
+                    priority: 2,
+                    render: (letter) => (
+                      <span className="data">{formatInteger(letter.attempts, "latn")}</span>
+                    ),
+                  },
+                  {
+                    header: text("ops.quarantined"),
+                    kind: "date",
+                    priority: 2,
+                    render: (letter) => (
+                      <span className="data" dir="ltr">{utcStamp(letter.quarantined_at)}</span>
+                    ),
+                  },
+                ]}
+              />
             )
           }
         </Gated>
@@ -364,19 +382,5 @@ function toNull(error: unknown): null {
   throw error;
 }
 
-const headCell: React.CSSProperties = {
-  textAlign: "start",
-  padding: "var(--space-2) var(--space-3)",
-  borderBottom: "1px solid var(--color-border-default)",
-  background: "var(--color-surface-sunken)",
-  fontSize: "var(--type-label-size)",
-  fontWeight: "var(--type-label-weight)",
-};
 
-const cell: React.CSSProperties = {
-  textAlign: "start",
-  verticalAlign: "top",
-  padding: "var(--space-2) var(--space-3)",
-  borderBottom: "1px solid var(--color-border-subtle)",
-};
 

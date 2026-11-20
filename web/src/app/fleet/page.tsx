@@ -2,9 +2,10 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { Banner } from "@/components/ds/banner";
+import { DataGrid } from "@/components/ds/data-grid";
 import { formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
 import { ApiError, currentSession, gate } from "@/lib/api";
-import { readFleet, type FleetDevice, type FleetView } from "@/lib/fleet";
+import { readFleet, type FleetView } from "@/lib/fleet";
 import { presentation } from "@/lib/preferences";
 import { utcStamp } from "@/lib/time";
 
@@ -86,26 +87,75 @@ export default async function FleetPage() {
         {fleet.devices.length === 0 ? (
           <Banner severity="info">{text("fleet.empty")}</Banner>
         ) : (
-          <table
-            tabIndex={0}
-            aria-labelledby="fleet-heading"
-            style={{ width: "100%", borderCollapse: "collapse" }}
-          >
-            <thead>
-              <tr>
-                <th scope="col" style={headCell}>{text("fleet.device")}</th>
-                <th scope="col" style={headCell}>{text("fleet.kind")}</th>
-                <th scope="col" style={headCell}>{text("fleet.state")}</th>
-                <th scope="col" style={headCell}>{text("fleet.reachability")}</th>
-                <th scope="col" style={headCell}>{text("fleet.lastSeen")}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {fleet.devices.map((device) => (
-                <Row key={device.device_id} device={device} locale={locale} />
-              ))}
-            </tbody>
-          </table>
+          <DataGrid
+            caption={text("fleet.title")}
+labelledBy="fleet-heading"
+            rows={fleet.devices}
+            rowKey={(device) => device.device_id}
+            // **The row-level roll-up, which the hand-rolled table had no way to carry.** The
+            // edge-mark says at a glance which rows need somebody, and the badge below still
+            // names the specific state -- "the same scale expressed at two granularities,
+            // which is what stopped them reading as two independent signals".
+            rowSeverity={(device) => (device.blocks_operation ? "attention" : null)}
+            columns={[
+              {
+                header: text("fleet.device"),
+                kind: "person",
+                priority: 1,
+                render: (device) => (
+                  <>
+                    <Link href={`/fleet/${device.device_id}`}>{device.display_name}</Link>
+                    <div className="muted" style={{ fontSize: "var(--type-caption-size)" }}>
+                      {/* A serial number is an identifier: ASCII, never translated, and
+                          reordered by the bidi algorithm inside an Arabic page without
+                          `dir`. */}
+                      <span className="data" dir="ltr">{device.serial_number}</span>
+                    </div>
+                  </>
+                ),
+              },
+              {
+                header: text("fleet.reachability"),
+                kind: "status",
+                // Priority 1: "which of these needs somebody" is the question this board
+                // exists to answer, so it survives every width.
+                priority: 1,
+                render: (device) => (
+                  <>
+                    {text(`fleet.reach.${device.reachability}` as MessageKey)}
+                    {device.blocks_operation ? (
+                      <div className="muted" style={{ fontSize: "var(--type-caption-size)" }}>
+                        {text("fleet.attention")}
+                      </div>
+                    ) : null}
+                  </>
+                ),
+              },
+              {
+                header: text("fleet.state"),
+                kind: "status",
+                priority: 2,
+                render: (device) => device.state,
+              },
+              {
+                header: text("fleet.lastSeen"),
+                kind: "date",
+                priority: 2,
+                render: (device) =>
+                  device.last_seen_at === null ? (
+                    <span className="muted">{text("fleet.never")}</span>
+                  ) : (
+                    <span className="data" dir="ltr">{utcStamp(device.last_seen_at)}</span>
+                  ),
+              },
+              {
+                header: text("fleet.kind"),
+                kind: "text",
+                priority: 3,
+                render: (device) => device.kind,
+              },
+            ]}
+          />
         )}
         <p className="muted" style={{ margin: 0, fontSize: "var(--type-caption-size)" }}>
           {text("fleet.asOf")}{" "}
@@ -121,43 +171,6 @@ export default async function FleetPage() {
   );
 }
 
-function Row({ device, locale }: { device: FleetDevice; locale: Locale }) {
-  const text = (key: MessageKey) => t(locale, key);
-  return (
-    <tr>
-      <td style={cell}>
-        <Link href={`/fleet/${device.device_id}`}>{device.display_name}</Link>
-        <div className="muted" style={{ fontSize: "var(--type-caption-size)" }}>
-          {/* A serial number is an identifier: ASCII, never translated, and reordered by the
-              bidi algorithm inside an Arabic page without `dir`. */}
-          <span className="data" dir="ltr">
-            {device.serial_number}
-          </span>
-        </div>
-      </td>
-      <td style={cell}>{device.kind}</td>
-      <td style={cell}>{device.state}</td>
-      <td style={cell}>
-        {text(`fleet.reach.${device.reachability}` as MessageKey)}
-        {device.blocks_operation ? (
-          <div className="muted" style={{ fontSize: "var(--type-caption-size)" }}>
-            {text("fleet.attention")}
-          </div>
-        ) : null}
-      </td>
-      <td style={cell}>
-        {device.last_seen_at === null ? (
-          <span className="muted">{text("fleet.never")}</span>
-        ) : (
-          <span className="data" dir="ltr">
-            {utcStamp(device.last_seen_at)}
-          </span>
-        )}
-      </td>
-    </tr>
-  );
-}
-
 function Shell({ locale, children }: { locale: Locale; children: React.ReactNode }) {
   return (
     <div className="stack">
@@ -170,18 +183,4 @@ function Shell({ locale, children }: { locale: Locale; children: React.ReactNode
   );
 }
 
-const headCell: React.CSSProperties = {
-  textAlign: "start",
-  padding: "var(--space-2) var(--space-3)",
-  borderBottom: "1px solid var(--color-border-default)",
-  background: "var(--color-surface-sunken)",
-  fontSize: "var(--type-label-size)",
-  fontWeight: "var(--type-label-weight)",
-};
 
-const cell: React.CSSProperties = {
-  textAlign: "start",
-  verticalAlign: "top",
-  padding: "var(--space-2) var(--space-3)",
-  borderBottom: "1px solid var(--color-border-subtle)",
-};

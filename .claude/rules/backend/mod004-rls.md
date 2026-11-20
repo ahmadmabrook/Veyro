@@ -628,6 +628,17 @@ moving underneath them. **And the seam has to be mutation-proven like anything e
 the limiter's `raise` removed, those tests fail, so freezing the clock did not make them
 vacuous.
 
+**And the same migration can add a defect the ad-hoc one did not have, on every screen at
+once.** The hand-rolled tables all named themselves with `aria-labelledby` pointing at the
+heading above them, with a comment on one of them explaining why: a caption that repeats the
+heading is the sentence said twice, invisible to a sighted reader and heard in full by a
+screen-reader user. `DataGrid` rendered its own visually-hidden caption, so the first
+migration put the duplication on eight grids in one change -- and exactly one e2e test, on one
+page, noticed. The component takes `labelledBy` now, and a sweep requires every `<DataGrid>`
+to pass it. **A shared component inherits a contract from each call site it replaces**, so
+read what the thing being replaced does for accessibility before deleting it, not only what
+it does visually.
+
 **Replacing an ad-hoc component with the approved one can drop a contract the ad-hoc one
 happened to satisfy.** `controls.tsx`'s button hard-coded `minHeight: 44px`, which met the
 design system's touch-target floor by accident of one line. The design system's Button is

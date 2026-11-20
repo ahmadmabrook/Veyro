@@ -32,22 +32,15 @@ const APP = join(WEB, "src/app");
  */
 const RAW_TABLES = new Set([
   "access/[zoneId]/page.tsx",
-  "access/page.tsx",
   "account/account-view.tsx",
   "catalog/page.tsx",
   "configuration/page.tsx",
   "finance/page.tsx",
-  "fleet/page.tsx",
   "integrations/page.tsx",
   "notifications/page.tsx",
-  "operations/page.tsx",
   "organization/page.tsx",
-  "page.tsx",
-  "people/page.tsx",
-  "permissions/page.tsx",
   "privacy/page.tsx",
   "schedule/[sessionId]/page.tsx",
-  "schedule/page.tsx",
 ]);
 
 /**
@@ -59,6 +52,15 @@ const RAW_TABLES = new Set([
 const RAW_PANELS = new Set([
   ...RAW_TABLES,
   "account/page.tsx",
+  // Off the table backlog and still on this one: their grids moved to DataGrid, the sections
+  // around them are still bare panels. The two lists are not the same migration.
+  "access/page.tsx",
+  "fleet/page.tsx",
+  "operations/page.tsx",
+  "page.tsx",
+  "people/page.tsx",
+  "permissions/page.tsx",
+  "schedule/page.tsx",
   // These two have no table of their own -- their tables live in a shared panel component --
   // and they do still group with a bare .panel, which is why they are here and not above.
   "fleet/[deviceId]/page.tsx",
@@ -131,6 +133,22 @@ test("nothing imports the deleted ad-hoc control module", () => {
     .filter((f) => f.text.includes("@/components/controls"))
     .map((f) => f.path);
   assert.deepEqual(offenders, [], "controls.tsx is gone; its families are under ds/");
+});
+
+test("a grid under a heading points at it rather than repeating it", () => {
+  // **A visually-hidden caption under a visible heading of the same words is the sentence
+  // said twice**: invisible to a sighted reader, heard in full by a screen-reader user. The
+  // hand-rolled tables all used `aria-labelledby` for exactly that reason, and the first
+  // DataGrid migration dropped it on eight grids at once -- one e2e test caught one of them.
+  const offenders = files
+    .filter((f) => f.text.includes("<DataGrid") && !f.text.includes("labelledBy="))
+    .map((f) => f.path);
+  assert.deepEqual(
+    offenders,
+    [],
+    "these render a DataGrid with no labelledBy; point it at the heading above it, or say "
+      + "in a comment why this grid has no heading",
+  );
 });
 
 test("no screen paints its own severity colour", () => {

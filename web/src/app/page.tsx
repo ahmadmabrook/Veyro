@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { signOut } from "@/app/actions";
 import { Button } from "@/components/ds/button";
 import { Banner } from "@/components/ds/banner";
+import { DataGrid } from "@/components/ds/data-grid";
 import { formatInteger, t, type MessageKey } from "@/i18n/locale";
 import { currentSession, gate, type GateAnswer } from "@/lib/api";
 import { presentation } from "@/lib/preferences";
@@ -82,62 +83,38 @@ export default async function HomePage() {
         {answers.every((answer) => !answer.allowed) ? (
           <Banner severity="info">{text("home.noPermissions")}</Banner>
         ) : null}
-        {/* `aria-labelledby` rather than a `<caption>`: the caption said exactly what the
-            heading two lines above it said, so a sighted reader saw the sentence twice and a
-            screen-reader user heard it twice. A table still needs an accessible name -- it is
-            what lets somebody jump between tables -- and pointing at the heading gives it one
-            without repeating it. */}
-        <table
-          tabIndex={0}
-          aria-labelledby="permissions-heading"
-          style={{ width: "100%", borderCollapse: "collapse" }}
-        >
-          <thead>
-            <tr>
-              <th scope="col" style={headCell}>
-                {text("home.action")}
-              </th>
-              <th scope="col" style={headCell}>
-                {text("home.gate")}
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {answers.map((answer) => (
-              <tr key={answer.action}>
-                <td style={cell}>
-                  {/* A permission name is a Latin identifier inside what may be an RTL
-                      paragraph, so it is isolated by `.data` + `dir="ltr"` rather than left to
-                      the bidi algorithm, which would move the dots. */}
-                  <span className="data" dir="ltr">
-                    {answer.action}
-                  </span>
-                </td>
-                <td style={cell}>{text(describe(answer))}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <DataGrid
+          caption={text("home.permissions")}
+labelledBy="permissions-heading"
+          rows={answers}
+          rowKey={(answer) => answer.action}
+          columns={[
+            {
+              header: text("home.action"),
+              kind: "text",
+              priority: 1,
+              // A permission name is a Latin identifier inside what may be an RTL paragraph,
+              // so it is isolated by `.data` + `dir="ltr"` rather than left to the bidi
+              // algorithm, which would move the dots.
+              render: (answer) => (
+                <span className="data" dir="ltr">{answer.action}</span>
+              ),
+            },
+            {
+              header: text("home.gate"),
+              kind: "status",
+              priority: 1,
+              render: (answer) => text(describe(answer)),
+            },
+          ]}
+        />
       </section>
     </div>
   );
 }
 
 /** Hairline rules rather than fills, and `start` alignment so RTL mirrors without a rule. */
-const headCell: React.CSSProperties = {
-  textAlign: "start",
-  padding: "var(--space-2) var(--space-3)",
-  borderBottom: "1px solid var(--color-border-default)",
-  background: "var(--color-surface-sunken)",
-  fontSize: "var(--type-label-size)",
-  fontWeight: "var(--type-label-weight)",
-};
 
-const cell: React.CSSProperties = {
-  textAlign: "start",
-  padding: "var(--space-2) var(--space-3)",
-  borderBottom: "1px solid var(--color-border-subtle)",
-};
 
 /**
  * Four answers, four messages -- and the order matters.

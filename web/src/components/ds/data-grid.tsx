@@ -60,6 +60,7 @@ export type GridState =
 
 export function DataGrid<Row>({
   caption,
+  labelledBy,
   columns,
   rows,
   rowKey,
@@ -70,6 +71,16 @@ export function DataGrid<Row>({
 }: {
   /** The accessible name. A grid without one is a table a screen reader cannot introduce. */
   caption: string;
+  /**
+   * The id of a heading that already says the caption, so the grid points at it instead of
+   * repeating it.
+   *
+   * **A visually-hidden caption under a visible heading of the same words is the sentence
+   * said twice**, which a sighted reader does not see and a screen-reader user hears in full.
+   * Every board here has a heading above its grid, so this is the ordinary case and the
+   * caption-only form is for a grid with nothing above it.
+   */
+  labelledBy?: string;
   columns: Column<Row>[];
   rows: Row[];
   rowKey: (row: Row) => string;
@@ -132,8 +143,11 @@ export function DataGrid<Row>({
       {/* **One composite tab stop**, with the arrow behaviour owned by the interactive
           subclass. `tabIndex={0}` on the scroll container is also what makes a grid that does
           scroll reachable by keyboard, which an axe run requires. */}
-      <table tabIndex={0} className="ds-grid-table" aria-label={caption}>
-        <caption className="ds-visually-hidden">{caption}</caption>
+      <table
+        tabIndex={0}
+        className="ds-grid-table"
+        {...(labelledBy ? { "aria-labelledby": labelledBy } : { "aria-label": caption })}
+      >
         <thead>
           <tr>
             {columns.map((column) => (

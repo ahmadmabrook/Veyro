@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { Banner } from "@/components/ds/banner";
+import { DataGrid } from "@/components/ds/data-grid";
 import { formatInteger, t, type MessageKey } from "@/i18n/locale";
 import { ApiError, currentSession, gate } from "@/lib/api";
 import { listDuplicateCandidates, type DuplicateCandidate } from "@/lib/people";
@@ -59,65 +60,59 @@ export default async function PeoplePage() {
         ) : candidates.length === 0 ? (
           <Banner severity="info">{text("people.noDuplicates")}</Banner>
         ) : (
-          <table
-            tabIndex={0}
-            aria-labelledby="duplicates-heading"
-            style={{ width: "100%", borderCollapse: "collapse" }}
-          >
-            <thead>
-              <tr>
-                <th scope="col" style={headCell}>{text("people.score")}</th>
-                <th scope="col" style={headCell}>{text("people.signals")}</th>
-                <th scope="col" style={headCell}>{text("people.candidate")}</th>
-                <th scope="col" style={headCell}>{text("people.detected")}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {candidates.map((candidate) => (
-                <tr key={candidate.candidate_id}>
-                  <td style={cell}>
-                    <span className="data">{formatInteger(candidate.score, "latn")}</span>
-                  </td>
-                  <td style={cell}>
-                    {/* **Never the score on its own.** A number with no reasons behind it is
-                        not something to destroy a record on. */}
-                    {candidate.signals.join(", ")}
-                  </td>
-                  <td style={cell} className="stack">
+          <DataGrid
+            caption={text("people.duplicates")}
+labelledBy="duplicates-heading"
+            rows={candidates}
+            rowKey={(candidate) => candidate.candidate_id}
+            columns={[
+              {
+                header: text("people.signals"),
+                kind: "text",
+                // **Priority 1, above the score.** An operator asked to merge two records is
+                // being asked to destroy one of them, and `AUTO_MERGE_THRESHOLD` is null
+                // precisely because a number is not enough -- so the reasons are the column
+                // that survives every width and the score is the one that drops.
+                priority: 1,
+                render: (candidate) => candidate.signals.join(", "),
+              },
+              {
+                header: text("people.candidate"),
+                kind: "person",
+                priority: 1,
+                render: (candidate) => (
+                  <span className="stack">
                     <Link href={`/people/${candidate.lower_person_id}`}>
                       {text("people.open")} 1
                     </Link>
                     <Link href={`/people/${candidate.higher_person_id}`}>
                       {text("people.open")} 2
                     </Link>
-                  </td>
-                  <td style={cell}>
-                    <span className="data" dir="ltr">
-                      {utcStamp(candidate.detected_at)}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  </span>
+                ),
+              },
+              {
+                header: text("people.score"),
+                kind: "text",
+                priority: 2,
+                render: (candidate) => (
+                  <span className="data">{formatInteger(candidate.score, "latn")}</span>
+                ),
+              },
+              {
+                header: text("people.detected"),
+                kind: "date",
+                priority: 3,
+                render: (candidate) => (
+                  <span className="data" dir="ltr">{utcStamp(candidate.detected_at)}</span>
+                ),
+              },
+            ]}
+          />
         )}
       </section>
     </div>
   );
 }
 
-const headCell: React.CSSProperties = {
-  textAlign: "start",
-  padding: "var(--space-2) var(--space-3)",
-  borderBottom: "1px solid var(--color-border-default)",
-  background: "var(--color-surface-sunken)",
-  fontSize: "var(--type-label-size)",
-  fontWeight: "var(--type-label-weight)",
-};
 
-const cell: React.CSSProperties = {
-  textAlign: "start",
-  verticalAlign: "top",
-  padding: "var(--space-2) var(--space-3)",
-  borderBottom: "1px solid var(--color-border-subtle)",
-};

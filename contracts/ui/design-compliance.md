@@ -62,10 +62,16 @@ its job rather than a regression.
 A compatibility shim was considered and not written: a component named `Alert` forwarding to
 `Banner` is exactly the duplicate name the directive rules out.
 
-**Still ad-hoc and not yet migrated**, tracked so the number can only go down: 31 raw
-`<table>` elements across the boards (DataGrid exists and no screen uses it yet) and 67
-`.panel` sections where `Card` applies. `tests/unit/ds-usage.test.mjs` is the sweep that
-keeps that list honest in both directions.
+**The table migration, tracked so the number can only go down.** Seven screens are on
+`DataGrid` — the overview, people, permissions, the schedule board, the door board, the fleet
+board and both operations grids — and each gained what a hand-rolled table could not express:
+a column priority that collapses the low ones into the primary cell instead of pushing them
+off the screen, and a row-level severity edge-mark where the board has a row somebody must act
+on (a zone with no live policy, a job that never ran, a dead letter, a session moved by a
+clock change). Ten screens with eighteen tables remain, and 22 still group with a bare
+`.panel` where `Card` applies. `tests/unit/ds-usage.test.mjs` sweeps both lists in both
+directions, so a screen that quietly stops being migrated fails and so does an exemption that
+is no longer true.
 
 ## Component families — 37
 

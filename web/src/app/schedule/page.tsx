@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { Banner } from "@/components/ds/banner";
+import { DataGrid } from "@/components/ds/data-grid";
 import { formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
 import { ApiError, currentSession, gate } from "@/lib/api";
 import { listLocations, type Location } from "@/lib/organization";
@@ -114,61 +115,86 @@ export default async function SchedulePage({
         <Banner severity="info">{text("schedule.empty")}</Banner>
       ) : (
         <>
-          <table
-            tabIndex={0}
-            aria-labelledby="schedule-heading"
-            style={{ width: "100%", borderCollapse: "collapse" }}
-          >
-            <thead>
-              <tr>
-                <th scope="col" style={headCell}>{text("schedule.when")}</th>
-                <th scope="col" style={headCell}>{text("schedule.session")}</th>
-                <th scope="col" style={headCell}>{text("schedule.held")}</th>
-                <th scope="col" style={headCell}>{text("schedule.places")}</th>
-                <th scope="col" style={headCell}>{text("schedule.free")}</th>
-                <th scope="col" style={headCell}>{text("schedule.status")}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {calendar.sessions.map((session) => (
-                <tr key={session.session_id}>
-                  <td style={cell}>
-                    {/* **In the site's zone, which is what the heading promises.** Slicing the
-                        ISO string renders the UTC wall time: a class at 18:00 in Amman read as
-                        15:00, under a page that says it is showing the site's own timezone. */}
+          <DataGrid
+            caption={text("schedule.title")}
+labelledBy="schedule-heading"
+            rows={calendar.sessions}
+            rowKey={(session) => session.session_id}
+            // A session stepped forward because its local time did not exist that day is one
+            // whose members were told a time that is not when it happens. A full class is
+            // ordinary and a cancelled one is a decision somebody made, so neither is marked.
+            rowSeverity={(session) => (needsAttention(session) ? "attention" : null)}
+            columns={[
+              {
+                header: text("schedule.when"),
+                kind: "date",
+                priority: 1,
+                // **In the site's zone, which is what the heading promises.** Slicing the ISO
+                // string renders the UTC wall time: a class at 18:00 in Amman read as 15:00,
+                // under a page that says it is showing the site's own timezone.
+                render: (session) => (
+                  <>
                     <span className="data" dir="ltr">
                       {inZone(session.starts_at, calendar.timezone).date}
                     </span>{" "}
                     <span className="data" dir="ltr">
                       {inZone(session.starts_at, calendar.timezone).time}
                     </span>
-                  </td>
-                  <td style={cell}>
+                  </>
+                ),
+              },
+              {
+                header: text("schedule.session"),
+                kind: "text",
+                priority: 1,
+                render: (session) => (
+                  <>
                     <Link href={`/schedule/${session.session_id}`}>{session.display_name}</Link>
                     {needsAttention(session) ? (
                       <div className="muted" style={{ fontSize: "var(--type-label-size)" }}>
                         {text("schedule.dstMoved")}
                       </div>
                     ) : null}
-                  </td>
-                  <td style={cell}>
-                    <span className="data">{formatInteger(session.held, "latn")}</span>
-                  </td>
-                  <td style={cell}>
-                    <span className="data">{formatInteger(session.places, "latn")}</span>
-                  </td>
-                  <td style={cell}>
-                    {session.free === 0 ? (
-                      <span className="muted">{text("schedule.full")}</span>
-                    ) : (
-                      <span className="data">{formatInteger(session.free, "latn")}</span>
-                    )}
-                  </td>
-                  <td style={cell}>{session.status}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  </>
+                ),
+              },
+              {
+                header: text("schedule.free"),
+                kind: "text",
+                // Priority 1: whether a class can still be booked is the question a coach or
+                // a front desk opens this board to answer.
+                priority: 1,
+                render: (session) =>
+                  session.free === 0 ? (
+                    <span className="muted">{text("schedule.full")}</span>
+                  ) : (
+                    <span className="data">{formatInteger(session.free, "latn")}</span>
+                  ),
+              },
+              {
+                header: text("schedule.status"),
+                kind: "status",
+                priority: 2,
+                render: (session) => session.status,
+              },
+              {
+                header: text("schedule.held"),
+                kind: "text",
+                priority: 3,
+                render: (session) => (
+                  <span className="data">{formatInteger(session.held, "latn")}</span>
+                ),
+              },
+              {
+                header: text("schedule.places"),
+                kind: "text",
+                priority: 3,
+                render: (session) => (
+                  <span className="data">{formatInteger(session.places, "latn")}</span>
+                ),
+              },
+            ]}
+          />
           {/* **What "Taken" and "Free" are.** Without this a reader takes them for stored
               counters, and the one thing MOD-019 refuses to keep is a `held_count`. */}
           <p className="muted" style={{ margin: 0 }}>
@@ -253,19 +279,5 @@ function isUuid(value: string | undefined): value is string {
   return value !== undefined && /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(value);
 }
 
-const headCell: React.CSSProperties = {
-  textAlign: "start",
-  padding: "var(--space-2) var(--space-3)",
-  borderBottom: "1px solid var(--color-border-default)",
-  background: "var(--color-surface-sunken)",
-  fontSize: "var(--type-label-size)",
-  fontWeight: "var(--type-label-weight)",
-};
 
-const cell: React.CSSProperties = {
-  textAlign: "start",
-  verticalAlign: "top",
-  padding: "var(--space-2) var(--space-3)",
-  borderBottom: "1px solid var(--color-border-subtle)",
-};
 
