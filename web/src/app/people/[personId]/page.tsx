@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { Banner } from "@/components/ds/banner";
+import { PageHeader } from "@/components/ds/page-header";
 import { MembershipPanels } from "@/components/membership-panels";
 import { Withheld } from "@/components/withheld";
 import { formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
@@ -376,7 +377,7 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 function Shell({ locale, children }: { locale: Locale; children: React.ReactNode }) {
   return (
     <div className="stack">
-      <h1 style={{ margin: 0 }}>{t(locale, "member.title")}</h1>
+      <PageHeader title={t(locale, "member.title")} />
       {children}
     </div>
   );

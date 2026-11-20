@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import { Banner } from "@/components/ds/banner";
+import { PageHeader } from "@/components/ds/page-header";
 import { DataGrid } from "@/components/ds/data-grid";
 import { formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
 import { ApiError, currentSession, gate } from "@/lib/api";
@@ -312,7 +313,7 @@ function Shell({
       <nav aria-label={t(locale, "nav.back")}>
         <Link href="/access">{t(locale, "access.title")}</Link>
       </nav>
-      <h1 style={{ margin: 0 }}>{title}</h1>
+      <PageHeader title={title} />
       {children}
     </div>
   );

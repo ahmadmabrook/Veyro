@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { Banner } from "@/components/ds/banner";
+import { PageHeader } from "@/components/ds/page-header";
 import { DataGrid } from "@/components/ds/data-grid";
 import { formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
 import { ApiError, currentSession, gate } from "@/lib/api";
@@ -361,7 +362,7 @@ function Shell({
   return (
     <div className="stack" style={{ padding: "var(--space-6)", maxWidth: "860px" }}>
       <Link href="/schedule">{t(locale, "schedule.title")}</Link>
-      <h1 style={{ margin: 0 }}>{name ?? t(locale, "schedule.session")}</h1>
+      <PageHeader title={name ?? t(locale, "schedule.session")} />
       {children}
     </div>
   );

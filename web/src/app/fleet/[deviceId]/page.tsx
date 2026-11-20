@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { Banner } from "@/components/ds/banner";
+import { PageHeader } from "@/components/ds/page-header";
 import { formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
 import { ApiError, currentSession, gate } from "@/lib/api";
 import {
@@ -267,7 +268,7 @@ function Shell({
       <nav aria-label={t(locale, "fleet.title")}>
         <Link href="/fleet">{t(locale, "fleet.title")}</Link>
       </nav>
-      <h1 style={{ margin: 0 }}>{name ?? t(locale, "device.title")}</h1>
+      <PageHeader title={name ?? t(locale, "device.title")} />
       {children}
     </div>
   );

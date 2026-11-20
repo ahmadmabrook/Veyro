@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 
 import { Banner } from "@/components/ds/banner";
 import { DataGrid } from "@/components/ds/data-grid";
-import { formatInteger, t, type MessageKey } from "@/i18n/locale";
+import { fill, formatInteger, t, type MessageKey } from "@/i18n/locale";
 import { PageHeader } from "@/components/ds/page-header";
 import { ApiError, currentSession, gate } from "@/lib/api";
 import { listDuplicateCandidates, type DuplicateCandidate } from "@/lib/people";
@@ -52,8 +52,7 @@ export default async function PeoplePage() {
         figures={
           may.allowed && failed === null ? (
             <>
-              <span className="data">{formatInteger(candidates.length, "latn")}</span>{" "}
-              {text("people.pairsWaiting")}
+              {fill(locale, "people.pairsWaiting", { count: candidates.length })}
               {" \u00b7 "}
               {text("members.scope")}
             </>

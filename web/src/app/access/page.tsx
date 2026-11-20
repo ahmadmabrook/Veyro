@@ -2,8 +2,9 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { Banner } from "@/components/ds/banner";
+import { PageHeader } from "@/components/ds/page-header";
 import { DataGrid } from "@/components/ds/data-grid";
-import { formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
+import { fill, formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
 import { ApiError, currentSession, gate } from "@/lib/api";
 import { listZones, type ZoneSummary } from "@/lib/access";
 import { presentation } from "@/lib/preferences";
@@ -56,8 +57,23 @@ export default async function DoorBoardPage() {
     );
   }
 
+  // A zone with no live policy is the board's own severe row: ACC-01 keeps exactly one live
+  // policy per zone, so none at all means the zone decides nothing.
+  const unpoliced = zones.filter((zone) => zone.live_policy_version === null).length;
+
   return (
-    <Shell locale={locale}>
+    <Shell
+      locale={locale}
+      figures={
+        <>
+          {fill(locale, "access.zonesCounted", { count: zones.length })}
+          {" \u00b7 "}
+          {fill(locale, "access.noPolicyCount", { count: unpoliced })}
+          {" \u00b7 "}
+          {t(locale, "members.scope")}
+        </>
+      }
+    >
       {zones.length === 0 ? (
         <Banner severity="info">{text("access.empty")}</Banner>
       ) : (
@@ -148,15 +164,26 @@ labelledBy="doors-heading"
   );
 }
 
-function Shell({ locale, children }: { locale: Locale; children: React.ReactNode }) {
+function Shell({
+  locale,
+  children,
+  figures,
+}: {
+  locale: Locale;
+  children: React.ReactNode;
+  figures?: React.ReactNode;
+}) {
+  // **No breadcrumb back to the landing page.** The rail is the navigation -- §21's second
+  // layer -- and a link to the product's front door above every page title is a second one
+  // that nothing in the design has. It also read as a breadcrumb to a page called "Veyro
+  // Admin", which stopped existing the day the Command Center replaced that screen.
   return (
     <div className="stack">
-      <nav aria-label={t(locale, "nav.back")}>
-        <Link href="/">{t(locale, "home.title")}</Link>
-      </nav>
-      <h1 id="doors-heading" style={{ margin: 0 }}>
-        {t(locale, "access.title")}
-      </h1>
+      <PageHeader
+        id="doors-heading"
+        title={t(locale, "access.title")}
+        {...(figures ? { figures } : {})}
+      />
       <section className="page-section">{children}</section>
     </div>
   );
