@@ -20,6 +20,7 @@ from __future__ import annotations
 import unittest
 import uuid
 
+from app.privacy import classification
 from tests.support import GatedApiTestCase
 
 
@@ -414,3 +415,72 @@ class DsarWorkflowOverHttpTests(PrivacyApiTestCase):
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
+
+
+class ErasureReachTests(PrivacyApiTestCase):
+    """The disclosure, as something a person can look at.
+
+    **`deletion_is_complete()` returns False and the registry behind it had nowhere to live.**
+    `plan_dsar` surfaced it per request, so the honest answer to "what can you delete" was
+    reachable only after somebody had asked you to delete something; the registry itself was
+    visible in Python and in a test and nowhere a privacy officer could look.
+    """
+
+    def test_the_reach_says_erasure_is_incomplete_and_why(self):
+        tenant_id = self.tenant()
+        read = self.client.get(
+            "/privacy/erasure-reach",
+            headers=self.headers(tenant_id, self.grant(tenant_id, ["privacy.dsar.read"])))
+        self.assertEqual(read.status_code, 200, read.text)
+        body = read.json()
+        self.assertFalse(body["erasure_is_complete"])
+        self.assertIn("crypto-shred", body["why_incomplete"])
+        self.assertGreater(body["residue_count"], 0)
+
+    def test_every_mechanism_is_present_and_the_counts_add_up(self):
+        """A mechanism missing from the answer is a mechanism nobody can see the cost of."""
+        tenant_id = self.tenant()
+        body = self.client.get(
+            "/privacy/erasure-reach",
+            headers=self.headers(tenant_id, self.grant(tenant_id, ["privacy.dsar.read"])),
+        ).json()
+        self.assertEqual(
+            sorted(body["mechanisms"]), sorted(classification.MECHANISMS))
+        total = sum(body["counts"].values())
+        self.assertEqual(total, len(classification.SUBJECT_COLUMNS))
+        self.assertEqual(
+            body["residue_count"],
+            len(body["mechanisms"]["unreachable"]) + len(body["mechanisms"]["write_once"]))
+
+    def test_it_reads_no_tenant_data_at_all(self):
+        """Two tenants get the same answer, because the answer is about the software.
+
+        If this ever starts differing per tenant it has stopped being a statement about the
+        build and started being a leak of somebody's rows.
+        """
+        head_a = self.headers(
+            (a := self.tenant()), self.grant(a, ["privacy.dsar.read"]))
+        head_b = self.headers(
+            (b := self.tenant()), self.grant(b, ["privacy.dsar.read"]))
+        first = self.client.get("/privacy/erasure-reach", headers=head_a).json()
+        second = self.client.get("/privacy/erasure-reach", headers=head_b).json()
+        self.assertEqual(first, second)
+
+    def test_every_entry_says_why_its_mechanism_is_the_mechanism(self):
+        """A registry of column names with no reasons is a schema dump, not a disclosure."""
+        tenant_id = self.tenant()
+        body = self.client.get(
+            "/privacy/erasure-reach",
+            headers=self.headers(tenant_id, self.grant(tenant_id, ["privacy.dsar.read"])),
+        ).json()
+        for mechanism, rows in body["mechanisms"].items():
+            for row in rows:
+                self.assertTrue(row["reason"].strip(), f"{mechanism} {row['table']}")
+                self.assertTrue(row["locate_by"], f"{mechanism} {row['table']}")
+
+    def test_a_session_without_the_dsar_read_is_refused(self):
+        tenant_id = self.tenant()
+        refused = self.client.get(
+            "/privacy/erasure-reach",
+            headers=self.headers(tenant_id, self.grant(tenant_id, ["privacy.purpose.read"])))
+        self.assertEqual(refused.status_code, 403, refused.text)

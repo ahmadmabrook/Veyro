@@ -42,6 +42,7 @@ READ_ROUTES = [
     ("get", "/privacy/purposes", None),
     ("get", "/privacy/retention", None),
     ("get", "/privacy/legal-holds", None),
+    ("get", "/privacy/erasure-reach", None),
     ("get", "/privacy/requests", None),
     ("get", "/privacy/incidents", None),
     # Query parameters are part of the path here on purpose: FastAPI validates them alongside

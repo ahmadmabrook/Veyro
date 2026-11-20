@@ -1219,3 +1219,63 @@ def _record_action(
         )
     return dsar.Action(store=store, target=target, mechanism=mechanism, outcome=outcome,
                        rows_affected=rows, detail=detail)
+
+
+def erasure_reach() -> dict[str, Any]:
+    """What this build can and cannot erase, as a statement about the software.
+
+    **This takes no pool and no tenant, because it is not about anybody's data.** It is the
+    registry in `classification.SUBJECT_COLUMNS` read back: every column in the database that
+    names a person, the mechanism erasure has against it, and why that is the mechanism. A
+    tenant's rows are nowhere in the answer.
+
+    **It exists because the disclosure had nowhere to live.** `deletion_is_complete()` returns
+    False and `plan_dsar` surfaces that per request -- so a privacy officer could learn what
+    survives an erasure only by opening a request and reading its plan, which means the honest
+    answer to "what can you delete" was reachable only after somebody had asked you to delete
+    something. The registry itself was visible in Python and in a test and nowhere a person
+    could look.
+
+    The five mechanisms are not five shades of the same thing:
+
+    * `delete` and `anonymize` destroy identifying material.
+    * `covered` is a row that holds none of its own and names the subject only through a row
+      that *is* anonymized -- emptying it would break a referential link and erase nothing.
+    * `write_once` is a column a service writes once and no erasure path clears. Weaker than
+      `unreachable` and truer for five columns that used to claim the stronger word.
+    * `unreachable` is the database refusing: no UPDATE grant and no DELETE, which is what
+      makes a ledger reconstructible and an audit chain tamper-evident.
+
+    The last two are the residue, and `erasure_is_complete` is false because they exist. TSD
+    section 21.6 anticipates exactly this and points at crypto-shred, which needs a key vault
+    this repository does not have.
+    """
+    by_mechanism: dict[str, list[dict[str, Any]]] = {m: [] for m in classification.MECHANISMS}
+    for entry in classification.SUBJECT_COLUMNS:
+        by_mechanism[entry.mechanism].append({
+            "schema": entry.schema,
+            "table": entry.table,
+            "column": entry.column,
+            "locate_by": entry.locator(),
+            "clears": list(entry.clears),
+            "reason": entry.reason,
+        })
+    residue = [
+        *by_mechanism["unreachable"],
+        *by_mechanism["write_once"],
+    ]
+    return {
+        "erasure_is_complete": classification.deletion_is_complete(),
+        "mechanisms": by_mechanism,
+        "counts": {m: len(rows) for m, rows in by_mechanism.items()},
+        "residue_count": len(residue),
+        # Said rather than left to be worked out from the counts: the reason the answer is
+        # "no" is a property of this build, not of any request.
+        "why_incomplete": (
+            "the financial ledger, published configuration, recorded exposures, the audit "
+            "chain and the authentication log are insert-only by privilege, which is what "
+            "makes them evidence -- so erasure reaches the identity plane's mutable tables "
+            "and the contact data MOD-014 owns, and stops there. Closing it needs "
+            "crypto-shred, which needs a key vault this repository does not have"
+        ) if not classification.deletion_is_complete() else "",
+    }

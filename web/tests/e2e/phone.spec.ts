@@ -40,6 +40,8 @@ const surfaces: [string, string][] = [
   ["the finance board", "/finance"],
   ["the catalog board", "/catalog"],
   ["a product", `/catalog?product=${creds.productId}`],
+  // The widest table in the app: twenty areas against a column of prose.
+  ["the privacy board", "/privacy"],
 ];
 
 test.describe("at phone width", () => {

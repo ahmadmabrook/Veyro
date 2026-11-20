@@ -600,6 +600,53 @@ const MUTATIONS = [
     grep: "says reachability is worked out rather than stored",
   },
   {
+    id: "privacy-residue-is-grouped",
+    why: "371 rows of column names is a wall rather than a disclosure, and the grouping is "
+      + "what makes the shape of what survives legible at all",
+    file: "src/lib/privacy.ts",
+    from: "    const prefix = entry.table.includes(\"_\")",
+    to: "    const prefix = false",
+    runner: "playwright",
+    grep: "groups the residue by area",
+  },
+  {
+    id: "privacy-emphasis-is-not-asterisks",
+    why: "the registry's reasons were written where `**` is emphasis, in a Python module a "
+      + "developer reads -- printed literally they are punctuation nobody wrote for a reader",
+    file: "src/components/prose.tsx",
+    from: "        segment.kind === \"strong\" ? (",
+    to: "        false ? (",
+    grep: "emphasis as emphasis",
+  },
+  {
+    id: "privacy-live-hold-is-told-from-a-released-one",
+    why: "releasing a hold is the single act that un-blocks destruction of preserved "
+      + "evidence, so a board that showed only live holds would hide the one with the most "
+      + "consequence attached",
+    file: "src/lib/privacy.ts",
+    from: '  return api("/privacy/legal-holds?include_released=true");',
+    to: '  return api("/privacy/legal-holds");',
+    grep: "live legal hold from a released one",
+  },
+  {
+    id: "privacy-queue-is-ordered-by-deadline",
+    why: "a regulator-facing deadline is the one number on that screen with a consequence "
+      + "attached, and a queue in insertion order buries the request already past it",
+    file: "src/lib/privacy.ts",
+    from: "    .sort((a, b) => a.due_at.localeCompare(b.due_at));",
+    to: "    .sort((a, b) => b.due_at.localeCompare(a.due_at));",
+    grep: "overdue request first",
+  },
+  {
+    id: "privacy-says-nothing-sweeps",
+    why: "the retention decision exists and no job calls it, so a list of policies with no "
+      + "such sentence reads as a schedule that runs",
+    file: "src/app/privacy/page.tsx",
+    from: '            {text("privacy.nothingSweeps")}',
+    to: "            {null}",
+    grep: "nothing deletes on the retention schedule",
+  },
+  {
     id: "catalog-promotion-needs-window-and-status",
     why: "nothing retires a promotion when its window closes, so a board showing the status "
       + "alone says a campaign is running when it ended in February",

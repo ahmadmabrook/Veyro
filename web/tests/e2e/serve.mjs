@@ -13,7 +13,7 @@
  * touches a managed or production target, which rule 9 of the isolation rule requires.
  */
 
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
@@ -29,6 +29,39 @@ const dsn =
   process.env.VEYRO_DATABASE_URL ??
   "postgresql://postgres:veyro_dev@127.0.0.1:55432/veyro";
 
+/**
+ * **Reload is opt-in, and it is off for a reason.** A server that restarts when a backend
+ * file changes is right while somebody is writing one and wrong while a suite is running: a
+ * restart mid-run fails whichever test was mid-request, for a reason that has nothing to do
+ * with the product. So `VEYRO_API_RELOAD=1` turns it on deliberately and nothing turns it on
+ * by accident.
+ *
+ * The cost of leaving it off is real and worth naming, because it was paid three times in one
+ * session: a backend route added while this server was already up is invisible to it, and the
+ * failure reads as a frontend defect every time -- `405` on a path that does have a POST,
+ * a bare `404`, and once a `TypeError: Cannot read properties of undefined` deep inside a
+ * page, because the running server was returning a row without the field the read had just
+ * learned to send. The startup line below prints the commit this process was started from, so
+ * the next person has something to compare against before going looking in the client.
+ */
+const reload = process.env.VEYRO_API_RELOAD === "1";
+const head = (() => {
+  try {
+    return execFileSync("git", ["rev-parse", "--short", "HEAD"], { cwd: repo })
+      .toString()
+      .trim();
+  } catch {
+    return "unknown";
+  }
+})();
+console.log(
+  reload
+    ? `veyro api: starting from ${head} with reload -- backend edits restart it, which will ` +
+      "fail whichever request a suite has in flight"
+    : `veyro api: starting from ${head} -- a route added after this line is not served ` +
+      "until this process restarts",
+);
+
 const child = spawn(
   python,
   [
@@ -42,6 +75,7 @@ const child = spawn(
     process.env.VEYRO_API_PORT ?? "8000",
     "--log-level",
     "warning",
+    ...(reload ? ["--reload", "--reload-dir", `${repo}/backend/app`] : []),
   ],
   {
     cwd: `${repo}/backend`,

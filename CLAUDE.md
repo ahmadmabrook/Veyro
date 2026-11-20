@@ -670,6 +670,16 @@ Things worth knowing before extending it:
 
 Known gaps, deliberate:
 
+- **The disclosure is readable now.** `GET /privacy/erasure-reach` returns the registry
+  itself -- every subject-bearing column, the mechanism erasure has against it, and why --
+  with `erasure_is_complete` and the count of what survives. It takes no pool and no tenant,
+  so it reads nobody's rows and two tenants get identical bytes; a test asserts that, because
+  the day it differs per tenant it has stopped being a statement about the software. It
+  existed nowhere before: `plan_dsar` surfaced the same fact per request, so the honest
+  answer to "what can you delete" was reachable only after somebody had asked you to delete
+  something, and the registry behind it lived in Python and in a test.
+  **The number is worth knowing: 17 of 388 subject-bearing columns are erased or anonymised
+  and 371 survive.**
 - **No crypto-shred, so erasure is incomplete** -- the disclosure above. Closing it needs a key
   vault and per-subject key material, which is a different module's work.
 - **Only a deletion has an executor.** Access, portability, correction and restriction can be
@@ -3725,6 +3735,33 @@ module's gate and renders them beside the person. Three gates, asked separately,
 reader may hold any subset -- a coach sees the membership and not the money -- and a refused
 block says it was refused rather than rendering empty.
 
+**MOD-009's board is the disclosure, finally somewhere a person can look.** 17 subject-bearing
+columns are erased or anonymised and 371 survive, and that ratio is the most important thing
+this build knows about itself. Three decisions carry the block:
+
+  * **It groups rather than dumps.** The first version rendered all 371 rows with their
+    reasons: a 25,000-pixel table. A privacy officer reasons in areas -- "the ledger survives,
+    the audit chain survives" -- not column by column, so the residue is grouped by schema and
+    module prefix, largest first, with one reason per area as the example. 2,472 pixels, and
+    the shape is legible. The full per-column registry stays on the route.
+  * **It renders the registry's emphasis.** Those reasons were written where `**` is emphasis
+    and a backtick is a column name, in a Python module a developer reads -- so the page was
+    printing `**who pays.** The account is...`, punctuation nobody wrote for a reader, in the
+    one block whose job is to be read by somebody who is not a developer. `src/lib/prose.ts`
+    splits the two delimiters and nothing else; stripping them was the worse fix, because the
+    emphasis is each reason's summary phrase.
+  * **It says the block reads no tenant data.** Two tenants get identical bytes, and a test
+    asserts it.
+
+Two defects in the surface, both shapes this file records. The page had a `Released` branch
+for legal holds that **nothing could reach**, because the client never passed
+`include_released` -- a declared state nothing writes, in a surface instead of a service. And
+the request queue compared `overdue` before sorting by deadline, which the mutation sweep
+reported as uncaught: an overdue request is one whose due date has passed, so a date sort
+already orders them. That comparison was dead logic reading as a control, and the remedy was
+to delete it rather than write a case that cannot exist -- the judgement the rules file records
+for a constraint subsumed by a sibling.
+
 **MOD-016's board is three claims the module refuses to make, made legible.** No figure on
 it is "the price": `resolve_price` is the sale, because it redeems the coupon it applies, so
 the route that answers authoritatively cannot be called as a lookup. What a board can show is
@@ -3815,8 +3852,8 @@ initially asserted the *wrong* number and failed for that reason, which is the c
 arriving in the evidence before it could arrive in the product.
 
 Known gaps: the surface covers the sign-in, the step-up, MOD-004, MOD-008, MOD-010, MOD-011,
-MOD-005, MOD-014, MOD-016, MOD-017, MOD-018, MOD-019, MOD-021 and MOD-022, plus MOD-020's
-roster on a session. The other five implemented modules have no screens yet,
+MOD-005, MOD-009, MOD-014, MOD-016, MOD-017, MOD-018, MOD-019, MOD-021 and MOD-022, plus
+MOD-020's roster on a session. The other four implemented modules have no screens yet,
 which is the bulk of the remaining work; MOD-019's own surface is read-only -- publishing a
 schedule, substituting an instructor and cancelling a session are all built on the server and
 none has a form, which is the same gap the hierarchy has and for the same reason: every one of
@@ -3836,9 +3873,9 @@ is part of it. So "implemented" above is accurate about the server plane and inc
 the product for every module except MOD-022, and the backlog has two halves.
 
 The first is the screens the eighteen built modules do not have. `web/` covers the sign-in, the
-step-up, MOD-004, MOD-005, MOD-008, MOD-010, MOD-011, MOD-014, MOD-016, MOD-017, MOD-018,
-MOD-019, MOD-020's roster, MOD-021 and MOD-022; `contracts/ui/screen-contracts.yaml` names
-the rest, and
+step-up, MOD-004, MOD-005, MOD-008, MOD-009, MOD-010, MOD-011, MOD-014, MOD-016, MOD-017,
+MOD-018, MOD-019, MOD-020's roster, MOD-021 and MOD-022;
+`contracts/ui/screen-contracts.yaml` names the rest, and
 the work is per module rather than per screen because each one needs its gate, its masked
 fields and its failure states wired the way those are. The second is the modules themselves: MOD-023 (Coach Workspace, which
 needs MOD-014 and MOD-008, both built) is the next eligible one, and MOD-006 is the Compose

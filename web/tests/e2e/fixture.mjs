@@ -997,6 +997,70 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
             target: "closing", correlation_id: cid() },
   });
 
+  // ---------------------------------------------------------------- MOD-009, privacy
+  //
+  // Enough of each kind that every block on the privacy board shows a real row, and two
+  // pairs that exist specifically to make a distinction visible: a live legal hold beside a
+  // released one, because a hold's whole meaning is whether it is still preserving; and a
+  // request due in the future beside one already overdue, because the deadline is the one
+  // number on that screen with a regulator attached.
+  await call("/privacy/purposes", {
+    method: "POST", ...as(token),
+    // A dotted code, because `sec_purposes_code_shape` allows an underscore only
+            // after the first segment.
+            body: { purpose_code: "membership.administration",
+            description: "Administering memberships and access",
+            lawful_basis: "contract", controller_role: "controller",
+            // **`confidential`, not `contact`.** The classes here are MOD-009's four --
+            // public, internal, confidential, restricted -- and MOD-008's *kinds*
+            // (identity, contact, health) map onto them. A purpose names the class.
+            data_classes: ["confidential", "restricted"], correlation_id: cid() },
+  });
+  await call("/privacy/retention", {
+    method: "POST", ...as(token),
+    body: { resource_type: "access_decision", data_class: "confidential",
+            retention_days: 365, legal_basis: "legitimate_interest", region: "me-south-1",
+            correlation_id: cid() },
+  });
+  const liveHold = await call("/privacy/legal-holds", {
+    method: "POST", ...as(token),
+    body: { reason: "Preserved for a claim under investigation",
+            reference: "CASE-2026-114", resource_type: "access_decision",
+            correlation_id: cid() },
+  });
+  const oldHold = await call("/privacy/legal-holds", {
+    method: "POST", ...as(token),
+    body: { reason: "Preserved for an enquiry that has since closed",
+            reference: "CASE-2025-009", resource_type: "member_note",
+            correlation_id: cid() },
+  });
+  await call(`/privacy/legal-holds/${oldHold.hold_id}/release`, {
+    method: "POST", ...as(token),
+    body: { release_reason: "the enquiry closed with no action",
+            correlation_id: cid() },
+  });
+  // **A request already past its deadline.** `received_at` is bounded so a caller cannot set
+  // the regulator-facing deadline forward, but it may be in the past -- which is how a
+  // genuinely overdue request exists, and the only way the board's overdue path is reachable.
+  await call("/privacy/requests", {
+    method: "POST", ...as(token),
+    body: { subject_id: ownerIdentityId, request_type: "access", response_days: 30,
+            correlation_id: cid() },
+  });
+  await call("/privacy/requests", {
+    method: "POST", ...as(token),
+    body: { subject_id: ownerIdentityId, request_type: "deletion", response_days: 1,
+            received_at: new Date(Date.now() - 10 * 86400000).toISOString(),
+            correlation_id: cid() },
+  });
+  await call("/privacy/incidents", {
+    method: "POST", ...as(token),
+    body: { severity: "low", category: "access_control",
+            summary: "A door reader was offline for twenty minutes",
+            detected_at: new Date(Date.now() - 2 * 86400000).toISOString(),
+            personal_data_involved: "no", correlation_id: cid() },
+  });
+
   // **A consumer the relay can route to.** Without one the outbox is fanned out to nobody and
   // the operations board has no deliveries to show -- which hides the half of that screen
   // that is still a standing gap: a delivery is created and never handled, because no name in
@@ -1037,6 +1101,7 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
     retiredAccountId: retiring.account_id,
     productId: product.product_id,
     closingPeriodKey: backDatedKey,
+    liveHoldId: liveHold.hold_id,
     membershipNumber: "GOLD-00042",
     invoiceNumber: invoice.document_number,
     invoiceGrossMinor: invoice.gross_minor,

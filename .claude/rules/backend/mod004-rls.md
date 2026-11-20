@@ -611,6 +611,25 @@ not-run: the harness reporting a gap it had created, which is the same false gre
 other paragraph here arriving by a route none of them cover. Encode the newlines and decode
 them at the psql boundary.
 
+**A surface branch no fixture can reach is the same vacuity, one layer up, and it has now
+happened four times in four modules.** `Alert`'s `warning` tone with no period in `closing`;
+the promotion block with only a live promotion seeded; the legal-hold list rendering a
+`Released` branch while the client asked only for live holds; the product verdict with only a
+sellable product. Each was code that looked tested, had an assertion written for it, and
+proved nothing -- the assertion passed because the branch never ran. It is MOD-020's "a
+declared state nothing writes" finding arriving in a UI, and the remedy is the one this file
+already states for constraint cases: **the fixture carries both members of the pair the
+distinction is about.** One `closing` period beside an open one, one expired promotion beside
+a live one, one released hold beside a preserving one. A board with one of each kind renders
+and demonstrates nothing.
+
+**And a redundant comparison in a client reads as a control exactly as a subsumed constraint
+does.** A request queue sorted `overdue` first and then by deadline; the sweep reported the
+first comparison as uncaught, correctly, because an overdue request is one whose due date has
+passed and a not-overdue one is a date still to come -- so the date sort already orders them.
+The remedy is the one this file records for a constraint subsumed by a sibling: delete it and
+keep the primitive statement, rather than contriving a case that cannot exist.
+
 **A rate limit whose budget is not declared is not a rate limit, and the structural test has
 to be mutation-proven too.** MOD-022's evaluate route named a budget `ratelimit.BUDGETS` did
 not carry, and `decide` defaulted to allowing -- so the route read as limited and was not.

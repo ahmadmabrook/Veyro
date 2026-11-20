@@ -3985,6 +3985,18 @@ def create_app(
             correlation_id=body.correlation_id,
         )
 
+    @app.get("/privacy/erasure-reach")
+    def read_erasure_reach(tenant_id: TenantId, session: Session) -> dict[str, Any]:
+        """What this build can and cannot erase. A statement about the software, not a tenant.
+
+        Gated on `privacy.dsar.read` -- "see data subject requests **and their evidence**" --
+        because this registry is the evidence behind every request's plan. It took no tenant
+        and no pool, so it reads nobody's rows; the tenant header is still required, because
+        an unauthenticated route is a different decision from an unparameterised one.
+        """
+        permit(session, "privacy.dsar.read")
+        return privacy.erasure_reach()
+
     @app.get("/privacy/requests")
     def read_dsars(tenant_id: TenantId, session: Session) -> list[dict[str, Any]]:
         permit(session, "privacy.dsar.read")
