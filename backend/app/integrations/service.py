@@ -58,18 +58,38 @@ def register_definition(
     capabilities: list[str], scopes: list[str], required_scopes: list[str],
     config_fields: list[dict[str, Any]] | None = None, regions: list[str] | None = None,
 ) -> dict[str, Any]:
-    """Register a draft definition version. Nothing may install against a draft."""
-    fields = tuple(
-        contract.ConfigField(
+    """Register a draft definition version. Nothing may install against a draft.
+
+    **A config field's shape is checked before it is indexed.** `config_fields` is a list of
+    caller-supplied dicts and this function used to read `f["name"]` and `f["field_type"]`
+    straight out of them, so a field missing either key raised `KeyError` and reached the
+    caller as a 500 with a database-free stack trace. That is MOD-011's "bound it at the
+    boundary or something else does it with a 500" in a different shape, and it is worse here
+    than elsewhere for a reason the module already discloses: **this route is on the
+    unauthenticated platform plane**, so the 500 is reachable by anybody who can see the
+    surface at all. Found by a fixture sending `type` where `field_type` was meant, which is
+    the realistic mistake -- the field is called a type everywhere a person writes about it.
+    """
+    # Each entry is a dict by the time it reaches here: `IntegrationDefinitionBody` declares
+    # `list[dict[str, Any]]`, so a string in that list is refused at the request boundary with
+    # a 422 before this function runs. An `isinstance` check here was written and deleted --
+    # it was a branch no caller could reach, which is dead code reading as a control, and this
+    # repository's own judgement for a constraint subsumed by a sibling is to delete it and
+    # say where the check went. A test asserts the boundary still refuses.
+    fields = []
+    for index, f in enumerate(config_fields or []):
+        for key in ("name", "field_type"):
+            if key not in f:
+                raise InvalidRequest(f"config_field_{index}_missing_{key}")
+        fields.append(contract.ConfigField(
             name=str(f["name"]), field_type=str(f["field_type"]),
             required=bool(f.get("required", False)),
             values=tuple(f.get("values", ())), description=str(f.get("description", "")),
-        )
-        for f in (config_fields or [])
-    )
+        ))
     candidate = contract.DefinitionVersion(
         definition_key=definition_key, version=version, capabilities=tuple(capabilities),
-        scopes=tuple(scopes), required_scopes=tuple(required_scopes), config_fields=fields,
+        scopes=tuple(scopes), required_scopes=tuple(required_scopes),
+        config_fields=tuple(fields),
         regions=tuple(regions or ()),
     )
     try:

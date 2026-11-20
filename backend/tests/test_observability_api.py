@@ -184,6 +184,19 @@ class ObservabilityApiTests(GatedApiTestCase):
 class RateLimitRegressionTests(GatedApiTestCase):
     """The blocking finding from the request-path review, and the backoff that goes with it."""
 
+    @classmethod
+    def rate_limit_clock(cls):
+        """Frozen, so thirty-two real requests cannot straddle a window boundary.
+
+        Every refused login costs one scrypt by design, so this class's requests are slow --
+        and on a machine slow enough they cross the limiter's fixed window, the count resets
+        and the 429 never arrives. That is exactly what happened in CI while the same test
+        passed locally. Freezing the clock removes the only variable that was not the
+        behaviour under test: the requests are real and so is the limiter.
+        """
+        return lambda: 1_700_000_000.0
+
+
     def body(self, identifier: str) -> dict:
         return {"identifier": identifier, "password": "wrong-but-long-enough",
                 "correlation_id": str(uuid.uuid4())}
@@ -255,6 +268,19 @@ class RateLimitRegressionTests(GatedApiTestCase):
 
 class RateLimitApiTests(GatedApiTestCase):
     """The limiter in the request path, which closes MOD-007's named gap."""
+
+    @classmethod
+    def rate_limit_clock(cls):
+        """Frozen, so thirty-two real requests cannot straddle a window boundary.
+
+        Every refused login costs one scrypt by design, so this class's requests are slow --
+        and on a machine slow enough they cross the limiter's fixed window, the count resets
+        and the 429 never arrives. That is exactly what happened in CI while the same test
+        passed locally. Freezing the clock removes the only variable that was not the
+        behaviour under test: the requests are real and so is the limiter.
+        """
+        return lambda: 1_700_000_000.0
+
 
     def test_login_volume_is_bounded_even_for_an_address_that_does_not_exist(self):
         """Lockout bounds guessing against one identity and sees nothing at all when the

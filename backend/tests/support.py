@@ -21,6 +21,8 @@ from __future__ import annotations
 import os
 import unittest
 import uuid
+from collections.abc import Callable
+from time import time
 
 from fastapi.testclient import TestClient
 
@@ -41,6 +43,21 @@ class GatedApiTestCase(unittest.TestCase):
     PASSWORD = "a-long-enough-password"
 
     @classmethod
+    def rate_limit_clock(cls) -> Callable[[], float]:
+        """The clock the rate limiter reads its window from. Real time unless overridden.
+
+        **A class overrides this when it proves a volume bound by making the requests.** The
+        limiter's window is fixed-length and every refused login deliberately costs one scrypt,
+        so thirty-two real attempts take long enough on a slow machine to cross a window
+        boundary -- which resets the count and means the 429 never arrives. That is a green
+        that depends on how fast the runner is rather than on the behaviour under test, and it
+        failed in CI while passing locally. A frozen clock removes the variable without
+        weakening what is proved: the requests are real, the limiter is real, and only the
+        window stops moving underneath them.
+        """
+        return time
+
+    @classmethod
     def setUpClass(cls) -> None:
         cls._tenant_pool = make_tenant_pool(DSN)
         cls._platform_pool = make_platform_pool(DSN)
@@ -49,6 +66,7 @@ class GatedApiTestCase(unittest.TestCase):
             Settings(environment="local", release="test", database_url=DSN),
             tenant_pool=cls._tenant_pool, platform_pool=cls._platform_pool,
             identity_pool=cls._identity_pool,
+            clock=cls.rate_limit_clock(),
         )
         cls._client_cm = TestClient(app)
         cls.client = cls._client_cm.__enter__()

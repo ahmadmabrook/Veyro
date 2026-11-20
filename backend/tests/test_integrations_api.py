@@ -166,3 +166,83 @@ class IntegrationsApiTests(GatedApiTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ConfigFieldShapeTests(GatedApiTestCase):
+    """A caller-supplied dict is checked before it is indexed.
+
+    **`config_fields` reached `f["name"]` and `f["field_type"]` straight out of the request**,
+    so a field missing either key raised `KeyError` and answered 500. That is MOD-011's "bound
+    it at the boundary or something else does it with a 500" in a different shape, and worse
+    here than elsewhere: this route is on the unauthenticated platform plane, so the 500 is
+    reachable by anybody who can see the surface at all.
+
+    Found by a fixture sending `type` where `field_type` was meant -- the realistic mistake,
+    since the field is called a type everywhere a person writes about it.
+    """
+
+    def test_a_config_field_missing_its_type_refuses_rather_than_500(self):
+        answer = self.client.post("/platform/integrations", json={
+            "definition_key": f"shape.{uuid.uuid4().hex[:8]}", "version": 1,
+            "provider": "Acme", "display_name": "Shape", "criticality": "important",
+            "support_owner": "p@acme.invalid", "description": "A definition.",
+            "capabilities": ["accounting"], "scopes": [], "required_scopes": [],
+            # `type`, not `field_type`: the name a person would reach for.
+            "config_fields": [{"name": "account", "type": "string"}],
+            "regions": [],
+        })
+        self.assertEqual(answer.status_code, 422, answer.text)
+        self.assertEqual(answer.json()["error"], "config_field_0_missing_field_type")
+
+    def test_a_config_field_missing_its_name_refuses_and_says_which(self):
+        answer = self.client.post("/platform/integrations", json={
+            "definition_key": f"shape.{uuid.uuid4().hex[:8]}", "version": 1,
+            "provider": "Acme", "display_name": "Shape", "criticality": "important",
+            "support_owner": "p@acme.invalid", "description": "A definition.",
+            "capabilities": ["accounting"], "scopes": [], "required_scopes": [],
+            "config_fields": [
+                {"name": "ok", "field_type": "string"},
+                {"field_type": "string"},
+            ],
+            "regions": [],
+        })
+        self.assertEqual(answer.status_code, 422, answer.text)
+        # The index is in the error, because "a config field is malformed" in a list of eight
+        # is a message that sends somebody reading all eight.
+        self.assertEqual(answer.json()["error"], "config_field_1_missing_name")
+
+    def test_a_config_field_that_is_not_an_object_is_refused_at_the_boundary(self):
+        """Pydantic owns this half, and the service deliberately does not duplicate it.
+
+        `IntegrationDefinitionBody` declares `list[dict[str, Any]]`, so a string in that list
+        never reaches the service. An `isinstance` guard was written there and deleted: a
+        branch no caller can reach is dead code reading as a control, which is this
+        repository's judgement for a constraint subsumed by a sibling. This test is what makes
+        the deletion safe -- it asserts the boundary still refuses.
+        """
+        answer = self.client.post("/platform/integrations", json={
+            "definition_key": f"shape.{uuid.uuid4().hex[:8]}", "version": 1,
+            "provider": "Acme", "display_name": "Shape", "criticality": "important",
+            "support_owner": "p@acme.invalid", "description": "A definition.",
+            "capabilities": ["accounting"], "scopes": [], "required_scopes": [],
+            "config_fields": ["account"],
+            "regions": [],
+        })
+        self.assertEqual(answer.status_code, 422, answer.text)
+        self.assertEqual(answer.json()["error"], "invalid_request")
+
+    def test_a_well_formed_definition_still_registers(self):
+        """The guard refuses the malformed and lets the ordinary case through."""
+        key = f"shape.{uuid.uuid4().hex[:8]}"
+        answer = self.client.post("/platform/integrations", json={
+            "definition_key": key, "version": 1, "provider": "Acme",
+            "display_name": "Shape", "criticality": "important",
+            "support_owner": "p@acme.invalid", "description": "A definition.",
+            "capabilities": ["accounting"], "scopes": ["members.read"],
+            "required_scopes": ["members.read"],
+            "config_fields": [{"name": "account", "field_type": "string",
+                               "required": True}],
+            "regions": ["me-south-1"],
+        })
+        self.assertEqual(answer.status_code, 201, answer.text)
+        self.assertEqual(answer.json()["definition_key"], key)

@@ -611,6 +611,23 @@ not-run: the harness reporting a gap it had created, which is the same false gre
 other paragraph here arriving by a route none of them cover. Encode the newlines and decode
 them at the psql boundary.
 
+**A test that proves a volume bound by making the requests has a green that depends on how
+fast the machine is.** `test_an_unparseable_identifier_still_gets_a_stable_key` makes
+thirty-two login attempts and expects the thirty-first to be refused. Every refused login
+deliberately costs one scrypt -- MOD-007's timing-attack defence, where a locked identity
+answering in two milliseconds while everything else took fifty identified every registered
+address in five requests -- so those thirty-two are slow, and on a slower runner they cross
+the limiter's fixed-length window. The count resets, the budget is never reached inside one
+window, and the 429 never arrives. **It passed locally and failed in CI**, which is the worst
+property a flake can have, and it is the same family as the budget-consuming tests this file
+already records: a green that depends on something other than the behaviour under test.
+
+The fix is a clock seam -- `create_app(..., clock=time)`, frozen by the two test classes that
+prove a volume bound. The requests stay real and the limiter stays real; only the window stops
+moving underneath them. **And the seam has to be mutation-proven like anything else**: with
+the limiter's `raise` removed, those tests fail, so freezing the clock did not make them
+vacuous.
+
 **A string that never became a message key is invisible to the parity check, and the check
 cannot be made to see it.** `MESSAGE_KEYS` compares the two catalogues against each other --
 in both directions now -- so it catches a key present in one and missing from the other, and

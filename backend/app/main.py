@@ -31,7 +31,7 @@ import base64
 import binascii
 import hashlib
 import re
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from datetime import UTC, date, datetime
 from datetime import time as clock_time
@@ -2744,7 +2744,19 @@ def create_app(
     tenant_pool: Any = None,
     platform_pool: Any = None,
     identity_pool: Any = None,
+    clock: Callable[[], float] = time,
 ) -> FastAPI:
+    """Build the application.
+
+    `clock` is the seam the rate limiter reads its window from. It exists because the limiter's
+    window is fixed-length and every refused login deliberately costs one scrypt: a test that
+    proves the bound by making thirty-two real attempts is a test whose green depends on the
+    machine finishing them inside one window, and a slower runner rolls the window, resets the
+    count and never sees a 429. That is the same family as the budget-consuming tests this
+    repository already records -- a green that depends on something other than the behaviour
+    under test -- and it cost one red CI run to find. Production passes nothing and gets
+    `time`.
+    """
     cfg = settings or load_settings()
     owned_pools: list[Any] = []
     # One limiter per application. In this process's memory, which `app.observability.ratelimit`
@@ -2863,7 +2875,7 @@ def create_app(
         map of every address anybody has tried to log in as.
         """
         verdict = limiter.check(tenant_id=tenant_id, limit_key=limit_key, subject=subject,
-                                now_epoch=time())
+                                now_epoch=clock())
         if not verdict.allowed:
             raise TooManyRequests("rate_limited", verdict.retry_after_seconds)
 

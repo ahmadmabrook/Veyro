@@ -1083,6 +1083,16 @@ Known gaps, deliberate:
   read their dimension values from the database rather than from a caller -- and nothing tests
   that invariant. The day a producer passes a caller-supplied string, MOD-010's
   `cfg_exposures.subject_id` finding recurs in a store with no DELETE grant at all.
+- **The limiter's window is fixed, not sliding, so the bound at a boundary is twice the
+  budget.** `ratelimit.py` argues the in-memory design at length and says "30 a minute";
+  what it enforces is 30 per fixed window, so a caller who spreads attempts across a boundary
+  gets 60 inside one rolling minute. That is the ordinary trade for a fixed-window limiter and
+  not worth a sliding one here -- but the prose and the mechanism differ by a factor of two at
+  the seam, and saying so is cheaper than somebody deriving it from a flake. **It was a flake
+  that surfaced it**: a test proving the bound by making thirty-two real attempts crossed a
+  window on a slower CI runner and never saw its 429, because every refused login
+  deliberately costs one scrypt. `create_app` takes a `clock` now and the two classes that
+  prove a volume bound freeze it.
 - **`authz.denials` counts refusals at the gate, which is slightly more than its name.** It fires
   on any `ServiceError` from `authz.require`, including a `NotFound` from scope resolution.
 - **`events.delivery_success` counts a lease-stolen delivery as a success.** The handler did run
@@ -3735,6 +3745,35 @@ module's gate and renders them beside the person. Three gates, asked separately,
 reader may hold any subset -- a coach sees the membership and not the money -- and a refused
 block says it was refused rather than rendering empty.
 
+**MOD-012's board found two defects in itself, and one red CI run found a third elsewhere.**
+Nothing syncs, so a run's record counts are a caller's word and the page says so beside them;
+a credential is a reference to the vault MOD-007's TOTP seeds, MOD-009's crypto-shred and
+MOD-021's device certificates are also waiting on, said in the same words the fleet board uses
+because four screens saying it four ways would read as four gaps.
+
+What the board shipped wrong, and looking found:
+
+  * **The written-obligations check was keyed on `live_critical`**, which
+    `int_installs.criticality` never holds -- the vocabulary is `convenience`, `important`,
+    `critical`, and `lifecycle.py` compares against the last. So every install reported "not
+    required at this criticality", including a `critical` one carrying traffic without its
+    exit plan. A control keyed on a value that never occurs, caused by taking the prose ("a
+    live critical install") for the stored value.
+  * **The same comparison was written twice.** The page re-derived it inline for its own cell
+    while the library answered the banner, so fixing the library left the cell wrong -- the
+    banner correctly named the install while the row beside it said the obligations did not
+    apply. `obligationsApply` is exported so there is one definition, which is MOD-014's "a
+    control consulted on one path and not its sibling" in a surface.
+
+**And a 500 on the unauthenticated platform plane.** `register_definition` read `f["name"]`
+and `f["field_type"]` out of caller-supplied dicts, so a field missing either key raised
+`KeyError` and answered 500 -- found by a fixture sending `type`, which is the name a person
+reaches for. The shape is checked at the boundary now and the error names the index, because
+"a config field is malformed" in a list of eight sends somebody reading all eight. An
+`isinstance` guard was written beside it and deleted: Pydantic refuses a non-object at the
+request boundary, so the branch was unreachable, and a branch no caller can reach is dead code
+reading as a control.
+
 **MOD-013's board is the opposite problem: the module works and nothing sends.** There is no
 provider, no SMTP and no outbound request, so every notification sits at `requested` for ever
 -- and the honest thing to render is an absence. The waiting count leads the page with the
@@ -3882,8 +3921,8 @@ initially asserted the *wrong* number and failed for that reason, which is the c
 arriving in the evidence before it could arrive in the product.
 
 Known gaps: the surface covers the sign-in, the step-up, MOD-004, MOD-008, MOD-010, MOD-011,
-MOD-005, MOD-009, MOD-013, MOD-014, MOD-016, MOD-017, MOD-018, MOD-019, MOD-021 and
-MOD-022, plus MOD-020's roster on a session. The other three implemented modules have no
+MOD-005, MOD-009, MOD-012, MOD-013, MOD-014, MOD-016, MOD-017, MOD-018, MOD-019, MOD-021
+and MOD-022, plus MOD-020's roster on a session. The other two implemented modules have no
 screens yet,
 which is the bulk of the remaining work; MOD-019's own surface is read-only -- publishing a
 schedule, substituting an instructor and cancelling a session are all built on the server and
@@ -3904,8 +3943,8 @@ is part of it. So "implemented" above is accurate about the server plane and inc
 the product for every module except MOD-022, and the backlog has two halves.
 
 The first is the screens the eighteen built modules do not have. `web/` covers the sign-in, the
-step-up, MOD-004, MOD-005, MOD-008, MOD-009, MOD-010, MOD-011, MOD-013, MOD-014, MOD-016,
-MOD-017, MOD-018, MOD-019, MOD-020's roster, MOD-021 and MOD-022;
+step-up, MOD-004, MOD-005, MOD-008, MOD-009, MOD-010, MOD-011, MOD-012, MOD-013, MOD-014,
+MOD-016, MOD-017, MOD-018, MOD-019, MOD-020's roster, MOD-021 and MOD-022;
 `contracts/ui/screen-contracts.yaml` names the rest, and
 the work is per module rather than per screen because each one needs its gate, its masked
 fields and its failure states wired the way those are. The second is the modules themselves: MOD-023 (Coach Workspace, which

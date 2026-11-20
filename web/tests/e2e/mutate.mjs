@@ -600,6 +600,47 @@ const MUTATIONS = [
     grep: "says reachability is worked out rather than stored",
   },
   {
+    id: "integrations-obligations-bind-critical",
+    why: "the check was keyed on `live_critical`, which the column never holds, so every "
+      + "install reported the written obligations did not apply -- including one carrying "
+      + "traffic without its exit plan",
+    file: "src/lib/integrations.ts",
+    from: 'export const OBLIGED_CRITICALITY = "critical";',
+    to: 'export const OBLIGED_CRITICALITY = "live_critical";',
+    runner: "vitest",
+    grep: "the value the column actually holds",
+  },
+  {
+    id: "integrations-page-asks-the-library",
+    why: "the page re-derived the criticality comparison for its own cell while the library "
+      + "answered the banner, so fixing one left the other wrong -- the banner named an "
+      + "install carrying traffic without its obligations while the row said they did not "
+      + "apply",
+    file: "src/app/integrations/page.tsx",
+    from: "                        {!obligationsApply(install) ? (",
+    to: '                        {install.criticality !== "live_critical" ? (',
+    grep: "names the critical install missing a written obligation",
+  },
+  {
+    id: "integrations-counts-are-reported-not-observed",
+    why: "nothing in this build calls a provider, so a record count is a caller's word -- "
+      + "and a number with no caveat reads as data that moved",
+    file: "src/lib/integrations.ts",
+    from: "  return run.records_read > 0 || run.records_written > 0;",
+    to: "  return false;",
+    grep: "counts were reported rather than observed",
+  },
+  {
+    id: "integrations-dead-run-needs-somebody",
+    why: "a failed run retries itself; a dead one burned its budget and needs an attributed "
+      + "release before it goes back in front of a provider",
+    file: "src/lib/integrations.ts",
+    from: '  return run.status === "dead";',
+    to: '  return run.status === "failed";',
+    runner: "vitest",
+    grep: "dead and not merely failed",
+  },
+  {
     id: "notify-reason-is-a-sentence",
     why: "`no_preference_stops_it` tells a reader nothing they can act on -- 'a rule id is "
       + "not a reason', which MOD-005's board learned about flags",

@@ -43,6 +43,7 @@ const surfaces: [string, string][] = [
   // The widest table in the app: twenty areas against a column of prose.
   ["the privacy board", "/privacy"],
   ["the messages board", "/notifications"],
+  ["the integrations board", "/integrations"],
 ];
 
 test.describe("at phone width", () => {

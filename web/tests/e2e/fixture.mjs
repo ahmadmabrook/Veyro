@@ -1130,6 +1130,108 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
             correlation_id: cid() },
   });
 
+  // ---------------------------------------------------------------- MOD-012, integrations
+  //
+  // **Two installs, because the written obligations only bind one of them.** A
+  // `live_critical` install needs a fallback, a reconciliation procedure and an exit plan in
+  // writing before it may carry traffic; a `standard` one does not. A board with only the
+  // second shows a column that never says anything, and with only the first cannot show the
+  // difference between "satisfied" and "not required".
+  //
+  // The definition lives on the platform plane, which is unauthenticated in this build and
+  // worse there than the plan catalogue: a definition declares the scopes an install may
+  // grant a third party, so whoever can publish one chooses what a tenant is able to hand out.
+  // **The key is unique per run, because the definition catalogue is not tenant-scoped.** It
+  // lives in `plt01_platform` beside the plan catalogue, so a fixed key registers once ever
+  // and every later fixture run is refused with "a version must be higher than the last" --
+  // which reads as a product defect and is a fixture that can only be provisioned once. The
+  // suffix is what makes this suite re-runnable, and it is the same reason the tenant,
+  // identity and template keys carry one.
+  const partner = `acme${Date.now().toString(36)}`;
+  for (const [key, criticality] of [
+    [`${partner}.ledger`, "critical"],
+    [`${partner}.newsletter`, "important"],
+  ]) {
+    await call("/platform/integrations", {
+      method: "POST",
+      body: {
+        definition_key: key, version: 1, provider: "Acme",
+        display_name: key.endsWith(".ledger") ? "Acme Ledger" : "Acme Newsletter",
+        criticality, support_owner: "partners@acme.invalid",
+        description: "A synthetic definition for the local fixture.",
+        capabilities: ["accounting"], scopes: ["members.read"],
+        required_scopes: ["members.read"],
+        // `field_type`, not `type`: the name a person reaches for is the one the
+        // service does not take, which is how the 500 this fixture found was found.
+        config_fields: [{ name: "account", field_type: "string", required: true }],
+        regions: ["me-south-1"],
+      },
+    });
+    await call(`/platform/integrations/${key}/1/publish`, { method: "POST" });
+  }
+
+  const critical = await call("/integrations", {
+    method: "POST", ...as(token),
+    body: { definition_key: `${partner}.ledger`, version: 1,
+            config: { account: "acct-1" }, correlation_id: cid() },
+  });
+  // **Only two of the three obligations**, deliberately: the board's job is to notice.
+  await call(`/integrations/${critical.install_id}/configure`, {
+    method: "POST", ...as(token),
+    body: { fallback_plan: "Fall back to manual export while the provider is down.",
+            reconciliation_plan: "Compare counts nightly against the ledger export.",
+            correlation_id: cid() },
+  });
+  const standard = await call("/integrations", {
+    method: "POST", ...as(token),
+    body: { definition_key: `${partner}.newsletter`, version: 1,
+            config: { account: "acct-2" }, correlation_id: cid() },
+  });
+
+  const connection = await call("/integrations/connections", {
+    method: "POST", ...as(token),
+    body: { install_id: standard.install_id, external_account_ref: "acme-acct-2",
+            region: "me-south-1", granted_scopes: ["members.read"],
+            vault_ref: "vault://veyro/local/acme-newsletter",
+            expires_at: new Date(Date.now() + 90 * 86400000).toISOString(),
+            correlation_id: cid() },
+  });
+  // **`validated` means somebody recorded a validation, not that this build performed one.**
+  // There is no provider to call, so the state carries an actor and a written piece of
+  // evidence and the row says what it is: a claim made by a named party at a time. A run
+  // refuses an unvalidated connection, which is why this comes first.
+  await call(`/integrations/connections/${connection.connection_id}/validate`, {
+    method: "POST", ...as(token),
+    body: { evidence: "a test call answered 200 from the partner console",
+            correlation_id: cid() },
+  });
+  // **Install, connect, validate, activate, run -- in that order, and the order is the
+  // product.** An install cannot activate without a validated connection, because activating
+  // one is the act that says a third party may carry this tenant's traffic; and a run refuses
+  // an install that is not active. The critical install below stays inactive on purpose: it
+  // has two of its three written obligations, and activation is where that is checked.
+  await call(`/integrations/${standard.install_id}/activate`, {
+    method: "POST", ...as(token), body: { correlation_id: cid() },
+  });
+
+  await call("/integrations/cursors", {
+    method: "POST", ...as(token),
+    body: { connection_id: connection.connection_id, resource: "members",
+            position: "2026-11-01T00:00:00Z", observed_at: new Date().toISOString(),
+            correlation_id: cid() },
+  });
+  // A run that was opened and reported a result. Nothing called a provider.
+  const run = await call("/integrations/runs", {
+    method: "POST", ...as(token),
+    body: { connection_id: connection.connection_id, resource: "members",
+            max_attempts: 5, correlation_id: cid() },
+  });
+  await call(`/integrations/runs/${run.run_id}/finish`, {
+    method: "POST", ...as(token),
+    body: { records_read: 120, records_written: 118, conflicts: 2,
+            correlation_id: cid() },
+  });
+
   // **A consumer the relay can route to.** Without one the outbox is fanned out to nobody and
   // the operations board has no deliveries to show -- which hides the half of that screen
   // that is still a standing gap: a delivery is created and never handled, because no name in
