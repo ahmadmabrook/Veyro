@@ -91,8 +91,8 @@ const MUTATIONS = [
     id: "table-name",
     why: "the permissions table must have an accessible name",
     file: "src/app/page.tsx",
-    from: '        <table\n          aria-labelledby="permissions-heading"',
-    to: "        <table\n",
+    from: '          tabIndex={0}\n          aria-labelledby="permissions-heading"',
+    to: "          tabIndex={0}\n",
     grep: "has an accessible name",
   },
   {
@@ -456,9 +456,111 @@ const MUTATIONS = [
     why: "a substituted instructor's hold is kept rather than deleted, and one list with a "
       + "flag puts a coach who was sent home back on the roster",
     file: "src/app/schedule/[sessionId]/page.tsx",
-    from: "          <Resources list={session.former_resources} />",
-    to: "          <Resources list={[]} />",
+    from: "          <Resources list={session.former_resources} timezone={session.timezone} />",
+    to: "          <Resources list={[]} timezone={session.timezone} />",
     grep: "shows what a session used to hold",
+  },
+  {
+    id: "member-two-reasons",
+    why: "four of the sections named here belong to modules that have since been built, so a "
+      + "reader who takes 'this projection does not read it' for 'the product does not have "
+      + "it' has been told the wrong thing about their own build",
+    file: "src/app/people/[personId]/page.tsx",
+    from: "          {text(\"member.unavailableWhy\")}",
+    to: "          {\"\"}",
+    grep: "does not call a module that exists one that was never built",
+  },
+  {
+    id: "fleet-count-labelled",
+    why: "a bare number after a timestamp reads as part of it, and the count is the only "
+      + "thing on that line which is not a time",
+    file: "src/app/fleet/page.tsx",
+    from: "          {text(\"fleet.counted\")}",
+    to: "          {\"\"}",
+    grep: "labels the count and the clock",
+  },
+  {
+    id: "utc-is-marked",
+    why: "an instant with no zone was merely ambiguous while every screen rendered one that "
+      + "way, and became misleading the day the schedule board started converting",
+    file: "src/lib/time.ts",
+    from: "  return `${instant.slice(0, 10)} ${instant.slice(11, 16)} UTC`;",
+    to: "  return `${instant.slice(0, 10)} ${instant.slice(11, 16)}`;",
+    grep: "labels the count and the clock",
+  },
+  {
+    id: "schedule-local-time",
+    why: "MOD-019 stores a UTC instant and the local facts it came from because neither is "
+      + "derivable from the other, so slicing the ISO string shows a class at 18:00 in Amman "
+      + "as 15:00 under a heading promising the site's own timezone",
+    file: "src/lib/time.ts",
+    from: "      time: new Intl.DateTimeFormat(\"en-GB\", {",
+    to: "      time: ((x) => ({ format: () => instant.slice(11, 16) }))(new Intl.DateTimeFormat(\"en-GB\", {",
+    grep: "renders every session in the site's timezone",
+  },
+  {
+    id: "phone-table-scrolls-inside-itself",
+    why: "a page that scrolls sideways hides its own right-hand edge, so a column a reader "
+      + "cannot see reads as a column that does not exist",
+    file: "src/app/globals.css",
+    from: "  table {\n    display: block;",
+    to: "  table.not-a-table {\n    display: block;",
+    grep: "the operations board does not scroll sideways",
+  },
+  {
+    id: "phone-facts-can-shrink",
+    why: "a grid track's implicit minimum is min-content, so a value with no break "
+      + "opportunity -- a comma-separated list of dotted permission names -- makes the column "
+      + "wider than the page and nothing about the container can stop it",
+    file: "src/app/globals.css",
+    from: ".facts dd {\n  overflow-wrap: anywhere;\n}",
+    to: ".facts dd {\n  overflow-wrap: normal;\n}",
+    grep: "the permissions page does not scroll sideways",
+  },
+  {
+    id: "config-unset-is-a-sentence",
+    why: "an unset key reads back as its own default, which is indistinguishable from a "
+      + "tenant that published the same value unless the scope is rendered",
+    file: "src/app/configuration/page.tsx",
+    from: "        {isUnset(resolved) ? (",
+    to: "        {false ? (",
+    grep: "says nobody set the key nobody set",
+  },
+  {
+    id: "config-flag-reason",
+    why: "`off` could be a kill switch, a flag nobody enabled, or a rule that sent this "
+      + "subject to the control arm, and an operator in an incident needs to know which",
+    file: "src/app/configuration/page.tsx",
+    from: "      <td style={cell}>{text(label[reason])}</td>",
+    to: "      <td style={cell}>{\"\"}</td>",
+    grep: "says why a flag is off",
+  },
+  {
+    id: "config-kill-switch-marked",
+    why: "a kill switch outranks every targeting rule and is somebody's deliberate stop, "
+      + "which is the one flag state worth an alarm rather than a row",
+    file: "src/app/configuration/page.tsx",
+    from: "              <Alert tone=\"error\">{text(\"config.killSwitchEngaged\")}</Alert>",
+    to: "              <></>",
+    grep: "marks a kill switch",
+  },
+  {
+    id: "config-flags-are-per-subject",
+    why: "there is no route that lists flags without evaluating them, so a flag missing from "
+      + "the board is not a flag that is absent",
+    file: "src/app/configuration/page.tsx",
+    from: "              {text(\"config.noFlagList\")}",
+    to: "              {\"\"}",
+    grep: "no route that lists flags",
+  },
+  {
+    id: "config-flag-block-gated-on-its-own",
+    why: "the flag read is its own permission, so a reader may hold the registry read and "
+      + "not it -- and an empty flag board reads as a tenant with no flags",
+    file: "src/app/configuration/page.tsx",
+    from: "        {!mayFlags.allowed ? (",
+    to: "        {false ? (",
+    grep: "is refused both blocks",
   },
   {
     id: "roster-gated-on-its-own",

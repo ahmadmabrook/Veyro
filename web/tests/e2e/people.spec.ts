@@ -108,10 +108,27 @@ test.describe("the member record", () => {
 
   test("names the sections no module in this build can answer", async ({ page }) => {
     const sections = page.locator("section").filter({ hasText: "Where each part comes from" });
-    // Seven of the twelve areas PPL-01-R02 lists belong to modules this repository does not
-    // have. Rendering them as empty lists would read as "none".
-    await expect(sections.getByRole("heading", { name: "Not in this build" })).toBeVisible();
-    await expect(sections).toContainText("COM-01 is not built");
+    // Seven of the twelve areas PPL-01-R02 lists are not answered here. Rendering them as
+    // empty lists would read as "none".
+    await expect(sections.getByRole("heading", { name: "Not answered here" })).toBeVisible();
+    await expect(sections).toContainText("CCH-02 is not built in this repository");
+  });
+
+  test("does not call a module that exists one that was never built", async ({ page }) => {
+    // **This test used to assert the defect.** It checked for "COM-01 is not built", which
+    // was true when it was written and false by the time somebody looked at the page: the
+    // modules behind membership, bookings, attendance and finance have all been built since,
+    // and the one screen a staff member opens before talking to a member was telling them the
+    // product does not have bookings.
+    const sections = page.locator("section").filter({ hasText: "Where each part comes from" });
+    for (const built of ["MOD-017", "MOD-018", "MOD-019", "MOD-020"]) {
+      await expect(sections).toContainText(built);
+    }
+    await expect(sections).toContainText("nothing here reads it");
+    await expect(sections).not.toContainText("COM-01 is not built");
+    await expect(sections).not.toContainText("OPS-01 is not built");
+    // And the line that tells the two reasons apart, without which they read as one.
+    await expect(sections).toContainText(/Two reasons, and the difference matters/);
   });
 
   test("shows the projected timeline with what each entry was", async ({ page }) => {

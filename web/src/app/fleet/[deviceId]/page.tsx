@@ -89,7 +89,7 @@ export default async function DevicePage({
         <p className="muted" style={{ margin: 0 }}>
           {device.is_access_point ? text("device.isAccessPoint") : text("device.notAccessPoint")}
         </p>
-        <dl style={listStyle}>
+        <dl className="facts">
           <dt className="muted">{text("fleet.state")}</dt>
           <dd style={{ margin: 0 }}>{device.state}</dd>
           <dt className="muted">{text("fleet.reachability")}</dt>
@@ -111,7 +111,7 @@ export default async function DevicePage({
           {device.safety === null ? (
             <Alert tone="error">{text("device.noSafety")}</Alert>
           ) : (
-            <dl style={listStyle}>
+            <dl className="facts">
               <dt className="muted">{text("device.profile")}</dt>
               <dd style={{ margin: 0 }}>
                 <span className="data" dir="ltr">
@@ -133,7 +133,7 @@ export default async function DevicePage({
           <p className="muted" style={{ margin: 0 }}>
             {text("device.commissioningLead")}
           </p>
-          <dl style={listStyle}>
+          <dl className="facts">
             {commissioning(device.outstanding_tests).map(({ test, done }) => (
               <div key={test} style={{ display: "contents" }}>
                 <dt className="muted">
@@ -191,7 +191,7 @@ export default async function DevicePage({
         {device.health === null ? (
           <Alert tone="info">{text("device.noHealth")}</Alert>
         ) : (
-          <dl style={listStyle}>
+          <dl className="facts">
             <dt className="muted">{text("device.latency")}</dt>
             <dd style={{ margin: 0 }}>
               <span className="data">
@@ -225,7 +225,7 @@ export default async function DevicePage({
               ? text("device.snapshotBehind")
               : device.snapshot.stale
                 ? text("device.snapshotStale")
-                : `${text("device.snapshotLive")} ${device.snapshot.expires_at.slice(11, 16)}`}
+                : `${text("device.snapshotLive")} ${device.snapshot.expires_at.slice(11, 16)} UTC`}
           </p>
         )}
       </section>
@@ -273,9 +273,3 @@ function Shell({
   );
 }
 
-const listStyle: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "minmax(12rem, auto) 1fr",
-  gap: "var(--space-2) var(--space-4)",
-  margin: 0,
-};

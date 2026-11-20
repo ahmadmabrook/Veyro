@@ -7,6 +7,7 @@ import { ApiError, currentSession, gate } from "@/lib/api";
 import { presentation } from "@/lib/preferences";
 import { heldBeyondRoster, readRoster } from "@/lib/booking";
 import { readSession, type SessionResource } from "@/lib/scheduling";
+import { inZone } from "@/lib/time";
 
 /**
  * One session: what it holds, what it used to hold, and what changed about it.
@@ -72,15 +73,21 @@ export default async function SessionPage({
 
   return (
     <Shell locale={locale} name={session.display_name}>
-      <dl style={factList}>
+      <dl className="facts">
         <dt className="muted">{text("schedule.when")}</dt>
+        {/* **The site's zone, not UTC.** The instant and the local facts are stored separately
+            because neither is derivable from the other, and a surface that slices the ISO
+            string throws away the half the reader needs. */}
         <dd style={{ margin: 0 }}>
           <span className="data" dir="ltr">
-            {session.starts_at.slice(0, 16).replace("T", " ")}
+            {inZone(session.starts_at, session.timezone).date}
+          </span>{" "}
+          <span className="data" dir="ltr">
+            {inZone(session.starts_at, session.timezone).time}
           </span>
           {" — "}
           <span className="data" dir="ltr">
-            {session.ends_at.slice(11, 16)}
+            {inZone(session.ends_at, session.timezone).time}
           </span>
         </dd>
         <dt className="muted">{text("schedule.timezone")}</dt>
@@ -116,13 +123,13 @@ export default async function SessionPage({
 
       <section className="panel stack">
         <h2 style={{ margin: 0 }}>{text("schedule.resources")}</h2>
-        <Resources list={session.resources} />
+        <Resources list={session.resources} timezone={session.timezone} />
       </section>
 
       {session.former_resources.length > 0 ? (
         <section className="panel stack">
           <h2 style={{ margin: 0 }}>{text("schedule.formerResources")}</h2>
-          <Resources list={session.former_resources} />
+          <Resources list={session.former_resources} timezone={session.timezone} />
         </section>
       ) : null}
 
@@ -138,7 +145,8 @@ export default async function SessionPage({
                   {change.change_kind}
                   {" · "}
                   <span className="data" dir="ltr">
-                    {change.recorded_at.slice(0, 16).replace("T", " ")}
+                    {inZone(change.recorded_at, session.timezone).date}{" "}
+                    {inZone(change.recorded_at, session.timezone).time}
                   </span>
                   {" · "}
                   {/* **Marked, never dropped.** An absent reason reads as "nothing was
@@ -201,6 +209,7 @@ export default async function SessionPage({
               <Alert tone="info">{text("roster.empty")}</Alert>
             ) : (
               <table
+                tabIndex={0}
                 aria-labelledby="roster-heading"
                 style={{ width: "100%", borderCollapse: "collapse" }}
               >
@@ -230,7 +239,7 @@ export default async function SessionPage({
                           <span className="muted">{text("roster.notCheckedIn")}</span>
                         ) : (
                           <span className="data" dir="ltr">
-                            {entry.checked_in_at.slice(11, 16)}
+                            {inZone(entry.checked_in_at, session.timezone).time}
                           </span>
                         )}
                       </td>
@@ -297,8 +306,10 @@ export default async function SessionPage({
 
 function Resources({
   list,
+  timezone,
 }: {
   list: (SessionResource & { superseded_at?: string })[];
+  timezone: string;
 }) {
   return (
     <ul style={{ margin: 0, paddingInlineStart: "var(--space-5)" }}>
@@ -319,7 +330,8 @@ function Resources({
             <>
               {" · "}
               <span className="data" dir="ltr">
-                {resource.superseded_at.slice(0, 16).replace("T", " ")}
+                {inZone(resource.superseded_at, timezone).date}{" "}
+                {inZone(resource.superseded_at, timezone).time}
               </span>
             </>
           ) : null}
@@ -368,9 +380,3 @@ const cell: React.CSSProperties = {
   borderBottom: "1px solid var(--color-border-subtle)",
 };
 
-const factList: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "minmax(10rem, auto) 1fr",
-  gap: "var(--space-2) var(--space-4)",
-  margin: 0,
-};

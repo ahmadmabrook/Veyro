@@ -155,7 +155,7 @@ function OrganizationCard({ node, locale }: { node: OrganizationTree; locale: Lo
                 {text("org.noLocations")}
               </p>
             ) : (
-              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <table tabIndex={0} style={{ width: "100%", borderCollapse: "collapse" }}>
                 <caption style={{ textAlign: "start", paddingBottom: "var(--space-2)" }}>
                   {text("org.locations")}
                 </caption>

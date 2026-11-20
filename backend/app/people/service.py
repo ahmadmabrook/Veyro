@@ -1389,9 +1389,19 @@ def member_360(
         "timeline": entries,
         "consent_record_count": int(consents[0]) if consents else 0,
         # **Every section says where it came from, and the absent ones say why.** PPL-01-R02
-        # lists twelve areas; five are readable here and seven belong to modules this build does
-        # not have. Returning an empty list for those would read as "none", which is the
-        # difference between "this member has no outstanding balance" and "nothing here knows".
+        # lists twelve areas; five are readable here and seven are not. Returning an empty list
+        # for those would read as "none", which is the difference between "this member has no
+        # outstanding balance" and "nothing here knows".
+        #
+        # **And "why" has two answers now, which it did not when this was written.** Five of
+        # these sections said "not built in this repository" and four of those modules have
+        # since been built -- so the Member 360 was telling a staff member that bookings and
+        # finance do not exist in a build that has both. That is this module's own stated
+        # failure mode from the other side: a confident wrong answer in the place somebody
+        # looks before talking to a member. The true statement for those is that the module
+        # exists and *this projection does not read it*, which is a gap in the wiring rather
+        # than in the product -- and paragraph 1300's ban on cross-domain write-table access is
+        # why the wiring is not a one-line join. Found by looking at the page.
         "sections": {
             "identity": "ppl_persons, ppl_contact_points (this module)",
             "lifecycle": "ppl_member_profiles (this module)",
@@ -1399,13 +1409,16 @@ def member_360(
             "consent": "sec_consent_records (MOD-009), counted only, resolved through "
                        "ppl_identity_links because MOD-009 keys on an identity",
             "timeline": "ppl_timeline_entries, projected from MOD-010's outbox",
-            "membership": "unavailable: COM-01 is not built in this repository",
-            "entitlements": "unavailable: COM-01 is not built in this repository",
-            "attendance": "unavailable: OPS-02 is not built in this repository",
-            "bookings": "unavailable: OPS-01 is not built in this repository",
+            "membership": "unavailable: MOD-017 (COM-01) owns this and nothing here reads "
+                          "it; a cross-domain read is what paragraph 1300 bars",
+            "entitlements": "unavailable: MOD-017 (COM-01) owns this and nothing here "
+                            "reads it",
+            "attendance": "unavailable: MOD-020 (OPS-02) owns this and nothing here reads "
+                          "it",
+            "bookings": "unavailable: MOD-019 (OPS-01) owns this and nothing here reads it",
             "nutrition": "unavailable: CCH-02 is not built in this repository",
             "progress": "unavailable: CCH-03 is not built in this repository",
-            "finance": "unavailable: COM-04 is not built in this repository",
+            "finance": "unavailable: MOD-018 (COM-04) owns this and nothing here reads it",
             "messages": "unavailable: ENG-01 is not built in this repository",
             "support": "unavailable: SUP-01 is not built in this repository",
         },

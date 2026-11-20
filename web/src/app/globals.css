@@ -241,3 +241,69 @@ a {
   white-space: nowrap;
   border: 0;
 }
+
+/**
+ * A label-and-value list, and the second half of the same phone-width finding.
+ *
+ * Six pages each declared their own `display: grid` with a `minmax(8rem…16rem, auto)` label
+ * column, which at 375px is wider than the screen before the value is drawn -- so the page
+ * scrolled sideways and the values were off the right-hand edge. One class instead of six
+ * near-copies, and under 48rem it collapses to one column, which is the layout a label and a
+ * value have on a phone anyway.
+ */
+.facts {
+  display: grid;
+  /* `minmax(0, 1fr)` rather than `1fr`: a grid track's implicit minimum is min-content, so one
+     long unbreakable value -- a comma-separated list of dotted permission names, say -- makes
+     the column wider than the page and nothing about the container can stop it. This is the
+     last 13 pixels of the phone-width overflow, and the only one that is not about a table. */
+  grid-template-columns: minmax(10rem, auto) minmax(0, 1fr);
+  gap: var(--space-2) var(--space-4);
+  margin: 0;
+}
+
+/* **A descendant selector, not `> dd`**: a page may wrap each pair in a div, so the grid item
+   is the wrapper and a rule naming the `dd` would miss it entirely. This is what actually
+   holds the last thirteen pixels -- a `min-width: 0` on the grid item was tried first and the
+   sweep showed it does nothing once the value is allowed to break, so it is gone rather than
+   kept as a rule nothing proves. */
+.facts dd {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 48rem) {
+  .facts {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+
+  .facts > dt {
+    margin-top: var(--space-3);
+  }
+
+  .facts > dt:first-child {
+    margin-top: 0;
+  }
+}
+
+/**
+ * A table scrolls inside itself rather than pushing the page sideways.
+ *
+ * **Seven surfaces scrolled horizontally at phone width** -- the schedule, the configuration
+ * board, operations, the fleet, a zone, the permissions page and the people list -- which is
+ * every page with a table on it. A page that scrolls sideways hides its own right-hand edge:
+ * a reader on a phone cannot tell that a column exists, so "Free" and "Status" were simply
+ * gone. None of it was caught by a suite that asserts text and structure, because every
+ * assertion passes at any width.
+ *
+ * `display: block` is what makes `overflow-x` apply to a table at all, and the rows keep their
+ * table layout inside it. `tabindex` comes from the component so the scroll region is
+ * reachable from a keyboard, which is the axe rule this would otherwise break.
+ */
+@media (max-width: 48rem) {
+  table {
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
+  }
+}

@@ -61,6 +61,7 @@ export default async function DoorBoardPage() {
         <Alert tone="info">{text("access.empty")}</Alert>
       ) : (
         <table
+          tabIndex={0}
           aria-labelledby="doors-heading"
           style={{ width: "100%", borderCollapse: "collapse" }}
         >

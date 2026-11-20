@@ -15,16 +15,17 @@ every control's visibility comes from MOD-008's gate, a section navigation filte
 same gate, MOD-004's organization hierarchy, MOD-008's roles and audit chain, MOD-014's
 duplicate queue and Member 360 with every masked field marked, MOD-021's fleet board and
 device detail, MOD-022's door board and zone detail, MOD-019's schedule board and session
-detail, an operations board over MOD-010's event plane, MOD-011's objectives and the worker
-runtime's own scheduled jobs, Arabic/English with full RTL, a dark theme, and four layers of
-tests that have each been shown to fail when the thing they guard is removed.
+detail with MOD-020's roster on it, MOD-005's configuration and feature-flag board, an
+operations board over MOD-010's event plane, MOD-011's objectives and the worker runtime's own
+scheduled jobs, Arabic/English with full RTL, a dark theme, and four layers of tests that have
+each been shown to fail when the thing they guard is removed.
 
 | Layer | What it proves | Count | Command |
 |---|---|---|---|
 | Foundation (`tests/unit/`) | Tokens, contrast, type, theme coverage, backend parity. No dependencies, no DOM. | 57 | `npm run test:foundation` |
-| Component (`tests/component/`) | Control semantics, the message catalogue, the sign-in form's four states, the device-label parity, the hierarchy composer, the mask marker, the redirect guard and the relay verdict, in jsdom. | 46 | `npm test` |
-| End-to-end (`tests/e2e/*.spec.ts`) | A real browser against a real backend whose fixture ran the real worker, including 23 axe runs across both locales and both themes, the no-JavaScript sign-in replay, six surfaces driven as a session that may not read them, a withheld field proved against a session that is actually masked, a block refused because it belongs to another module, and a session raised from level 1 to level 2 for real. | 128 + 2 setup | `npm run e2e` |
-| Mutation sweep (`tests/e2e/mutate.mjs`) | Each protection above, broken on purpose, is caught by the test that names it. | 53/53 | `npm run e2e:mutate` |
+| Component (`tests/component/`) | Control semantics, the message catalogue in both directions, the sign-in form's four states, the device-label parity, the hierarchy composer, the mask marker, the redirect guard, the relay verdict, why a flag resolved as it did, and reading an instant in a site's own timezone, in jsdom. | 57 | `npm test` |
+| End-to-end (`tests/e2e/*.spec.ts`) | A real browser against a real backend whose fixture ran the real worker, including 26 axe runs across both locales, both themes and phone width, thirteen surfaces checked for horizontal scroll on a phone, the no-JavaScript sign-in replay, seven surfaces driven as a session that may not read them, a withheld field proved against a session that is actually masked, and a session raised from level 1 to level 2 for real. | 155 + 2 setup | `npm run e2e` |
+| Mutation sweep (`tests/e2e/mutate.mjs`) | Each protection above, broken on purpose, is caught by the test that names it. | 64/64 | `npm run e2e:mutate` |
 
 ### Running it
 
@@ -331,6 +332,68 @@ only ever see the well-formed case. `composeTree` keeps an orphan and marks it r
 dropping it, because a site that vanishes from the only page listing sites is the worse
 failure, and `tests/component/organization-tree.test.ts` is what holds that.
 
+**One screen was telling a staff member that the product does not have bookings.** The Member
+360 lists the twelve areas PPL-01-R02 names and says where each comes from; five said "not
+built in this repository", and four of those modules — MOD-017, MOD-018, MOD-019, MOD-020 —
+have been built since the line was written. An e2e test was *asserting* the false string. They
+say the module owns it and this projection is not wired to read it now, which is a different
+and more useful fact, and the heading is "Not answered here" because the list holds two
+reasons at once.
+
+**Every instant outside the schedule is marked UTC**, which it did not need to be while every
+screen rendered a bare wall time and does now that one of them converts: a reader with one
+local-time screen reads the next one as local too. `src/lib/time.ts` holds both readings
+together so the difference is a decision rather than one page's habit.
+
+**And the message catalogue's parity check was one-directional.** `MESSAGE_KEYS` is the
+English catalogue's own keys, so it saw an English key missing from Arabic and was blind to an
+Arabic key missing from English — a translation nothing renders, which reads as a translated
+interface to anything counting keys. Found by adding one by accident and watching the file
+stay green. It checks both directions now, which is the rule the id sweep and the worker's
+name list are built on, and it caught the stray key the moment it existed.
+
+**Four layers of tests and 140 green assertions did not notice that the schedule board showed
+the wrong time.** The rule says 18:00 and the site is `Asia/Amman`, so MOD-019 stores 15:00
+UTC and the local facts beside it, because neither is derivable from the other. The board
+sliced the ISO string and rendered `15:00` — under a heading promising the site's own
+timezone. Every test passed, because every one of them asserted that the *name* of the
+timezone was on the page rather than what the times said. It was found by opening the page and
+looking at it, which until then nobody had done.
+
+**The same look found that seven of thirteen surfaces scrolled sideways on a phone** — every
+page with a table — so a reader on a phone could not see that `Free` and `Status` existed at
+all. Neither defect is subtle; both are invisible to assertions about text and structure,
+which is what every layer of this suite had been. There are now two more: `inZone` is tested
+where it is decided, and `tests/e2e/phone.spec.ts` drives all thirteen surfaces at 375px and
+fails on a single pixel of horizontal scroll, with one axe run at that width because making a
+table scroll is also what makes it a scrollable region that needs keyboard access.
+
+**And the fleet board's `Online` assertion now creates the freshness it asserts**, instead of
+inheriting it from a fixture that was seeded ten minutes ago. It reads the bearer token out of
+the browser's own session cookie — `context.cookies()` can see an httpOnly cookie where page
+JavaScript cannot — and posts a health report before it looks. That closes the third instance
+of the rule two paragraphs down, and it was found the hard way: three separate runs failed on
+it for a reason that had nothing to do with the product.
+
+**The configuration board is four answers that look like two numbers.** A resolved value and
+a flag's variant are the two things on that screen most likely to be read as something they are
+not, so neither is rendered alone:
+
+- **A default is not a setting.** An unset key reads back as its own default with scope
+  `default` and no version, which is indistinguishable from a tenant that published the same
+  value on purpose unless the scope is shown. The board says "nobody set it".
+- **`off` is four different facts.** A kill switch somebody engaged, a flag nobody enabled, a
+  targeting rule that sent this subject to the control arm, or no rule matching at all — and an
+  operator in an incident needs to know which. The kill switch gets an alarm because it
+  outranks every rule and is a deliberate stop rather than a rollout.
+- **A rule id is not a reason.** `rule:0f3a…` tells a reader nothing; "a targeting rule
+  matched" is the answer, and the id stays in the data for whoever is debugging.
+- **A flag is evaluated per subject, and there is no route that lists flags without evaluating
+  them.** So the board is "what these flags say for one subject" rather than "what flags
+  exist", which it says — because otherwise a flag missing from it reads as a flag that is
+  absent. The subject is the reader's own identity unless a link names another: derived, not
+  accepted.
+
 **The schedule board is the second place a withheld field reaches a reader, and the first
 where the page has to say which of two refusals it is.** MOD-019 masks a session change's
 `reason` for anybody who does not hold `scheduling.session.change`, after a reviewer read a
@@ -457,13 +520,13 @@ other 8 of 9 tokens recompute to the printed hundredth on all three surfaces.
 
 ## What this does not yet cover
 
-- **Fifteen screens of a hundred and seventy.** `contracts/ui/screen-contracts.yaml` lists 170
+- **Sixteen screens of a hundred and seventy.** `contracts/ui/screen-contracts.yaml` lists 170
   V1 screens across five surfaces; what exists is sign-in, an admin landing page, MOD-004's
   organization hierarchy, MOD-014's duplicate queue and Member 360, MOD-019's schedule board
-  and session detail, MOD-022's door board and zone detail, MOD-008's permissions page,
-  MOD-021's fleet board and device detail, the operations board, and the step-up flow. Every
-  one of them is read-only: every write in the modules they cover is a stepped-up permission,
-  and no form is built. The foundation, the controls, the gate wiring and the four test
+  and session detail, MOD-005's configuration board, MOD-022's door board and zone detail,
+  MOD-008's permissions page, MOD-021's fleet board and device detail, the operations board,
+  and the step-up flow. Every one of them is read-only: every write in the modules they cover
+  is a stepped-up permission, and no form is built. The foundation, the controls, the gate wiring and the four test
   layers are built to carry the rest, and the per-module work is wiring each one's gate, its
   masked fields and its failure states the way MOD-022's are.
 - **`color.action.pressed` has no dark value**, declared in `ds.json`'s `DARK_GAPS`. The source

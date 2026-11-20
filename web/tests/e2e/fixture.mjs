@@ -244,7 +244,7 @@ export async function provision() {
     method: "POST", tenant: tenantId, token: ownerToken,
     body: { correlation_id: cid(), current_password: password },
   });
-  const access = await seedAccess(tenantId, ownerToken, email);
+  const access = await seedAccess(tenantId, ownerToken, email, ownerIdentityId);
 
   return {
     tenantId,
@@ -261,7 +261,7 @@ export async function provision() {
   };
 }
 
-async function seedAccess(tenantId, token, ownerEmail) {
+async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
   const as = (t) => ({ tenant: tenantId, token: t });
 
   const org = await call("/organizations", {
@@ -581,6 +581,45 @@ async function seedAccess(tenantId, token, ownerEmail) {
       point_id: point.point_id, credential_value: credentialValue,
       idempotency_key: randomUUID(), correlation_id: cid(),
     },
+  });
+
+  // ---------------------------------------------------------------- MOD-005, configuration
+  //
+  // **Two definitions and two flags, because the board is about telling answers apart.** One
+  // key is published at the tenant scope and one is left alone, so a reader can see "nobody
+  // set it" beside a value somebody chose; one flag is enabled with no rule, so it reads as
+  // the default, and one has its kill switch engaged, which outranks every rule and is the
+  // one state worth marking on a board.
+  await call("/config/definitions", {
+    method: "POST", ...as(token),
+    body: { config_key: "booking.window_hours", value_type: "integer",
+            default_value: 48, owner_module: "MOD-020", validation: { minimum: 1 },
+            description: "How far ahead a member may book" },
+  });
+  await call("/config/definitions", {
+    method: "POST", ...as(token),
+    body: { config_key: "checkin.grace_minutes", value_type: "integer",
+            default_value: 15, owner_module: "MOD-020", validation: { minimum: 0 },
+            description: "How late a member may still check in" },
+  });
+  await call("/config/values", {
+    method: "POST", ...as(token),
+    body: { config_key: "booking.window_hours", value: 72, scope_type: "tenant",
+            published_by: ownerIdentityId, correlation_id: cid() },
+  });
+  await call("/flags/booking.new_flow", {
+    method: "PUT", ...as(token),
+    body: { enabled: true, default_variant: "off", rules: [],
+            description: "The rebuilt booking path" },
+  });
+  await call("/flags/kiosk.offline_mode", {
+    method: "PUT", ...as(token),
+    body: { enabled: true, default_variant: "on", rules: [],
+            description: "Let a kiosk decide alone" },
+  });
+  await call("/flags/kiosk.offline_mode/kill-switch", {
+    method: "POST", ...as(token),
+    body: { engaged: true, reason: "a reader was granting on a stale snapshot" },
   });
 
   // ---------------------------------------------------------------- MOD-019, a schedule

@@ -6,6 +6,7 @@ import { formatInteger, t, type MessageKey } from "@/i18n/locale";
 import { ApiError, currentSession, gate } from "@/lib/api";
 import { listDuplicateCandidates, type DuplicateCandidate } from "@/lib/people";
 import { presentation } from "@/lib/preferences";
+import { utcStamp } from "@/lib/time";
 
 /**
  * The way into a person's record, and an honest statement that there is no search.
@@ -59,6 +60,7 @@ export default async function PeoplePage() {
           <Alert tone="info">{text("people.noDuplicates")}</Alert>
         ) : (
           <table
+            tabIndex={0}
             aria-labelledby="duplicates-heading"
             style={{ width: "100%", borderCollapse: "collapse" }}
           >
@@ -91,7 +93,7 @@ export default async function PeoplePage() {
                   </td>
                   <td style={cell}>
                     <span className="data" dir="ltr">
-                      {candidate.detected_at.slice(0, 16).replace("T", " ")}
+                      {utcStamp(candidate.detected_at)}
                     </span>
                   </td>
                 </tr>

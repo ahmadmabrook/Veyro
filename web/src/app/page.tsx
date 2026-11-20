@@ -87,6 +87,7 @@ export default async function HomePage() {
             what lets somebody jump between tables -- and pointing at the heading gives it one
             without repeating it. */}
         <table
+          tabIndex={0}
           aria-labelledby="permissions-heading"
           style={{ width: "100%", borderCollapse: "collapse" }}
         >

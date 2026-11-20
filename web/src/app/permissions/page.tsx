@@ -15,6 +15,7 @@ import {
   type Role,
 } from "@/lib/authz";
 import { presentation } from "@/lib/preferences";
+import { utcStamp } from "@/lib/time";
 
 /**
  * MOD-008, rendered: the roles, what this session may do, and the log every refusal lands in.
@@ -158,6 +159,7 @@ export default async function PermissionsPage() {
               <Alert tone="info">{text("perms.noAudit")}</Alert>
             ) : (
               <table
+                tabIndex={0}
                 aria-labelledby="audit-heading"
                 style={{ width: "100%", borderCollapse: "collapse" }}
               >
@@ -187,7 +189,7 @@ export default async function PermissionsPage() {
                       <td style={cell}>{entry.outcome}</td>
                       <td style={cell}>
                         <span className="data" dir="ltr">
-                          {entry.occurred_at.slice(0, 16).replace("T", " ")}
+                          {utcStamp(entry.occurred_at)}
                         </span>
                       </td>
                     </tr>
@@ -217,7 +219,7 @@ function PermissionList({
     );
   }
   return (
-    <dl style={listStyle}>
+    <dl className="facts">
       {byDomain(permissions).map(([domain, names]) => (
         <div key={domain} style={{ display: "contents" }}>
           <dt className="muted">
@@ -258,9 +260,3 @@ const cell: React.CSSProperties = {
   borderBottom: "1px solid var(--color-border-subtle)",
 };
 
-const listStyle: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "minmax(8rem, auto) 1fr",
-  gap: "var(--space-2) var(--space-4)",
-  margin: 0,
-};

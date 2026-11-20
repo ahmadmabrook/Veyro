@@ -28,19 +28,25 @@ describe("a withheld value", () => {
 });
 
 describe("splitting the sections", () => {
+  // **Two shapes of "unavailable", because there are two reasons now.** Four of these
+  // sections used to say "not built in this repository" about modules that have since been
+  // built, which made the Member 360 tell a staff member that bookings and finance do not
+  // exist in a build that has both. The split does not care which reason it is -- that is the
+  // point of testing it with one of each.
   const sections = {
     identity: "ppl_persons, ppl_contact_points (this module)",
     timeline: "ppl_timeline_entries, projected from MOD-010's outbox",
-    membership: "unavailable: COM-01 is not built in this repository",
-    finance: "unavailable: COM-04 is not built in this repository",
+    membership: "unavailable: MOD-017 (COM-01) owns this and nothing here reads it",
+    nutrition: "unavailable: CCH-02 is not built in this repository",
   };
 
   it("keeps both halves and strips the marker from the reason", () => {
     const { available, unavailable } = splitSections(sections);
     expect(available.map(([name]) => name)).toEqual(["identity", "timeline"]);
-    expect(unavailable.map(([name]) => name)).toEqual(["membership", "finance"]);
+    expect(unavailable.map(([name]) => name)).toEqual(["membership", "nutrition"]);
     // The reason is rendered as prose, so the machine-readable prefix goes.
-    expect(unavailable[0]![1]).toBe("COM-01 is not built in this repository");
+    expect(unavailable[0]![1]).toBe("MOD-017 (COM-01) owns this and nothing here reads it");
+    expect(unavailable[1]![1]).toBe("CCH-02 is not built in this repository");
   });
 
   it("loses nothing: every section lands in exactly one half", () => {

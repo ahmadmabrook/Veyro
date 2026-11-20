@@ -30,9 +30,28 @@ test.describe("the schedule board", () => {
 
   test("lists the week the fixture's own rule generated", async ({ page }) => {
     await expect(page.getByRole("heading", { name: "Schedule", level: 1 })).toBeVisible();
-    // One daily rule over seven days. A different number here means the generation changed,
-    // which is the thing worth noticing: occurrences come from the rule, not from a list.
-    await expect(page.getByRole("row").filter({ hasText: "Evening yoga flow" })).toHaveCount(7);
+    // **Not an exact count.** One daily rule over seven days generates seven occurrences, and
+    // the board shows today onwards -- so the number drops by one each time UTC midnight
+    // passes between seeding and reading. That is the same "green depends on when it ran"
+    // shape as the fleet board's `Online`, and asserting 7 would make this spec fail at
+    // 00:00 UTC for a reason that has nothing to do with the product.
+    const rows = page.getByRole("row").filter({ hasText: "Evening yoga flow" });
+    const count = await rows.count();
+    expect(count).toBeGreaterThan(0);
+    expect(count).toBeLessThanOrEqual(7);
+  });
+
+  test("renders every session in the site's timezone, not in UTC", async ({ page }) => {
+    // **The defect this test exists for.** The rule says 18:00 local and the site is
+    // Asia/Amman, so the stored instant is 15:00 UTC -- and the first version of this board
+    // sliced the ISO string and rendered `15:00` under a heading promising the site's own
+    // timezone. Every other assertion in this file passed while it did.
+    const rows = page.getByRole("row").filter({ hasText: "Evening yoga flow" });
+    const times = await rows.locator("td").first().allInnerTexts();
+    expect(times.length).toBeGreaterThan(0);
+    for (const text of times) {
+      expect(text, "a session is shown at its local time").toContain("18:00");
+    }
   });
 
   test("names the site's own timezone, because every occurrence was converted in it", async ({
@@ -197,8 +216,10 @@ test.describe("a session that may read the schedule and may not change one", () 
 
   test("reads the board from a link that names the site", async ({ page }) => {
     await page.goto(`/schedule?site=${creds.locationId}`);
-    await expect(page.getByRole("row").filter({ hasText: "Evening yoga flow" }))
-      .toHaveCount(7);
+    // At least one, for the reason the owner's count test gives: the window is today onwards
+    // and the fixture's seven occurrences start today, so the number drops as UTC days pass.
+    const rows = page.getByRole("row").filter({ hasText: "Evening yoga flow" });
+    expect(await rows.count()).toBeGreaterThan(0);
   });
 
   test("is refused the roster, because it belongs to another module", async ({ page }) => {

@@ -19,6 +19,7 @@ import {
   type WorkerJobs,
 } from "@/lib/operations";
 import { presentation } from "@/lib/preferences";
+import { utcStamp } from "@/lib/time";
 
 /**
  * The system watching itself: the event outbox, what failed delivery, and what is measured.
@@ -84,7 +85,7 @@ export default async function OperationsPage() {
         <Gated gate={mayEvents} value={health} locale={locale}>
           {(outbox: OutboxHealth) => (
             <>
-              <dl style={listStyle}>
+              <dl className="facts">
                 <dt className="muted">{text("ops.pendingEvents")}</dt>
                 <dd style={{ margin: 0 }}>
                   <span className="data">
@@ -95,7 +96,7 @@ export default async function OperationsPage() {
                       {" · "}
                       {text("ops.oldest")}{" "}
                       <span className="data" dir="ltr">
-                        {outbox.oldest_pending_at.slice(0, 16).replace("T", " ")}
+                        {utcStamp(outbox.oldest_pending_at)}
                       </span>
                     </span>
                   ) : null}
@@ -147,6 +148,7 @@ export default async function OperationsPage() {
                 <Alert tone="error">{text("ops.workerFailing")}</Alert>
               ) : null}
               <table
+                tabIndex={0}
                 aria-labelledby="worker-heading"
                 style={{ width: "100%", borderCollapse: "collapse" }}
               >
@@ -224,6 +226,7 @@ export default async function OperationsPage() {
               <Alert tone="info">{text("ops.noDeadLetters")}</Alert>
             ) : (
               <table
+                tabIndex={0}
                 aria-labelledby="dead-letters-heading"
                 style={{ width: "100%", borderCollapse: "collapse" }}
               >
@@ -249,7 +252,7 @@ export default async function OperationsPage() {
                       <td style={cell}>{letter.reason}</td>
                       <td style={cell}>
                         <span className="data" dir="ltr">
-                          {letter.quarantined_at.slice(0, 16).replace("T", " ")}
+                          {utcStamp(letter.quarantined_at)}
                         </span>
                       </td>
                     </tr>
@@ -377,9 +380,3 @@ const cell: React.CSSProperties = {
   borderBottom: "1px solid var(--color-border-subtle)",
 };
 
-const listStyle: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "minmax(16rem, auto) 1fr",
-  gap: "var(--space-2) var(--space-4)",
-  margin: 0,
-};

@@ -226,7 +226,11 @@ function DecisionLog({ page, locale }: { page: DecisionPage; locale: Locale }) {
       {page.decisions.length === 0 ? (
         <Alert tone="info">{text("access.noDecisions")}</Alert>
       ) : (
-        <table aria-labelledby="decisions-heading" style={{ width: "100%", borderCollapse: "collapse" }}>
+        <table
+          tabIndex={0}
+          aria-labelledby="decisions-heading"
+          style={{ width: "100%", borderCollapse: "collapse" }}
+        >
           <thead>
             <tr>
               <th scope="col" style={headCell}>

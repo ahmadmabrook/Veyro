@@ -155,9 +155,9 @@ def resolve_value(
     brand. Resolving for a location therefore does *not* pick up that location's brand row unless
     the caller passes `brand_id` too; the caller knows the hierarchy, this function does not.
 
-    ponytail: rows for one definition are filtered in Python rather than by a `DISTINCT ON` query,
-    which is fine while a definition has tens of versions. If history grows into the thousands,
-    push the per-scope latest into SQL -- the signature does not change.
+    Performance: rows for one definition are filtered in Python rather than by a `DISTINCT ON`
+    query, which is fine while a definition has tens of versions. If history grows into the
+    thousands, push the per-scope latest into SQL -- the signature does not change.
     """
     best: ValueRow | None = None
     for row in rows:

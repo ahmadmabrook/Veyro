@@ -6,6 +6,7 @@ import { formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
 import { ApiError, currentSession, gate } from "@/lib/api";
 import { readFleet, type FleetDevice, type FleetView } from "@/lib/fleet";
 import { presentation } from "@/lib/preferences";
+import { utcStamp } from "@/lib/time";
 
 /**
  * MOD-021's fleet board: what is installed, what it can do, and what has gone quiet.
@@ -86,6 +87,7 @@ export default async function FleetPage() {
           <Alert tone="info">{text("fleet.empty")}</Alert>
         ) : (
           <table
+            tabIndex={0}
             aria-labelledby="fleet-heading"
             style={{ width: "100%", borderCollapse: "collapse" }}
           >
@@ -108,10 +110,11 @@ export default async function FleetPage() {
         <p className="muted" style={{ margin: 0, fontSize: "var(--type-caption-size)" }}>
           {text("fleet.asOf")}{" "}
           <span className="data" dir="ltr">
-            {fleet.as_of.slice(0, 16).replace("T", " ")}
+            {utcStamp(fleet.as_of)}
           </span>
           {" · "}
-          <span className="data">{formatInteger(fleet.count, "latn")}</span>
+          <span className="data">{formatInteger(fleet.count, "latn")}</span>{" "}
+          {text("fleet.counted")}
         </p>
       </section>
     </Shell>
@@ -147,7 +150,7 @@ function Row({ device, locale }: { device: FleetDevice; locale: Locale }) {
           <span className="muted">{text("fleet.never")}</span>
         ) : (
           <span className="data" dir="ltr">
-            {device.last_seen_at.slice(0, 16).replace("T", " ")}
+            {utcStamp(device.last_seen_at)}
           </span>
         )}
       </td>

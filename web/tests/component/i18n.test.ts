@@ -33,6 +33,20 @@ describe("the message catalogue", () => {
     }
   });
 
+  it("has no key in one locale that is in no other", () => {
+    // **Both directions.** `MESSAGE_KEYS` is the English catalogue's own keys, so the check
+    // above sees an English key missing from Arabic and is blind to the reverse -- and an
+    // Arabic-only key is a translation nothing renders, which reads as a translated interface
+    // to anything counting keys. Found by adding one by accident and watching this file stay
+    // green; it is the same both-directions rule the id sweep and the worker's name list are
+    // built on.
+    const english = new Set(Object.keys(MESSAGES.en));
+    for (const locale of LOCALES) {
+      const extra = Object.keys(MESSAGES[locale]).filter((key) => !english.has(key));
+      expect(extra, `${locale} has ${extra.join(", ")} and English does not`).toEqual([]);
+    }
+  });
+
   it("has no key whose Arabic is the English string", () => {
     // A copied English value is the half-translated interface the catalogue exists to prevent,
     // and it reads as "translated" to anything counting keys. Identifiers and numerals would be

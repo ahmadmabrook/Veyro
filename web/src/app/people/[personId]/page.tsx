@@ -14,6 +14,7 @@ import {
   type Person,
 } from "@/lib/people";
 import { presentation } from "@/lib/preferences";
+import { utcStamp } from "@/lib/time";
 
 /**
  * Member 360: the composed view, with every section's provenance and every mask marked.
@@ -94,7 +95,7 @@ export default async function Member360Page({
         {record.member_profile === null ? (
           <Alert tone="info">{text("member.noProfile")}</Alert>
         ) : (
-          <dl style={listStyle}>
+          <dl className="facts">
             <Row label={text("member.lifecycle")}>{record.member_profile.lifecycle_state}</Row>
             <Row label={text("member.number")}>
               <span className="data" dir="ltr">
@@ -109,7 +110,7 @@ export default async function Member360Page({
         {record.staff_profile === null ? (
           <p className="muted" style={{ margin: 0 }}>{text("member.noStaff")}</p>
         ) : (
-          <dl style={listStyle}>
+          <dl className="facts">
             <Row label={text("member.staff")}>
               {record.staff_profile.job_title ?? record.staff_profile.employment_state}
             </Row>
@@ -130,7 +131,7 @@ export default async function Member360Page({
                   {note.note_class}
                   {" · "}
                   <span className="data" dir="ltr">
-                    {note.recorded_at.slice(0, 16).replace("T", " ")}
+                    {utcStamp(note.recorded_at)}
                   </span>
                   {note.withdrawn_at ? ` · ${text("member.noteWithdrawn")}` : null}
                 </div>
@@ -155,7 +156,7 @@ export default async function Member360Page({
                 )}
                 <div className="muted" style={{ fontSize: "var(--type-caption-size)" }}>
                   <span className="data" dir="ltr">
-                    {entry.event_type} · {entry.occurred_at.slice(0, 16).replace("T", " ")}
+                    {entry.event_type} · {utcStamp(entry.occurred_at)}
                   </span>
                 </div>
               </li>
@@ -170,7 +171,7 @@ export default async function Member360Page({
           {text("member.consents")}:{" "}
           <span className="data">{formatInteger(record.consent_record_count, "latn")}</span>
         </p>
-        <dl style={listStyle}>
+        <dl className="facts">
           {available.map(([name, source]) => (
             <Row key={name} label={name}>
               <span className="muted">{source}</span>
@@ -178,8 +179,17 @@ export default async function Member360Page({
           ))}
         </dl>
         <h3 style={{ margin: 0 }}>{text("member.unavailable")}</h3>
-        {/* **Named, not omitted.** A section rendered as an empty list reads as "none". */}
-        <dl style={listStyle}>
+        {/* **Named, not omitted.** A section rendered as an empty list reads as "none".
+            And the heading used to say "Not in this build", which was true of every entry
+            when it was written and false of four of them by the time somebody looked: the
+            modules behind membership, bookings, attendance and finance have all been built
+            since. Two reasons live in this list now, and the line below is what tells them
+            apart -- a reader who takes "this projection does not read it" for "the product
+            does not have it" has been told the wrong thing about their own build. */}
+        <p className="muted" style={{ margin: 0 }}>
+          {text("member.unavailableWhy")}
+        </p>
+        <dl className="facts">
           {unavailable.map(([name, why]) => (
             <Row key={name} label={name}>
               <span className="muted">{why}</span>
@@ -204,7 +214,7 @@ function IdentityPanel({ person, locale }: { person: Person; locale: Locale }) {
   return (
     <section className="panel stack">
       <h2 style={{ margin: 0 }}>{text("member.identity")}</h2>
-      <dl style={listStyle}>
+      <dl className="facts">
         <Row label={text("member.legalName")}>
           {isWithheld(person.legal_name) ? (
             <Withheld locale={locale} reason="member.withheldIdentity" />
@@ -291,7 +301,7 @@ function IdentityPanel({ person, locale }: { person: Person; locale: Locale }) {
       {person.custom_fields.length === 0 ? (
         <p className="muted" style={{ margin: 0 }}>{text("member.noCustomFields")}</p>
       ) : (
-        <dl style={listStyle}>
+        <dl className="facts">
           {person.custom_fields.map((field) => (
             <Row key={field.field_key} label={field.display_name}>
               {field.redacted || isWithheld(field.value) ? (
@@ -365,9 +375,3 @@ function Shell({ locale, children }: { locale: Locale; children: React.ReactNode
   );
 }
 
-const listStyle: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "minmax(10rem, auto) 1fr",
-  gap: "var(--space-2) var(--space-4)",
-  margin: 0,
-};

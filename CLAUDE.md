@@ -253,6 +253,15 @@ Known gaps, deliberate:
 - Targeting attributes are flat strings compared for equality. The seven dimensions PLT-02-R02
   names are all expressible that way; set membership and ranges are not, and would need a richer
   match format.
+- **The surface is read-only.** `web/` renders the typed registry with each value's scope and
+  the flags with the reason each resolved by -- see "The web app" -- and every write is a form
+  that does not exist: declaring a key, publishing a value, rolling one back, writing a
+  targeting rule, engaging a kill switch. Publishing a value and changing a flag are
+  financial-class permissions, which is the same reason the hierarchy surface is read-only.
+- **There is no route that lists feature flags.** `/flags` evaluates them for one subject, so a
+  board can only show what the flags say for somebody rather than what flags exist -- and a
+  flag whose evaluation returns nothing is indistinguishable from one that is not there. The
+  surface says so rather than implying a complete list; closing it needs a listing route.
 
 **MOD-015 (PLT-03 plans, subscriptions, metering and invoices) — implemented.** The plan
 catalogue lives in `plt01_platform` with no runtime-role grant; nine `bil_*` tables live in
@@ -1654,6 +1663,17 @@ Known gaps, deliberate:
 - **A merge does not reach another module's rows, and cannot.** The pointer is the mechanism and
   every reader has to follow it; `merge.survivor_of` is the walk, and no other module calls it
   because no other module exists yet.
+- **The 360's "not in this build" list went stale, and said so to a staff member.** Five
+  sections read "not built in this repository" and four of those modules -- MOD-017,
+  MOD-018, MOD-019 and MOD-020 -- have since been built, so the one screen somebody opens
+  before talking to a member was telling them that bookings and finance do not exist. That is
+  this module's own stated failure mode from the other side, and it is the same class of
+  defect as returning `[]`: a confident wrong answer where a missing one would have been
+  honest. They say the module owns it and nothing here reads it now, which is true and is a
+  gap in the wiring rather than in the product -- paragraph 1300's ban on cross-domain
+  write-table access is why the wiring is not a join. **Found by opening the page**, and
+  `test_a_section_whose_module_exists_does_not_say_it_was_never_built` is what keeps it from
+  going stale in the other direction.
 
 **MOD-016 (COM-02 catalog, pricing, promotions and bundles) -- implemented, gated and
 reviewed.** Sixteen `cat_` tables in `plt01` under the same forced RLS, `app/catalog/` beside
@@ -2618,6 +2638,11 @@ Known gaps, deliberate:
   generating occurrences, substituting an instructor, cancelling and relocating. Each is a
   stepped-up permission, which is the same reason the hierarchy surface is read-only, and the
   step-up flow that would carry them is built.
+- **The board shows today onwards**, which means its row count drops by one each time UTC
+  midnight passes after a fixture is seeded. That is a property of the window rather than a
+  defect, and it is why the spec asserts what every row *says* rather than how many there
+  are -- an exact count would fail at 00:00 UTC for a reason that has nothing to do with the
+  product.
 
 **MOD-020 (OPS-02 booking, waitlist, attendance and appeals) -- implemented, gated and
 reviewed.** Seven `bkg_` tables in `plt01` under the same forced RLS, nine trigger functions,
@@ -3302,6 +3327,14 @@ What is deliberately **not** a job, each for a stated reason:
   judgement this registry would have to invent -- which deadline, which objective, which
   period -- and inventing product is the one thing the delegation does not cover. They are the
   next jobs, and each wants its own decision written down first.
+  **MOD-011's is the concrete one and worth the detail**, because it looks like the easiest:
+  every objective carries its own `window_hours`, so "evaluate all of them" needs no judgement
+  at all -- until you look at what a breach does. `evaluate_objective` calls `append_event`
+  with no idempotency key, so a breaching objective publishes one event per evaluation, and a
+  job at any useful cadence writes a thousand a day into a table with no DELETE grant. The
+  module's own budget path already made the other choice -- once per period, by a unique index
+  -- so the missing decision is "how often is a breach announced", and it is MOD-011's to make
+  rather than the runner's.
 
 Known gaps, deliberate:
 
@@ -3341,7 +3374,7 @@ MOD-004's hierarchy -- the organization, its brands, its sites with the timezone
 every rota window in, and the legal entity MOD-017 numbers invoices per; MOD-008's roles, the
 permissions this session actually holds and the hash-chained audit log; MOD-014's duplicate
 queue and Member 360; MOD-019's schedule board and session detail with MOD-020's roster on
-it; MOD-021's fleet board and
+it; MOD-005's configuration and feature-flag board; MOD-021's fleet board and
 device detail; an operations board over MOD-010's event plane, MOD-011's objectives and the
 worker's own scheduled jobs; and MOD-022's door board and zone detail, which read the real
 routes and render the public code, the policy terms, the advisory occupancy with paragraph
@@ -3360,6 +3393,74 @@ Offering a step-up for the second would send somebody looking for a hardware key
 cannot verify. The fixture's browser session is assurance level 1, which is the useful level to
 test at: `contact` opens on a routine permission and `identity` needs a financial one, so one
 record shows a masked legal name beside an unmasked email address.
+
+**Four layers of tests and 140 green assertions did not notice that the schedule board showed
+the wrong time, and that is the finding of this whole surface.** The rule says 18:00 and the
+site is `Asia/Amman`, so MOD-019 stores 15:00 UTC and the local facts beside it -- because
+neither is derivable from the other, which is the module's own first decision. The board
+sliced the ISO string and rendered `15:00`, under a heading promising the site's own timezone.
+Every test passed, because every one of them asserted that the *name* of the timezone was on
+the page rather than what the times said. **It was found by opening the page and looking at
+it**, which nobody had done for any surface in this repository until somebody asked.
+
+The same look found that **seven of thirteen surfaces scrolled sideways at phone width** --
+every page with a table, plus a label/value grid whose track was wider than the screen before
+the value was drawn -- so a reader on a phone could not see that `Free` and `Status` existed.
+Neither defect is subtle. Both are invisible to assertions about text and structure, which is
+what all four layers were.
+
+So there are two more layers now, and they are the durable half of the answer:
+`tests/component/scheduling.test.ts` tests `inZone` where it is decided, including the
+midnight case that reads `24:00` without `hourCycle: "h23"`; and `tests/e2e/phone.spec.ts`
+drives all thirteen surfaces at 375px and fails on one pixel of horizontal scroll, with an axe
+run at that width because making a table scroll is also what makes it a scrollable region that
+needs keyboard access -- which it duly failed until every table got a `tabindex`.
+
+Looking also found the two smaller ones that make the first two worth stating as a class.
+**The Member 360 told a staff member the product does not have bookings** -- five sections
+said "not built in this repository" and four of those modules have been built since, with an
+e2e test *asserting* the false string. And **every instant outside the schedule had no zone on
+it**, which was merely ambiguous while every screen did it and became misleading the moment
+one screen started converting; `src/lib/time.ts` now holds both readings together so the
+difference is a decision rather than one page's habit.
+
+**And the message catalogue's parity check was one-directional**, which is the finding with
+the longest reach. `MESSAGE_KEYS` is the English catalogue's own keys, so the check saw an
+English key missing from Arabic and was blind to the reverse -- an Arabic-only key is a
+translation nothing renders, and it reads as a translated interface to anything counting keys.
+Found by adding one by accident and watching the file stay green. It is both directions now,
+which is the rule this repository already applies to event payloads, to the id sweep's stale
+exemptions and to the worker's name list: **a check in one direction is half a check, and the
+half it is missing is the one nobody is looking at.**
+
+**A screenshot is not a test and looking is not a layer**, so the lesson is narrower than "take
+screenshots": an assertion about a *rendered value* catches what an assertion about a label
+cannot, and "the timezone is named on the page" was always the weaker of the two available
+assertions. The stronger one -- every row reads 18:00 -- costs the same to write.
+
+**The configuration board is four answers that look like two numbers**, and it is the first
+surface where the interesting thing is a *reason* rather than a value. A resolved configuration
+value and a flag's variant are the two fields on that screen most likely to be read as
+something they are not, so neither is rendered alone:
+
+  * **A default is not a setting.** An unset key reads back as its own default, with scope
+    `default` and `version` null, which is indistinguishable from a tenant that published the
+    same value on purpose unless the scope is shown. The board says "nobody set it".
+  * **`off` is four different facts**: a kill switch somebody engaged, a flag nobody enabled, a
+    targeting rule that sent this subject to the control arm, or no rule matching at all. The
+    kill switch gets an alarm of its own because it outranks every rule -- it is a deliberate
+    stop rather than a rollout, which is the distinction MOD-005's evaluator is built on.
+  * **A rule id is not a reason.** `rule:0f3a…` tells a reader nothing, so the page says "a
+    targeting rule matched" and leaves the id in the data for whoever is debugging.
+  * **A flag is evaluated per subject, and no route lists flags without evaluating them.** So
+    the board is "what these flags say for one subject" rather than "what flags exist", which
+    it says -- otherwise a flag missing from it reads as a flag that is absent. The subject is
+    the reader's own identity unless a link names another: derived, not accepted, which is the
+    same rule the schedule's site follows.
+
+Both blocks are gated on their own permission, because `config.flag.read` and
+`config.definition.read` are separate and a reader may hold one: an empty flag board would say
+this tenant has no flags, which is a different fact from "you may not see them".
 
 **The schedule board is the second place a withheld field reaches a reader, and the first
 where the surface has to say which of two refusals it is.** MOD-019 masks a session change's
@@ -3529,9 +3630,12 @@ caught.
 **And a test that asserts a freshness has to create it**, which is the same rule as the three
 budget findings above and was found the same way: by running the suite an hour after seeding.
 The fleet board shows `Online` only while a device has reported within ten minutes, so that
-assertion is true because the fixture's health report made it true. CI provisions immediately
-before the suite and is deterministic; a local run against a stale fixture reads `Late` and
-looks exactly like a product regression. The spec names it where the failure appears.
+assertion was true because the fixture's health report made it true -- and ten minutes later it
+was false. CI provisions immediately before the suite and never saw it; a local run against a
+stale fixture reads `Late`, which looks exactly like a product regression and cost three runs
+before it was fixed properly. **The spec reports the device healthy itself now**, reading the
+bearer token out of the browser's own session cookie -- `context.cookies()` can see an httpOnly
+cookie where page JavaScript cannot -- so the freshness it asserts is the freshness it made.
 
 **And the linter had never run.** `next lint` was removed in Next 16 and ESLint 10 ignores
 `.eslintrc.json`, so `npm run lint` answered "Invalid project directory provided, no such
@@ -3541,8 +3645,8 @@ has, which is the same shape as a test that passes vacuously. The flat config in
 variables, and it is in `npm run verify` and in the CI job now.
 
 Known gaps: the surface covers the sign-in, the step-up, MOD-004, MOD-008, MOD-010, MOD-011,
-MOD-014, MOD-019, MOD-021 and MOD-022, plus MOD-020's roster on a session. The other nine
-implemented modules have no screens yet,
+MOD-005, MOD-014, MOD-019, MOD-021 and MOD-022, plus MOD-020's roster on a session. The other
+eight implemented modules have no screens yet,
 which is the bulk of the remaining work; MOD-019's own surface is read-only -- publishing a
 schedule, substituting an instructor and cancelling a session are all built on the server and
 none has a form, which is the same gap the hierarchy has and for the same reason: every one of
@@ -3562,8 +3666,8 @@ is part of it. So "implemented" above is accurate about the server plane and inc
 the product for every module except MOD-022, and the backlog has two halves.
 
 The first is the screens the eighteen built modules do not have. `web/` covers the sign-in, the
-step-up, MOD-004, MOD-008, MOD-010, MOD-011, MOD-014, MOD-019, MOD-021 and MOD-022;
-`contracts/ui/screen-contracts.yaml` names the rest, and
+step-up, MOD-004, MOD-005, MOD-008, MOD-010, MOD-011, MOD-014, MOD-019, MOD-020's roster,
+MOD-021 and MOD-022; `contracts/ui/screen-contracts.yaml` names the rest, and
 the work is per module rather than per screen because each one needs its gate, its masked
 fields and its failure states wired the way those are. The second is the modules themselves: MOD-023 (Coach Workspace, which
 needs MOD-014 and MOD-008, both built) is the next eligible one, and MOD-006 is the Compose

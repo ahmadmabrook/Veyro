@@ -693,6 +693,30 @@ class Member360Tests(PeopleTestCase):
         self.assertIn("COM-04", view["sections"]["finance"])
         self.assertNotIn("membership", view)
 
+    def test_a_section_whose_module_exists_does_not_say_it_was_never_built(self):
+        """**The inverse of the rule above, and the one this module shipped wrong.** Five
+        sections said "not built in this repository" and four of those modules have since been
+        built, so the 360 told a staff member that bookings and finance do not exist in a build
+        that has both. The true statement is that the module owns it and this projection does
+        not read it, which is a gap in the wiring. Found by looking at the page, not by a
+        test -- which is why there is one now."""
+        tenant_id = self.tenant()
+        person_id = self.person(tenant_id)
+        view = people.member_360(
+            self._tenant_pool, tenant_id, person_id, masked_fields=(),
+            held_permissions=STAFF_FULL)
+        for section in ("membership", "entitlements", "attendance", "bookings", "finance"):
+            with self.subTest(section):
+                reason = view["sections"][section]
+                self.assertIn("unavailable", reason)
+                self.assertNotIn("not built in this repository", reason)
+                self.assertIn("nothing here reads it", reason)
+        # And the ones that really are absent still say so, or the correction has gone too far.
+        for section in ("nutrition", "progress", "messages", "support"):
+            with self.subTest(section):
+                self.assertIn(
+                    "not built in this repository", view["sections"][section])
+
     def test_the_360_composes_the_parts_that_exist(self):
         tenant_id = self.tenant()
         person_id = self.person(tenant_id)

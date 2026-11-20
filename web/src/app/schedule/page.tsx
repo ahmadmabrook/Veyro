@@ -7,6 +7,7 @@ import { ApiError, currentSession, gate } from "@/lib/api";
 import { listLocations, type Location } from "@/lib/organization";
 import { presentation } from "@/lib/preferences";
 import { needsAttention, readCalendar } from "@/lib/scheduling";
+import { inZone } from "@/lib/time";
 
 /**
  * The week's schedule at one site: MOD-019's calendar, rendered as the board it is for.
@@ -87,7 +88,7 @@ export default async function SchedulePage({
 
   return (
     <Shell locale={locale}>
-      <dl style={headerList}>
+      <dl className="facts">
         <dt className="muted">{text("schedule.site")}</dt>
         <dd style={{ margin: 0 }}>{calendar.location_name}</dd>
         <dt className="muted">{text("schedule.timezone")}</dt>
@@ -114,6 +115,7 @@ export default async function SchedulePage({
       ) : (
         <>
           <table
+            tabIndex={0}
             aria-labelledby="schedule-heading"
             style={{ width: "100%", borderCollapse: "collapse" }}
           >
@@ -131,8 +133,14 @@ export default async function SchedulePage({
               {calendar.sessions.map((session) => (
                 <tr key={session.session_id}>
                   <td style={cell}>
+                    {/* **In the site's zone, which is what the heading promises.** Slicing the
+                        ISO string renders the UTC wall time: a class at 18:00 in Amman read as
+                        15:00, under a page that says it is showing the site's own timezone. */}
                     <span className="data" dir="ltr">
-                      {session.starts_at.slice(0, 16).replace("T", " ")}
+                      {inZone(session.starts_at, calendar.timezone).date}
+                    </span>{" "}
+                    <span className="data" dir="ltr">
+                      {inZone(session.starts_at, calendar.timezone).time}
                     </span>
                   </td>
                   <td style={cell}>
@@ -261,9 +269,3 @@ const cell: React.CSSProperties = {
   borderBottom: "1px solid var(--color-border-subtle)",
 };
 
-const headerList: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "minmax(10rem, auto) 1fr",
-  gap: "var(--space-2) var(--space-4)",
-  margin: 0,
-};

@@ -4,6 +4,43 @@ import { expect, test } from "@playwright/test";
 import { fixture } from "./fixture-env";
 import { useOwnerSession, useReaderSession } from "./sign-in";
 
+const creds = fixture();
+
+/**
+ * Report this device as healthy, now.
+ *
+ * **A test that asserts a freshness has to create it.** `Online` means the device reported
+ * within ten minutes, and the fixture's own health report is what made that true -- so this
+ * assertion used to expire ten minutes after seeding and then read `Late`, which looks exactly
+ * like a product regression. CI provisions immediately before the suite and never saw it; a
+ * local run an hour later saw it every time. The sibling of this suite's rule about budgets.
+ *
+ * The bearer token is the session cookie's value, which is what the sign-in action stores --
+ * `context.cookies()` can read an httpOnly cookie where page JavaScript cannot, so no
+ * credential is typed and none is in this file.
+ */
+async function reportHealthy(page: import("@playwright/test").Page) {
+  const cookies = await page.context().cookies();
+  const token = cookies.find((cookie) => cookie.name === "veyro_session")?.value;
+  expect(token, "the browser session carries the bearer token").toBeTruthy();
+  const response = await page.request.post(
+    `${process.env.VEYRO_API_ORIGIN ?? "http://127.0.0.1:8000"}/fleet/${creds.deviceId}/health`,
+    {
+      headers: {
+        "X-Veyro-Tenant": creds.tenantId,
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      data: {
+        latency_ms: 42, error_count: 0, storage_free_bytes: 8 * 1024 * 1024 * 1024,
+        agent_version: "1.0.0", peripherals: {},
+        correlation_id: crypto.randomUUID(),
+      },
+    },
+  );
+  expect(response.status(), await response.text()).toBe(201);
+}
+
 /**
  * MOD-021's surfaces, against the real fleet.
  *
@@ -18,15 +55,10 @@ test.describe("the fleet board", () => {
     await page.goto("/fleet");
   });
 
-  // **This assertion expires, and that is worth knowing before reading a failure here.**
-  // `Online` means the device reported within `fleet.LATE_AFTER`, which is ten minutes, and
-  // the fixture's health report is what makes that true. CI provisions immediately before
-  // the suite so it is deterministic there; a local run against a fixture seeded an hour ago
-  // reads `Late` and looks like a product regression. The sibling of this suite's own rule
-  // about budgets: **a test that asserts a freshness has to create it**, and here the fixture
-  // is what creates it -- so re-run `node tests/e2e/fixture.mjs` rather than reading the
-  // board.
   test("lists every device with its state and whether it is reachable", async ({ page }) => {
+    // The freshness this test is about, created by this test. See `reportHealthy`.
+    await reportHealthy(page);
+    await page.reload();
     await expect(page.getByRole("heading", { name: "Devices", level: 1 })).toBeVisible();
     const board = page.locator("table");
     await expect(board.getByRole("row").filter({ hasText: "North turnstile" })).toContainText(
@@ -50,6 +82,17 @@ test.describe("the fleet board", () => {
       .toBeVisible();
     await expect(page.getByText(/what was true when the page was loaded/)).toBeVisible();
     await expect(page.getByText(/changes nothing on this board/)).toBeVisible();
+  });
+
+  test("labels the count and the clock, so neither reads as the other", async ({ page }) => {
+    // **A bare number after a timestamp reads as part of it.** The footer said
+    // "As of 2026-11-20 00:02 · 3", and the 3 is a device count with nothing saying so.
+    const board = page.locator("section").filter({ hasText: "As of" });
+    await expect(board).toContainText("devices");
+    // And every instant on this board is UTC, which matters now that the schedule board
+    // converts into a site's own zone -- a reader with one local-time screen reads the next
+    // one as local too.
+    await expect(board).toContainText("UTC");
   });
 
   test("does not call an unfinished or unreachable-but-idle device an incident", async ({
