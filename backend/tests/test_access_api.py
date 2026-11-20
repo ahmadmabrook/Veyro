@@ -1059,3 +1059,112 @@ class ReviewRegressionTests(AccessApiTestCase):
         self.assertEqual(narrow.status_code, 200, narrow.text)
         self.assertNotIn("no_entitlement", narrow.text)
         self.assertIn("see_front_desk", narrow.text)
+
+
+class VisitTests(AccessApiTestCase):
+    """ADM-CC-01's third metric: "VISITS TODAY · 218 · usual for a Wednesday"."""
+
+    def entry(self, floor: dict[str, Any], *, when: datetime | None = None) -> None:
+        recorded = self.client.post("/access/events", json={
+            "point_id": floor["point_id"], "direction": "entry",
+            "credential_value": floor["credential_value"],
+            "occurred_at": (when or datetime.now(UTC)).isoformat(), "source": "online",
+            "idempotency_key": str(uuid.uuid4()), **self.correlation()},
+            headers=self.headers(floor["tenant_id"]))
+        self.assertEqual(recorded.status_code, 201, recorded.text)
+
+    def test_an_entry_today_is_counted_against_its_own_location(self):
+        floor = self.floor()
+        self.entry(floor)
+        read = self.client.get("/access/visits",
+                               headers=self.headers(floor["tenant_id"]))
+        self.assertEqual(read.status_code, 200, read.text)
+        body = read.json()
+        self.assertEqual(body["entries"], 1)
+        row = next(r for r in body["locations"] if r["location_id"] == floor["location_id"])
+        self.assertEqual(row["entries"], 1)
+        self.assertEqual(row["timezone"], "Asia/Amman")
+
+    def test_an_exit_is_not_a_visit(self):
+        """MOD-022 keeps decisions and events apart, and directions apart with them. A count
+        that added exits would roughly double on a zone that reads both ways."""
+        tenant_id = self.tenant()
+        location_id = self.location(tenant_id)
+        device_id = self.live_device(tenant_id, location_id)
+        zone_id = self.zone(tenant_id, location_id)
+        exit_point = self.point(tenant_id, zone_id, device_id, direction="exit")
+        person_id = self.person(tenant_id)
+        _, value = self.credential(tenant_id, person_id)
+        recorded = self.client.post("/access/events", json={
+            "point_id": exit_point, "direction": "exit", "credential_value": value,
+            "occurred_at": datetime.now(UTC).isoformat(), "source": "online",
+            "idempotency_key": str(uuid.uuid4()), **self.correlation()},
+            headers=self.headers(tenant_id))
+        self.assertEqual(recorded.status_code, 201, recorded.text)
+        read = self.client.get("/access/visits", headers=self.headers(tenant_id))
+        self.assertEqual(read.json()["entries"], 0, read.text)
+
+    def test_no_prior_same_weekday_reports_null_rather_than_zero(self):
+        """"Usual for a Wednesday" is a claim, and a tenant four days old cannot make it.
+
+        Zero would read as "nobody normally comes", which is the confident wrong answer on a
+        metric whose whole job is to say whether today is unusual.
+        """
+        floor = self.floor()
+        self.entry(floor)
+        read = self.client.get("/access/visits",
+                               headers=self.headers(floor["tenant_id"]))
+        body = read.json()
+        row = next(r for r in body["locations"] if r["location_id"] == floor["location_id"])
+        self.assertIsNone(row["usual_for_this_weekday"])
+        self.assertEqual(row["weekdays_compared"], 0)
+        self.assertIn("null", body["no_baseline_is_not_zero"])
+
+    def test_the_same_weekday_a_week_ago_becomes_the_baseline(self):
+        floor = self.floor()
+        self.entry(floor)
+        for _ in range(4):
+            self.entry(floor, when=datetime.now(UTC) - timedelta(days=7))
+        read = self.client.get("/access/visits",
+                               headers=self.headers(floor["tenant_id"]))
+        row = next(r for r in read.json()["locations"]
+                   if r["location_id"] == floor["location_id"])
+        self.assertEqual(row["entries"], 1)
+        self.assertEqual(row["usual_for_this_weekday"], 4)
+        self.assertEqual(row["weekdays_compared"], 1)
+
+    def test_a_day_six_days_back_is_not_the_same_weekday(self):
+        """The comparison is weekly because gyms are. Six days back is a different day of the
+        week and must not enter the baseline."""
+        floor = self.floor()
+        self.entry(floor, when=datetime.now(UTC) - timedelta(days=6))
+        read = self.client.get("/access/visits",
+                               headers=self.headers(floor["tenant_id"]))
+        rows = [r for r in read.json()["locations"]
+                if r["location_id"] == floor["location_id"]]
+        # Either no row for this location at all, or one with nothing in either figure.
+        for row in rows:
+            self.assertEqual(row["entries"], 0)
+            self.assertIsNone(row["usual_for_this_weekday"])
+
+    def test_the_day_is_each_locations_own_and_the_response_says_so(self):
+        floor = self.floor()
+        read = self.client.get("/access/visits",
+                               headers=self.headers(floor["tenant_id"]))
+        body = read.json()
+        self.assertIn("own timezone", body["a_day_is_local_to_each_location"])
+        self.assertIn("not a visit", body["entries_are_events_not_decisions"])
+
+    def test_the_comparison_window_is_bounded_and_the_date_is_validated(self):
+        tenant_id = self.tenant()
+        head = self.headers(tenant_id)
+        for query in ("compare_weeks=0", "compare_weeks=100", "on=not-a-date"):
+            answer = self.client.get(f"/access/visits?{query}", headers=head)
+            self.assertEqual(answer.status_code, 422, f"{query}: {answer.text}")
+
+    def test_a_session_holding_nothing_is_refused_the_count(self):
+        tenant_id = self.tenant()
+        nobody = self.grant(tenant_id, [])
+        refused = self.client.get("/access/visits",
+                                  headers=self.headers(tenant_id, nobody))
+        self.assertEqual(refused.status_code, 403, refused.text)

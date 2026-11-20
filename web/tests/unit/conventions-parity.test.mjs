@@ -26,6 +26,7 @@ import {
   isolate,
   sanitizeUntrusted,
   shapeDigits,
+  pluralCategory,
 } from "../../src/i18n/conventions.mjs";
 
 const BACKEND = new URL("../../../backend", import.meta.url).pathname;
@@ -84,13 +85,20 @@ const ISOLATES = [
 
 const SANITIZE = ["Jane Doe", "جين Doe", `Jane${"‮"}Doe`, "ends with space "];
 
+/**
+ * Counts chosen for the boundaries of Arabic's six CLDR categories, which is where two
+ * implementations diverge: the four exact values, both ends of `few` and `many`, the wrap
+ * past 100 that puts 103 back into `few`, and a round hundred that is `other`.
+ */
+const COUNTS = [0, 1, 2, 3, 10, 11, 99, 100, 101, 102, 103, 110, 200, 203, 1000];
+
 function runPython() {
   // **The vectors travel as JSON and are parsed, not interpolated as Python source.** The
   // first version pasted `JSON.stringify(...)` straight into the script, where JavaScript's
   // `true` is not Python's `True` -- so the booleans in the grouping column raised NameError.
   // Parsing also means a vector can hold any string without quoting hazards.
   const vectors = JSON.stringify(
-    JSON.stringify({ MONEY, INTEGERS, DIGITS, ISOLATES, SANITIZE }),
+    JSON.stringify({ MONEY, INTEGERS, DIGITS, ISOLATES, SANITIZE, COUNTS }),
   );
   const script = `
 import json, sys
@@ -103,8 +111,11 @@ digits = [c.shape_digits(t, n) for t, n in v["DIGITS"]]
 isolates = [c.isolate(t, d) for t, d in v["ISOLATES"]]
 sanitized = [c.sanitize_untrusted(t) for t in v["SANITIZE"]]
 dirs = [c.direction(loc) for loc in ["ar", "en"]]
+from app.l10n.messages import plural_category
+plurals = [plural_category(loc, n) for loc in ["ar", "en"] for n in v["COUNTS"]]
 print(json.dumps({"money": money, "ints": ints, "digits": digits,
-                  "isolates": isolates, "sanitized": sanitized, "dirs": dirs}))
+                  "isolates": isolates, "sanitized": sanitized, "dirs": dirs,
+                  "plurals": plurals}))
 `;
   for (const exe of ["python3", "python"]) {
     const r = spawnSync(exe, ["-I", "-c", script], { encoding: "utf8" });
@@ -220,4 +231,22 @@ test("an unknown locale or currency fails closed", () => {
   assert.throws(() => formatMoney(1, "EUR", "latn", "en"), /unsupported currency/);
   assert.throws(() => formatMoney(1, "JOD", "latn", "fr"), /unsupported locale/);
   assert.throws(() => formatMoney(1, "JOD", "hindi", "en"), /unsupported numbering/);
+});
+
+test("the plural category agrees in both runtimes", { skip: !python }, () => {
+  // **Arabic has six categories and English two**, so a message rendered with the wrong one
+  // is wrong in a way an English-speaking author cannot see. The web catalogue grew plural
+  // forms for ADM-CC-01's counted headings; this is what stops the two implementations
+  // drifting, which is the same argument the money vectors above carry.
+  const want = [];
+  for (const locale of ["ar", "en"]) {
+    for (const count of COUNTS) want.push(pluralCategory(locale, count));
+  }
+  assert.deepEqual(want, python.plurals);
+});
+
+test("a plural category refuses a count it cannot classify", () => {
+  assert.throws(() => pluralCategory("en", -1), /must not be negative/);
+  assert.throws(() => pluralCategory("en", 1.5), /must be an integer/);
+  assert.throws(() => pluralCategory("fr", 1), /unsupported locale/);
 });

@@ -57,9 +57,19 @@ describe("the message catalogue", () => {
     // the comparison outright with "no overlap" unless the values are widened. The runtime
     // check stays because the day somebody drops the `as const` -- or builds a catalogue from
     // data rather than literals -- the compile-time proof silently stops being made.
-    const ar: Record<string, string> = MESSAGES.ar;
-    const en: Record<string, string> = MESSAGES.en;
-    const copied = MESSAGE_KEYS.filter((key) => ar[key] === en[key]);
+    // A plural key's value is an object of CLDR forms, so the comparison is over its forms
+    // rather than over the value -- an Arabic `other` copied from English is the same defect
+    // one level down, and comparing the objects by identity would miss every one of them.
+    const ar: Record<string, string | Record<string, string>> = MESSAGES.ar;
+    const en: Record<string, string | Record<string, string>> = MESSAGES.en;
+    const sameText = (key: string): boolean => {
+      const a = ar[key];
+      const e = en[key];
+      if (typeof a === "string" || typeof e === "string") return a === e;
+      if (a === undefined || e === undefined) return false;
+      return Object.keys(e).some((form) => a[form] !== undefined && a[form] === e[form]);
+    };
+    const copied = MESSAGE_KEYS.filter(sameText);
     expect(copied, `untranslated: ${copied.join(", ")}`).toEqual([]);
   });
 

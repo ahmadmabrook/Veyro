@@ -1,0 +1,119 @@
+import type { ReactNode } from "react";
+
+import { edgeMark, type Severity } from "@/components/ds/status-badge";
+
+/**
+ * AttentionRow — §38, "the component the whole Admin rests on".
+ *
+ * The source is unusually specific about this one, and every clause of it is a decision:
+ *
+ * > The Command Center is a queue of these and almost nothing else. Anatomy: severity
+ * > edge-mark · category · age · headline stating the fact · plain-language evidence ·
+ * > resolution action · secondary route. **The headline is never a metric name — "6 payments
+ * > failed" not "Payment failure rate".**
+ * >
+ * > **CONTRACTS** — Each row is an `article` with the headline as its label; the queue is a
+ * > list with a live count. Severity is edge-mark **and** category chip **and** wording —
+ * > never the bar alone. RTL: edge-mark moves to the logical start, amount to the logical
+ * > end. Below bp.sm the action row stacks and the primary becomes full-width.
+ *
+ * Four of those are enforced here rather than left to each call site:
+ *
+ * - **`article` with the headline as its label.** `aria-labelledby` points at the headline's
+ *   own id, so a screen reader announcing the queue reads nine facts rather than nine
+ *   "article"s. A `label` prop would let a call site pass something other than the headline,
+ *   which is the one thing the contract rules out.
+ * - **Severity is never the bar alone.** The edge-mark is drawn by `edgeMark`, the same
+ *   function the DataGrid uses, and the row additionally carries its category and its
+ *   wording. A row whose severity existed only as a coloured edge would be a colour-only
+ *   signal, which the contrast matrix forbids outright.
+ * - **RTL comes from logical properties**, not from a mirrored stylesheet: `borderInlineStart`
+ *   and `margin-inline-start: auto` move on their own when `dir` flips.
+ * - **The action row stacks below bp.sm** and the first action goes full-width, which is in
+ *   the stylesheet rather than measured here.
+ *
+ * **The queue never collapses.** The design's responsive section is explicit at bp.md: "The
+ * attention queue never collapses — it is the reason the page exists." So there is no
+ * condensed variant that drops the evidence paragraph; canvas 1's "condensed" rows are rows
+ * with a shorter body and no money figure, which is content rather than a mode.
+ */
+
+export function AttentionQueue({
+  heading,
+  counts,
+  children,
+}: {
+  /** The id of the heading above the queue, for the list's accessible name. */
+  heading: string;
+  /** "9 open · 2 critical · 4 assigned to others" — the live count the contract requires. */
+  counts: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <>
+      <p className="ds-queue-counts">{counts}</p>
+      {/* A list, so the count is announced and the rows are navigable as a set. */}
+      <ul className="ds-queue" aria-labelledby={heading}>
+        {children}
+      </ul>
+    </>
+  );
+}
+
+export function AttentionRow({
+  id,
+  severity,
+  category,
+  when,
+  money,
+  headline,
+  evidence,
+  actions,
+  owner,
+}: {
+  /** Used for the headline's id, so the article can be labelled by it. */
+  id: string;
+  severity: Severity;
+  /** The category chip. Part of the severity signal, not decoration. */
+  category: string;
+  /** The age and scope: "2h ago · Khalda, Abdoun". */
+  when: string;
+  /** A figure and what it means: "JOD 312.00" + "at risk". Logical end, so it mirrors. */
+  money?: { amount: ReactNode; meaning: string };
+  /** The fact, never a metric name. */
+  headline: string;
+  /** Plain-language evidence: what happened, and what is already handled. */
+  evidence: string;
+  /** Resolution action first, then the secondary route. */
+  actions?: ReactNode;
+  /** Who owns it, or "unassigned". The design renders both rather than hiding one. */
+  owner?: string;
+}) {
+  return (
+    <li>
+      <article
+        className="ds-attention"
+        aria-labelledby={`${id}-headline`}
+        style={edgeMark(severity)}
+        data-severity={severity}
+      >
+        <div className="ds-attention-eyebrow">
+          <span className="ds-attention-category">{category}</span>
+          <span className="muted">{when}</span>
+          {money ? (
+            <span className="ds-attention-money">
+              <span className="data">{money.amount}</span>{" "}
+              <span className="muted">{money.meaning}</span>
+            </span>
+          ) : null}
+        </div>
+        <h3 id={`${id}-headline`} className="ds-attention-headline">
+          {headline}
+        </h3>
+        <p className="ds-attention-evidence">{evidence}</p>
+        {actions ? <div className="ds-attention-actions">{actions}</div> : null}
+        {owner ? <p className="ds-attention-owner muted">{owner}</p> : null}
+      </article>
+    </li>
+  );
+}

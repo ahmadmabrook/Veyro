@@ -207,3 +207,85 @@ def reconcile(
     if recorded_status == provider_status:
         return recorded_status, "already_agreed"
     return recorded_status, "provider_disagrees_escalate"
+
+
+# ------------------------------------------------------------------ the scheme's dispute
+#
+# **COM-03-R06's other half, and the table MOD-017 shipped with no writer.**
+# `plt01.fin_disputes` has existed since this module's migration -- with forced RLS, twelve
+# constraints, an isolation check and four privacy declarations -- and nothing in `app/` read
+# or wrote it. The module's own registry entry lists disputes among what works. It was found
+# by building ADM-PAY-03, whose disputed state is "evidence deadline banner": a state the
+# screen can never render is the vacuous branch this codebase has shipped four times in a UI
+# and four times in a service, so the remedy is the writer rather than a caveat.
+#
+# **Nothing here is a Veyro decision, which is why it is one permission rather than two.**
+# A refund is split across `finance.refund.request` and `finance.refund.approve` because
+# somebody chooses to send money back and paragraph 1598 wants a second person on that
+# choice. A dispute has no such moment: the scheme opens it, the tenant answers it, and the
+# scheme decides. Every transition is recording what another party did or what was sent to
+# them, so a separation of duties would be a ceremony over somebody else's decision.
+#
+# **The deadline is the scheme's and cannot be moved.** `respond_due_on` is required on the
+# row for that reason, and it is the only date in this module that is not Veyro's to extend --
+# which is what makes it worth a banner rather than a column.
+
+#: The states a dispute holds, matching `fin_disputes_status`. `responded` is not an outcome:
+#: evidence was submitted and the scheme has not answered, which is `unknown`'s shape one
+#: table over and must not be read as either result.
+DISPUTE_STATUSES = ("open", "responded", "won", "lost", "withdrawn")
+
+#: The three that end it, matching `fin_disputes_closed_has_an_outcome`.
+DISPUTE_OUTCOMES = ("won", "lost", "withdrawn")
+
+#: **A dispute may be settled without a response**, which is the edge worth stating: a scheme
+#: can withdraw an inquiry, or decide against a tenant that missed the deadline, and a machine
+#: that required `responded` first would make a missed deadline unrecordable. Both closing
+#: paths exist because both happen.
+DISPUTE_EDGES: dict[str, tuple[str, ...]] = {
+    "open": ("responded", "won", "lost", "withdrawn"),
+    "responded": ("won", "lost", "withdrawn"),
+    "won": (),
+    "lost": (),
+    "withdrawn": (),
+}
+
+
+class DisputeError(ValueError):
+    """A dispute transition the scheme's own machine does not have."""
+
+
+def check_dispute_transition(current: str, target: str) -> None:
+    """Refuse a dispute move that is not in the machine.
+
+    Shares no code with the payment or fiscal machines, for `check_fiscal_transition`'s
+    reason: a helper that handled several is where somebody later makes one imply another.
+    """
+    if current not in DISPUTE_STATUSES:
+        raise DisputeError(f"{current!r} is not a dispute status")
+    if target not in DISPUTE_STATUSES:
+        raise DisputeError(f"{target!r} is not a dispute status")
+    if target not in DISPUTE_EDGES[current]:
+        raise DisputeError(f"a dispute does not move from {current} to {target}")
+
+
+def evidence_window(*, opened_on: date, respond_due_on: date, at: date) -> dict[str, object]:
+    """What is left of the window to answer a dispute in, as a fact rather than a colour.
+
+    Three numbers and no verdict about what to do, because the action is the tenant's: how
+    many days remain, whether the deadline has passed, and how long the scheme gave in the
+    first place -- the last because "three days left" means something different out of thirty
+    than out of four.
+
+    **A passed deadline is reported, not hidden.** A dispute whose window closed is the one a
+    surface most needs to show: the response can no longer be sent, and the tenant's exposure
+    is now the full amount. `days_remaining` goes negative rather than clamping at zero, for
+    `days_late`'s reason one module over -- zero would say the deadline is today.
+    """
+    if respond_due_on < opened_on:
+        raise DisputeError("a dispute's deadline is not before it was opened")
+    return {
+        "days_remaining": (respond_due_on - at).days,
+        "window_has_closed": at > respond_due_on,
+        "days_given": (respond_due_on - opened_on).days,
+    }

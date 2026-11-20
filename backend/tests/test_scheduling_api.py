@@ -1164,3 +1164,134 @@ class ConcurrencyTests(SchedulingApiTestCase):
         detail = self.client.get(f"/scheduling/sessions/{session_id}",
                                  headers=self.headers(tenant_id)).json()
         self.assertEqual(detail["held"], 2, detail)
+
+
+class UnstaffedSessionTests(SchedulingApiTestCase):
+    """ADM-CC-01's STAFFING item: "Spin 19:00 Thursday has no coach -- 18 members booked"."""
+
+    def unstaffed_template(self, gym: dict[str, Any]) -> str:
+        """The same template with its staff requirement removed."""
+        return self.published(gym, requirements=[
+            {"kind": "service", "quantity": 1, "resource_id": gym["service"]},
+            {"kind": "room", "quantity": 1, "resource_id": gym["studio"]},
+        ])
+
+    def test_a_session_with_no_staff_requirement_is_listed(self) -> None:
+        gym = self.gym()
+        created = self.generate(gym, self.unstaffed_template(gym))
+        read = self.client.get("/scheduling/unstaffed?days=62",
+                               headers=self.headers(gym["tenant_id"]))
+        self.assertEqual(read.status_code, 200, read.text)
+        body = read.json()
+        listed = {s["session_id"] for s in body["sessions"]}
+        self.assertIn(created["sessions"][0]["session_id"], listed)
+        self.assertEqual(body["count"], created["created"])
+
+    def test_a_session_with_a_coach_is_not_listed(self) -> None:
+        """The queue exists because it is short. A staffed class in it is noise."""
+        gym = self.gym()
+        created = self.generate(gym, self.published(gym))
+        read = self.client.get("/scheduling/unstaffed?days=62",
+                               headers=self.headers(gym["tenant_id"]))
+        listed = {s["session_id"] for s in read.json()["sessions"]}
+        self.assertNotIn(created["sessions"][0]["session_id"], listed)
+        self.assertEqual(read.json()["count"], 0)
+
+    def test_a_substituted_session_still_has_a_coach(self) -> None:
+        """A substitution supersedes the outgoing hold and inserts the replacement."""
+        gym = self.gym()
+        session_id = self.a_session(gym)
+        cover = self.resource(gym["tenant_id"], "staff", "COVER-U",
+                              location_id=gym["location_id"])
+        owner = self.headers(gym["tenant_id"])
+        swapped = self.client.post(
+            f"/scheduling/sessions/{session_id}/substitute", json={
+                "replacement_resource_id": cover, "reason": "the coach is ill",
+                **self.correlation()}, headers=owner)
+        self.assertEqual(swapped.status_code, 200, swapped.text)
+        read = self.client.get("/scheduling/unstaffed?days=62", headers=owner)
+        listed = {s["session_id"] for s in read.json()["sessions"]}
+        self.assertNotIn(session_id, listed)
+
+    def test_a_session_whose_only_assignment_was_superseded_has_no_coach(self) -> None:
+        """The `superseded_at IS NULL` clause, which is the whole of "has a coach".
+
+        No route reaches this state -- `substitute` always inserts a replacement -- so it is
+        made directly, which is the only way to prove the clause. **Counting rows instead
+        would report this session as staffed**, because the superseded row is still there:
+        MOD-019 keeps it so the window a past conflict was decided against stays readable.
+        """
+        from app.db import tenant_scope
+
+        gym = self.gym()
+        session_id = self.a_session(gym)
+        owner = self.headers(gym["tenant_id"])
+        before = self.client.get("/scheduling/unstaffed?days=62", headers=owner)
+        self.assertNotIn(session_id,
+                         {s["session_id"] for s in before.json()["sessions"]})
+        with tenant_scope(self._tenant_pool, gym["tenant_id"]) as conn:
+            moved = conn.execute(
+                "UPDATE plt01.sch_session_resources SET superseded_at = now(),"
+                " superseded_by = %s, supersede_correlation_id = %s"
+                " WHERE session_id = %s AND resource_kind = 'staff'"
+                "   AND superseded_at IS NULL",
+                (gym["coach"], str(uuid.uuid4()), session_id))
+            self.assertEqual(moved.rowcount, 1)
+        after = self.client.get("/scheduling/unstaffed?days=62", headers=owner)
+        self.assertIn(session_id, {s["session_id"] for s in after.json()["sessions"]})
+        self.assertIn("superseded", after.json()["a_superseded_assignment_is_not_a_coach"])
+
+    def test_a_cancelled_session_needs_no_coach(self) -> None:
+        gym = self.gym()
+        created = self.generate(gym, self.unstaffed_template(gym))
+        session_id = created["sessions"][0]["session_id"]
+        owner = self.headers(gym["tenant_id"])
+        cancelled = self.client.post(f"/scheduling/sessions/{session_id}/cancel", json={
+            "cancellation_reason": "facility_closed", "reason": "a burst pipe",
+            **self.correlation()}, headers=owner)
+        self.assertEqual(cancelled.status_code, 200, cancelled.text)
+        read = self.client.get("/scheduling/unstaffed?days=62", headers=owner)
+        self.assertNotIn(session_id,
+                         {s["session_id"] for s in read.json()["sessions"]})
+
+    def test_the_local_time_is_the_sessions_own_recorded_zone(self) -> None:
+        """The class is advertised at 18:00 local, and the row says 18:00.
+
+        The schedule board shipped the other version -- it sliced the ISO instant and
+        rendered 15:00 for an 18:00 class in Asia/Amman -- and 140 green assertions did not
+        notice, because every one of them asserted that the timezone was *named* on the page.
+        """
+        gym = self.gym()
+        self.generate(gym, self.unstaffed_template(gym))
+        read = self.client.get("/scheduling/unstaffed?days=62",
+                               headers=self.headers(gym["tenant_id"]))
+        row = read.json()["sessions"][0]
+        self.assertEqual(row["timezone"], "Asia/Amman")
+        self.assertIn("T18:00", row["local_starts_at"])
+        self.assertNotIn("T18:00", row["starts_at"])
+
+    def test_the_places_held_come_back_with_the_gap(self) -> None:
+        """A gap nobody has booked and a gap with eighteen members are a different morning."""
+        gym = self.gym()
+        self.generate(gym, self.unstaffed_template(gym))
+        read = self.client.get("/scheduling/unstaffed?days=62",
+                               headers=self.headers(gym["tenant_id"]))
+        body = read.json()
+        self.assertEqual(body["members_affected"], 0)
+        for row in body["sessions"]:
+            self.assertEqual(row["held"], 0)
+            self.assertEqual(row["places"], 12)
+
+    def test_the_window_is_bounded_and_the_date_is_validated(self) -> None:
+        gym = self.gym()
+        head = self.headers(gym["tenant_id"])
+        for query in ("days=0", "days=400", "from_date=31-12-2026"):
+            answer = self.client.get(f"/scheduling/unstaffed?{query}", headers=head)
+            self.assertEqual(answer.status_code, 422, f"{query}: {answer.text}")
+
+    def test_a_session_holding_nothing_is_refused_the_queue(self) -> None:
+        gym = self.gym()
+        nobody = self.grant(gym["tenant_id"], [])
+        refused = self.client.get(
+            "/scheduling/unstaffed", headers=self.headers(gym["tenant_id"], nobody))
+        self.assertEqual(refused.status_code, 403, refused.text)

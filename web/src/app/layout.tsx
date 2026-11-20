@@ -4,7 +4,7 @@ import { AppNav, type NavItem } from "@/components/nav";
 import { AdminShell } from "@/components/ds/shell";
 import { LocaleSwitch } from "@/components/locale-switch";
 import { t } from "@/i18n/locale";
-import { currentSession, gate } from "@/lib/api";
+import { currentSession, gateAll } from "@/lib/api";
 import { presentation } from "@/lib/preferences";
 
 import "./globals.css";
@@ -36,27 +36,34 @@ export default async function RootLayout({
   const session = await currentSession();
   let items: NavItem[] = [];
   if (session) {
+    // **One request for all thirteen.** The shell asks the gate about every section, and
+    // asking separately cost thirteen round trips on every page in the app -- which, with
+    // the Command Center's own six, put `/` at nineteen against MOD-011's 600-a-minute
+    // per-identity budget. Same evaluator, same assurance weighing, one scope resolution.
     const [
       organization, people, access, permissions, devices, operations, schedule, configuration,
       finance, catalog, privacy, messages, integrations,
-    ] = await Promise.all([
-      gate("tenancy.organization.read"),
-      gate("people.person.read"),
-      gate("access.zone.read"),
-      gate("authz.role.read"),
-      gate("devices.device.read"),
-      gate("events.event.read"),
-      gate("scheduling.schedule.read"),
-      gate("config.definition.read"),
-      gate("finance.ledger.read"),
-      gate("catalog.product.read"),
-      gate("privacy.dsar.read"),
-      gate("notifications.notification.read"),
-      gate("integrations.install.read"),
-    ]);
+    ] = await gateAll([
+      "tenancy.organization.read",
+      "people.person.read",
+      "access.zone.read",
+      "authz.role.read",
+      "devices.device.read",
+      "events.event.read",
+      "scheduling.schedule.read",
+      "config.definition.read",
+      "finance.ledger.read",
+      "catalog.product.read",
+      "privacy.dsar.read",
+      "notifications.notification.read",
+      "integrations.install.read",
+    ] as const);
     items = [
-      // The overview is this session's own page -- what it is and what it may do -- so it
-      // needs no permission beyond having signed in.
+      // **The Command Center needs no permission of its own**, and that is the design's
+      // call rather than a convenience: ADM-CC-02 is "not a reduced Command Center -- a
+      // differently prioritised one", so a club manager opens the same screen and sees the
+      // panels their grants reach. Gating the page itself would make the first thing a
+      // receptionist sees a refusal.
       { href: "/", label: "nav.overview", allowed: true },
       // **No gate.** Every route this page reads is scoped to the caller's own
       // identity and refuses any other subject with a 404, so there is nothing to

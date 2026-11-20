@@ -86,8 +86,12 @@ test.describe("the membership blocks on a member's page", () => {
 
   test("shows the invoice, what was paid and both of its statuses", async ({ page }) => {
     await expect(page.getByRole("heading", { name: "Billing", level: 2 })).toBeVisible();
-    const row = page.getByRole("row").filter({ hasText: "INV-" });
-    await expect(row).toContainText("52.200");
+    // **The settled one, named by its figure.** This member has two documents now -- the
+    // 45.000 membership invoice, paid, and a 26.000 personal-training invoice that is
+    // overdue and in recovery, which is what gives the Command Center its MONEY row. `INV-`
+    // matched both, which is the loose-locator trap this suite already records for a
+    // positional cell.
+    const row = page.getByRole("row").filter({ hasText: "52.200" });
     await expect(row).toContainText("paid");
     await expect(page.getByText(/move independently/)).toBeVisible();
   });
@@ -96,7 +100,7 @@ test.describe("the membership blocks on a member's page", () => {
     // A payment term of zero is a real value and not the one anybody means, and the fixture
     // set both dates the same at first -- which rendered a caption repeating the date above
     // it. Caught by looking at the page.
-    const row = page.getByRole("row").filter({ hasText: "INV-" });
+    const row = page.getByRole("row").filter({ hasText: "52.200" });
     const issued = await row.textContent();
     const dates = (issued ?? "").match(/\d{4}-\d{2}-\d{2}/g) ?? [];
     expect(dates.length).toBeGreaterThanOrEqual(2);
@@ -120,14 +124,20 @@ test.describe("the membership blocks on a member's page", () => {
     expect(o!.y).toBeGreaterThan(a!.y + a!.height / 2);
   });
 
-  test("reports nothing outstanding once the invoice is settled", async ({ page }) => {
+  test("reports exactly what is outstanding, not the count of unpaid documents", async ({
+    page,
+  }) => {
     // `outstanding` is not `status !== "paid"`: a credited or written-off document is settled
     // too, and counting either would put money on the screen nobody is going to collect.
+    //
+    // **The fixture now seeds one paid invoice and one unpaid one**, which makes this a real
+    // assertion rather than a zero: the figure must be the unpaid document's gross and not
+    // the sum of both, and a page that reported "1 outstanding" would pass a count check
+    // while saying nothing about the money.
     const outstanding = page.getByRole("term").filter({ hasText: "Outstanding" });
     await expect(outstanding).toBeVisible();
-    await expect(
-      page.locator("dd").filter({ hasText: /0\.000/ }).first(),
-    ).toBeVisible();
+    const value = outstanding.locator("xpath=following-sibling::dd[1]");
+    await expect(value).toContainText("30.160");
   });
 
   test("says the blocks are composed here rather than joined on the server", async ({

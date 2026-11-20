@@ -127,8 +127,26 @@ test.describe("sign-in", () => {
   }) => {
     await signIn(page);
 
-    await expect(page.getByRole("heading", { name: "Veyro Admin" })).toBeVisible();
-    await expect(page.getByText(creds.identityId)).toBeVisible();
+    // The landing page is ADM-CC-01. Its heading counts the attention queue, so the
+    // assertion is on the shape of the sentence rather than on a count that moves with the
+    // fixture.
+    await expect(page.getByRole("heading", { level: 1 }))
+      .toContainText(/need(s)? you/);
+    // **The identity uuid is no longer rendered anywhere, deliberately.** It was on the old
+    // landing page, which printed the caller's uuid and assurance level over the product's
+    // front door -- a developer's handle, not product copy, and nothing in the design puts
+    // one on a screen.
+    //
+    // What this test is about is that the sign-in produced a session belonging to this
+    // identity, and `/account` proves that more strongly than a printed string did: every
+    // route it reads is scoped by `owned(session, identity_id)`, which refuses any subject
+    // that is not the session's own with a 404. A page that renders this identity's devices
+    // is a page that resolved this identity's session.
+    await page.goto("/account");
+    // The page renders at all, which it only does for a resolved session: `/account` sends a
+    // caller with none to `/login`, and every read behind it is `owned`-scoped.
+    await expect(page.getByRole("heading", { name: "This session" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Devices" })).toBeVisible();
 
     const cookies = await context.cookies();
     const session = cookies.find((cookie) => cookie.name === "veyro_session");
@@ -147,7 +165,11 @@ test.describe("sign-in", () => {
     await signIn(page);
     await page.goto("/login");
     await page.waitForURL("/");
-    await expect(page.getByRole("heading", { name: "Veyro Admin" })).toBeVisible();
+    // The landing page is ADM-CC-01. Its heading counts the attention queue, so the
+    // assertion is on the shape of the sentence rather than on a count that moves with the
+    // fixture.
+    await expect(page.getByRole("heading", { level: 1 }))
+      .toContainText(/need(s)? you/);
   });
 
   test("signing out clears the session and the admin page becomes unreachable", async ({
@@ -155,6 +177,10 @@ test.describe("sign-in", () => {
     context,
   }) => {
     await signIn(page);
+    // **Sign out is account chrome**, which is where §21 puts it: the global chrome is a
+    // scope switcher, a command palette, tasks, alerts and *account*. It sat on the overview
+    // while that page was a session diagnostic and moved with the facts it belonged beside.
+    await page.goto("/account");
     await page.getByRole("button", { name: "Sign out" }).click();
     await page.waitForURL("/login");
 
@@ -173,6 +199,10 @@ test.describe("sign-in", () => {
     page.on("framenavigated", (frame) => urls.push(frame.url()));
 
     await signIn(page);
+    // **Sign out is account chrome**, which is where §21 puts it: the global chrome is a
+    // scope switcher, a command palette, tasks, alerts and *account*. It sat on the overview
+    // while that page was a session diagnostic and moved with the facts it belonged beside.
+    await page.goto("/account");
     await page.getByRole("button", { name: "Sign out" }).click();
     await page.waitForURL("/login");
 

@@ -237,3 +237,27 @@ def payment_status_for(
     if paid_minor > 0:
         return "part_paid" if at <= due_on else "overdue"
     return "unpaid" if at <= due_on else "overdue"
+
+
+def days_late(*, due_on: date, at: date, payment_status: str) -> int | None:
+    """How many days past its due date an invoice is, or None if that is not a fact about it.
+
+    ADM-PAY-03's header is `INV-20418 UNPAID · 2 DAYS LATE`, and the figure belongs on the
+    server for the reason MOD-019's schedule board learned the hard way: a date is not an
+    instant, so a reader deriving "two days late" from a due date and their own clock gets a
+    different answer in a different timezone for the same invoice. The invoice's due date is
+    what the tenant agreed; today is the server's.
+
+    **None is not zero.** An invoice settled before it fell due is not "0 days late" -- it was
+    never late, which is a different sentence -- and neither is one due next week. A caller
+    rendering `0` for all three would be stating a lateness that is not there, which is the
+    same mistake as rendering an empty cell as a fact. `written_off` and `credited` return
+    None for the same reason: the debt stopped being collectable, so the count stopped
+    meaning anything.
+    """
+    if payment_status not in PAYMENT_STATUSES:
+        raise InvoicingError(f"{payment_status!r} is not a payment status")
+    if payment_status in ("paid", "credited", "written_off"):
+        return None
+    late = (at - due_on).days
+    return late if late > 0 else None

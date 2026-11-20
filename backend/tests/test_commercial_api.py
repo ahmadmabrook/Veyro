@@ -15,6 +15,7 @@ settles nothing.
 
 from __future__ import annotations
 
+import json
 import unittest
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -2359,5 +2360,638 @@ class InvoiceHistoryTests(CommercialApiTestCase):
         self.assertEqual(malformed.status_code, 422, malformed.text)
 
 
+
+class DisputeTests(CommercialApiTestCase):
+    """The chargeback, and the table MOD-017 shipped with no writer.
+
+    `plt01.fin_disputes` has existed since this module's migration -- forced RLS, twelve
+    constraints, an isolation check and four privacy declarations -- and until ADM-PAY-03
+    needed it, nothing in `app/` read or wrote it while the module's registry entry listed
+    disputes among what works. A state no screen can reach is the vacuous branch this
+    codebase has shipped eight times.
+    """
+
+    def paid(self, tenant_id: str) -> dict:
+        """An invoice with a settled card payment against it, which is what a scheme reverses."""
+        billing = self.billing(tenant_id, self.person(tenant_id))
+        invoice = self.invoice(tenant_id, billing)
+        head = self.headers(tenant_id)
+        intent = self.client.post("/finance/payment-intents", json={
+            "billing_account_id": billing["billing_account_id"],
+            "invoice_id": invoice["invoice_id"], "amount_minor": invoice["gross_minor"],
+            "method": "card", "provider_key": "acme.payments",
+            "idempotency_key": f"pi-{uuid.uuid4().hex[:8]}", **self.correlation()},
+            headers=head)
+        self.assertEqual(intent.status_code, 201, intent.text)
+        settled = self.client.post(
+            f"/finance/payment-intents/{intent.json()['intent_id']}/settle", json={
+                "outcome": "succeeded", **self.correlation()}, headers=head)
+        self.assertEqual(settled.status_code, 200, settled.text)
+        return {"billing": billing, "invoice": invoice,
+                "payment_id": str(settled.json()["payment_id"]),
+                "amount_minor": int(invoice["gross_minor"])}
+
+    def manager(self, tenant_id: str) -> dict[str, str]:
+        """**A stepped-up session, because `finance.dispute.manage` is financial class.**
+
+        A lost chargeback is money gone and the response window is the one chance to keep
+        it, so holding the permission on a password-only session is not enough -- which is
+        the catalogue's rule for every money write in this module.
+        """
+        return self.headers(
+            tenant_id, self.stepped_grant(tenant_id, ["finance.dispute.manage"]))
+
+    def dispute(self, tenant_id: str, paid: dict, **over: object) -> dict:
+        body: dict = {
+            "payment_id": paid["payment_id"],
+            "provider_case_ref": f"CB-{uuid.uuid4().hex[:8].upper()}",
+            "dispute_kind": "chargeback", "reason_code": "card_expired",
+            "amount_minor": paid["amount_minor"], "currency": "JOD",
+            "opened_on": "2026-02-01", "respond_due_on": "2026-02-15",
+            "idempotency_key": f"cb-{uuid.uuid4().hex[:8]}", **self.correlation()}
+        body.update(over)
+        return self.client.post(
+            "/finance/disputes", json=body, headers=self.manager(tenant_id))
+
+    def test_a_dispute_is_recorded_against_a_payment_with_its_window(self):
+        tenant_id = self.tenant()
+        paid = self.paid(tenant_id)
+        opened = self.dispute(tenant_id, paid)
+        self.assertEqual(opened.status_code, 201, opened.text)
+        body = opened.json()
+        self.assertEqual(body["status"], "open")
+        self.assertEqual(body["invoice_id"], paid["invoice"]["invoice_id"])
+        # The scheme gave a fortnight, and the window is returned rather than left to be
+        # derived from two dates.
+        self.assertEqual(body["days_given"], 14)
+        self.assertIn("window_has_closed", body)
+
+    def test_the_billing_account_is_derived_from_the_payment(self):
+        """Derive, never accept: a dispute must not be recordable against another payer."""
+        tenant_id = self.tenant()
+        paid = self.paid(tenant_id)
+        body = self.dispute(tenant_id, paid).json()
+        self.assertEqual(
+            body["billing_account_id"], paid["billing"]["billing_account_id"])
+
+    def test_a_dispute_cannot_exceed_the_payment_it_is_against(self):
+        """A scheme reverses at most what was charged; more would overstate the exposure."""
+        tenant_id = self.tenant()
+        paid = self.paid(tenant_id)
+        over = self.dispute(tenant_id, paid, amount_minor=paid["amount_minor"] + 1)
+        self.assertEqual(over.status_code, 409, over.text)
+        self.assertIn("exceed", over.json()["error"])
+
+    def test_a_dispute_is_in_the_currency_of_the_payment(self):
+        """MOD-016 authorised a JOD reduction in USD by comparing minor units across them."""
+        tenant_id = self.tenant()
+        paid = self.paid(tenant_id)
+        wrong = self.dispute(tenant_id, paid, currency="USD")
+        self.assertEqual(wrong.status_code, 409, wrong.text)
+
+    def test_a_deadline_before_the_opening_is_refused_at_the_boundary(self):
+        tenant_id = self.tenant()
+        paid = self.paid(tenant_id)
+        backwards = self.dispute(
+            tenant_id, paid, opened_on="2026-02-15", respond_due_on="2026-02-01")
+        self.assertEqual(backwards.status_code, 422, backwards.text)
+
+    def test_a_repeat_is_answered_from_what_was_recorded(self):
+        tenant_id = self.tenant()
+        paid = self.paid(tenant_id)
+        key = f"cb-{uuid.uuid4().hex[:8]}"
+        ref = f"CB-{uuid.uuid4().hex[:8].upper()}"
+        first = self.dispute(tenant_id, paid, idempotency_key=key, provider_case_ref=ref)
+        self.assertEqual(first.status_code, 201, first.text)
+        again = self.dispute(tenant_id, paid, idempotency_key=key, provider_case_ref=ref)
+        self.assertEqual(again.status_code, 201, again.text)
+        self.assertIs(again.json()["repeated"], True)
+        self.assertEqual(again.json()["dispute_id"], first.json()["dispute_id"])
+
+    def test_a_key_reused_for_another_case_refuses_rather_than_handing_the_first_back(self):
+        """An idempotency key compared on the aggregate alone is this build's commonest defect.
+
+        The aggregate here is the payment, and a scheme can open two cases against one
+        payment -- an inquiry and then a chargeback -- so a retry naming a different case
+        reference would otherwise be told the second case had been recorded when it had not.
+        """
+        tenant_id = self.tenant()
+        paid = self.paid(tenant_id)
+        key = f"cb-{uuid.uuid4().hex[:8]}"
+        self.assertEqual(
+            self.dispute(tenant_id, paid, idempotency_key=key).status_code, 201)
+        other = self.dispute(tenant_id, paid, idempotency_key=key)
+        self.assertEqual(other.status_code, 409, other.text)
+        self.assertIn("another_dispute", other.json()["error"])
+
+    def test_evidence_is_recorded_and_the_dispute_can_then_be_decided(self):
+        tenant_id = self.tenant()
+        paid = self.paid(tenant_id)
+        head = self.manager(tenant_id)
+        dispute_id = self.dispute(tenant_id, paid).json()["dispute_id"]
+        answered = self.client.post(
+            f"/finance/disputes/{dispute_id}/respond", json={
+                "response_ref": "https://provider.invalid/cases/9", **self.correlation()},
+            headers=head)
+        self.assertEqual(answered.status_code, 200, answered.text)
+        self.assertEqual(answered.json()["status"], "responded")
+        won = self.client.post(
+            f"/finance/disputes/{dispute_id}/settle", json={
+                "outcome": "won", **self.correlation()}, headers=head)
+        self.assertEqual(won.status_code, 200, won.text)
+        self.assertEqual(won.json()["outcome"], "won")
+
+    def test_a_decided_dispute_cannot_be_answered(self):
+        tenant_id = self.tenant()
+        paid = self.paid(tenant_id)
+        head = self.manager(tenant_id)
+        dispute_id = self.dispute(tenant_id, paid).json()["dispute_id"]
+        self.client.post(f"/finance/disputes/{dispute_id}/settle", json={
+            "outcome": "lost", **self.correlation()}, headers=head)
+        late = self.client.post(f"/finance/disputes/{dispute_id}/respond", json={
+            "response_ref": "https://provider.invalid/cases/9", **self.correlation()},
+            headers=head)
+        self.assertEqual(late.status_code, 409, late.text)
+
+    def test_settling_twice_with_the_same_outcome_is_idempotent(self):
+        """A client whose request timed out after the commit is told what happened."""
+        tenant_id = self.tenant()
+        paid = self.paid(tenant_id)
+        head = self.manager(tenant_id)
+        dispute_id = self.dispute(tenant_id, paid).json()["dispute_id"]
+        for expected in (False, True):
+            answer = self.client.post(f"/finance/disputes/{dispute_id}/settle", json={
+                "outcome": "withdrawn", **self.correlation()}, headers=head)
+            self.assertEqual(answer.status_code, 200, answer.text)
+            self.assertIs(answer.json()["repeated"], expected)
+
+    def test_a_different_outcome_afterwards_refuses(self):
+        tenant_id = self.tenant()
+        paid = self.paid(tenant_id)
+        head = self.manager(tenant_id)
+        dispute_id = self.dispute(tenant_id, paid).json()["dispute_id"]
+        self.client.post(f"/finance/disputes/{dispute_id}/settle", json={
+            "outcome": "won", **self.correlation()}, headers=head)
+        flipped = self.client.post(f"/finance/disputes/{dispute_id}/settle", json={
+            "outcome": "lost", **self.correlation()}, headers=head)
+        self.assertEqual(flipped.status_code, 409, flipped.text)
+
+    def test_a_dispute_reaches_the_invoices_timeline_with_the_schemes_deadline(self):
+        """ADM-PAY-03's disputed state, and the read the banner comes from.
+
+        A timeline built from `payment_status` could never show this: the invoice stays
+        `paid` throughout a chargeback, because the money arrived and is being taken back.
+        """
+        tenant_id = self.tenant()
+        paid = self.paid(tenant_id)
+        self.assertEqual(self.dispute(tenant_id, paid).status_code, 201)
+        history = self.client.get(
+            f"/finance/invoices/{paid['invoice']['invoice_id']}/history",
+            headers=self.scoped(tenant_id, ["finance.account.read"]))
+        self.assertEqual(history.status_code, 200, history.text)
+        body = history.json()
+        disputes = [e for e in body["events"] if e["kind"] == "dispute"]
+        self.assertEqual(len(disputes), 1, body)
+        self.assertEqual(disputes[0]["status"], "open")
+        self.assertEqual(disputes[0]["respond_due_on"], "2026-02-15")
+        self.assertEqual(body["evidence_due_on"], "2026-02-15", body)
+        # And the invoice still reads paid, which is the point of the separate record.
+        invoice = self.client.get(
+            f"/finance/invoices/{paid['invoice']['invoice_id']}",
+            headers=self.scoped(tenant_id, ["finance.account.read"])).json()
+        self.assertEqual(invoice["payment_status"], "paid", invoice)
+
+    def test_a_closed_dispute_leaves_no_deadline_outstanding(self):
+        tenant_id = self.tenant()
+        paid = self.paid(tenant_id)
+        dispute_id = self.dispute(tenant_id, paid).json()["dispute_id"]
+        self.client.post(f"/finance/disputes/{dispute_id}/settle", json={
+            "outcome": "won", **self.correlation()},
+            headers=self.manager(tenant_id))
+        body = self.client.get(
+            f"/finance/invoices/{paid['invoice']['invoice_id']}/history",
+            headers=self.scoped(tenant_id, ["finance.account.read"])).json()
+        self.assertIsNone(body["evidence_due_on"], body)
+        self.assertEqual(
+            [e["status"] for e in body["events"] if e["kind"] == "dispute"], ["won"])
+
+    def test_recording_a_dispute_needs_its_own_permission(self):
+        """`finance.account.read` is what a front desk holds and a chargeback is not a read."""
+        tenant_id = self.tenant()
+        paid = self.paid(tenant_id)
+        refused = self.client.post("/finance/disputes", json={
+            "payment_id": paid["payment_id"], "provider_case_ref": "CB-NO",
+            "dispute_kind": "chargeback", "reason_code": "card_expired",
+            "amount_minor": 100, "currency": "JOD", "opened_on": "2026-02-01",
+            "respond_due_on": "2026-02-15", "idempotency_key": "cb-no",
+            **self.correlation()},
+            headers=self.scoped(tenant_id, ["finance.account.read"]))
+        self.assertEqual(refused.status_code, 403, refused.text)
+        self.assertEqual(refused.json()["error"], "forbidden", refused.text)
+
+    def test_the_permission_alone_is_not_enough_without_a_step_up(self):
+        """Financial class. Holding it on a password-only session is the catalogue's point."""
+        tenant_id = self.tenant()
+        paid = self.paid(tenant_id)
+        weak = self.client.post("/finance/disputes", json={
+            "payment_id": paid["payment_id"], "provider_case_ref": "CB-WEAK",
+            "dispute_kind": "chargeback", "reason_code": "card_expired",
+            "amount_minor": 100, "currency": "JOD", "opened_on": "2026-02-01",
+            "respond_due_on": "2026-02-15", "idempotency_key": "cb-weak",
+            **self.correlation()},
+            headers=self.scoped(tenant_id, ["finance.dispute.manage"]))
+        self.assertEqual(weak.status_code, 403, weak.text)
+        self.assertEqual(weak.json()["error"], "step_up_required", weak.text)
+
+    def test_an_unknown_payment_is_a_404_and_a_malformed_one_a_422(self):
+        tenant_id = self.tenant()
+        paid = self.paid(tenant_id)
+        missing = self.dispute(tenant_id, {**paid, "payment_id": str(uuid.uuid4())})
+        self.assertEqual(missing.status_code, 404, missing.text)
+        malformed = self.dispute(tenant_id, {**paid, "payment_id": "not-a-uuid"})
+        self.assertEqual(malformed.status_code, 422, malformed.text)
+
+
+class InvoiceDetailReadTests(CommercialApiTestCase):
+    """What ADM-PAY-03's header and its linked documents need, which this read did not answer.
+
+    The asymmetry worth naming: `list_invoices` has returned `payer_person_id` and
+    `credits_invoice_id` from the start, so the detail read answered *less* about an
+    invoice's identity than the row that linked to it.
+    """
+
+    def test_the_payer_is_an_identifier_and_never_a_name(self):
+        """So a surface can ask MOD-014 for the name through MOD-014's own gate."""
+        tenant_id = self.tenant()
+        person_id = self.person(tenant_id, "Ahmad Nabulsi")
+        billing = self.billing(tenant_id, person_id)
+        invoice = self.invoice(tenant_id, billing)
+        body = self.client.get(
+            f"/finance/invoices/{invoice['invoice_id']}",
+            headers=self.scoped(tenant_id, ["finance.account.read"])).json()
+        self.assertEqual(body["payer_person_id"], person_id, body)
+        self.assertNotIn("Ahmad", json.dumps(body), body)
+
+    def test_the_header_states_how_late_it_is_rather_than_two_dates(self):
+        tenant_id = self.tenant()
+        billing = self.billing(tenant_id, self.person(tenant_id))
+        # Due in the past, so the figure is a real one whenever this runs.
+        invoice = self.invoice(tenant_id, billing, due_on="2026-01-15")
+        body = self.client.get(
+            f"/finance/invoices/{invoice['invoice_id']}",
+            headers=self.scoped(tenant_id, ["finance.account.read"])).json()
+        self.assertIsNotNone(body["days_late"], body)
+        self.assertGreater(body["days_late"], 0, body)
+
+    def test_a_credit_note_is_linked_by_number_and_not_only_summed(self):
+        """The design: "a credit note with its own number and a link to the original"."""
+        tenant_id = self.tenant()
+        billing = self.billing(tenant_id, self.person(tenant_id))
+        invoice = self.invoice(tenant_id, billing)
+        owner = self.headers(tenant_id)
+        series = self.client.post("/finance/fiscal-series", json={
+            "legal_entity_id": billing["legal_entity_id"], "series_code": "CRN",
+            "document_kind": "credit_note", **self.correlation()}, headers=owner)
+        self.assertEqual(series.status_code, 201, series.text)
+        credited = self.client.post("/finance/invoices", json={
+            "billing_account_id": billing["billing_account_id"],
+            "series_id": str(series.json()["series_id"]),
+            "credits_invoice_id": invoice["invoice_id"],
+            "lines": [{"description": "Goodwill", "quantity": 1,
+                       "unit_net_minor": 4500, "tax_rate_bp": 1600}],
+            "issued_on": "2026-01-05", "due_on": "2026-01-05", "jurisdiction": "JO",
+            "idempotency_key": f"cn-{uuid.uuid4().hex[:8]}", **self.correlation()},
+            headers=owner)
+        self.assertEqual(credited.status_code, 201, credited.text)
+
+        body = self.client.get(
+            f"/finance/invoices/{invoice['invoice_id']}",
+            headers=self.scoped(tenant_id, ["finance.account.read"])).json()
+        self.assertEqual(len(body["credit_notes"]), 1, body)
+        note = body["credit_notes"][0]
+        self.assertEqual(note["invoice_id"], credited.json()["invoice_id"])
+        self.assertEqual(note["document_number"], credited.json()["document_number"])
+        # The sum still agrees with what the notes add up to.
+        self.assertEqual(body["credited_minor"], note["gross_minor"], body)
+        # And a settled invoice has no lateness, however late it was settled.
+        self.assertIsNone(body["days_late"], body)
+
+    def test_an_invoice_with_no_credit_note_says_so_with_an_empty_list(self):
+        tenant_id = self.tenant()
+        billing = self.billing(tenant_id, self.person(tenant_id))
+        invoice = self.invoice(tenant_id, billing)
+        body = self.client.get(
+            f"/finance/invoices/{invoice['invoice_id']}",
+            headers=self.scoped(tenant_id, ["finance.account.read"])).json()
+        self.assertEqual(body["credit_notes"], [], body)
+        self.assertEqual(body["credited_minor"], 0, body)
+        self.assertIsNone(body["credits_invoice_id"], body)
+
+    def test_the_fiscal_reference_is_returned_once_the_authority_answers(self):
+        """"Paid -- JoFotara reference shown". A boolean cannot be shown."""
+        tenant_id = self.tenant()
+        billing = self.billing(tenant_id, self.person(tenant_id))
+        invoice = self.invoice(tenant_id, billing)
+        read = self.scoped(tenant_id, ["finance.account.read"])
+        before = self.client.get(
+            f"/finance/invoices/{invoice['invoice_id']}", headers=read).json()
+        self.assertIsNone(before["fiscal_ack_ref"], before)
+
+        head = self.headers(
+            tenant_id, self.stepped_grant(tenant_id, ["finance.fiscal.manage"]))
+        for target, ack in (("submitted", None), ("acknowledged", "JOFOTARA-88123")):
+            moved = self.client.post(
+                f"/finance/invoices/{invoice['invoice_id']}/fiscalize", json={
+                    "target": target, **({"ack_ref": ack} if ack else {}),
+                    **self.correlation()}, headers=head)
+            self.assertEqual(moved.status_code, 200, moved.text)
+
+        after = self.client.get(
+            f"/finance/invoices/{invoice['invoice_id']}", headers=read).json()
+        self.assertEqual(after["fiscal_ack_ref"], "JOFOTARA-88123", after)
+        self.assertIs(after["fiscal_acknowledged"], True, after)
+
 if __name__ == "__main__":
     unittest.main()
+
+
+class CommandCentreReadTests(CommercialApiTestCase):
+    """ADM-CC-01's figures and its queue, over HTTP.
+
+    These are aggregates, which is a different failure mode from a listing: a list that is
+    wrong shows the wrong row, and an aggregate that is wrong shows a number nobody can
+    trace. So each test here fixes the input and asserts the arithmetic, and two of them
+    assert a *boundary* the design states rather than a figure -- ADM-CC-02 says in as many
+    words that a club manager does not see group revenue.
+    """
+
+    def test_a_settled_payment_is_collected_this_month(self):
+        tenant_id = self.tenant()
+        self.paid(tenant_id)
+        read = self.client.get(
+            "/finance/collections",
+            headers=self.scoped(tenant_id, ["finance.revenue.read"]))
+        self.assertEqual(read.status_code, 200, read.text)
+        body = read.json()
+        jod = next(b for b in body["collected"] if b["currency"] == "JOD")
+        # 4500 net at 1600bp tax = 5220 gross, settled in full.
+        self.assertEqual(jod["collected_minor"], 5220)
+        self.assertEqual(body["month_to_date"]["last"], TODAY.isoformat())
+
+    def test_a_refund_is_subtracted_from_what_was_collected(self):
+        """A month that took 5,220 and refunded 1,000 collected 4,220.
+
+        MOD-011's `gross_margin` read invoices and never read credit notes, and reported a
+        50% margin on a period that earned nothing. This is the same confusion one module
+        over, with the sign reversed.
+        """
+        tenant_id = self.tenant()
+        owner = self.headers(tenant_id)
+        paid = self.paid(tenant_id)
+        requested = self.client.post("/finance/refund-requests", json={
+            "payment_id": paid["payment_id"], "amount_minor": 1000,
+            "reason": "goodwill", **self.correlation()}, headers=owner)
+        self.assertEqual(requested.status_code, 201, requested.text)
+        # Two people, which is the module's own rule: the owner asked and somebody else
+        # decides. A stepped-up session, because approving a refund is financial class.
+        approver = self.headers(
+            tenant_id, self.stepped_grant(tenant_id, ["finance.refund.approve"]))
+        approved = self.client.post("/finance/refunds", json={
+            "request_id": requested.json()["request_id"],
+            "approval_reason": "agreed at the desk",
+            "idempotency_key": f"rf-{uuid.uuid4().hex[:8]}",
+            **self.correlation()}, headers=approver)
+        self.assertEqual(approved.status_code, 201, approved.text)
+        settled = self.client.post(
+            f"/finance/refunds/{approved.json()['refund_id']}/settle",
+            json={"outcome": "succeeded", **self.correlation()}, headers=approver)
+        self.assertEqual(settled.status_code, 200, settled.text)
+        read = self.client.get(
+            "/finance/collections",
+            headers=self.scoped(tenant_id, ["finance.revenue.read"]))
+        jod = next(b for b in read.json()["collected"] if b["currency"] == "JOD")
+        self.assertEqual(jod["collected_minor"], 5220 - 1000)
+
+    def test_no_baseline_reports_null_rather_than_a_fall(self):
+        """A tenant with nothing last month cannot say whether this month is down.
+
+        `0` would render as "unchanged" and any negative number would be invented.
+        """
+        tenant_id = self.tenant()
+        self.paid(tenant_id)
+        read = self.client.get(
+            "/finance/collections",
+            headers=self.scoped(tenant_id, ["finance.revenue.read"]))
+        jod = next(b for b in read.json()["collected"] if b["currency"] == "JOD")
+        self.assertEqual(jod["previous_minor"], 0)
+        self.assertIsNone(jod["change_bp"])
+
+    def test_the_pace_is_returned_under_its_own_name_and_says_what_it_is(self):
+        tenant_id = self.tenant()
+        self.paid(tenant_id)
+        read = self.client.get(
+            "/finance/collections",
+            headers=self.scoped(tenant_id, ["finance.revenue.read"]))
+        body = read.json()
+        jod = next(b for b in body["collected"] if b["currency"] == "JOD")
+        self.assertIn("pace_minor", jod)
+        self.assertNotEqual(jod["pace_minor"], jod["collected_minor"] * 0)
+        self.assertIn("straight-line", body["pace_is_a_projection"])
+        self.assertIn("must not be", body["pace_is_a_projection"])
+
+    def test_exactly_one_week_bucket_is_partial_and_it_is_the_last(self):
+        tenant_id = self.tenant()
+        self.paid(tenant_id)
+        read = self.client.get(
+            "/finance/collections?weeks=6",
+            headers=self.scoped(tenant_id, ["finance.revenue.read"]))
+        jod = next(b for b in read.json()["collected"] if b["currency"] == "JOD")
+        self.assertEqual(len(jod["by_week"]), 6)
+        partial = [w["partial"] for w in jod["by_week"]]
+        # The week containing today is the only one that can be partial, and it is last. It is
+        # not partial when today happens to be that week's final day.
+        self.assertTrue(all(p is False for p in partial[:-1]), partial)
+
+    def test_the_breakdown_is_by_legal_entity_and_says_it_is_not_by_location(self):
+        """The design's chart is by club. The money chain carries a legal entity.
+
+        MOD-004's hierarchy puts brands and locations *under* a legal entity, so three clubs
+        under one entity are one row. Relabelling it would be a confident wrong answer on a
+        revenue chart.
+        """
+        tenant_id = self.tenant()
+        paid = self.paid(tenant_id)
+        read = self.client.get(
+            "/finance/collections",
+            headers=self.scoped(tenant_id, ["finance.revenue.read"]))
+        body = read.json()
+        jod = next(b for b in body["collected"] if b["currency"] == "JOD")
+        entities = [e["legal_entity_id"] for e in jod["by_legal_entity"]]
+        self.assertIn(paid["billing"]["legal_entity_id"], entities)
+        self.assertIn("legal entity", body["by_location_is_unavailable"])
+
+    def test_group_revenue_is_a_grant_a_membership_reader_does_not_hold(self):
+        """ADM-CC-02 as a product boundary: "What Ziad does not see: group revenue".
+
+        The design says the rail "is generated from his role rather than greyed", so the
+        separation is the grant and not a step-up -- an owner opens this page every morning.
+        """
+        tenant_id = self.tenant()
+        refused = self.client.get("/finance/collections", headers=self.scoped(
+            tenant_id, ["membership.record.read", "finance.account.read"]))
+        self.assertEqual(refused.status_code, 403, refused.text)
+        allowed = self.client.get(
+            "/finance/collections",
+            headers=self.scoped(tenant_id, ["finance.revenue.read"]))
+        self.assertEqual(allowed.status_code, 200, allowed.text)
+
+    def test_revenue_is_readable_without_a_step_up(self):
+        """Routine on purpose. A second factor every morning means nobody looks.
+
+        `grant` issues a password-only session, so a 200 here is the assertion: a financial
+        action class on this permission would refuse it and the Command Center would open
+        with its first metric missing.
+        """
+        tenant_id = self.tenant()
+        head = self.scoped(tenant_id, ["finance.revenue.read"])
+        who = self.client.get("/auth/session", headers=head)
+        self.assertEqual(who.status_code, 200, who.text)
+        self.assertEqual(int(who.json()["aal"]), 1)
+        read = self.client.get("/finance/collections", headers=head)
+        self.assertEqual(read.status_code, 200, read.text)
+
+    def test_a_bad_week_count_or_week_start_refuses(self):
+        tenant_id = self.tenant()
+        head = self.scoped(tenant_id, ["finance.revenue.read"])
+        for query in ("weeks=0", "weeks=400", "week_start=7", "week_start=-1"):
+            answer = self.client.get(f"/finance/collections?{query}", headers=head)
+            self.assertEqual(answer.status_code, 422, f"{query}: {answer.text}")
+
+    def test_a_malformed_as_of_is_refused_rather_than_answered(self):
+        tenant_id = self.tenant()
+        answer = self.client.get(
+            "/finance/collections?as_of=19-08-2026",
+            headers=self.scoped(tenant_id, ["finance.revenue.read"]))
+        self.assertEqual(answer.status_code, 422, answer.text)
+
+    # ----------------------------------------------------------- the membership figures
+
+    def test_an_activated_membership_counts_as_joined_this_month(self):
+        """Counted from the lifecycle history, not from the status column.
+
+        That column is a cache of where a membership is now and says nothing about how it got
+        there, so a net figure derived from it would count memberships that *are* active
+        rather than ones that *became* active.
+        """
+        tenant_id = self.tenant()
+        # Starting today, so the activation's `effective_on` is inside this month. The shared
+        # fixture starts ninety days back on purpose -- a freeze has to fall inside the
+        # contract year it is decided in -- and that puts its activation in a month this read
+        # is not about.
+        self.membership(tenant_id, starts_on=TODAY.isoformat())
+        read = self.client.get(
+            "/memberships/summary",
+            headers=self.scoped(tenant_id, ["membership.record.read"]))
+        self.assertEqual(read.status_code, 200, read.text)
+        body = read.json()
+        self.assertEqual(body["active"], 1)
+        self.assertEqual(body["this_month"]["joined"], 1)
+        self.assertEqual(body["this_month"]["left"], 0)
+        self.assertEqual(body["this_month"]["net"], 1)
+        self.assertIn("cache", body["movement_is_from_the_history"])
+
+    def test_a_membership_ending_inside_the_window_is_expiring_with_its_value(self):
+        tenant_id = self.tenant()
+        self.membership(tenant_id, starts_on=TODAY.isoformat())
+        read = self.client.get(
+            "/memberships/summary?expiring_within_days=60",
+            headers=self.scoped(tenant_id, ["membership.record.read"]))
+        body = read.json()["expiring"]
+        self.assertGreaterEqual(body["count"], 1)
+        value = next(v for v in body["renewal_value"] if v["currency"] == "JOD")
+        # The agreement's own amount, which is what the membership was sold at.
+        self.assertEqual(value["amount_minor"], 4500 * body["count"])
+
+    def test_a_membership_ending_outside_the_window_is_not_expiring(self):
+        """The window is the whole point: a board that listed every future end date would be
+        a list of every member rather than the ones worth a call this week."""
+        tenant_id = self.tenant()
+        self.membership(tenant_id, starts_on=TODAY.isoformat())
+        read = self.client.get(
+            "/memberships/summary?expiring_within_days=1",
+            headers=self.scoped(tenant_id, ["membership.record.read"]))
+        self.assertEqual(read.json()["expiring"]["count"], 0)
+
+    def test_a_bad_expiry_window_refuses(self):
+        tenant_id = self.tenant()
+        head = self.scoped(tenant_id, ["membership.record.read"])
+        for query in ("expiring_within_days=0", "expiring_within_days=9999"):
+            answer = self.client.get(f"/memberships/summary?{query}", headers=head)
+            self.assertEqual(answer.status_code, 422, f"{query}: {answer.text}")
+
+    # ----------------------------------------------------------- the recovery queue
+
+    def test_an_open_recovery_case_is_listed_with_what_is_still_outstanding(self):
+        """`at_risk` is what is unpaid on the cited invoice, not the invoice total.
+
+        An invoice half paid and in recovery is chasing the half, and a queue that summed
+        gross would overstate the morning's problem.
+        """
+        tenant_id = self.tenant()
+        owner = self.headers(tenant_id)
+        billing = self.billing(tenant_id, self.person(tenant_id))
+        issued = self.invoice(tenant_id, billing, due_on=day(-30))
+        opened = self.client.post("/finance/dunning-cases", json={
+            "invoice_id": issued["invoice_id"],
+            "idempotency_key": f"dc-{uuid.uuid4().hex[:8]}", **self.correlation()},
+            headers=owner)
+        self.assertEqual(opened.status_code, 201, opened.text)
+        read = self.client.get(
+            "/finance/dunning-cases",
+            headers=self.scoped(tenant_id, ["finance.dunning.read"]))
+        self.assertEqual(read.status_code, 200, read.text)
+        body = read.json()
+        case = next(c for c in body["cases"] if c["invoice_id"] == issued["invoice_id"])
+        self.assertEqual(case["status"], "open")
+        self.assertEqual(case["outstanding_minor"], issued["gross_minor"])
+        self.assertEqual(case["attempts"], 0)
+        self.assertEqual(case["document_number"], issued["document_number"])
+        at_risk = next(a for a in body["at_risk"] if a["currency"] == "JOD")
+        self.assertEqual(at_risk["amount_minor"], issued["gross_minor"])
+
+    def test_seeing_the_queue_does_not_buy_advancing_it(self):
+        """A read is a read. Advancing a journey sends a notice and moves the stage."""
+        tenant_id = self.tenant()
+        reader = self.scoped(tenant_id, ["finance.dunning.read"])
+        refused = self.client.post("/finance/dunning-cases", json={
+            "invoice_id": str(uuid.uuid4()), "idempotency_key": "x",
+            **self.correlation()}, headers=reader)
+        self.assertEqual(refused.status_code, 403, refused.text)
+
+    def test_a_status_outside_the_columns_own_vocabulary_refuses(self):
+        """`status=resolved` and "nobody is in recovery" are different answers, and a list
+        that rendered both as an empty queue is a queue nobody can trust."""
+        tenant_id = self.tenant()
+        answer = self.client.get(
+            "/finance/dunning-cases?status=resolved",
+            headers=self.scoped(tenant_id, ["finance.dunning.read"]))
+        self.assertEqual(answer.status_code, 422, answer.text)
+
+    def test_no_command_centre_read_returns_anything_about_the_person(self):
+        """The same refusal `ListingReadTests` makes, applied to the aggregates.
+
+        `membership.record.read` is routine and a front desk holds it; a summary carrying a
+        member's name would be a lateral read around `people.person.read`.
+        """
+        tenant_id = self.tenant()
+        name = f"Marguerite Oyelaran {uuid.uuid4().hex[:6]}"
+        person_id = self.person(tenant_id, name=name)
+        billing = self.billing(tenant_id, person_id)
+        self.invoice(tenant_id, billing, due_on=day(-30))
+        head = self.scoped(tenant_id, [
+            "membership.record.read", "finance.revenue.read", "finance.dunning.read"])
+        for path in ("/memberships/summary", "/finance/collections",
+                     "/finance/dunning-cases"):
+            answer = self.client.get(path, headers=head)
+            self.assertEqual(answer.status_code, 200, answer.text)
+            self.assertNotIn(name.split()[0], answer.text, path)

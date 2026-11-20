@@ -26,7 +26,7 @@ a row behind it.
 
 from __future__ import annotations
 
-from datetime import UTC, date, datetime, time
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
 
 from psycopg import Connection, errors
@@ -2068,3 +2068,75 @@ def detect_session_conflicts(
                            "with_session_id": c.with_session_id} for c in found],
             "needs_override": conflicts.requires_override(found),
             "summary": conflicts.summarise(found)}
+
+
+def sessions_without_staff(
+    pool: Pool, tenant_id: str, *, from_date: date | None = None, days: int = 7,
+) -> dict[str, Any]:
+    """Scheduled sessions with no live staff assignment, and how many places are held.
+
+    ADM-CC-01's STAFFING attention item: "Spin 19:00 Thursday has no coach -- 18 members
+    booked". Two facts, and the second is what decides whether it is urgent: a class nobody has
+    booked and a class with eighteen members are the same gap and a very different morning.
+
+    **A live assignment, which is not the presence of a row.** A substitution supersedes the
+    outgoing hold rather than deleting it -- the row stays so the window a past conflict was
+    decided against is still readable -- so `superseded_at IS NULL` is what "has a coach"
+    means. Counting rows would report a class whose coach went home ill as staffed.
+
+    **Only `scheduled` sessions.** A cancelled class needs no coach, and a completed one is
+    over; both would be noise in a queue whose whole purpose is that it is short.
+
+    **Tenant-wide, because the Command Center is.** `schedule_for` is per location and bounded
+    to 62 days; this is bounded to `days` from `from_date` and ordered by when each starts, so
+    the soonest gap is first -- which is the order somebody fixing them works in.
+    """
+    from_date = from_date or datetime.now(UTC).date()
+    if days < 1 or days > 62:
+        raise InvalidRequest("a_schedule_window_is_at_most_62_days")
+    to_date = from_date + timedelta(days=days)
+    with tenant_scope(pool, tenant_id) as conn:
+        rows = conn.execute(
+            "SELECT s.session_id, s.template_id, t.display_name, s.starts_at, s.ends_at,"
+            " s.local_date, (s.starts_at AT TIME ZONE s.timezone), s.location_id,"
+            " l.location_name, s.timezone, s.capacity, s.overbook_places,"
+            " coalesce((SELECT sum(h.places) FROM plt01.sch_capacity_holds h"
+            "            WHERE h.session_id = s.session_id"
+            "              AND h.status IN ('held', 'attended')), 0)"
+            " FROM plt01.sch_sessions s"
+            " JOIN plt01.sch_templates t ON t.template_id = s.template_id"
+            " JOIN plt01.locations l ON l.location_id = s.location_id"
+            " WHERE s.status = 'scheduled'"
+            "   AND s.local_date >= %s AND s.local_date <= %s"
+            "   AND NOT EXISTS ("
+            "     SELECT 1 FROM plt01.sch_session_resources r"
+            "      WHERE r.session_id = s.session_id"
+            "        AND r.resource_kind = 'staff'"
+            "        AND r.superseded_at IS NULL)"
+            " ORDER BY s.starts_at, s.session_id"
+            " LIMIT 200",
+            (from_date, to_date),
+        ).fetchall()
+    sessions = [
+        {"session_id": str(r[0]), "template_id": str(r[1]), "display_name": str(r[2]),
+         "starts_at": r[3].isoformat(), "ends_at": r[4].isoformat(),
+         "local_date": r[5].isoformat(),
+         # The local wall-clock the class is advertised at, converted in the session's **own**
+         # recorded zone rather than the location's current one: MOD-019 stores both the
+         # instant and the zone it was converted with precisely because neither is derivable
+         # from the other, and a location that changed zone must not move a past class.
+         "local_starts_at": r[6].isoformat(),
+         "location_id": str(r[7]), "location_name": str(r[8]), "timezone": str(r[9]),
+         "capacity": int(r[10]), "places": int(r[10]) + int(r[11]), "held": int(r[12])}
+        for r in rows]
+    return {
+        "from_date": from_date.isoformat(), "to_date": to_date.isoformat(),
+        "count": len(sessions),
+        "sessions": sessions,
+        "members_affected": sum(int(s["held"]) for s in sessions),
+        "truncated": len(sessions) == 200,
+        "a_superseded_assignment_is_not_a_coach":
+            "A substitution supersedes the outgoing assignment and leaves the row, so a live "
+            "assignment is one with no superseded_at. Counting rows would report a class "
+            "whose coach was substituted away as staffed.",
+    }

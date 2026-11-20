@@ -45,15 +45,32 @@ export async function signIn(
     );
   }
   await page.waitForURL("/");
-  await expect(page.getByRole("heading", { name: "Veyro Admin" })).toBeVisible();
+  // **The landing page is the Command Center**, so what proves a sign-in landed is its
+  // heading rather than the app's name: `/` used to render "Veyro Admin" over a session
+  // diagnostic, and the design puts ADM-CC-01 there. The heading counts the queue, so the
+  // assertion is on the shape of the sentence rather than on a number that moves with the
+  // fixture.
+  await expect(page.getByRole("heading", { level: 1 }))
+    .toContainText(/need(s)? you|Nothing needs you/);
 }
 
-/** The assurance level the landing page reports for the session now signed in. */
+/**
+ * The assurance level this session holds, read from the account page.
+ *
+ * **It used to be on the landing page and is not any more.** `/` reported the caller's
+ * identity uuid and assurance level, which is a session diagnostic rather than a product
+ * screen; the Command Center replaced it and the facts moved to `/account`, beside the
+ * devices and the other sessions they are about. This navigates there and leaves the caller
+ * to go on to whatever page it is actually testing.
+ */
 export async function assuranceLevel(page: Page): Promise<number> {
-  const text = await page.getByText(/Assurance level/).innerText();
-  const digits = /(\d+)/.exec(text);
-  expect(digits, `no assurance level in ${JSON.stringify(text)}`).toBeTruthy();
-  return Number(digits![1]);
+  await page.goto("/account");
+  const assurance = page.getByText(/Password only|Stepped up|hardware/i).first();
+  const text = await assurance.innerText();
+  // The account page says what the level *means* rather than printing a digit, which is the
+  // better copy and means this maps the sentence back to the number the callers compare.
+  if (/stepped up/i.test(text)) return 2;
+  return 1;
 }
 
 
@@ -75,12 +92,31 @@ async function adopt(page: Page, path: string): Promise<void> {
     cookies: Parameters<BrowserContext["addCookies"]>[0];
   };
   await page.context().addCookies(state.cookies);
-  // **Ends where `signIn` ends, on the landing page.** Adopting a cookie leaves the tab on
-  // `about:blank`, and the first version of this helper stopped there -- so every test that
-  // had been written against `signIn`'s postcondition was suddenly asserting against a blank
-  // page. Seven of them failed and the messages were about missing headings rather than
-  // about the session, which is the wrong place to look.
-  await page.goto("/");
+  // **It lands on `/login`, which redirects, rather than on `/`.**
+  //
+  // Adopting a cookie leaves the tab on `about:blank`, so this has to navigate somewhere:
+  // the first version stopped at the blank page and seven tests written against `signIn`'s
+  // postcondition failed with messages about missing headings. It then landed on `/` -- and
+  // `/` became the Command Center, which asks the gate about six reads and makes six module
+  // reads of its own.
+  //
+  // **That turned a harness convenience into the suite's biggest cost.** MOD-011's
+  // `api.request` budget is 600 a minute per identity, and a 280-test suite loading the
+  // product's heaviest page before every test went over it -- so roughly seven tests failed
+  // per run, a different seven each time, each one passing in isolation. A green that
+  // depends on how far into the run a test sits is the same family as the three
+  // budget-spending tests this suite already records.
+  //
+  // **`/account` rather than `/`.** It is always permitted -- every read behind it is scoped
+  // to the caller's own identity, so there is no gate to fail -- it carries the navigation
+  // that a dozen specs assert against, and it costs four requests where the Command Center
+  // costs seven. The limiter is not the thing at fault here: 600 a minute is eighty-five
+  // Command Center loads, which no person reaches. A suite that loads the product's heaviest
+  // page before every test is the outlier, and the fix belongs in the harness.
+  //
+  // A spec that needs the landing page navigates to it, which is what every spec does for
+  // the page it actually tests.
+  await page.goto("/account");
 }
 
 /** The owner: every permission in the catalogue. */

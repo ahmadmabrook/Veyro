@@ -700,6 +700,44 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
     method: "POST", ...as(token), body: { correlation_id: cid() },
   });
 
+  // **A class with no coach, which is ADM-CC-01's STAFFING item.** The template above names
+  // a staff requirement and the queue is about the ones that do not -- so without this the
+  // Command Center's busiest row is unreachable and every assertion about it passes
+  // vacuously. A room and a service, no staff: MOD-019 publishes it happily, because a
+  // session's requirements are what the author wrote and an unstaffed class is a real thing
+  // a gym schedules before it knows who is teaching.
+  // Its own room. The first attempt put it in the studio and MOD-019 refused the generation
+  // with three double-booking conflicts -- correctly, since the yoga class holds that room
+  // from 17:50 to 19:10 with its margins. A gym with a studio and a spin room is also the
+  // ordinary arrangement, so the fixture matches it rather than moving the class.
+  const spinRoom = await call("/scheduling/resources", {
+    method: "POST", ...as(token),
+    body: { resource_code: "ROOM-SPIN", resource_kind: "room",
+            display_name: "Spin room", location_id: location.location_id,
+            correlation_id: cid() },
+  });
+  const unstaffed = await call("/scheduling/templates", {
+    method: "POST", ...as(token),
+    body: {
+      template_code: "SPIN-THU", display_name: "Spin",
+      service_resource_id: serviceResource.resource_id,
+      location_id: location.location_id,
+      rule: { frequency: "daily", local_time: "19:00", duration_minutes: 45,
+              starts_on: isoDay(1), until: isoDay(3) },
+      policy: { capacity: 18, setup_minutes: 10, cleanup_minutes: 10 },
+      requirements: [{ kind: "room", quantity: 1, resource_id: spinRoom.resource_id }],
+      restrictions: [],
+      correlation_id: cid(),
+    },
+  });
+  await call(`/scheduling/templates/${unstaffed.template_id}/publish`, {
+    method: "POST", ...as(token),
+    body: { effective_from: isoDay(1), correlation_id: cid() },
+  });
+  await call(`/scheduling/templates/${unstaffed.template_id}/sessions`, {
+    method: "POST", ...as(token), body: { correlation_id: cid() },
+  });
+
   // **A substitution, so a session has a change with a reason on it.** Without one the
   // session page's `What changed` block is always the empty case, and the masked reason --
   // the control MOD-019's review added after a reviewer read a health fact out of that
@@ -1037,6 +1075,83 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
   await call(`/finance/payment-intents/${intent.intent_id}/settle`, {
     method: "POST", ...as(token),
     body: { outcome: "succeeded", correlation_id: cid() },
+  });
+
+  // ------------------------------------------------- ADM-CC-01's attention queue
+  //
+  // **The Command Center's quiet day and its busy morning are both real states, and a
+  // fixture with only one of them demonstrates nothing.** This repository already records
+  // that rule four times over -- a `closing` period beside an open one, an expired
+  // promotion beside a live one, a released legal hold beside a preserving one -- and the
+  // queue is the case where it matters most, because the design's own canvas 4 says an
+  // empty queue "is the goal, not a gap". With nothing seeded the page renders the quiet
+  // day and every assertion about a row passes vacuously.
+  //
+  // So: a second invoice that is overdue and in recovery (MONEY), a second membership
+  // expiring inside the week (RETENTION), and a class with no coach (STAFFING). Each goes
+  // through the product's own routes.
+  const overdueOn = new Date(Date.now() - 45 * 86400000).toISOString().slice(0, 10);
+  const inRecovery = await call("/finance/invoices", {
+    method: "POST", ...as(token),
+    body: {
+      billing_account_id: account.billing_account_id, series_id: series.series_id,
+      lines: [{ description: "Personal training, ten sessions", quantity: 1,
+                unit_net_minor: 26000, tax_rate_bp: 1600 }],
+      issued_on: overdueOn,
+      due_on: new Date(Date.parse(overdueOn) + 14 * 86400000).toISOString().slice(0, 10),
+      jurisdiction: "JO", idempotency_key: randomUUID(), correlation_id: cid(),
+    },
+  });
+  await call("/finance/dunning-cases", {
+    method: "POST", ...as(token),
+    body: { invoice_id: inRecovery.invoice_id, idempotency_key: randomUUID(),
+            correlation_id: cid() },
+  });
+
+  // **One invoice the tax authority rejected**, which is ADM-CC-01's COMPLIANCE row. The
+  // fiscal state and the payment state move independently -- the migration says so at
+  // length -- so this one is *paid* and unfiled, which is exactly the case the design's own
+  // copy describes: "The sales are recorded and the money is collected -- only the e-invoice
+  // submission failed." `pending -> submitted -> rejected` is the path; the machine has no
+  // edge straight from `pending`, because nothing can be rejected before it is filed.
+  await call(`/finance/invoices/${invoice.invoice_id}/fiscalize`, {
+    method: "POST", ...as(token),
+    body: { target: "submitted", correlation_id: cid() },
+  });
+  await call(`/finance/invoices/${invoice.invoice_id}/fiscalize`, {
+    method: "POST", ...as(token),
+    body: { target: "rejected", correlation_id: cid() },
+  });
+
+  // **A membership whose first monthly period ends inside the seven-day window**, which is
+  // the window ADM-CC-01 states -- "14 memberships expire within 7 days". Starting today put
+  // the period end a month out and the RETENTION row never appeared, so the start is
+  // twenty-five days back: the first monthly period then ends in about five days, inside the
+  // default window, and the row is reachable. Found by looking at the rendered queue.
+  const secondPerson = await call("/people", {
+    method: "POST", ...as(token),
+    body: { legal_name: "Yousef Haddad", profile_kinds: ["member"], correlation_id: cid() },
+  });
+  const expiringAgreement = await call("/memberships/agreements", {
+    method: "POST", ...as(token),
+    body: { person_id: secondPerson.person_id,
+            membership_terms_id: terms.membership_terms_id,
+            variant_id: product.variants[0].variant_id, amount_minor: 30000,
+            currency: "JOD",
+            starts_on: new Date(Date.now() - 25 * 86400000).toISOString().slice(0, 10),
+            correlation_id: cid() },
+  });
+  await call(`/memberships/agreements/${expiringAgreement.agreement_id}/sign`, {
+    method: "POST", ...as(token),
+    body: { signature_kind: "click_through",
+            signature_evidence_ref: `s3://signatures/${expiringAgreement.agreement_id}`,
+            signed_by_person_id: secondPerson.person_id, correlation_id: cid() },
+  });
+  await call("/memberships", {
+    method: "POST", ...as(token),
+    body: { agreement_id: expiringAgreement.agreement_id,
+            membership_number: "FLEX-00107",
+            idempotency_key: randomUUID(), correlation_id: cid() },
   });
 
   // **A period in `closing`, because otherwise the state nothing writes is the state nothing

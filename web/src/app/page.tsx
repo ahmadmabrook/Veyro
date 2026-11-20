@@ -1,131 +1,669 @@
+import Link from "next/link";
+
+import { AITreatment } from "@/components/ds/ai-treatment";
+import { AttentionQueue, AttentionRow } from "@/components/ds/attention-row";
+import { Banner } from "@/components/ds/banner";
+import { MetricCell, MetricRow } from "@/components/ds/metric-cell";
+import { fill, formatInteger, formatMoney, t, type MessageKey } from "@/i18n/locale";
+import { ApiError, currentSession, gateAll } from "@/lib/api";
+import {
+  AI_PANEL,
+  UNANSWERABLE,
+  heading as headingFor,
+  orderQueue,
+  queueCounts,
+  type AttentionItem,
+} from "@/lib/command-centre";
+import {
+  readCollections,
+  readDunningCases,
+  readMembershipSummary,
+  readRejectedFilings,
+  readUnstaffed,
+  readVisits,
+  type Collections,
+  type DunningCases,
+  type MembershipSummary,
+  type RejectedFilings,
+  type Unstaffed,
+  type Visits,
+} from "@/lib/command-centre-reads";
+import { presentation } from "@/lib/preferences";
 import { redirect } from "next/navigation";
 
-import { signOut } from "@/app/actions";
-import { Button } from "@/components/ds/button";
-import { Banner } from "@/components/ds/banner";
-import { DataGrid } from "@/components/ds/data-grid";
-import { formatInteger, t, type MessageKey } from "@/i18n/locale";
-import { currentSession, gate, type GateAnswer } from "@/lib/api";
-import { presentation } from "@/lib/preferences";
-
 /**
- * The Admin landing page: what this session is, and what the gate says it may do.
+ * ADM-CC-01 … ADM-CC-05 · COMMAND CENTER · Owner, RM · COMPACT · 1440×900.
  *
- * **Every control's visibility comes from `GET /authz/check`**, which asks the real evaluator
- * about the caller's own session. The alternative -- fetching a permission list and deciding in
- * the browser -- is MOD-014's "a grant is not a session" finding: `effective_permissions`
- * answers from role assignments alone and says nothing about the session's assurance level, so
- * a password-only session would render controls it cannot use.
+ * **What was here before was a session-and-permissions diagnostic.** It printed the caller's
+ * identity uuid, their assurance level and a six-row table of gate answers — a developer's
+ * view of the authorization layer, at the product's front door, where the design puts the
+ * screen a club owner opens at 08:40. That is the mismatch the owner directive of 2026-11-20
+ * names by example, and it happened because this app was composed from what each backend
+ * module's routes could answer rather than from the screens the design folder specifies.
  *
- * The three answers are rendered as three different things, because they are three different
- * facts: allowed, needs a stronger sign-in, or not reachable in this build at all. The last one
- * is the honest one -- `support.session.start` is `privileged`, which maps to AAL 3, which needs
- * a hardware factor MOD-007 cannot verify, so inviting a step-up would send somebody looking for
- * a key the product cannot check.
+ * The diagnostic is not deleted — it moved. The gate table is on `/permissions`, beside the
+ * roles and the audit chain it is about; the session's own identity and assurance are on
+ * `/account`, beside the devices and sessions. Neither was a product screen and neither is
+ * one now.
+ *
+ * ## The design, and what this build can answer of it
+ *
+ * Five canvases: the owner's normal day, the same morning for a club manager at branch scope,
+ * a critical exception, the quiet day, and degraded data. The structure is a metric row of
+ * four, an attention queue, an interpretation panel and two charts, and the queue is the
+ * point — "The attention queue never collapses — it is the reason the page exists."
+ *
+ * | The design | Here |
+ * | --- | --- |
+ * | Collected month to date, vs the same point last month, with a pace | `GET /finance/collections` |
+ * | Active members, net this month, joined and left | `GET /memberships/summary` |
+ * | Visits today, against the usual for this weekday | `GET /access/visits` |
+ * | Lead conversion over 30 days | **no CRM module** — `unavailable`, with the reason |
+ * | MONEY · payments in recovery | `GET /finance/dunning-cases` |
+ * | COMPLIANCE · invoices the tax authority rejected | `GET /finance/invoices?fiscal_status=rejected` |
+ * | RETENTION · memberships expiring, with renewal value | the membership summary |
+ * | STAFFING · classes with no coach, and the places held | `GET /scheduling/unstaffed` |
+ * | LEADS · uncontacted leads | **no CRM module** — named, not drawn |
+ * | The interpretation panel | **withheld**, with the true reason |
+ * | Collections by week, the partial week marked | the collections read |
+ * | Collections by location | **by legal entity** — the money chain carries no location |
+ *
+ * ## Four decisions worth knowing
+ *
+ * **Six reads, each behind its own permission, and a refusal is a panel rather than a page.**
+ * That is canvas 2: a club manager gets "not a reduced Command Center — a differently
+ * prioritised one", and the design states the boundary as a product fact — "What Ziad does
+ * not see: group revenue, cross-location comparison, the JoFotara queue, and the
+ * payment-recovery workflow itself." So `finance.revenue.read` is a grant a club manager does
+ * not hold, and a reader without it sees every other panel.
+ *
+ * **A read that failed, a read that is late and a module that does not exist are three
+ * states, not one.** `DS-CL-01`'s `freshness` is `live | stale | unavailable` for exactly
+ * this reason, and the fourth metric is the case the design could not have anticipated: there
+ * is no lead in this product, so the cell carries prose where a figure would go.
+ *
+ * **The metrics never carry severity.** Canvas 3, during an outage: "48 people in the
+ * building is a fact, not a problem, and colouring it red during an unrelated outage teaches
+ * staff to distrust the colour."
+ *
+ * **Every primary action the design puts on a queue row is absent, and the rows say so.**
+ * "Send 6 payment links", "Fix the 3 invoices", "Offer to Dana or Yousef" — each is a
+ * stepped-up financial write with no form in this app. ADM-MEM-05's rule: a control that does
+ * nothing is worse than one that is not there. Each row links to the record instead.
  */
-export default async function HomePage() {
+
+type Panel<T> = { data: T; allowed: true } | { allowed: false; reachable: boolean }
+  | { allowed: true; data: null };
+
+export default async function CommandCentre() {
   const { locale } = await presentation();
+  // **`latn` everywhere, like every other money figure in this app.** The numeral system is a
+  // tenant setting -- `ARABIC_RULES` makes it one -- and this build does not carry it, so
+  // `formatMoney` is called with Latin digits here exactly as the ledger and the member
+  // record call it. A page that chose `arab` on its own would be the only screen in the
+  // product whose figures differed from the rest, which is worse than the gap.
+  const numbering = "latn" as const;
   const text = (key: MessageKey) => t(locale, key);
 
   const session = await currentSession();
   if (!session) redirect("/login");
 
-  // A small, representative set across the modules that are built, so the page shows the gate
-  // working rather than asserting that it does. One read, one write, one access decision, one
-  // financial action, one money read and one that this build cannot reach at all.
-  const actions = [
-    "people.person.read",
-    "booking.booking.write",
-    "access.decision.evaluate",
-    "devices.command.unlock",
-    "finance.ledger.read",
-    "support.session.start",
-  ] as const;
-  const answers = await Promise.all(actions.map((action) => gate(action)));
+  // Six gates, asked together. The design's loading section describes four independent
+  // requests each with its own skeleton; this renders on the server, so the equivalent is
+  // that one refusal or one failure costs one panel rather than the page.
+  const [mayRevenue, mayMembership, mayVisits, mayDunning, mayInvoices, maySchedule] =
+    await gateAll([
+      "finance.revenue.read",
+      "membership.record.read",
+      "access.zone.read",
+      "finance.dunning.read",
+      "finance.account.read",
+      "scheduling.schedule.read",
+    ] as const);
+
+  const [collections, membership, visits, dunning, filings, unstaffed] = await Promise.all([
+    read(mayRevenue.allowed, () => readCollections()),
+    read(mayMembership.allowed, () => readMembershipSummary()),
+    read(mayVisits.allowed, () => readVisits()),
+    read(mayDunning.allowed, () => readDunningCases()),
+    read(mayInvoices.allowed, () => readRejectedFilings()),
+    read(maySchedule.allowed, () => readUnstaffed()),
+  ]);
+
+  const money = (amountMinor: number, currency: string) =>
+    formatMoney(amountMinor, currency, numbering, locale);
+
+  const items = orderQueue([
+    ...moneyItems(dunning, locale, money),
+    ...complianceItems(filings, locale),
+    ...retentionItems(membership, locale, money),
+    ...staffingItems(unstaffed, locale),
+  ]);
+  const counts = queueCounts(items);
+  // **Every panel that feeds the queue, and whether it answered.** "Nothing needs you" is a
+  // statement about the club, and a page that said it while four of its six reads were
+  // refused would be making a claim out of its own permissions.
+  const feeds: [MessageKey, boolean, Panel<unknown>][] = [
+    ["cc.catMoney", mayDunning.allowed, dunning],
+    ["cc.catCompliance", mayInvoices.allowed, filings],
+    ["cc.catRetention", mayMembership.allowed, membership],
+    ["cc.catStaffing", maySchedule.allowed, unstaffed],
+  ];
+  const complete = feeds.every(([, allowed, panel]) => allowed && panel.allowed && panel.data !== null);
+  const head = headingFor(items, complete);
 
   return (
-    <div className="stack">
-      <header
-        style={{
-          display: "flex",
-          flexWrap: "wrap",
-          gap: "var(--space-4)",
-          alignItems: "center",
-          justifyContent: "space-between",
-        }}
-      >
-        <h1 style={{ margin: 0 }}>{text("home.title")}</h1>
-        <div style={{ display: "flex", gap: "var(--space-4)", alignItems: "center" }}>
-          {/* **The link is rendered only when the gate allows the read.** A navigation item
-              that leads to a 403 is a disclosure that the capability exists and a dead end
-              for the person who clicks it. MOD-008 computes this per action; the page asks. */}
-          <form action={signOut}>
-            <Button type="submit" label={text("nav.signOut")} />
-          </form>
-        </div>
+    // Compact density, which the design states for this screen and the foundation audit
+    // confirms: "Command Center runs Compact, Member 360 runs Default, and both use the same
+    // components with no anatomy changes."
+    <div className="stack" data-density="compact">
+      <header className="page-section">
+        <h1 style={{ margin: 0 }}>
+          {/* **`head.key`, not a hard-coded clear heading.** The first version branched on
+              the count here and threw away the key `heading()` had just chosen -- so a
+              session that could see three of the four feeds read "Nothing needs you right
+              now" above a paragraph saying the opposite. The decision belongs in one place
+              and this renders it. */}
+          {head.count === 0
+            ? text(head.key)
+            : fill(locale, head.key, { count: head.count }, numbering)}
+        </h1>
+        {/* The design's sub-line: "Wednesday 19 August · all locations · data through 08:38".
+            The scope is stated because there is no switcher to change it, and the gap says so
+            rather than letting "all locations" read as a choice somebody made. */}
+        <p className="muted" style={{ margin: 0 }}>
+          {text("cc.scope")}
+          {collections.allowed && collections.data
+            ? <> {" · "} {text("cc.asOf")}{" "}
+                <span className="data" dir="ltr">{collections.data.as_of}</span></>
+            : null}
+        </p>
+        {head.count === 0 ? (
+          // Canvas 4: "No illustration, no 'all caught up!' -- it reports the day and offers
+          // the next useful thing. A manager who sees this should feel informed, not
+          // congratulated." So this is a sentence, not a celebration -- and when the page
+          // could not read everything, it says what it is a statement about instead.
+          <p style={{ margin: 0 }}>
+            {text(complete ? "cc.headingClearBody" : "cc.headingPartialBody")}
+          </p>
+        ) : null}
       </header>
 
-      <section className="page-section">
-        <h2>{text("home.signedInAs")}</h2>
-        {/* `.data` is mono and tabular, and switches family in Arabic so an identifier does not
-            arrive in a proportional Arabic face. The id itself is Latin either way. */}
-        <p className="data" style={{ margin: 0 }}>
-          {session.identity_id}
-        </p>
-        <p className="muted" style={{ margin: 0 }}>
-          {text("home.assurance")}{" "}
-          <span className="data">{formatInteger(Number(session.aal ?? 1), "latn")}</span>
-        </p>
+      <section className="page-section" aria-labelledby="cc-metrics">
+        <h2 id="cc-metrics">{text("cc.metrics")}</h2>
+        <MetricRow label={text("cc.metrics")}>
+          <CollectedMetric panel={collections} locale={locale} money={money} />
+          <MembersMetric panel={membership} locale={locale} numbering={numbering} />
+          <VisitsMetric panel={visits} locale={locale} numbering={numbering} />
+          {/* The fourth. `unavailable` rather than a zero or an em-dash: both of those read
+              as a measurement, and ADM-CRM-* is unbuilt so there is no lead to convert. */}
+          <MetricCell
+            label={text("cc.metricLeads")}
+            freshness="unavailable"
+            unavailableBecause={text(UNANSWERABLE.leadConversion)}
+          />
+        </MetricRow>
       </section>
 
-      <section className="page-section" aria-labelledby="permissions-heading">
-        <h2 id="permissions-heading">{text("home.permissions")}</h2>
-        {answers.every((answer) => !answer.allowed) ? (
-          <Banner severity="info">{text("home.noPermissions")}</Banner>
-        ) : null}
-        <DataGrid
-          caption={text("home.permissions")}
-labelledBy="permissions-heading"
-          rows={answers}
-          rowKey={(answer) => answer.action}
-          columns={[
-            {
-              header: text("home.action"),
-              kind: "text",
-              priority: 1,
-              // A permission name is a Latin identifier inside what may be an RTL paragraph,
-              // so it is isolated by `.data` + `dir="ltr"` rather than left to the bidi
-              // algorithm, which would move the dots.
-              render: (answer) => (
-                <span className="data" dir="ltr">{answer.action}</span>
-              ),
-            },
-            {
-              header: text("home.gate"),
-              kind: "status",
-              priority: 1,
-              render: (answer) => text(describe(answer)),
-            },
-          ]}
-        />
+      {/* **No heading over an empty queue.** Canvas 4 has no "Needs you now" block at all --
+          the quiet day is a heading, a sentence and the figures. A section heading with
+          nothing under it reads as a panel that failed to load, which is the one thing the
+          empty state must not look like. The refusals below are rendered either way, because
+          a category somebody cannot see is a fact about the page rather than about the day. */}
+      {items.length === 0 && complete ? null : (
+      <section className="page-section" aria-labelledby="cc-queue">
+        <h2 id="cc-queue">{text("cc.queue")}</h2>
+        {items.length === 0 ? null : (
+          <AttentionQueue
+            heading="cc-queue"
+            counts={fill(locale, "cc.queueCounts", {
+              open: counts.open,
+              critical: counts.critical,
+              assigned: counts.assigned,
+            }, numbering)}
+          >
+            {items.map((item) => (
+              <AttentionRow
+                key={item.key}
+                id={item.key}
+                severity={item.severity}
+                category={t(locale, categoryLabel(item.category))}
+                when={item.when}
+                {...(item.money
+                  ? { money: { amount: item.money.amount, meaning: t(locale, item.money.meaning) } }
+                  : {})}
+                headline={item.title}
+                evidence={item.body}
+                {...(item.owner ? { owner: item.owner } : {})}
+                actions={item.actions.map((action) => (
+                  action.href === undefined ? null : (
+                    <Link key={action.href} href={action.href} className="ds-filter-chip">
+                      {t(locale, action.label)}
+                    </Link>
+                  )
+                ))}
+              />
+            ))}
+          </AttentionQueue>
+        )}
+        {/* A refused panel is named. "Nobody is in recovery" and "you may not see who is" are
+            different facts and only the first is one a manager would act on. */}
+        <RefusedPanels locale={locale} panels={feeds} />
+      </section>
+      )}
+
+      {/* The interpretation panel, in its withheld state, with the true reason. */}
+      <section className="page-section">
+        <AITreatment eyebrow={text(AI_PANEL.eyebrow)} withheld>
+          <p>{text(AI_PANEL.reason)}</p>
+        </AITreatment>
+      </section>
+
+      {collections.allowed && collections.data ? (
+        <Charts data={collections.data} locale={locale} money={money} />
+      ) : null}
+
+      <section className="page-section">
+        <h2>{text("cc.gaps")}</h2>
+        <dl className="facts">
+          <Gap locale={locale} label="cc.metricLeads" why={UNANSWERABLE.leadConversion} />
+          <Gap locale={locale} label="cc.catLeads" why={UNANSWERABLE.leadsQueue} />
+          <Gap locale={locale} label="cc.queue" why={UNANSWERABLE.actions} />
+          <Gap locale={locale} label="cc.aiEyebrow" why={UNANSWERABLE.interpretation} />
+          <Gap locale={locale} label="cc.chartEntity" why={UNANSWERABLE.byLocation} />
+          <Gap locale={locale} label="cc.scope" why={UNANSWERABLE.scope} />
+          <Gap locale={locale} label="cc.title" why={UNANSWERABLE.interactions} />
+        </dl>
       </section>
     </div>
   );
 }
 
-/** Hairline rules rather than fills, and `start` alignment so RTL mirrors without a rule. */
+/**
+ * Read a panel, or say which of the three reasons there is no data.
+ *
+ * A refusal, a failure and an absent module are different facts. The first two are
+ * distinguished here; the third is a `freshness` of `unavailable` on the cell itself.
+ */
+async function read<T>(allowed: boolean, fetch: () => Promise<T>): Promise<Panel<T>> {
+  if (!allowed) return { allowed: false, reachable: true };
+  try {
+    return { allowed: true, data: await fetch() };
+  } catch (error) {
+    if (!(error instanceof ApiError)) throw error;
+    return { allowed: true, data: null };
+  }
+}
 
+function CollectedMetric({
+  panel,
+  locale,
+  money,
+}: {
+  panel: Panel<Collections>;
+  locale: "en" | "ar";
+  money: (minor: number, currency: string) => string;
+}) {
+  const label = t(locale, "cc.metricCollected");
+  if (!panel.allowed) {
+    return (
+      <MetricCell label={label} freshness="unavailable"
+        unavailableBecause={t(locale, "cc.refusedPanel")} />
+    );
+  }
+  if (panel.data === null) {
+    return (
+      <MetricCell label={label} freshness="unavailable"
+        unavailableBecause={t(locale, "cc.failedPanel")} />
+    );
+  }
+  // **One cell per currency, which is the money rule rather than a layout choice.** A tenant
+  // may bill in several and `money.py`'s first convention is that an amount is a count of
+  // minor units in one currency; one total across two is the comparison MOD-016's discount
+  // approval made and a reviewer found. A single-currency tenant gets the design's one cell.
+  const blocks = panel.data.collected;
+  if (blocks.length === 0) {
+    return <MetricCell label={label} value="—" />;
+  }
+  return (
+    <>
+      {blocks.map((block) => (
+        <MetricCell
+          key={block.currency}
+          label={blocks.length === 1 ? label : `${label} · ${block.currency}`}
+          value={money(block.collected_minor, block.currency)}
+          comparison={
+            <>
+              {/* `null` is not zero: a tenant with nothing last month cannot say whether this
+                  month is down, and a 0% would read as "unchanged". */}
+              {block.change_bp === null ? (
+                t(locale, "cc.noBaseline")
+              ) : (
+                <>
+                  {block.change_bp > 0 ? "↑" : "↓"}{" "}
+                  <span className="data">
+                    {formatInteger(Math.abs(block.change_bp) / 100, "latn")}%
+                  </span>{" "}
+                  {t(locale, "cc.vsLastMonth")}
+                </>
+              )}
+              {" · "}
+              {t(locale, "cc.pace")}{" "}
+              <span className="data">{money(block.pace_minor, block.currency)}</span>
+            </>
+          }
+        />
+      ))}
+    </>
+  );
+}
+
+function MembersMetric({
+  panel,
+  locale,
+  numbering,
+}: {
+  panel: Panel<MembershipSummary>;
+  locale: "en" | "ar";
+  numbering: "latn" | "arab";
+}) {
+  const label = t(locale, "cc.metricMembers");
+  if (!panel.allowed || panel.data === null) {
+    return (
+      <MetricCell label={label} freshness="unavailable"
+        unavailableBecause={t(locale, panel.allowed ? "cc.failedPanel" : "cc.refusedPanel")} />
+    );
+  }
+  const month = panel.data.this_month;
+  return (
+    <MetricCell
+      label={label}
+      value={formatInteger(panel.data.active, numbering)}
+      comparison={
+        <>
+          {month.net >= 0 ? "+" : "−"}
+          <span className="data">{formatInteger(Math.abs(month.net), numbering)}</span>
+          {" · "}
+          {fill(locale, "cc.joinedLeft", { joined: month.joined, left: month.left }, numbering)}
+        </>
+      }
+    />
+  );
+}
+
+function VisitsMetric({
+  panel,
+  locale,
+  numbering,
+}: {
+  panel: Panel<Visits>;
+  locale: "en" | "ar";
+  numbering: "latn" | "arab";
+}) {
+  const label = t(locale, "cc.metricVisits");
+  if (!panel.allowed || panel.data === null) {
+    return (
+      <MetricCell label={label} freshness="unavailable"
+        unavailableBecause={t(locale, panel.allowed ? "cc.failedPanel" : "cc.refusedPanel")} />
+    );
+  }
+  // The baseline is the sum of each location's own, and it is absent rather than zero where
+  // no earlier same-weekday carried entries.
+  const seen = panel.data.locations.filter((l) => l.usual_for_this_weekday !== null);
+  const usual = seen.reduce((n, l) => n + (l.usual_for_this_weekday ?? 0), 0);
+  return (
+    <MetricCell
+      label={label}
+      value={formatInteger(panel.data.entries, numbering)}
+      comparison={
+        seen.length === 0
+          ? fill(locale, "cc.noUsual", { weekday: panel.data.weekday })
+          : (
+            <>
+              <span className="data">{formatInteger(usual, numbering)}</span>{" "}
+              {fill(locale, "cc.usualFor", { weekday: panel.data.weekday })}
+            </>
+          )
+      }
+    />
+  );
+}
+
+/** The two charts. "By legal entity", because the money chain carries no location. */
+function Charts({
+  data,
+  locale,
+  money,
+}: {
+  data: Collections;
+  locale: "en" | "ar";
+  money: (minor: number, currency: string) => string;
+}) {
+  const block = data.collected[0];
+  if (block === undefined) return null;
+  const peak = Math.max(1, ...block.by_week.map((w) => w.collected_minor));
+  return (
+    <section className="page-section" aria-labelledby="cc-charts">
+      <h2 id="cc-charts">{t(locale, "cc.charts")}</h2>
+      <h3 style={{ margin: 0, fontSize: "var(--type-label-size)" }}>
+        {t(locale, "cc.chartWeeks")}
+      </h3>
+      <ul className="ds-bars">
+        {block.by_week.map((week) => (
+          <li
+            key={week.first}
+            className="ds-bar"
+            data-partial={week.partial ? "true" : "false"}
+          >
+            {/* "2 Jun", not "2026-06-02". The design's axis runs "2 Jun … 19 Aug", and an
+                ISO date in an 11ch column wraps onto two lines -- which is how this was
+                found, by looking at the rendered chart rather than at the markup. */}
+            <span className="muted data" dir="ltr">{axisLabel(week.first, locale)}</span>
+            <span className="ds-bar-track">
+              {/* The width is the only inline value on the page that is not a token: a bar's
+                  length *is* the datum. The partial bucket is hatched rather than scaled up --
+                  "marked, not extrapolated". */}
+              <span
+                className="ds-bar-fill"
+                style={{ inlineSize: `${(week.collected_minor / peak) * 100}%` }}
+              />
+            </span>
+            <span className="ds-bar-amount data">
+              {money(week.collected_minor, block.currency)}
+              {week.partial ? (
+                <span className="muted"> {t(locale, "cc.chartPartial")}</span>
+              ) : null}
+            </span>
+          </li>
+        ))}
+      </ul>
+      <h3 style={{ margin: 0, fontSize: "var(--type-label-size)" }}>
+        {t(locale, "cc.chartEntity")}
+      </h3>
+      <dl className="facts">
+        {block.by_legal_entity.map((entity) => (
+          <div key={entity.legal_entity_id} style={{ display: "contents" }}>
+            <dt className="muted data" dir="ltr">{entity.legal_entity_id}</dt>
+            <dd className="data" style={{ margin: 0 }}>
+              {money(entity.collected_minor, block.currency)}
+            </dd>
+          </div>
+        ))}
+      </dl>
+      <p className="muted" style={{ margin: 0, fontSize: "var(--type-caption-size)" }}>
+        {data.by_location_is_unavailable}
+      </p>
+      <p className="muted" style={{ margin: 0, fontSize: "var(--type-caption-size)" }}>
+        {data.pace_is_a_projection}
+      </p>
+    </section>
+  );
+}
+
+function RefusedPanels({
+  locale,
+  panels,
+}: {
+  locale: "en" | "ar";
+  panels: [MessageKey, boolean, Panel<unknown>][];
+}) {
+  const refused = panels.filter(([, allowed]) => !allowed);
+  const failed = panels.filter(
+    ([, allowed, panel]) => allowed && panel.allowed && panel.data === null);
+  if (refused.length === 0 && failed.length === 0) return null;
+  return (
+    <>
+      {refused.length > 0 ? (
+        <Banner severity="info">
+          {refused.map(([label]) => t(locale, label)).join(" · ")}
+          {" — "}
+          {t(locale, "cc.refusedPanel")}
+        </Banner>
+      ) : null}
+      {failed.length > 0 ? (
+        <Banner severity="critical">
+          {failed.map(([label]) => t(locale, label)).join(" · ")}
+          {" — "}
+          {t(locale, "cc.failedPanel")}
+        </Banner>
+      ) : null}
+    </>
+  );
+}
+
+function Gap({
+  locale,
+  label,
+  why,
+}: {
+  locale: "en" | "ar";
+  label: MessageKey;
+  why: MessageKey;
+}) {
+  return (
+    <>
+      <dt className="muted">{t(locale, label)}</dt>
+      <dd style={{ margin: 0 }}>{t(locale, why)}</dd>
+    </>
+  );
+}
+
+function categoryLabel(category: string): MessageKey {
+  switch (category) {
+    case "money":
+      return "cc.catMoney";
+    case "compliance":
+      return "cc.catCompliance";
+    case "retention":
+      return "cc.catRetention";
+    case "staffing":
+      return "cc.catStaffing";
+    default:
+      return "cc.catLeads";
+  }
+}
+
+// ---------------------------------------------------------------- the four queue classes
+//
+// Each is one item summarising one module's answer, not one item per row of it. The design's
+// queue is nine items on a busy morning; a row per failed payment would be a list, and
+// "9 open · 2 critical" would stop meaning anything.
+
+function moneyItems(
+  panel: Panel<DunningCases>,
+  locale: "en" | "ar",
+  money: (minor: number, currency: string) => string,
+): AttentionItem[] {
+  if (!panel.allowed || panel.data === null || panel.data.count === 0) return [];
+  const at = panel.data.at_risk[0];
+  return [{
+    key: "cc-money",
+    category: "money",
+    // Critical: money the tenant is owed and is actively chasing.
+    severity: "critical",
+    when: t(locale, "cc.scope"),
+    ...(at
+      ? { money: { amount: money(at.amount_minor, at.currency), meaning: "cc.atRisk" as const } }
+      : {}),
+    title: fill(locale, "cc.moneyTitle", { count: panel.data.count }),
+    body: t(locale, "cc.moneyBody"),
+    actions: [{ label: "cc.openIt", href: "/finance" }],
+  }];
+}
+
+function complianceItems(
+  panel: Panel<RejectedFilings>,
+  locale: "en" | "ar",
+): AttentionItem[] {
+  if (!panel.allowed || panel.data === null || panel.data.count === 0) return [];
+  return [{
+    key: "cc-compliance",
+    category: "compliance",
+    severity: "critical",
+    when: t(locale, "cc.scope"),
+    title: fill(locale, "cc.complianceTitle", { count: panel.data.count }),
+    body: t(locale, "cc.complianceBody"),
+    actions: [{ label: "cc.openIt", href: "/finance" }],
+  }];
+}
+
+function retentionItems(
+  panel: Panel<MembershipSummary>,
+  locale: "en" | "ar",
+  money: (minor: number, currency: string) => string,
+): AttentionItem[] {
+  if (!panel.allowed || panel.data === null) return [];
+  const expiring = panel.data.expiring;
+  if (expiring.count === 0) return [];
+  const value = expiring.renewal_value[0];
+  return [{
+    key: "cc-retention",
+    category: "retention",
+    severity: "attention",
+    when: t(locale, "cc.scope"),
+    ...(value
+      ? {
+          money: {
+            amount: money(value.amount_minor, value.currency),
+            meaning: "cc.renewalValue" as const,
+          },
+        }
+      : {}),
+    title: fill(locale, "cc.retentionTitle",
+      { count: expiring.count, days: expiring.within_days }),
+    body: t(locale, "cc.retentionBody"),
+    actions: [{ label: "cc.openIt", href: "/members" }],
+  }];
+}
+
+function staffingItems(panel: Panel<Unstaffed>, locale: "en" | "ar"): AttentionItem[] {
+  if (!panel.allowed || panel.data === null || panel.data.count === 0) return [];
+  return [{
+    key: "cc-staffing",
+    category: "staffing",
+    // A class with members booked is the urgent one, which is why the held count is in the
+    // body rather than only in the title: a gap nobody has booked is a different morning.
+    severity: panel.data.members_affected > 0 ? "critical" : "attention",
+    when: `${panel.data.from_date} → ${panel.data.to_date}`,
+    title: fill(locale, "cc.staffingTitle", { count: panel.data.count }),
+    // Two bodies: "0 places are held across them" is a sentence with nothing in it, and the
+    // empty case is the one worth saying something useful about.
+    body: panel.data.members_affected > 0
+      ? fill(locale, "cc.staffingBody", { members: panel.data.members_affected })
+      : t(locale, "cc.staffingBodyEmpty"),
+    actions: [{ label: "cc.openIt", href: "/schedule" }],
+  }];
+}
 
 /**
- * Four answers, four messages -- and the order matters.
+ * A bucket's label on the weekly axis: the day and the short month.
  *
- * `reachable: false` is checked before `step_up_required`, because the gate sets both for an
- * AAL-3 action: it is true that a stronger sign-in is required and false that one is available.
- * Reading them the other way round would offer a step-up that can never succeed.
+ * The year is dropped because every bucket on a twelve-week axis shares it, and a label that
+ * repeats what every other label says is noise in the narrowest column on the page.
  */
-function describe(answer: GateAnswer): MessageKey {
-  if (answer.allowed) return "gate.allowed";
-  if (!answer.reachable) return "gate.unreachable";
-  if (answer.step_up_required) return "gate.stepUp";
-  return "gate.denied";
+function axisLabel(isoDate: string, locale: "en" | "ar"): string {
+  const at = new Date(`${isoDate}T00:00:00Z`);
+  return new Intl.DateTimeFormat(locale === "ar" ? "ar" : "en-GB", {
+    timeZone: "UTC", day: "numeric", month: "short",
+  }).format(at);
 }

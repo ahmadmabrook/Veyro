@@ -30,7 +30,7 @@ from typing import Any
 
 from psycopg import Connection, errors
 
-from app.commercial import collections, entitlements, invoicing, lifecycle
+from app.commercial import collections, entitlements, invoicing, lifecycle, reporting
 from app.db import Pool, tenant_scope
 from app.errors import Conflict, InvalidRequest, NotFound
 from app.events import service as events
@@ -2981,14 +2981,257 @@ def refunds_of_payment(
     }
 
 
+# ------------------------------------------------------------------ the scheme's dispute
+#
+# **COM-03-R06's chargeback, and the table this module shipped with no writer at all.**
+# `plt01.fin_disputes` has existed since MOD-017's migration -- forced RLS, twelve
+# constraints, an isolation check, four privacy declarations -- and nothing in `app/` read or
+# wrote it. The module's registry entry lists disputes among what works. Found by building
+# ADM-PAY-03, whose disputed state is an evidence-deadline banner: a state no screen can
+# reach is the vacuous branch this codebase has now shipped eight times, and the remedy is
+# the writer rather than a caveat on the page.
+#
+# **One permission, because none of this is a Veyro decision.** The refund is split in two
+# because somebody chooses to send money back and paragraph 1598 wants a second person on
+# that choice. Every transition here records what another party did -- the scheme opened it,
+# the tenant sent evidence, the scheme decided -- so a separation of duties would be a
+# ceremony over somebody else's judgement. What the rows carry instead is attribution, by
+# constraint, because `veyro_cp_app` holds nothing in `iam` and MOD-008 audits denials rather
+# than allowed acts: the row is the only record there can be.
+#
+# **No event is published, and that is deliberate.** COM-03's event list has no dispute
+# event, and inventing one is inventing product -- MOD-012's precedent for a standalone
+# revocation, which publishes nothing for the same reason.
+
+
+def record_dispute(
+    pool: Pool, tenant_id: str, *, payment_id: str, provider_case_ref: str,
+    dispute_kind: str, reason_code: str, amount_minor: int, currency: str,
+    opened_on: date, respond_due_on: date, actor_id: str, correlation_id: str,
+    idempotency_key: str,
+) -> dict[str, Any]:
+    """The scheme has told us money is being taken back. COM-03-R06.
+
+    **Recorded, not performed.** There is no provider here, so this is a named actor's
+    statement that a scheme opened a case at a time -- MOD-012's `validated` install state
+    and MOD-014's contact verification, in the one place where being wrong costs the member's
+    money. The scheme's own case reference is required and unique per tenant, because that
+    reference is how the two sides identify the same dispute and a second row for one case
+    would double the tenant's apparent exposure.
+
+    **Three things are derived from the payment rather than accepted.** The billing account,
+    so a dispute cannot name another payer's; the ceiling, because a scheme disputes at most
+    what was charged and a larger figure is a data error that would overstate what is at
+    risk; and the currency, which must match -- MOD-016 shipped an approval that compared
+    minor-unit counts across currencies and a reviewer authorised a JOD reduction in USD.
+
+    **A deadline before the opening is refused by the schema**, and the window is returned so
+    a caller never has to subtract two dates to find out how long it has.
+    """
+    if not provider_case_ref.strip():
+        raise InvalidRequest("a_dispute_needs_the_schemes_case_reference")
+    if not idempotency_key.strip():
+        raise InvalidRequest("an_idempotency_key_cannot_be_blank")
+    if dispute_kind not in ("chargeback", "inquiry", "pre_arbitration"):
+        raise InvalidRequest("bad_dispute_kind")
+    if amount_minor <= 0 or amount_minor > 10**12:
+        raise InvalidRequest("bad_amount")
+    try:
+        window = collections.evidence_window(
+            opened_on=opened_on, respond_due_on=respond_due_on, at=_today())
+    except collections.DisputeError as error:
+        raise InvalidRequest(str(error)) from error
+
+    with tenant_scope(pool, tenant_id) as conn:
+        payment = conn.execute(
+            "SELECT billing_account_id, amount_minor, currency, invoice_id"
+            " FROM plt01.fin_payments WHERE payment_id = %s",
+            (payment_id,),
+        ).fetchone()
+        if payment is None:
+            raise NotFound("payment_not_found")
+        if str(payment[2]) != currency:
+            raise Conflict("a_dispute_is_in_the_currency_of_the_payment")
+        if amount_minor > int(payment[1]):
+            raise Conflict("a_dispute_cannot_exceed_the_payment_it_is_against")
+        row = conn.execute(
+            """
+            INSERT INTO plt01.fin_disputes
+                (tenant_id, payment_id, billing_account_id, provider_case_ref,
+                 dispute_kind, reason_code, amount_minor, currency, opened_on,
+                 respond_due_on, idempotency_key, recorded_by, correlation_id)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (tenant_id, idempotency_key) DO NOTHING
+            RETURNING dispute_id
+            """,
+            (tenant_id, payment_id, str(payment[0]), provider_case_ref.strip(),
+             dispute_kind, reason_code, amount_minor, currency, opened_on,
+             respond_due_on, idempotency_key.strip(), actor_id, correlation_id),
+        ).fetchone()
+        if row is None:
+            # **Answered from what was recorded, and compared on more than one field.** An
+            # idempotency key compared on the aggregate alone is this repository's
+            # most-repeated defect -- five modules -- and here the aggregate is the payment,
+            # so a retry naming a different case reference would be handed the first case
+            # back. Both are compared.
+            prior = conn.execute(
+                "SELECT dispute_id, payment_id, provider_case_ref, amount_minor, status,"
+                " respond_due_on, opened_on FROM plt01.fin_disputes"
+                " WHERE idempotency_key = %s",
+                (idempotency_key.strip(),),
+            ).fetchone()
+            assert prior is not None
+            if (str(prior[1]) != payment_id
+                    or str(prior[2]) != provider_case_ref.strip()
+                    or int(prior[3]) != amount_minor):
+                raise Conflict("this_idempotency_key_belongs_to_another_dispute")
+            return {
+                "dispute_id": str(prior[0]), "payment_id": payment_id,
+                "status": str(prior[4]), "repeated": True,
+                **collections.evidence_window(
+                    opened_on=prior[6], respond_due_on=prior[5], at=_today()),
+            }
+        dispute_id = str(row[0])
+    return {
+        "dispute_id": dispute_id, "payment_id": payment_id,
+        "invoice_id": str(payment[3]) if payment[3] else None,
+        "billing_account_id": str(payment[0]), "status": "open",
+        "amount_minor": amount_minor, "currency": currency,
+        "respond_due_on": respond_due_on.isoformat(), "repeated": False, **window,
+    }
+
+
+def respond_to_dispute(
+    pool: Pool, tenant_id: str, dispute_id: str, *, response_ref: str, actor_id: str,
+    correlation_id: str, at: datetime | None = None,
+) -> dict[str, Any]:
+    """Evidence has been sent to the scheme. COM-03-R06.
+
+    **A locator, not the evidence.** `fin_disputes_response_not_blank` takes any non-blank
+    text and the column is declared `write_once` in the privacy registry, so what goes in it
+    is a reference to wherever the provider portal keeps the submission -- a free-text field
+    on an un-erasable row is where a member's medical note ends up, which is MOD-017's
+    `evidence_ref` finding one table over.
+
+    **A response after the deadline is recorded rather than refused**, and the window comes
+    back saying so. The scheme will reject it, but "we answered on the 20th and the deadline
+    was the 15th" is precisely the fact a later argument turns on, and a command that refused
+    would leave the tenant with no record of having tried. What would be wrong is letting it
+    read as timely, which `window_has_closed` prevents.
+    """
+    moment = at or _now()
+    if not response_ref.strip():
+        raise InvalidRequest("a_response_needs_a_locator")
+    with tenant_scope(pool, tenant_id) as conn:
+        current = conn.execute(
+            "SELECT status, opened_on, respond_due_on FROM plt01.fin_disputes"
+            " WHERE dispute_id = %s FOR UPDATE",
+            (dispute_id,),
+        ).fetchone()
+        if current is None:
+            raise NotFound("dispute_not_found")
+        try:
+            collections.check_dispute_transition(str(current[0]), "responded")
+        except collections.DisputeError as error:
+            raise Conflict(str(error)) from error
+        conn.execute(
+            "UPDATE plt01.fin_disputes SET status = 'responded', response_ref = %s,"
+            " responded_at = %s, responded_by = %s WHERE dispute_id = %s"
+            " AND status = %s",
+            (response_ref.strip(), moment, actor_id, dispute_id, str(current[0])),
+        )
+        window = collections.evidence_window(
+            opened_on=current[1], respond_due_on=current[2], at=moment.date())
+    return {
+        "dispute_id": dispute_id, "status": "responded",
+        "responded_at": moment.isoformat(), "correlation_id": correlation_id, **window,
+    }
+
+
+def settle_dispute(
+    pool: Pool, tenant_id: str, dispute_id: str, *, outcome: str, actor_id: str,
+    correlation_id: str, at: datetime | None = None,
+) -> dict[str, Any]:
+    """The scheme has decided. COM-03-R06.
+
+    **`lost` is money gone and this module does not move it.** A lost chargeback is a
+    reversal the provider performs on its own settlement, so what belongs here is the record;
+    the money appears in MOD-018's settlement import as a chargeback line, which opens a
+    reconciliation case because it reverses a payment nothing here can resolve to one row.
+    Posting a guess from this side would be two definitions of the same reversal.
+
+    **A dispute may be settled without a response.** A scheme can withdraw an inquiry, or
+    decide against a tenant that missed the deadline, and a machine that required `responded`
+    first would make a missed deadline unrecordable -- which is the one outcome a tenant most
+    needs on the record.
+    """
+    moment = at or _now()
+    if outcome not in collections.DISPUTE_OUTCOMES:
+        raise InvalidRequest("bad_outcome")
+    with tenant_scope(pool, tenant_id) as conn:
+        current = conn.execute(
+            "SELECT status, amount_minor, currency, payment_id FROM plt01.fin_disputes"
+            " WHERE dispute_id = %s FOR UPDATE",
+            (dispute_id,),
+        ).fetchone()
+        if current is None:
+            raise NotFound("dispute_not_found")
+        if str(current[0]) == outcome:
+            # Idempotent to the caller: a client whose request timed out after the commit is
+            # told what happened rather than 409 for work that succeeded. MOD-017's own
+            # blocking review finding, three commands over.
+            return {"dispute_id": dispute_id, "status": outcome, "repeated": True,
+                    "amount_minor": int(current[1]), "currency": str(current[2])}
+        try:
+            collections.check_dispute_transition(str(current[0]), outcome)
+        except collections.DisputeError as error:
+            raise Conflict(str(error)) from error
+        conn.execute(
+            "UPDATE plt01.fin_disputes SET status = %s, outcome = %s, closed_at = %s"
+            " WHERE dispute_id = %s AND status = %s",
+            (outcome, outcome, moment, dispute_id, str(current[0])),
+        )
+    return {
+        "dispute_id": dispute_id, "status": outcome, "outcome": outcome,
+        "amount_minor": int(current[1]), "currency": str(current[2]),
+        "payment_id": str(current[3]), "closed_at": moment.isoformat(),
+        "correlation_id": correlation_id, "repeated": False,
+    }
+
+
 def get_invoice(pool: Pool, tenant_id: str, invoice_id: str) -> dict[str, Any]:
-    """One invoice with its lines, both statuses and what has been paid against it."""
+    """One invoice with its lines, both statuses and what has been paid against it.
+
+    **Four things this read did not answer that its own list route did, or that ADM-PAY-03
+    needs.** The detail read returning less about an invoice's identity than the row that
+    linked to it is the asymmetry worth naming: `list_invoices` has returned
+    `payer_person_id` and `credits_invoice_id` from the start.
+
+    - **`payer_person_id`**, so a surface can ask MOD-014 for the member's name through
+      MOD-014's own gate. No name, address or birth date crosses this boundary -- that rule
+      is unchanged -- and an identifier is what MOD-018's journal read already returns.
+    - **`fiscal_ack_ref`**, because the design's paid state is "JoFotara reference shown" and
+      a boolean cannot be shown. The reference is the authority's own and is about the
+      document, not the person.
+    - **`credit_notes`**, with each one's id and number. `credited_minor` is a sum, and the
+      design is explicit that a correction is "a credit note with its own number and a link
+      to the original" -- a sum cannot be linked, so the screen could state the reduction and
+      not where it came from.
+    - **`days_late`**, from `invoicing.days_late`, because the header states it and a client
+      deriving it from a date and its own clock answers differently in another timezone.
+    """
+    today = _now().date()
     with tenant_scope(pool, tenant_id) as conn:
         row = conn.execute(
-            "SELECT billing_account_id, document_number, document_kind, net_minor,"
-            " tax_minor, gross_minor, currency, issued_on, due_on, payment_status,"
-            " paid_at, fiscal_status, fiscal_ack_ref, serial"
-            " FROM plt01.fin_invoices WHERE invoice_id = %s",
+            "SELECT i.billing_account_id, i.document_number, i.document_kind, i.net_minor,"
+            " i.tax_minor, i.gross_minor, i.currency, i.issued_on, i.due_on,"
+            " i.payment_status, i.paid_at, i.fiscal_status, i.fiscal_ack_ref, i.serial,"
+            " b.payer_person_id, i.credits_invoice_id, i.fiscal_acked_at,"
+            " i.fiscal_exemption_reason"
+            " FROM plt01.fin_invoices i"
+            " JOIN plt01.fin_billing_accounts b"
+            "   ON b.billing_account_id = i.billing_account_id"
+            " WHERE i.invoice_id = %s",
             (invoice_id,),
         ).fetchone()
         if row is None:
@@ -3010,23 +3253,42 @@ def get_invoice(pool: Pool, tenant_id: str, invoice_id: str) -> dict[str, Any]:
             " WHERE p.invoice_id = %s AND r.status IN ('succeeded', 'unknown')",
             (invoice_id,),
         ).fetchone()
-        credited = conn.execute(
-            "SELECT coalesce(sum(gross_minor), 0) FROM plt01.fin_invoices"
-            " WHERE credits_invoice_id = %s",
+        credit_notes = conn.execute(
+            "SELECT invoice_id, document_number, gross_minor, currency, issued_on"
+            " FROM plt01.fin_invoices WHERE credits_invoice_id = %s"
+            " ORDER BY issued_on, serial",
             (invoice_id,),
-        ).fetchone()
+        ).fetchall()
     return {
         "invoice_id": invoice_id, "billing_account_id": str(row[0]),
+        "payer_person_id": str(row[14]),
+        "credits_invoice_id": str(row[15]) if row[15] else None,
         "refunded_minor": int(refunded[0]) if refunded else 0,
-        "credited_minor": int(credited[0]) if credited else 0,
+        "credited_minor": sum(int(note[2]) for note in credit_notes),
+        "credit_notes": [
+            {"invoice_id": str(note[0]), "document_number": str(note[1]),
+             "gross_minor": int(note[2]), "currency": str(note[3]),
+             "issued_on": note[4].isoformat()}
+            for note in credit_notes],
         "document_number": str(row[1]), "document_kind": str(row[2]),
         "serial": int(row[13]),
+        "days_late": invoicing.days_late(
+            due_on=row[8], at=today, payment_status=str(row[9])),
         "net_minor": int(row[3]), "tax_minor": int(row[4]), "gross_minor": int(row[5]),
         "currency": str(row[6]), "issued_on": row[7].isoformat(),
         "due_on": row[8].isoformat(),
         "payment_status": str(row[9]),
         "paid_at": row[10].isoformat() if row[10] else None,
         "fiscal_status": str(row[11]), "fiscal_acknowledged": row[12] is not None,
+        # **The three things the design's JoFotara block renders**, each a column that
+        # already existed: "Sent to JoFotara · reference JF-88214" needs the reference,
+        # "quiet confirmation on the invoice with the timestamp" needs the instant, and
+        # `not_required` is the one fiscal state whose whole meaning is its reason --
+        # `fin_invoices_exemption_reasoned` makes the reason and the state the same fact, so
+        # returning the state without it hands a reader a claim with no basis.
+        "fiscal_ack_ref": str(row[12]) if row[12] else None,
+        "fiscal_acked_at": row[16].isoformat() if row[16] else None,
+        "fiscal_exemption_reason": str(row[17]) if row[17] else None,
         "paid_minor": int(paid[0]) if paid else 0,
         "lines": [
             {"line_number": int(line[0]), "description": str(line[1]),
@@ -3077,6 +3339,14 @@ MEMBERSHIP_STATUSES = frozenset({
 GRANT_STATUSES = frozenset({"active", "exhausted", "expired", "revoked"})
 INVOICE_PAYMENT_STATUSES = frozenset({
     "unpaid", "part_paid", "paid", "overdue", "written_off", "credited"})
+#: `fin_invoices_fiscal_status`'s own six values. Separate from the payment statuses above
+#: because the two move independently -- an invoice can be paid and unfiled, or filed and
+#: unpaid -- and one vocabulary for both would invite the conflation the migration forbids.
+INVOICE_FISCAL_STATUSES = frozenset({
+    "pending", "submitted", "acknowledged", "fiscal_complete", "rejected", "not_required"})
+#: `fin_dunning_cases_status`'s own five values, so a filter cannot ask for a status the
+#: column refuses and get an empty list back as though nobody were in that state.
+DUNNING_STATUSES = frozenset({"open", "paused", "recovered", "written_off", "abandoned"})
 
 
 def _bounded(limit: int) -> int:
@@ -3388,6 +3658,21 @@ def invoice_history(pool: Pool, tenant_id: str, invoice_id: str) -> dict[str, An
             " WHERE invoice_id = %s ORDER BY opened_on",
             (invoice_id,),
         ).fetchall()
+        # **The dispute, which this read did not include and the screen cannot do without.**
+        # ADM-PAY-03's disputed state is "evidence deadline banner", and `respond_due_on` is
+        # a real date set by the card scheme -- the one deadline in this module that is
+        # somebody else's and cannot be extended. A dispute is recorded against the *payment*
+        # rather than the invoice, so it reaches an invoice through the payment it reverses,
+        # which is also why a timeline built from the invoice's own status could never show
+        # one: `payment_status` stays `paid` throughout a chargeback.
+        disputes = conn.execute(
+            "SELECT d.dispute_id, d.dispute_kind, d.reason_code, d.amount_minor,"
+            " d.currency, d.opened_on, d.respond_due_on, d.status, d.responded_at,"
+            " d.closed_at, d.provider_case_ref FROM plt01.fin_disputes d"
+            " JOIN plt01.fin_payments p ON p.payment_id = d.payment_id"
+            " WHERE p.invoice_id = %s ORDER BY d.opened_on",
+            (invoice_id,),
+        ).fetchall()
 
     events: list[dict[str, Any]] = [{
         "kind": "issued",
@@ -3442,11 +3727,36 @@ def invoice_history(pool: Pool, tenant_id: str, invoice_id: str) -> dict[str, An
             "detail": str(row[8]) if row[8] else None,
         })
 
+    for row in disputes:
+        events.append({
+            "kind": "dispute",
+            # Opened, responded or closed -- whichever is the latest thing that happened to
+            # it, because a dispute is one row that moves rather than a row per step.
+            "at": (row[9] or row[8] or row[5]).isoformat(),
+            "status": str(row[7]),
+            "dispute_kind": str(row[1]),
+            "reason_code": str(row[2]),
+            "amount_minor": int(row[3]),
+            "currency": str(row[4]),
+            "opened_on": row[5].isoformat(),
+            "respond_due_on": row[6].isoformat(),
+            "detail": str(row[10]),
+        })
+
     events.sort(key=lambda event: event["at"])
+    #: The scheme's deadline on the dispute still waiting for a response, if there is one.
+    #: Lifted out of the events because a banner is about one deadline and a reader scanning
+    #: a timeline for the earliest open dispute is deriving the thing the server already
+    #: knows -- MOD-016's `in_window` judgement.
+    awaiting = [
+        event for event in events
+        if event["kind"] == "dispute" and event["status"] in ("open", "responded")]
     return {
         "invoice_id": invoice_id,
         "document_number": str(invoice[0]),
         "events": events,
+        "evidence_due_on": (
+            min(str(event["respond_due_on"]) for event in awaiting) if awaiting else None),
         #: ADM-PAY-03's own note, which is a product fact rather than a surface's caption.
         "immutable_because":
             "An issued invoice is never edited: the five ledger tables are insert-only for "
@@ -3457,7 +3767,8 @@ def invoice_history(pool: Pool, tenant_id: str, invoice_id: str) -> dict[str, An
 
 def list_invoices(
     pool: Pool, tenant_id: str, *, billing_account_id: str | None = None,
-    person_id: str | None = None, payment_status: str | None = None, limit: int = 50,
+    person_id: str | None = None, payment_status: str | None = None,
+    fiscal_status: str | None = None, limit: int = 50,
 ) -> dict[str, Any]:
     """Issued documents, newest first, with what has been paid against each.
 
@@ -3473,6 +3784,11 @@ def list_invoices(
     """
     limit = _bounded(limit)
     _one_of(payment_status, INVOICE_PAYMENT_STATUSES, "bad_payment_status")
+    # **The two statuses move independently and neither implies the other**, which the
+    # migration states at length: an invoice can be paid and unfiled, or filed and unpaid. So
+    # the filters are separate, and a caller asking for a rejected filing is not asking about
+    # money. ADM-CC-01's COMPLIANCE item is exactly this read.
+    _one_of(fiscal_status, INVOICE_FISCAL_STATUSES, "bad_fiscal_status")
     where = ["true"]
     params: list[Any] = []
     if billing_account_id is not None:
@@ -3484,6 +3800,9 @@ def list_invoices(
     if payment_status is not None:
         where.append("i.payment_status = %s")
         params.append(payment_status)
+    if fiscal_status is not None:
+        where.append("i.fiscal_status = %s")
+        params.append(fiscal_status)
     params.append(limit)
     with tenant_scope(pool, tenant_id) as conn:
         rows = conn.execute(
@@ -3512,4 +3831,301 @@ def list_invoices(
              "paid_minor": int(r[14])}
             for r in rows],
         "count": len(rows), "limit": limit, "truncated": len(rows) == limit,
+    }
+
+
+# ---------------------------------------------------------------- ADM-CC-01's four figures
+#
+# **These are aggregates, and that is why they are reads of their own rather than arithmetic
+# in a surface.** `list_invoices` and `list_memberships` are bounded at 200 rows, so a client
+# that summed one would report the first page as the month -- and a balance with two
+# definitions has two answers the day either moves, which is the finding MOD-018's till close
+# shipped and `list_entitlement_grants` records one function up.
+#
+# The Command Center's own metric row is four figures. Three are below; the fourth, lead
+# conversion over thirty days, has no module in this build and is named as absent on the
+# screen rather than approximated from something else.
+
+
+def collections_summary(
+    pool: Pool, tenant_id: str, *, as_of: date | None = None, weeks: int = 12,
+    week_start: int = reporting.SATURDAY,
+) -> dict[str, Any]:
+    """What was collected this month, against the same point last month, per currency.
+
+    ADM-CC-01's first metric and its twelve-week chart. Four things about the shape:
+
+    **Per currency, never summed across.** `money.py`'s first convention is that an amount is
+    an integer count of minor units in one currency, and a tenant may bill in several. One
+    total over two currencies is the comparison MOD-016's discount approval made and a
+    reviewer found: an approval reasoned in JOD authorised the same minor-unit count in USD.
+    So the response is a list and the screen renders a metric cell per currency, which
+    degenerates to the design's single cell for a single-currency tenant.
+
+    **A payment, not an invoice.** "Collected" is money received, which is `fin_payments`;
+    `fin_invoices.gross_minor` is money *owed*. MOD-011's `gross_margin` read invoices and was
+    blind to credit notes for the same confusion one module over.
+
+    **Refunds are subtracted and said to be.** A month that took 1,000 and refunded 400
+    collected 600, and a figure that ignored the refund would overstate in the direction
+    nobody checks -- which is MOD-011's finding again, with the sign reversed.
+
+    **By legal entity, which is not the design's "by location".** ADM-CC-01's second chart
+    breaks the month down by club -- Abdoun, Khalda, Sweifieh. The dimension on the money
+    chain here is `fin_billing_accounts.legal_entity_id`, and a legal entity is not a location:
+    MOD-004's hierarchy puts brands and locations *under* one, so three clubs under a single
+    entity are one row. Relabelling it would be a confident wrong answer on a revenue chart,
+    so it is returned as what it is and the response says the design asked for something else.
+    """
+    as_of = as_of or _today()
+    if weeks < 1 or weeks > reporting.MAX_WEEKS:
+        raise InvalidRequest("bad_weeks")
+    if week_start < 0 or week_start > 6:
+        raise InvalidRequest("bad_week_start")
+    this = reporting.month_to_date(as_of)
+    before = reporting.comparable_previous_month(as_of)
+    buckets = reporting.week_buckets(as_of, weeks, week_start=week_start)
+    with tenant_scope(pool, tenant_id) as conn:
+        # One statement per span rather than one grouped by span, because the spans overlap:
+        # a week bucket can sit inside the month-to-date window, and a row counted twice in a
+        # grouped query would need a join nobody can read.
+        totals = {
+            name: _collected_between(conn, span)
+            for name, span in (("this", this), ("previous", before))
+        }
+        weekly: list[tuple[reporting.Span, bool, dict[str, int]]] = [
+            (span, reporting.is_partial(span, as_of), _collected_between(conn, span))
+            for span in buckets
+        ]
+        entities = conn.execute(
+            "SELECT b.legal_entity_id, p.currency,"
+            " sum(p.amount_minor)"
+            " - coalesce((SELECT sum(r.amount_minor) FROM plt01.fin_refunds r"
+            "   JOIN plt01.fin_payments rp ON rp.payment_id = r.payment_id"
+            "   JOIN plt01.fin_billing_accounts rb"
+            "     ON rb.billing_account_id = rp.billing_account_id"
+            "   WHERE r.status = 'succeeded' AND rp.currency = p.currency"
+            "     AND rb.legal_entity_id = b.legal_entity_id"
+            "     AND r.settled_at::date >= %s AND r.settled_at::date <= %s), 0)"
+            " FROM plt01.fin_payments p"
+            " JOIN plt01.fin_billing_accounts b"
+            "   ON b.billing_account_id = p.billing_account_id"
+            " WHERE p.received_at::date >= %s AND p.received_at::date <= %s"
+            " GROUP BY b.legal_entity_id, p.currency"
+            " ORDER BY b.legal_entity_id, p.currency",
+            (this.first, this.last, this.first, this.last),
+        ).fetchall()
+    currencies = sorted({c for totals_by in totals.values() for c in totals_by})
+    return {
+        "as_of": as_of.isoformat(),
+        "month_to_date": {"first": this.first.isoformat(), "last": this.last.isoformat(),
+                          "days": this.days},
+        "comparable_previous_month": {
+            "first": before.first.isoformat(), "last": before.last.isoformat(),
+            "days": before.days,
+            # The clamp is stated rather than left to be derived from two dates: a 31st
+            # compared against a 28th is a shorter span, and a reader has to know.
+            "clamped": before.days != this.days},
+        "collected": [
+            {"currency": currency,
+             "collected_minor": totals["this"].get(currency, 0),
+             "previous_minor": totals["previous"].get(currency, 0),
+             "change_bp": reporting.change_bp(
+                 totals["this"].get(currency, 0), totals["previous"].get(currency, 0)),
+             # A projection, named as one. Nothing may render this as money collected.
+             "pace_minor": reporting.pace(totals["this"].get(currency, 0), as_of),
+             "by_week": [
+                 {"first": span.first.isoformat(), "last": span.last.isoformat(),
+                  "partial": partial, "collected_minor": sums.get(currency, 0)}
+                 for span, partial, sums in weekly],
+             "by_legal_entity": [
+                 {"legal_entity_id": str(r[0]), "collected_minor": int(r[2])}
+                 for r in entities if str(r[1]) == currency],
+             }
+            for currency in currencies],
+        "week_start": week_start,
+        "pace_is_a_projection":
+            "pace_minor is a straight-line projection -- collected, divided by the days "
+            "elapsed, times the days in the month. It is not money collected and must not be "
+            "rendered as a total. The design states no basis for its own pace figure, so the "
+            "method is named here rather than reverse-engineered from one illustration.",
+        "partial_weeks_are_not_extrapolated":
+            "A bucket containing as_of is marked partial and carries only what it holds.",
+        "by_location_is_unavailable":
+            "The design breaks this down by club. Money here carries a legal entity, and "
+            "MOD-004's hierarchy puts brands and locations under one -- so three clubs under "
+            "a single entity are one row. by_legal_entity is what the data supports.",
+    }
+
+
+def _collected_between(conn: Connection, span: reporting.Span) -> dict[str, int]:
+    """Payments received in `span` less refunds settled in it, per currency.
+
+    Both halves are bounded at both ends. A one-sided window is MOD-011's `evaluate_budget`
+    finding, which reported a January budget 45% consumed as 143%.
+    """
+    taken = conn.execute(
+        "SELECT currency, sum(amount_minor) FROM plt01.fin_payments"
+        " WHERE received_at::date >= %s AND received_at::date <= %s GROUP BY currency",
+        (span.first, span.last),
+    ).fetchall()
+    given_back = conn.execute(
+        "SELECT p.currency, sum(r.amount_minor) FROM plt01.fin_refunds r"
+        " JOIN plt01.fin_payments p ON p.payment_id = r.payment_id"
+        " WHERE r.status = 'succeeded'"
+        "   AND r.settled_at::date >= %s AND r.settled_at::date <= %s"
+        " GROUP BY p.currency",
+        (span.first, span.last),
+    ).fetchall()
+    out = {str(r[0]): int(r[1]) for r in taken}
+    for row in given_back:
+        out[str(row[0])] = out.get(str(row[0]), 0) - int(row[1])
+    return out
+
+
+def membership_summary(
+    pool: Pool, tenant_id: str, *, as_of: date | None = None, expiring_within_days: int = 7,
+) -> dict[str, Any]:
+    """How many memberships are live, what moved this month, and what is about to expire.
+
+    ADM-CC-01's second metric -- "ACTIVE MEMBERS · 4,812 · +38 this month · 61 joined, 23
+    left" -- and its RETENTION attention item, "14 memberships expire within 7 days · JOD
+    4,760.00 renewal value".
+
+    **Joined and left come from the lifecycle history, not from the status column.** That
+    column is a cache of where a membership is now and says nothing about how it got there, so
+    a net figure derived from it would be the count of memberships that *are* active rather
+    than the ones that *became* active this month. `mem_lifecycle_changes` is insert-only and
+    carries `effective_on`, which is the date the member experienced.
+
+    **Renewal value is the agreement's amount, per currency.** It is what the membership was
+    sold at, which is the figure a renewal conversation is about; it is not a forecast and it
+    is not summed across currencies.
+    """
+    as_of = as_of or _today()
+    if expiring_within_days < 1 or expiring_within_days > 365:
+        raise InvalidRequest("bad_window")
+    month = reporting.month_to_date(as_of)
+    until = as_of + timedelta(days=expiring_within_days)
+    with tenant_scope(pool, tenant_id) as conn:
+        by_status = conn.execute(
+            "SELECT status, count(*) FROM plt01.mem_memberships GROUP BY status",
+        ).fetchall()
+        # `activation` is how a membership becomes live; `cancellation` and `expiry` are the
+        # two ways it stops. The other eight kinds in the constraint are moves within a life.
+        moved = conn.execute(
+            "SELECT change_kind, count(*) FROM plt01.mem_lifecycle_changes"
+            " WHERE effective_on >= %s AND effective_on <= %s"
+            "   AND change_kind IN ('activation', 'cancellation', 'expiry')"
+            " GROUP BY change_kind",
+            (month.first, month.last),
+        ).fetchall()
+        expiring = conn.execute(
+            "SELECT m.membership_id, m.person_id, m.membership_number, m.status,"
+            " m.current_period_end, m.ends_on, a.amount_minor, a.currency,"
+            " t.membership_kind, t.billing_period"
+            " FROM plt01.mem_memberships m"
+            " JOIN plt01.mem_agreements a ON a.agreement_id = m.agreement_id"
+            " JOIN plt01.mem_membership_terms t"
+            "   ON t.membership_terms_id = a.membership_terms_id"
+            " WHERE m.status IN ('active', 'grace')"
+            "   AND coalesce(m.ends_on, m.current_period_end) IS NOT NULL"
+            "   AND coalesce(m.ends_on, m.current_period_end) >= %s"
+            "   AND coalesce(m.ends_on, m.current_period_end) <= %s"
+            " ORDER BY coalesce(m.ends_on, m.current_period_end), m.membership_id"
+            " LIMIT %s",
+            (as_of, until, LIST_LIMIT),
+        ).fetchall()
+    counts = {str(r[0]): int(r[1]) for r in by_status}
+    kinds = {str(r[0]): int(r[1]) for r in moved}
+    joined = kinds.get("activation", 0)
+    left = kinds.get("cancellation", 0) + kinds.get("expiry", 0)
+    value: dict[str, int] = {}
+    for row in expiring:
+        value[str(row[7])] = value.get(str(row[7]), 0) + int(row[6])
+    return {
+        "as_of": as_of.isoformat(),
+        "active": counts.get("active", 0),
+        "by_status": counts,
+        "this_month": {
+            "first": month.first.isoformat(), "last": month.last.isoformat(),
+            "joined": joined, "left": left, "net": joined - left},
+        "expiring": {
+            "within_days": expiring_within_days, "until": until.isoformat(),
+            "count": len(expiring),
+            "renewal_value": [
+                {"currency": currency, "amount_minor": amount}
+                for currency, amount in sorted(value.items())],
+            "memberships": [
+                {"membership_id": str(r[0]), "person_id": str(r[1]),
+                 "membership_number": str(r[2]), "status": str(r[3]),
+                 "expires_on": (r[5] or r[4]).isoformat(),
+                 "amount_minor": int(r[6]), "currency": str(r[7]),
+                 "membership_kind": str(r[8]), "billing_period": str(r[9])}
+                for r in expiring],
+            "truncated": len(expiring) == LIST_LIMIT,
+        },
+        "movement_is_from_the_history":
+            "joined and left are counted from mem_lifecycle_changes by effective_on. The "
+            "status column is a cache of where a membership is now and cannot answer what "
+            "moved.",
+    }
+
+
+def list_dunning_cases(
+    pool: Pool, tenant_id: str, *, status: str = "open", limit: int = 50,
+) -> dict[str, Any]:
+    """The recovery journeys, with what each is trying to collect and how far it has got.
+
+    ADM-CC-01's first attention item -- "6 payments failed overnight · JOD 312.00 at risk" --
+    and the module's only writer-with-no-reader left after the listing reads were added: a
+    case could be opened and advanced and there was no way to see one.
+
+    **`attempts` is the figure that makes a case actionable**, because `collections.py` bounds
+    a journey by it and the module's own review found that a caller reporting the same failure
+    twice froze the count and the run could never reach `dead`. A board that showed the stage
+    without the attempts would be showing the half that moves on its own.
+    """
+    limit = _bounded(limit)
+    _one_of(status, DUNNING_STATUSES, "bad_status")
+    with tenant_scope(pool, tenant_id) as conn:
+        rows = conn.execute(
+            "SELECT c.case_id, c.billing_account_id, c.invoice_id, c.stage, c.status,"
+            " c.opened_on, c.next_action_on, c.attempts, c.access_recommendation,"
+            " c.owner_ref, c.resolution, i.document_number, i.gross_minor, i.currency,"
+            " i.payment_status, i.due_on, b.payer_person_id,"
+            " coalesce((SELECT sum(p.amount_minor) FROM plt01.fin_payments p"
+            "            WHERE p.invoice_id = i.invoice_id), 0)"
+            " FROM plt01.fin_dunning_cases c"
+            " JOIN plt01.fin_invoices i ON i.invoice_id = c.invoice_id"
+            " JOIN plt01.fin_billing_accounts b"
+            "   ON b.billing_account_id = c.billing_account_id"
+            " WHERE c.status = %s"
+            " ORDER BY c.next_action_on NULLS LAST, c.opened_on, c.case_id"
+            " LIMIT %s",
+            (status, limit),
+        ).fetchall()
+    cases = [
+        {"case_id": str(r[0]), "billing_account_id": str(r[1]), "invoice_id": str(r[2]),
+         "stage": int(r[3]), "status": str(r[4]), "opened_on": r[5].isoformat(),
+         "next_action_on": r[6].isoformat() if r[6] else None, "attempts": int(r[7]),
+         "access_recommendation": str(r[8]), "owner_ref": str(r[9]) if r[9] else None,
+         "resolution": str(r[10]) if r[10] else None,
+         "document_number": str(r[11]), "gross_minor": int(r[12]), "currency": str(r[13]),
+         "payment_status": str(r[14]), "due_on": r[15].isoformat(),
+         "payer_person_id": str(r[16]),
+         # What is actually still at risk, which is not the invoice's gross once something has
+         # been paid against it.
+         "outstanding_minor": int(r[12]) - int(r[17])}
+        for r in rows]
+    at_risk: dict[str, int] = {}
+    for case in cases:
+        currency = str(case["currency"])
+        at_risk[currency] = at_risk.get(currency, 0) + int(case["outstanding_minor"])
+    return {
+        "cases": cases, "count": len(cases), "limit": limit,
+        "truncated": len(cases) == limit,
+        "at_risk": [{"currency": c, "amount_minor": a} for c, a in sorted(at_risk.items())],
+        "at_risk_is_outstanding":
+            "at_risk sums what is still unpaid on each cited invoice, not the invoice total.",
     }

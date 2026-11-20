@@ -442,6 +442,32 @@ PERMISSIONS: dict[str, Permission] = dict([
        "configuration", "financial"),
     _p("finance.dunning.manage", "Open and advance a recovery journey",
        "configuration", "financial"),
+    # **Seeing that recovery journeys are open is a read; advancing one is the act.**
+    # ADM-CC-01 puts "6 payments failed overnight" in the attention queue a manager opens
+    # every morning, and canvas 2 shows a club manager a condensed form of the same item --
+    # so a board that needed `finance.dunning.manage` would put a step-up in front of
+    # noticing, which is MOD-018's argument for a routine trial balance: a read behind a
+    # step-up is a read nobody does until the month-end panic.
+    _p("finance.dunning.read", "See the open recovery journeys and what each is chasing",
+       "finance"),
+    # **Group revenue is a separate grant, because the design says so.** ADM-CC-02 states it
+    # as a product boundary rather than a styling one: "What Ziad does not see: group revenue,
+    # cross-location comparison, the JoFotara queue, and the payment-recovery workflow
+    # itself" -- and "the rail is generated from his role rather than greyed". So a club
+    # manager is separated from the portfolio by **not holding this**, not by a step-up: an
+    # owner opens the Command Center every morning and a second factor every morning means
+    # nobody looks. Routine and granted narrowly.
+    _p("finance.revenue.read",
+       "See collected revenue for the tenant by period and by legal entity", "finance"),
+    # **One permission for the whole dispute, because none of it is a Veyro decision.** The
+    # refund above is two because somebody chooses to send money back; a dispute is opened by
+    # the card scheme, answered by the tenant and decided by the scheme, so every transition
+    # records what another party did. A separation of duties would be a ceremony over
+    # somebody else's judgement. Financial class: a lost chargeback is money gone and the
+    # response window is the one chance to keep it, and the deadline belongs to the scheme.
+    _p("finance.dispute.manage",
+       "Record a card dispute, send evidence and record the scheme's outcome",
+       "configuration", "financial"),
     # **Fiscalization is its own permission.** It is the act that tells a tax authority an
     # invoice is final, and the person who issues invoices is not necessarily the person who
     # files them.

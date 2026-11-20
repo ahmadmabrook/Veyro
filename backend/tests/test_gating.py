@@ -97,6 +97,12 @@ READ_ROUTES = [
     ("get", "/people/duplicates/all", None),
     ("get", f"/people/merges/plan?source_person_id={_ID}&target_person_id={_SUBJECT}", None),
     ("get", "/scheduling/resources", None),
+    # ADM-CC-01's STAFFING item. A read of the whole tenant's gaps, where the calendar beside
+    # it is per location.
+    ("get", "/scheduling/unstaffed", None),
+    # ADM-CC-01's VISITS figure. `/access` is not a fully-swept prefix, so this is a sample --
+    # and the sample is worth having because the route is new and reads event counts.
+    ("get", "/access/visits", None),
 
     ("get", f"/scheduling/calendar?location_id={_ID}&from_date=2026-11-01"
             "&to_date=2026-11-30", None),
@@ -337,6 +343,13 @@ WRITE_ROUTES = [
     ("get", "/member-entitlements", None),
     ("get", "/finance/accounts", None),
     ("get", "/finance/invoices", None),
+    # ADM-CC-01's three aggregate reads. `/finance/collections` and `/finance/dunning-cases`
+    # are behind their own permissions -- group revenue is a grant a club manager does not
+    # hold, which ADM-CC-02 states as a product boundary -- and the membership summary is
+    # behind the same permission as the list it counts.
+    ("get", "/finance/collections", None),
+    ("get", "/finance/dunning-cases", None),
+    ("get", "/memberships/summary", None),
     ("post", "/member-entitlements/policies",
      {"policy_key": "sweep.classes", "display_name": "Classes",
       "entitlement_type": "class_credit", **_CORR}),
@@ -395,6 +408,14 @@ WRITE_ROUTES = [
     ("post", "/finance/dunning-cases",
      {"invoice_id": _ID, "idempotency_key": "sweep-d1", **_CORR}),
     ("post", f"/finance/dunning-cases/{_ID}/advance", _CORR),
+    ("post", "/finance/disputes",
+     {"payment_id": _ID, "provider_case_ref": "CB-SWEEP-1", "dispute_kind": "chargeback",
+      "reason_code": "card_expired", "amount_minor": 1000, "currency": "JOD",
+      "opened_on": "2026-08-17", "respond_due_on": "2026-08-31",
+      "idempotency_key": "sweep-cb1", **_CORR}),
+    ("post", f"/finance/disputes/{_ID}/respond",
+     {"response_ref": "https://provider.invalid/cases/1", **_CORR}),
+    ("post", f"/finance/disputes/{_ID}/settle", {"outcome": "won", **_CORR}),
     ("post", "/ledger/accounts",
      {"account_code": "SWEEP", "account_kind": "cash", "display_name": "Till",
       "currency": "JOD", **_CORR}),
@@ -832,6 +853,11 @@ class GateCoverageTests(unittest.TestCase):
             "the one-time grant that makes a tenant administrable; refuses once any assignment "
             "exists",
         ("GET", "/authz/check"): "asks the gate about the caller's own session",
+        # The same question for several actions at once, which a page needs because the shell
+        # asks about thirteen navigation entries and the Command Center about six reads.
+        # Open for the same reason as the single check and no wider: it answers only about the
+        # caller's own session, it is bounded at forty actions, and it records no denial.
+        ("GET", "/authz/checks"): "asks the gate about the caller's own session, in a batch",
         ("POST", "/authz/approvals"):
             "the service checks the requester holds the action's own permission",
         # Scoped to the caller in the service rather than by a permission: each passes the
@@ -959,3 +985,70 @@ class GateCoverageTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BatchedCheckTests(GatedApiTestCase):
+    """`/authz/checks` is the same question several times, not a permission list.
+
+    **It exists because a rich page asks the gate many times.** The shell asks about thirteen
+    navigation entries and the Command Center about six reads, which put one page view at
+    nineteen round trips against MOD-011's 600-a-minute per-identity budget -- a budget whose
+    own comment says a limit that trips during ordinary use is one somebody will raise to
+    infinity rather than investigate.
+
+    So the risk is that the batch answers differently from the single check, which is what
+    these assert.
+    """
+
+    def test_a_batch_answers_exactly_what_the_single_check_answers(self):
+        tenant_id = self.tenant()
+        head = self.headers(tenant_id, self.grant(tenant_id, ["people.person.read"]))
+        actions = ["people.person.read", "finance.revenue.read", "support.session.start"]
+        query = "&".join(f"action={a}" for a in actions)
+        batched = self.client.get(
+            f"/authz/checks?{query}&correlation_id={uuid.uuid4()}", headers=head)
+        self.assertEqual(batched.status_code, 200, batched.text)
+        got = {c["action"]: c for c in batched.json()["checks"]}
+        self.assertEqual(batched.json()["count"], 3)
+        for action in actions:
+            one = self.client.get(
+                f"/authz/check?action={action}&correlation_id={uuid.uuid4()}", headers=head)
+            self.assertEqual(one.status_code, 200, one.text)
+            self.assertEqual(got[action], one.json(), action)
+
+    def test_the_assurance_is_weighed_in_the_batch_too(self):
+        """MOD-014's rule: a grant is not a session.
+
+        `devices.command.unlock` is financial class, so a password-only session holding it is
+        refused with `step_up_required`. A batch that answered from the role list alone would
+        say allowed -- which is the whole reason this is not an `effective_permissions` read.
+        """
+        tenant_id = self.tenant()
+        head = self.headers(tenant_id, self.grant(tenant_id, ["devices.command.unlock"]))
+        answer = self.client.get(
+            f"/authz/checks?action=devices.command.unlock&correlation_id={uuid.uuid4()}",
+            headers=head)
+        check = answer.json()["checks"][0]
+        self.assertFalse(check["allowed"])
+        self.assertTrue(check["step_up_required"])
+
+    def test_an_empty_or_oversized_batch_refuses(self):
+        tenant_id = self.tenant()
+        head = self.headers(tenant_id, self.grant(tenant_id, []))
+        empty = self.client.get(
+            f"/authz/checks?correlation_id={uuid.uuid4()}", headers=head)
+        self.assertEqual(empty.status_code, 422, empty.text)
+        many = "&".join("action=people.person.read" for _ in range(41))
+        over = self.client.get(
+            f"/authz/checks?{many}&correlation_id={uuid.uuid4()}", headers=head)
+        self.assertEqual(over.status_code, 422, over.text)
+
+    def test_asking_about_yourself_needs_no_permission(self):
+        """The same property the single check has: a session may always ask about itself."""
+        tenant_id = self.tenant()
+        head = self.headers(tenant_id, self.grant(tenant_id, []))
+        answer = self.client.get(
+            f"/authz/checks?action=people.person.read&correlation_id={uuid.uuid4()}",
+            headers=head)
+        self.assertEqual(answer.status_code, 200, answer.text)
+        self.assertFalse(answer.json()["checks"][0]["allowed"])

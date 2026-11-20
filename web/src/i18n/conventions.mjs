@@ -194,3 +194,34 @@ export function formatMoney(amountMinor, currency, numbering, locale) {
   const text = `${currency} ${sign}${amount}`;
   return loc === "ar" ? isolate(text, "ltr") : text;
 }
+
+/**
+ * The CLDR cardinal category for a count, which decides which form of a message to render.
+ *
+ * **Arabic has six and English has two**, and that asymmetry is the reason this exists rather
+ * than an `n === 1` check at a call site. ADM-CC-01's heading counts the queue -- "Three
+ * things need you this morning" -- and a page that picked the plural form for every count
+ * would render "2 أمور" where Arabic wants its dual, and "1 payments are in recovery" in
+ * English, which is what the rendered page showed before this was written.
+ *
+ * **It mirrors `backend/app/l10n/messages.py:plural_category` exactly**, and
+ * `tests/unit/conventions-parity.test.mjs` runs both over the same counts and compares. Two
+ * implementations that each assert their own expectations pass forever while drifting apart;
+ * the only thing that catches drift is running them side by side -- which is the argument this
+ * file already carries for money and numerals.
+ */
+export function pluralCategory(locale, count) {
+  const loc = parseLocale(locale);
+  if (!Number.isSafeInteger(count)) throw new ConventionError("count must be an integer");
+  if (count < 0) throw new ConventionError("count must not be negative");
+  if (loc === "ar") {
+    if (count === 0) return "zero";
+    if (count === 1) return "one";
+    if (count === 2) return "two";
+    const remainder = count % 100;
+    if (remainder >= 3 && remainder <= 10) return "few";
+    if (remainder >= 11 && remainder <= 99) return "many";
+    return "other";
+  }
+  return count === 1 ? "one" : "other";
+}

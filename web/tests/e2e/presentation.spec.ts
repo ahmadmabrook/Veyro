@@ -47,18 +47,30 @@ test.describe("presentation", () => {
 
   test("the layout mirrors in Arabic without a direction-specific rule", async ({ page }) => {
     await useOwnerSession(page);
-    const before = await page.getByRole("heading", { name: "Veyro Admin" }).boundingBox();
+    // **The text run's box, not the heading element's.** The element is a block that spans
+    // the content column in both directions, so its own `x` *decreases* in Arabic -- the rail
+    // moves to the right and the column starts at the gutter. The old assertion passed only
+    // because the old landing page put its heading in a flex row, where it was sized to its
+    // content and genuinely moved; measuring the element was reading a layout accident as the
+    // mirroring. A Range over the text node measures what a reader actually sees move.
+    const runBox = () => page.getByRole("heading", { level: 1 }).evaluate((el) => {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      const { x, width } = range.getBoundingClientRect();
+      return { x, width };
+    });
+    const before = await runBox();
 
     await page.getByRole("button", { name: "العربية" }).click();
     await expect(page.locator("html")).toHaveAttribute("dir", "rtl");
-    const after = await page.getByRole("heading", { name: "إدارة فيرو" }).boundingBox();
+    const after = await runBox();
 
-    expect(before, "the English heading must be measurable").toBeTruthy();
-    expect(after, "the Arabic heading must be measurable").toBeTruthy();
+    expect(before.width, "the English heading must be measurable").toBeGreaterThan(0);
+    expect(after.width, "the Arabic heading must be measurable").toBeGreaterThan(0);
     // The heading starts at the inline-start edge, so mirroring moves it from the left of the
     // viewport to the right. Nothing in the source names `left` or `right`; this is what
     // `text-align: start` and the logical properties buy.
-    expect(after!.x).toBeGreaterThan(before!.x);
+    expect(after.x).toBeGreaterThan(before.x);
   });
 
   test("the dark theme remaps the field, the accent and the focus ring", async ({ page }) => {

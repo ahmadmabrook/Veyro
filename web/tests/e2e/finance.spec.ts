@@ -58,9 +58,15 @@ test.describe("the finance board", () => {
     // is `2026-11…2026-11-30openYes`, and `\b` needs a word character beside a non-word one,
     // so there is no boundary between `0` and `o`. Matching the status cell exactly is the
     // form that names a row.
-    await expect(
-      lock.getByRole("row").filter({ has: page.getByText("open", { exact: true }) }),
-    ).toContainText("Yes");
+    //
+    // **Every open row, not "the" open row.** A tenant has as many period rows as it has
+    // posted months, and the fixture now back-dates an overdue invoice into an earlier one --
+    // so naming a single open period made this assertion depend on how much the fixture
+    // happened to seed. What holds whatever it seeds is the invariant: an open period takes
+    // a posting, and that is what `admits_trade` is derived on the server for.
+    const open = lock.getByRole("row").filter({ has: page.getByText("open", { exact: true }) });
+    expect(await open.count()).toBeGreaterThan(0);
+    for (const row of await open.all()) await expect(row).toContainText("Yes");
   });
 
   test("says a month that is not listed has never been opened", async ({ page }) => {
@@ -88,8 +94,16 @@ test.describe("the finance board", () => {
     await expect(balance).toContainText("The ledger balances");
     // The figures an accountant can check by hand: the card paid the gross, which sits in
     // provider_clearing; revenue and tax carry what the invoice said.
+    // **The two totals agree, which is what "balances" means** -- rather than one figure
+    // that moves every time the fixture seeds another document. The chart carries an unpaid
+    // invoice as well now, so a hard-coded total was asserting the fixture rather than the
+    // ledger.
     const totals = balance.getByRole("row").filter({ hasText: "Total" });
-    await expect(totals).toContainText("JOD 52.200");
+    const cells = (await totals.locator("td, th").allInnerTexts())
+      .map((text) => text.trim())
+      .filter((text) => /JOD/.test(text));
+    expect(cells.length, "a trial balance has a debit total and a credit total").toBe(2);
+    expect(cells[0]).toBe(cells[1]);
     // **An exact cell, not a substring.** Playwright's `hasText` is a case-insensitive
     // substring, so `"REV"` matches CONTRA (whose kind is `contra_revenue`) and REV-OLD as
     // well -- and `.first()` then asserted against whichever the chart's ordering put first.
@@ -101,11 +115,17 @@ test.describe("the finance board", () => {
     const revenue = balance
       .getByRole("row")
       .filter({ has: page.getByText("REV", { exact: true }) });
-    await expect(revenue).toContainText("JOD 45.000");
+    // **Both invoices' net, because revenue is earned when a document is issued and not when
+    // it is paid.** The fixture issues the 45.000 membership and a 26.000 personal-training
+    // invoice that is overdue and in recovery; CLEARING above carries only the first, because
+    // only the first was paid. Those two cells disagreeing is exactly the confusion MOD-017
+    // keeps apart -- "membership state, billing state and access state are related but never
+    // conflated" -- so asserting both is the point rather than an inconvenience.
+    await expect(revenue).toContainText("JOD 71.000");
     const tax = balance
       .getByRole("row")
       .filter({ has: page.getByText("TAX", { exact: true }) });
-    await expect(tax).toContainText("JOD 7.200");
+    await expect(tax).toContainText("JOD 11.360");
   });
 
   test("marks a retired account rather than letting it read as live", async ({ page }) => {

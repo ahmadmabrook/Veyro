@@ -26,7 +26,7 @@ What this file owns that the decision modules cannot:
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 from psycopg import Connection, errors
@@ -1762,3 +1762,79 @@ def sweep_replay_tokens(
             " RETURNING token_key",
             (moment, limit)).fetchall()
     return {"deleted": len(rows), "as_of": moment.isoformat()}
+
+
+def visits_on(
+    pool: Pool, tenant_id: str, *, on: date | None = None, compare_weeks: int = 4,
+) -> dict[str, Any]:
+    """Entries per location for one local day, against the same weekday recently.
+
+    ADM-CC-01's third metric: "VISITS TODAY · 218 · by 08:38 · usual for a Wednesday". The
+    comparison is the second half of that sentence and it is the reason this is a read rather
+    than a count -- 218 is a number, and "usual for a Wednesday" is what makes it meaningful.
+
+    **The day is local to each location, converted per location.** `acc_events.occurred_at` is
+    an instant and `locations.timezone` is the zone the club is in, so a tenant with clubs in
+    two zones has two todays and one `date_trunc` in the host's zone would be wrong for both.
+    That is MOD-019's first decision -- a rota window is read in its own zone -- and the
+    schedule board shipped the other version and rendered 15:00 for an 18:00 class.
+
+    **Entries, not decisions.** MOD-022 keeps those apart on purpose: a granted decision that
+    nobody walked through is not a visit, and the event is what happened. A visit count built
+    from decisions would count the turnstile's opinion rather than the member's arrival.
+
+    **The comparison is the same weekday, not the mean of recent days.** Gyms are weekly, so
+    comparing a Wednesday against a seven-day mean that includes Friday reports a story about
+    the week rather than about today. `compare_weeks` prior same-weekdays, and the response
+    says how many actually carried data -- a tenant four days old has no baseline and must not
+    be shown one.
+    """
+    on = on or datetime.now(UTC).date()
+    if compare_weeks < 1 or compare_weeks > 26:
+        raise InvalidRequest("bad_compare_weeks")
+    prior = [on - timedelta(days=7 * back) for back in range(1, compare_weeks + 1)]
+    with tenant_scope(pool, tenant_id) as conn:
+        rows = conn.execute(
+            "SELECT z.location_id, l.location_name, l.timezone,"
+            " count(*) FILTER (WHERE (e.occurred_at AT TIME ZONE l.timezone)::date = %s),"
+            " count(*) FILTER (WHERE (e.occurred_at AT TIME ZONE l.timezone)::date"
+            "                        = ANY(%s)),"
+            " count(DISTINCT (e.occurred_at AT TIME ZONE l.timezone)::date)"
+            "   FILTER (WHERE (e.occurred_at AT TIME ZONE l.timezone)::date = ANY(%s))"
+            " FROM plt01.acc_events e"
+            " JOIN plt01.acc_zones z ON z.zone_id = e.zone_id"
+            " JOIN plt01.locations l ON l.location_id = z.location_id"
+            " WHERE e.direction = 'entry'"
+            "   AND (e.occurred_at AT TIME ZONE l.timezone)::date = ANY(%s)"
+            " GROUP BY z.location_id, l.location_name, l.timezone"
+            " ORDER BY l.location_name, z.location_id",
+            (on, prior, prior, [on, *prior]),
+        ).fetchall()
+    locations: list[dict[str, Any]] = []
+    total = 0
+    for row in rows:
+        days_seen = int(row[5])
+        locations.append({
+            "location_id": str(row[0]), "location_name": str(row[1]),
+            "timezone": str(row[2]), "entries": int(row[3]),
+            # The mean over the days that actually carried entries, so a tenant with three
+            # weeks of history is compared against three rather than against four with a zero.
+            "usual_for_this_weekday": (
+                round(int(row[4]) / days_seen) if days_seen else None),
+            "weekdays_compared": days_seen,
+        })
+        total += int(row[3])
+    return {
+        "date": on.isoformat(), "weekday": on.strftime("%A"),
+        "compare_weeks": compare_weeks,
+        "entries": total,
+        "locations": locations,
+        "a_day_is_local_to_each_location":
+            "Each location's day is computed in its own timezone, so the total sums each "
+            "club's own local day rather than one instant range.",
+        "entries_are_events_not_decisions":
+            "An entry is a recorded acc_event. A granted decision nobody walked through is "
+            "not a visit.",
+        "no_baseline_is_not_zero":
+            "usual_for_this_weekday is null where no prior same-weekday carried entries.",
+    }

@@ -1595,6 +1595,42 @@ class AdvanceDunningBody(BaseModel):
     correlation_id: str
 
 
+class DisputeBody(BaseModel):
+    """A chargeback the scheme has opened, as reported by whoever read the notice.
+
+    **Bounded at the boundary**, because `NumericValueOutOfRange` is a `DataError` rather
+    than the `CheckViolation` the handlers catch -- MOD-011's, MOD-012's and MOD-013's
+    finding, and this is the fourth body to answer it. The amount is additionally compared
+    against the payment, which is the control a `le=` cannot express.
+
+    The billing account is **not** a field: it is derived from the payment, so a dispute
+    cannot be recorded against another payer's account.
+    """
+
+    payment_id: str
+    provider_case_ref: str = Field(min_length=1, max_length=200)
+    dispute_kind: str
+    reason_code: str = Field(min_length=1, max_length=63)
+    amount_minor: int = Field(ge=1, le=10**12)
+    currency: str = Field(min_length=3, max_length=3)
+    opened_on: date
+    respond_due_on: date
+    idempotency_key: str = Field(min_length=1, max_length=200)
+    correlation_id: str
+
+
+class DisputeResponseBody(BaseModel):
+    #: A locator for what was sent, never the evidence: the column is `write_once` and
+    #: un-erasable, which is where a member's medical note ends up if the field invites prose.
+    response_ref: str = Field(min_length=1, max_length=200)
+    correlation_id: str
+
+
+class DisputeOutcomeBody(BaseModel):
+    outcome: Literal["won", "lost", "withdrawn"]
+    correlation_id: str
+
+
 class ReconcileBody(BaseModel):
     """COM-03-R06. `provider_status` of null means the provider did not answer."""
 
@@ -3723,6 +3759,54 @@ def create_app(
                 "step_up_required": decided.step_up_required,
                 "required_aal": decided.required_aal, "reachable": decided.reachable,
                 "masked_fields": list(decided.masked_fields)}
+
+    @app.get("/authz/checks")
+    def check_actions(
+        tenant_id: TenantId, session: Session, correlation_id: str,
+        action: Annotated[list[str], Query()],
+        brand_id: str | None = None, location_id: str | None = None,
+    ) -> dict[str, Any]:
+        """The same question about several actions, in one request.
+
+        **A page asks the gate once per control, and a rich page has many.** The Command
+        Center asks about six reads and the shell asks about thirteen navigation entries, so
+        rendering it cost nineteen round trips -- each one a scope resolution and an
+        evaluation -- against `api.request`'s 600-a-minute per-identity budget. That budget
+        is noisy-neighbour protection and its own comment says "a limit that trips during
+        ordinary use is a limit somebody will raise to infinity rather than investigate";
+        raising it would have been exactly that. The browser suite tripped it first, which is
+        the cheap way to find out.
+
+        **The semantics are unchanged, deliberately.** This is the same `authz.check` per
+        action, with the same scope and the same assurance weighing -- not a permission list.
+        A client that fetched `effective_permissions` and decided for itself would be
+        MOD-014's "a grant is not a session" finding, where a permission held on a session too
+        weak for the action read as held.
+
+        The scope is resolved once rather than per action, which is the actual saving: it is a
+        database read and the answer is the same for every action in the batch.
+        """
+        if not action:
+            raise InvalidRequest("no_action")
+        if len(action) > 40:
+            raise InvalidRequest("too_many_actions")
+        scope = authz.resolve_scope(
+            tenant_pool, tenant_id,
+            brand_id=optional_uuid(brand_id, "brand_id"),
+            location_id=optional_uuid(location_id, "location_id"))
+        checks = []
+        for one in action:
+            decided = authz.check(
+                identity_pool, tenant_id, identity_id=session["identity_id"],
+                session_aal=session["aal"], action=one, correlation_id=correlation_id,
+                scope=scope, record_denial=False,
+            )
+            checks.append({
+                "action": one, "allowed": decided.allowed, "reason": decided.reason,
+                "step_up_required": decided.step_up_required,
+                "required_aal": decided.required_aal, "reachable": decided.reachable,
+                "masked_fields": list(decided.masked_fields)})
+        return {"checks": checks, "count": len(checks)}
 
     @app.post("/authz/approval-policies", status_code=201)
     def write_approval_policy(
@@ -6073,6 +6157,25 @@ def create_app(
             tenant_pool, tenant_id,
             person_id=optional_uuid(person_id, "person_id"), status=status, limit=limit)
 
+    # **Declared before `/memberships/{membership_id}`, and that is load-bearing.** FastAPI
+    # matches in declaration order, so a literal segment behind a path parameter is never
+    # reached: with this route below, `/memberships/summary` was matched by the one under it
+    # and answered 422 `bad_membership_id`. Found by the test, not by reading.
+    @app.get("/memberships/summary")
+    def read_membership_summary(
+        tenant_id: TenantId, session: Session, as_of: date | None = None,
+        expiring_within_days: int = 7,
+    ) -> dict[str, Any]:
+        """How many memberships are live, what moved this month, and what is about to expire.
+
+        ADM-CC-01's second metric and its RETENTION item. Behind the same permission as the
+        membership list, because it is a count over the rows that list returns.
+        """
+        permit(session, "membership.record.read")
+        return commercial.membership_summary(
+            tenant_pool, tenant_id, as_of=as_of,
+            expiring_within_days=expiring_within_days)
+
     @app.get("/memberships/{membership_id}")
     def get_membership(
         tenant_id: TenantId, session: Session, membership_id: str
@@ -6271,15 +6374,21 @@ def create_app(
     @app.get("/finance/invoices")
     def list_invoices(
         tenant_id: TenantId, session: Session, billing_account_id: str | None = None,
-        person_id: str | None = None, payment_status: str | None = None, limit: int = 50,
+        person_id: str | None = None, payment_status: str | None = None,
+        fiscal_status: str | None = None, limit: int = 50,
     ) -> dict[str, Any]:
-        """Issued documents with what has been paid against each. There is no draft state."""
+        """Issued documents with what has been paid against each. There is no draft state.
+
+        **The two statuses filter separately**, because they move independently: ADM-CC-01's
+        COMPLIANCE item is "three invoices were rejected by the tax authority", which is a
+        question about filing and not about money.
+        """
         permit(session, "finance.account.read")
         return commercial.list_invoices(
             tenant_pool, tenant_id,
             billing_account_id=optional_uuid(billing_account_id, "billing_account_id"),
             person_id=optional_uuid(person_id, "person_id"),
-            payment_status=payment_status, limit=limit)
+            payment_status=payment_status, fiscal_status=fiscal_status, limit=limit)
 
     @app.get("/finance/invoices/{invoice_id}")
     def read_invoice(
@@ -6397,6 +6506,41 @@ def create_app(
             actor_id=session["identity_id"], correlation_id=body.correlation_id,
         )
 
+    # ------------------------------------------------- ADM-CC-01's figures and its queue
+    #
+    # **Aggregates, because the lists are bounded.** `list_invoices` and `list_memberships`
+    # stop at 200 rows, so a surface that summed one would report the first page as the
+    # month. A balance with two definitions has two answers the day either moves, which is
+    # the finding MOD-018's till close shipped and `list_entitlement_grants` records.
+
+    @app.get("/finance/collections")
+    def read_collections(
+        tenant_id: TenantId, session: Session, as_of: date | None = None,
+        weeks: int = 12, week_start: int = 5,
+    ) -> dict[str, Any]:
+        """Collected this month against the same point last month, per currency.
+
+        ADM-CC-01's first metric and its twelve-week chart. `week_start` is a market token --
+        the component source says "Week starts Saturday -- a market setting, not a default" --
+        and no MOD-005 configuration key declares it yet, so the caller passes it.
+        """
+        permit(session, "finance.revenue.read")
+        return commercial.collections_summary(
+            tenant_pool, tenant_id, as_of=as_of, weeks=weeks, week_start=week_start)
+
+    @app.get("/finance/dunning-cases")
+    def read_dunning_cases(
+        tenant_id: TenantId, session: Session, status: str = "open", limit: int = 50,
+    ) -> dict[str, Any]:
+        """The recovery journeys, with what each is chasing and how far it has got.
+
+        The module's last writer with no reader: a case could be opened and advanced and
+        there was no way to see one.
+        """
+        permit(session, "finance.dunning.read")
+        return commercial.list_dunning_cases(
+            tenant_pool, tenant_id, status=status, limit=limit)
+
     @app.post("/finance/dunning-cases", status_code=201)
     def start_dunning(
         tenant_id: TenantId, session: Session, body: DunningBody
@@ -6419,6 +6563,59 @@ def create_app(
         return commercial.advance_dunning(
             tenant_pool, tenant_id, require_uuid(case_id, "case_id"),
             notification_ref=body.notification_ref,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.post("/finance/disputes", status_code=201)
+    def record_dispute(
+        tenant_id: TenantId, session: Session, body: DisputeBody
+    ) -> dict[str, Any]:
+        """A card dispute the scheme has opened. COM-03-R06.
+
+        **Recorded, not performed**, like every other provider-facing state in this module:
+        there is nothing here that speaks to a scheme, so the row is a named actor's
+        statement that a case exists, with the scheme's own reference on it. The amount, the
+        currency and the billing account are all checked against the payment rather than
+        taken from the body.
+        """
+        permit(session, "finance.dispute.manage", body.correlation_id)
+        return commercial.record_dispute(
+            tenant_pool, tenant_id,
+            payment_id=require_uuid(body.payment_id, "payment_id"),
+            provider_case_ref=body.provider_case_ref, dispute_kind=body.dispute_kind,
+            reason_code=body.reason_code, amount_minor=body.amount_minor,
+            currency=body.currency, opened_on=body.opened_on,
+            respond_due_on=body.respond_due_on,
+            idempotency_key=body.idempotency_key,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.post("/finance/disputes/{dispute_id}/respond")
+    def respond_to_dispute(
+        tenant_id: TenantId, session: Session, dispute_id: str, body: DisputeResponseBody
+    ) -> dict[str, Any]:
+        """Evidence has been sent to the scheme.
+
+        A response after the deadline is recorded rather than refused -- "we answered late"
+        is the fact a later argument turns on -- and `window_has_closed` comes back so
+        nothing can read it as timely.
+        """
+        permit(session, "finance.dispute.manage", body.correlation_id)
+        return commercial.respond_to_dispute(
+            tenant_pool, tenant_id, require_uuid(dispute_id, "dispute_id"),
+            response_ref=body.response_ref,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.post("/finance/disputes/{dispute_id}/settle")
+    def settle_dispute(
+        tenant_id: TenantId, session: Session, dispute_id: str, body: DisputeOutcomeBody
+    ) -> dict[str, Any]:
+        """The scheme's decision. `lost` is money gone and this module does not move it."""
+        permit(session, "finance.dispute.manage", body.correlation_id)
+        return commercial.settle_dispute(
+            tenant_pool, tenant_id, require_uuid(dispute_id, "dispute_id"),
+            outcome=body.outcome,
             actor_id=session["identity_id"], correlation_id=body.correlation_id,
         )
 
@@ -7048,6 +7245,22 @@ def create_app(
             location_id=require_uuid(location_id, "location_id"),
             from_date=from_date, to_date=to_date,
             include_cancelled=include_cancelled)
+
+    @app.get("/scheduling/unstaffed")
+    def read_unstaffed_sessions(
+        tenant_id: TenantId, session: Session, from_date: date | None = None,
+        days: int = 7,
+    ) -> dict[str, Any]:
+        """Scheduled sessions with no live coach, soonest first, and the places held.
+
+        ADM-CC-01's STAFFING item: "Spin 19:00 Thursday has no coach -- 18 members booked".
+        Tenant-wide, where `/scheduling/calendar` is per location, because the Command Center
+        is -- and a gap nobody has booked and a gap with eighteen members are the same gap
+        and a very different morning, so the held count comes back with it.
+        """
+        permit(session, "scheduling.schedule.read")
+        return scheduling.sessions_without_staff(
+            tenant_pool, tenant_id, from_date=from_date, days=days)
 
     @app.get("/scheduling/sessions/{session_id}")
     def read_schedule_session(
@@ -8201,6 +8414,20 @@ def create_app(
         """
         permit(session, "access.zone.read")
         return access.zone_occupancy(tenant_pool, tenant_id, require_uuid(zone_id, "zone_id"))
+
+    @app.get("/access/visits")
+    def read_visits(
+        tenant_id: TenantId, session: Session, on: date | None = None,
+        compare_weeks: int = 4,
+    ) -> dict[str, Any]:
+        """Entries per location for one local day, against the same weekday recently.
+
+        ADM-CC-01's third metric. Behind `access.zone.read` like the occupancy count beside
+        it: both are figures derived from events with nobody named in them.
+        """
+        permit(session, "access.zone.read")
+        return access.visits_on(
+            tenant_pool, tenant_id, on=on, compare_weeks=compare_weeks)
 
     @app.get("/access/decisions")
     def read_access_decisions(

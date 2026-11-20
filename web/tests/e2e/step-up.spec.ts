@@ -95,7 +95,7 @@ test.describe("the step-up surface", () => {
     // **And the reader is still signed in.** The old session is revoked only on success; a
     // refusal that cleared the cookie would lock somebody out for mistyping.
     await page.goto("/");
-    await expect(page.getByRole("heading", { name: "Veyro Admin" })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1 })).toContainText(/need(s)? you/);
   });
 
   test("an empty field is named rather than submitted", async ({ page }) => {
@@ -181,7 +181,10 @@ test.describe("completing a step-up", () => {
     await page.getByRole("button", { name: "Confirm" }).click();
     await page.waitForURL("/");
     // The landing page reads the level from `/auth/session`, so this is the server's answer.
-    await expect(page.getByText(/Assurance level/)).toContainText("2");
+    // The assurance is on `/account` now, beside the devices and sessions it is about --
+    // and it is rendered as what the level *means* rather than as a digit.
+    await page.goto("/account");
+    await expect(page.getByText(/Stepped up/)).toBeVisible();
   });
 
   test("sends the reader back to this app and never to another host", async ({ page }) => {

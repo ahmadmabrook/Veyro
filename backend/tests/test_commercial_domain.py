@@ -11,7 +11,7 @@ from __future__ import annotations
 import unittest
 from datetime import UTC, date, datetime
 
-from app.commercial import collections, entitlements, invoicing, lifecycle
+from app.commercial import collections, entitlements, invoicing, lifecycle, reporting
 
 NOW = datetime(2026, 6, 1, 12, 0, tzinfo=UTC)
 
@@ -675,6 +675,226 @@ class ReconciliationTests(unittest.TestCase):
             collections.reconcile(recorded_status="banana", provider_status="succeeded")
         with self.assertRaises(collections.CollectionsError):
             collections.reconcile(recorded_status="pending", provider_status="banana")
+
+
+class DaysLateTests(unittest.TestCase):
+    """ADM-PAY-03's header figure, which is the server's answer and not the reader's.
+
+    `INV-20418 UNPAID · 2 DAYS LATE`. A date is not an instant, so a client subtracting a due
+    date from its own clock answers differently in a different timezone for the same invoice.
+    """
+
+    def test_counts_the_days_past_due(self):
+        self.assertEqual(
+            invoicing.days_late(
+                due_on=date(2026, 8, 17), at=date(2026, 8, 19),
+                payment_status="unpaid"),
+            2)
+
+    def test_an_invoice_not_yet_due_is_none_rather_than_zero(self):
+        """Zero would state a lateness that is not there."""
+        self.assertIsNone(invoicing.days_late(
+            due_on=date(2026, 8, 31), at=date(2026, 8, 19), payment_status="unpaid"))
+
+    def test_due_today_is_none(self):
+        """The edge: today is the last day, so nothing is late yet."""
+        self.assertIsNone(invoicing.days_late(
+            due_on=date(2026, 8, 19), at=date(2026, 8, 19), payment_status="unpaid"))
+
+    def test_a_settled_invoice_has_no_lateness_however_late_it_was_paid(self):
+        """It was late once; it is not late now, and a header saying so would be wrong."""
+        for status in ("paid", "credited", "written_off"):
+            with self.subTest(status=status):
+                self.assertIsNone(invoicing.days_late(
+                    due_on=date(2026, 8, 17), at=date(2026, 12, 1),
+                    payment_status=status))
+
+    def test_an_overdue_invoice_still_counts(self):
+        self.assertEqual(
+            invoicing.days_late(
+                due_on=date(2026, 8, 17), at=date(2026, 8, 20),
+                payment_status="overdue"),
+            3)
+
+    def test_a_status_outside_the_domain_refuses(self):
+        with self.assertRaises(invoicing.InvoicingError):
+            invoicing.days_late(
+                due_on=date(2026, 8, 17), at=date(2026, 8, 19), payment_status="banana")
+
+
+class DisputeMachineTests(unittest.TestCase):
+    """The scheme's own state machine, for the table MOD-017 shipped with no writer."""
+
+    def test_a_dispute_may_be_answered_then_decided(self):
+        collections.check_dispute_transition("open", "responded")
+        collections.check_dispute_transition("responded", "won")
+
+    def test_a_dispute_may_be_decided_without_a_response(self):
+        """A missed deadline has to be recordable, and it is the outcome that most matters.
+
+        A machine that required `responded` first would make "we never answered and lost"
+        unwritable, which is the one fact a tenant needs on the record.
+        """
+        for outcome in ("won", "lost", "withdrawn"):
+            with self.subTest(outcome=outcome):
+                collections.check_dispute_transition("open", outcome)
+
+    def test_a_decided_dispute_is_terminal(self):
+        for closed in ("won", "lost", "withdrawn"):
+            with self.subTest(closed=closed):
+                with self.assertRaises(collections.DisputeError):
+                    collections.check_dispute_transition(closed, "responded")
+
+    def test_responding_twice_is_not_a_transition(self):
+        with self.assertRaises(collections.DisputeError):
+            collections.check_dispute_transition("responded", "responded")
+
+    def test_a_status_outside_the_domain_refuses_on_either_side(self):
+        with self.assertRaises(collections.DisputeError):
+            collections.check_dispute_transition("banana", "won")
+        with self.assertRaises(collections.DisputeError):
+            collections.check_dispute_transition("open", "banana")
+
+    def test_the_machine_and_the_schema_agree_on_the_statuses(self):
+        """`fin_disputes_status` is the authority and this tuple is read beside it."""
+        self.assertEqual(
+            sorted(collections.DISPUTE_STATUSES),
+            ["lost", "open", "responded", "withdrawn", "won"])
+        self.assertEqual(
+            sorted(collections.DISPUTE_OUTCOMES), ["lost", "withdrawn", "won"])
+
+
+class EvidenceWindowTests(unittest.TestCase):
+    """ADM-PAY-03's disputed state is an evidence-deadline banner, and this is the deadline."""
+
+    def test_reports_what_is_left_and_what_was_given(self):
+        window = collections.evidence_window(
+            opened_on=date(2026, 8, 17), respond_due_on=date(2026, 8, 31),
+            at=date(2026, 8, 28))
+        self.assertEqual(window["days_remaining"], 3)
+        self.assertEqual(window["days_given"], 14)
+        self.assertIs(window["window_has_closed"], False)
+
+    def test_a_passed_deadline_goes_negative_rather_than_clamping(self):
+        """Zero would say the deadline is today, which is a different and wrong sentence."""
+        window = collections.evidence_window(
+            opened_on=date(2026, 8, 17), respond_due_on=date(2026, 8, 31),
+            at=date(2026, 9, 3))
+        self.assertEqual(window["days_remaining"], -3)
+        self.assertIs(window["window_has_closed"], True)
+
+    def test_the_last_day_has_not_closed(self):
+        window = collections.evidence_window(
+            opened_on=date(2026, 8, 17), respond_due_on=date(2026, 8, 31),
+            at=date(2026, 8, 31))
+        self.assertEqual(window["days_remaining"], 0)
+        self.assertIs(window["window_has_closed"], False)
+
+    def test_a_deadline_before_the_opening_refuses(self):
+        with self.assertRaises(collections.DisputeError):
+            collections.evidence_window(
+                opened_on=date(2026, 8, 17), respond_due_on=date(2026, 8, 1),
+                at=date(2026, 8, 18))
+
+
+class ReportingWindowTests(unittest.TestCase):
+    """ADM-CC-01's "vs July · pace to 63.1k", which is three statements and not one sum."""
+
+    def test_month_to_date_is_the_first_through_today(self):
+        span = reporting.month_to_date(date(2026, 8, 19))
+        self.assertEqual((span.first, span.last), (date(2026, 8, 1), date(2026, 8, 19)))
+        self.assertEqual(span.days, 19)
+
+    def test_the_comparison_is_the_same_point_in_the_previous_month(self):
+        """The design's own figure: "41,280 against 44,770 ... the same point in July".
+
+        Nineteen days against thirty-one would report a collapse on the 19th of every month,
+        which is MOD-011's `evaluate_budget` finding with the bound on the other side.
+        """
+        span = reporting.comparable_previous_month(date(2026, 8, 19))
+        self.assertEqual((span.first, span.last), (date(2026, 7, 1), date(2026, 7, 19)))
+        self.assertEqual(span.days, 19)
+
+    def test_the_comparison_clamps_to_a_shorter_previous_month(self):
+        """31 March has no counterpart in February, so the span is three days shorter.
+
+        The alternative -- the whole of February against 31 days of March -- is the
+        one-sided comparison this module exists to avoid, in the other direction.
+        """
+        span = reporting.comparable_previous_month(date(2026, 3, 31))
+        self.assertEqual((span.first, span.last), (date(2026, 2, 1), date(2026, 2, 28)))
+        self.assertEqual(span.days, 28)
+
+    def test_the_comparison_crosses_a_year(self):
+        span = reporting.comparable_previous_month(date(2026, 1, 15))
+        self.assertEqual((span.first, span.last), (date(2025, 12, 1), date(2025, 12, 15)))
+
+    def test_a_leap_february_is_the_clamp_target_too(self):
+        span = reporting.comparable_previous_month(date(2024, 3, 30))
+        self.assertEqual(span.last, date(2024, 2, 29))
+
+    def test_change_is_basis_points_and_no_baseline_is_not_zero(self):
+        """`0` would read as "unchanged", which is the confident wrong answer.
+
+        The first figure is the design's own pair -- 41,280 against 44,770 -- and -780 basis
+        points is the "↓ 7.8%" it renders beside them.
+        """
+        self.assertEqual(reporting.change_bp(41_280_00, 44_770_00), -780)
+        self.assertEqual(reporting.change_bp(100, 50), 10_000)
+        self.assertIsNone(reporting.change_bp(5_000, 0))
+
+    def test_pace_projects_the_month_from_the_part_that_happened(self):
+        """19 days of 41,280 over a 31-day month, straight-line.
+
+        **The design states no basis for its own figure** -- it renders "pace to 63.1k" from
+        41,280 at the 19th, which a straight-line projection does not produce (67,348 does).
+        No document in the folder gives a formula, so the method here is straight-line and
+        the response names it; the discrepancy is recorded as an unresolved requirement
+        rather than reverse-engineered from one illustrative number.
+        """
+        paced = reporting.pace(4_128_000, date(2026, 8, 19))
+        self.assertEqual(paced, 6_735_158)  # 4_128_000 * 31 / 19, half away from zero
+
+    def test_pace_on_the_last_day_of_the_month_is_what_was_collected(self):
+        """Nothing is left to project, so a projection that moved the figure would be wrong."""
+        self.assertEqual(reporting.pace(4_128_000, date(2026, 8, 31)), 4_128_000)
+
+    def test_week_buckets_end_with_the_one_containing_as_of(self):
+        """Saturday start, because the component source calls it a market token."""
+        weeks = reporting.week_buckets(date(2026, 8, 19), 3)
+        self.assertEqual(len(weeks), 3)
+        # 19 August 2026 is a Wednesday; its Saturday-start week began on the 15th.
+        self.assertEqual(weeks[-1].first, date(2026, 8, 15))
+        self.assertEqual(weeks[-1].last, date(2026, 8, 21))
+        self.assertEqual(weeks[0].first, date(2026, 8, 1))
+        for span in weeks:
+            self.assertEqual(span.days, 7)
+
+    def test_the_week_start_is_a_parameter_and_moves_the_buckets(self):
+        monday = reporting.week_buckets(date(2026, 8, 19), 1, week_start=0)
+        self.assertEqual(monday[-1].first, date(2026, 8, 17))
+
+    def test_only_the_bucket_containing_as_of_is_partial(self):
+        """The design: the last bar is a partial week, marked and not extrapolated."""
+        as_of = date(2026, 8, 19)
+        weeks = reporting.week_buckets(as_of, 4)
+        partials = [reporting.is_partial(span, as_of) for span in weeks]
+        self.assertEqual(partials, [False, False, False, True])
+
+    def test_a_week_that_ended_on_as_of_is_not_partial(self):
+        """A Friday is the last day of a Saturday-start week, so nothing is outstanding."""
+        as_of = date(2026, 8, 21)
+        weeks = reporting.week_buckets(as_of, 1)
+        self.assertEqual(weeks[0].last, as_of)
+        self.assertFalse(reporting.is_partial(weeks[0], as_of))
+
+    def test_the_bucket_count_and_the_week_start_are_bounded(self):
+        with self.assertRaises(ValueError):
+            reporting.week_buckets(date(2026, 8, 19), 0)
+        with self.assertRaises(ValueError):
+            reporting.week_buckets(date(2026, 8, 19), reporting.MAX_WEEKS + 1)
+        with self.assertRaises(ValueError):
+            reporting.week_buckets(date(2026, 8, 19), 4, week_start=7)
 
 
 if __name__ == "__main__":

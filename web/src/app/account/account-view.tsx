@@ -15,6 +15,7 @@ import {
 } from "@/lib/account";
 import type { AuthEvent, DeviceFact, SessionFact } from "@/lib/account";
 
+import { signOut } from "@/app/actions";
 import { issueRecoveryCodes, revokeDevice, revokeSession, trustDevice } from "./actions";
 import { IDLE, type AccountState } from "./state";
 
@@ -98,6 +99,15 @@ export function AccountView({
             </div>
           </dd>
         </dl>
+        {/* **Sign out lives here, which is where §21 puts it.** The global chrome is a scope
+            switcher, a command palette, tasks, alerts and *account*, and ending a session is
+            account chrome rather than a page of its own. It sat on the overview while that
+            page was a session diagnostic; when the Command Center replaced it the control
+            went with it, and for a few minutes this app had no way to sign out at all.
+            Found by trying to use it. */}
+        <form action={signOut}>
+          <Button type="submit" variant="secondary" label={text("nav.signOut")} />
+        </form>
       </section>
 
       <section className="page-section">

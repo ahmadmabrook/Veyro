@@ -320,9 +320,10 @@ exist are listed here as `implemented, functionally tested` and **not** design-c
 
 | Screen | Route | State |
 | --- | --- | --- |
+| **Command Center (ADM-CC-01…05)** | `/` | implemented, functionally tested, **spec verified in part** — see below |
 | Sign-in | `/login` | implemented, functionally tested |
 | Step-up | `/step-up` | implemented, functionally tested |
-| Account | `/account` | implemented, functionally tested |
+| Account | `/account` | implemented, functionally tested. Now also the home of the session facts the old landing page printed, and of Sign out — §21 puts it in the account chrome |
 | Members (ADM-MEM-05) | `/members` | implemented, functionally tested, **spec verified in part** — 4 of 7 columns, the two-number footer, Compact density; the search, quick filters, saved views, bulk bar and export are named as blocked with the product's reason |
 | Overview | `/` | implemented, functionally tested |
 | Organization | `/organization` | implemented, functionally tested |
@@ -343,6 +344,117 @@ exist are listed here as `implemented, functionally tested` and **not** design-c
 | Device detail | `/fleet/{id}` | implemented, functionally tested |
 | Operations | `/operations` | implemented, functionally tested |
 
+## ADM-CC-01…05 — the Command Center
+
+**The owner directive names this screen by example**, and it was right: `/` rendered the
+caller's identity uuid, their assurance level and a six-row table of gate answers — a
+developer's view of the authorization layer, at the product's front door, where the design
+puts the screen a club owner opens at 08:40.
+
+The diagnostic was not deleted, it moved. The gate table is on `/permissions`, beside the
+roles it disagrees with and the audit chain it is about — and it earns its place there,
+because `simulate` answers from role assignments while the gate weighs assurance too, which
+is MOD-014's "a grant is not a session" made visible. The session's identity, assurance,
+factors and expiry were already on `/account`; the landing page was duplicating them.
+
+| The design | Here | State |
+| --- | --- | --- |
+| Collected MTD, vs the same point last month, with a pace | `GET /finance/collections` | built |
+| Active members, net this month, joined and left | `GET /memberships/summary` | built |
+| Visits today, against the usual for this weekday | `GET /access/visits` | built |
+| Lead conversion · 30d | — | **blocked**: no CRM module. `freshness: unavailable`, with the reason |
+| MONEY · payments in recovery | `GET /finance/dunning-cases` | built |
+| COMPLIANCE · invoices the tax authority rejected | `GET /finance/invoices?fiscal_status=rejected` | built |
+| RETENTION · memberships expiring, with renewal value | the membership summary | built |
+| STAFFING · classes with no coach, and the places held | `GET /scheduling/unstaffed` | built |
+| LEADS · uncontacted leads | — | **blocked**: same module |
+| The interpretation panel | — | **withheld**, with the true reason |
+| Collections by week, the partial week marked | the collections read | built |
+| Collections **by location** | by legal entity | **blocked**: the money chain carries no location |
+| The queue's primary actions | — | **blocked**: each is a stepped-up financial write with no form |
+| Period toggle, resolved-today drawer, keyboard queue, 30s undo | — | **blocked**: interactions; this surface renders on the server |
+| Scope switcher | — | **blocked**: every `permit` call in this build is tenant-wide |
+
+**Six new backend reads, each in the module that owns the answer and behind its own
+permission.** Not one composed endpoint: paragraph 1300 bars a cross-domain join, not a
+surface that asks each module its own question, which is the call ADM-MEM-05 already made.
+They are aggregates rather than list reads because the lists are bounded at 200 rows, and a
+client that summed one would report the first page as the month.
+
+**Two new permissions, and one of them is a product boundary the design states.** ADM-CC-02:
+"What Ziad does not see: group revenue, cross-location comparison, the JoFotara queue, and the
+payment-recovery workflow itself" — and "the rail is generated from his role rather than
+greyed". So `finance.revenue.read` separates a club manager from the portfolio by **grant**,
+not by step-up: an owner opens this page every morning and a second factor every morning
+means nobody looks. `finance.dunning.read` is the read half of a journey whose writes stay
+financial.
+
+**Three components, each filed in the design rather than invented.** `MetricCell` with
+`DS-CL-01`'s `freshness: live | stale | unavailable`; `AttentionRow` to §38's contract — an
+`article` labelled by its headline, severity as edge-mark *and* category *and* wording, the
+amount at the logical end, actions stacking below bp.sm; and `AITreatment`, whose border is
+`color.semantic.ai` because G7 and `DS-CL-02` put that hue outside `brand.accent`: "A tenant
+brand on an AI panel would make inference look like a first-party assertion."
+
+**The `unavailable` freshness is the variant this build needed most**, and the design could
+not have anticipated why: there is no lead in this product, so the fourth metric renders prose
+where a figure goes. A zero or an em-dash would both read as a measurement.
+
+### What looking at the page found
+
+Nine defects, none of which an assertion about a label would have caught:
+
+1. **`heading()` chose the right key and the JSX threw it away.** A session that could see
+   three of the four feeds read "Nothing needs you right now" above a paragraph saying the
+   opposite. "Nothing needs you" is a statement about the club; a page that cannot see a
+   category cannot make it.
+2. **"1 payments are in recovery."** The catalogue had no plural forms at all. It has CLDR
+   categories now, mirroring `backend/app/l10n/messages.py`, with a cross-runtime parity test
+   — and Arabic's six categories are the reason it is not an `n === 1` check: "2 أمور" wants
+   the dual.
+3. **An empty "Needs you now" heading with nothing under it**, which reads as a panel that
+   failed to load. Canvas 4 has no such block: the quiet day is a heading, a sentence and the
+   figures.
+4. **"0 places are held across them"** — a sentence with nothing in it. The empty case has its
+   own body now.
+5. **ISO dates on a 12-bar axis**, wrapping onto two lines in the narrowest column on the page.
+6. **`+0 0 joined, 0 left`**, with no separator.
+7. **The app had no sign-out.** It was on the old landing page and went with it. §21 puts it
+   in the account chrome, which is where it is now. Found by trying to use the app.
+8. **The RETENTION and COMPLIANCE rows were unreachable in the fixture**, so every assertion
+   about them would have passed vacuously — the "a fixture carries both members of the pair"
+   rule, for the fifth time. The fixture now seeds all four queue classes.
+9. **A fiscalize call never inserted**, because a second `str.replace` consumed the first's
+   anchor. The queue looked right and one row was missing.
+
+### And two findings larger than this screen
+
+**`/authz/checks`.** The shell asks the gate about thirteen navigation entries and this page
+about six reads, so rendering `/` cost nineteen round trips — each a scope resolution and an
+evaluation — against MOD-011's 600-a-minute per-identity budget. The browser suite tripped it
+and roughly seven tests failed per run, a different seven each time, each passing in
+isolation. The batch runs the same `authz.check` per action with the same scope and the same
+assurance weighing; it is **not** a permission list, because a client deciding from
+`effective_permissions` is MOD-014's finding.
+
+**The harness was loading the heaviest page in the app before every test.** `adopt()` landed
+on `/` for a historical reason, which was free while `/` was a session diagnostic and is not
+now. It lands on `/account`. The limiter was never at fault: 600 a minute is eighty-five
+Command Center loads, which no person reaches.
+
+### Still open on this screen
+
+- The queue summarises each class as **one row**, where the design shows one row per
+  condition. Nine items on a busy morning is the design's scale; a row per failed payment
+  would be a list, and "9 open · 2 critical" would stop meaning anything. Revisit when the
+  queue has a resolution workflow (ADM-CC-06) to hang per-item state on.
+- **No `resolved today` drawer, no lower-priority collapse, no period toggle**, and the
+  keyboard contract (`↑↓`, `⏎`, `S`, the 30-second undo, the "3 new" pill) is unbuilt. All
+  are interactions on a server-rendered surface.
+- **`pace` uses a basis the design does not state.** It renders "pace to 63.1k" against
+  41,280 at the 19th of a 31-day month; straight-line gives 67,348. The method implemented is
+  straight-line and the response names it, rather than reverse-engineering one illustration.
+
 ## Unresolved design requirements
 
 Recorded rather than invented, per §7 of the directive. Nothing here is a licence to improvise;
@@ -354,5 +466,6 @@ each is a question for the design source or its author.
 | `color.surface.raised` is a composite | Foundations | `warm.0 + e1` — a primitive plus an elevation, which the generator reports rather than resolving to a hex. |
 | Icon manifest | §59, `CROSS` → RTL layout | "Mirroring is per-element, from the icon manifest." No icon manifest is present in the design folder. |
 | Per-family state matrix beyond the 17 rows | §69 | The matrix names 17 rows for 37 families; several families are grouped (`Select · Combobox`, `Modal · Drawer · Sheet`). Grouped rows are applied to each member. |
+| **JOD renders with three decimals everywhere, and the design says two** | `Veyro DS Domain Components`, MoneyValue | "Always three-letter code plus two decimals… JOD is three decimals in banking and two in retail — Veyro is a retail product and shows two everywhere, including exports, so a reconciliation never has to guess which convention a column used." `CURRENCY_MINOR_UNITS` is the ISO 4217 *storage* exponent (fils, 3) and is correct; the **display** convention is a separate decision this build has never made, so every money figure on every screen reads `JOD 52.200` where the design reads `JOD 52.20`. Found by reading the component source. **Not fixed here**: it changes every money figure in the app and in the cross-runtime parity suite, the rounding of the third digit is not stated anywhere, and MOD-015's own rule is that a second rounding rule is a pair of numbers that disagree on a receipt. It is the next change. |
 | Screen-level layout detail | `V1 Batch *` | The batch files specify each screen in prose (pattern, intent, content rules) rather than measured layout. Compliance is against the stated pattern and its component contracts. |
 | Density "type step" across registers | `DENSITY`, `TYPE_SCALE` | The scale is not one ladder — headings, body, label, caption, data and eyebrow are separate registers — so "+1 step" has exactly one unambiguous reading, the body ramp. Spacious is "+2 steps" and that ramp has one step above `type.body`; the scale's own usage note assigns `type.bodyLg` to "Member app body, coach prose", which is the surface LAYOUTS puts at Spacious, so the generator clamps to the top of the ramp. **An interpretation, not a value read off the page.** |

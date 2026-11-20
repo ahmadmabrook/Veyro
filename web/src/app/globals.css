@@ -991,3 +991,293 @@ a {
   color: var(--color-text-primary);
   border-color: var(--color-border-strong);
 }
+
+/* --- The Command Center: MetricCell, AttentionRow, AITreatment -------------
+ *
+ * ADM-CC-01..05. Every length here is a generated token, and the three breakpoint literals
+ * are the ones `tests/unit/shell-tokens.test.mjs` compares against `--bp-*` so a media query
+ * -- which cannot read a custom property -- cannot drift from the scale.
+ */
+
+/* The metric row. Four at bp.lg, 2x2 at bp.md, one scrolling row at bp.sm.
+ *
+ * The horizontal scroll at the narrowest width is the design's single exception to its own
+ * rule and it states the reason: "the one place horizontal scroll is right, because they are
+ * peers with no comparison axis". Everywhere else in this build a sideways-scrolling data
+ * region is the defect DataGrid's column priority exists to remove.
+ */
+.ds-metric-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+
+@media (max-width: 1199px) {
+  .ds-metric-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 599px) {
+  .ds-metric-row {
+    grid-auto-flow: column;
+    grid-auto-columns: 72%;
+    grid-template-columns: none;
+    overflow-x: auto;
+    /* The gutter, so the last card does not sit against the screen edge. */
+    padding-inline-end: var(--space-4);
+    scroll-snap-type: inline mandatory;
+  }
+
+  .ds-metric {
+    scroll-snap-align: start;
+  }
+}
+
+.ds-metric {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-inline-size: 0;
+}
+
+.ds-metric-label {
+  font-size: var(--type-eyebrow-size);
+  line-height: var(--type-eyebrow-line);
+  font-weight: var(--type-eyebrow-weight);
+  letter-spacing: var(--type-eyebrow-tracking);
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+}
+
+.ds-metric-value {
+  font-size: var(--type-h2-size);
+  line-height: var(--type-h2-line);
+  font-weight: var(--type-h2-weight);
+  letter-spacing: var(--type-h2-tracking);
+  color: var(--color-text-primary);
+}
+
+/* DS-CL-01: "Stale demotes the value from text.primary to text.secondary and replaces the
+ * comparison line with a timestamp in warning." No new token -- existing semantic tokens in
+ * a new arrangement, which is what made it a missing variant rather than a defect. */
+.ds-metric[data-freshness="stale"] .ds-metric-value {
+  color: var(--color-text-secondary);
+}
+
+.ds-metric-provenance {
+  font-size: var(--type-caption-size);
+  line-height: var(--type-caption-line);
+  color: var(--color-semantic-warning);
+}
+
+.ds-metric-comparison,
+.ds-metric-unavailable {
+  margin: 0;
+  font-size: var(--type-caption-size);
+  line-height: var(--type-caption-line);
+  color: var(--color-text-secondary);
+}
+
+/* The unavailable state carries prose where a figure would be, so it needs the room a figure
+ * had -- otherwise the row's four cells stop being the same height and the eye reads the
+ * short one as the broken one. */
+.ds-metric-unavailable {
+  text-wrap: pretty;
+}
+
+/* --- The attention queue -------------------------------------------------
+ *
+ * §38's contract: "Each row is an article with the headline as its label; the queue is a list
+ * with a live count. Severity is edge-mark and category chip and wording -- never the bar
+ * alone. RTL: edge-mark moves to the logical start, amount to the logical end. Below bp.sm
+ * the action row stacks and the primary becomes full-width."
+ */
+.ds-queue {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.ds-queue-counts {
+  margin: 0;
+  font-size: var(--type-caption-size);
+  line-height: var(--type-caption-line);
+  color: var(--color-text-secondary);
+}
+
+/* The edge-mark is an inline style from `edgeMark()`, the same function the grid uses, so the
+ * padding has to leave room for it on the logical start edge. */
+.ds-attention {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-surface-default);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-card);
+}
+
+.ds-attention-eyebrow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-size: var(--type-caption-size);
+  line-height: var(--type-caption-line);
+}
+
+.ds-attention-category {
+  font-size: var(--type-eyebrow-size);
+  font-weight: var(--type-eyebrow-weight);
+  letter-spacing: var(--type-eyebrow-tracking);
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+}
+
+/* "Amount to the logical end", which mirrors on its own under `dir="rtl"`. */
+.ds-attention-money {
+  margin-inline-start: auto;
+}
+
+.ds-attention-headline {
+  margin: 0;
+  font-size: var(--type-h3-size);
+  line-height: var(--type-h3-line);
+  font-weight: var(--type-h3-weight);
+  letter-spacing: var(--type-h3-tracking);
+}
+
+.ds-attention-evidence {
+  margin: 0;
+  color: var(--color-text-secondary);
+  text-wrap: pretty;
+  max-width: 72ch;
+}
+
+.ds-attention-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.ds-attention-owner {
+  margin: 0;
+  font-size: var(--type-caption-size);
+  line-height: var(--type-caption-line);
+}
+
+@media (max-width: 599px) {
+  /* "Below bp.sm the action row stacks and the primary becomes full-width." */
+  .ds-attention-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .ds-attention-money {
+    margin-inline-start: 0;
+  }
+}
+
+/* --- The AI panel --------------------------------------------------------
+ *
+ * G7 and DS-CL-02: `color.semantic.ai` is system-owned in both themes and is not in scope for
+ * `brand.accent`. "A tenant brand on an AI panel would make inference look like a first-party
+ * assertion; Veyro is accountable for what its AI says, so Veyro owns the colour it says it
+ * in." So nothing in this block reads `--color-action-*`.
+ */
+.ds-ai {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border: 1px solid var(--color-semantic-ai-border);
+  border-radius: var(--radius-card);
+  background: var(--color-semantic-ai-wash);
+}
+
+.ds-ai-eyebrow {
+  margin: 0;
+  font-size: var(--type-eyebrow-size);
+  line-height: var(--type-eyebrow-line);
+  font-weight: var(--type-eyebrow-weight);
+  letter-spacing: var(--type-eyebrow-tracking);
+  text-transform: uppercase;
+  color: var(--color-semantic-ai);
+}
+
+.ds-ai-body {
+  color: var(--color-text-primary);
+  text-wrap: pretty;
+  max-width: 72ch;
+}
+
+.ds-ai-body > p {
+  margin: 0;
+}
+
+/* --- The collections chart ------------------------------------------------
+ *
+ * "Three consecutive weeks below the 12-week average. The last bar is a partial week and is
+ * marked, not extrapolated." The bars are a list of rows rather than an SVG, because at
+ * bp.xs the design drops a 12-bar comparison to "a sparkline plus the stated conclusion in
+ * words, since a 12-bar comparison at 360px is decoration" -- and a row list degrades to
+ * that honestly, where an SVG would need a second implementation.
+ */
+.ds-bars {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.ds-bar {
+  display: grid;
+  grid-template-columns: 11ch minmax(0, 1fr) 12ch;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--type-caption-size);
+  line-height: var(--type-caption-line);
+}
+
+.ds-bar-track {
+  block-size: var(--space-3);
+  background: var(--color-surface-sunken);
+  border-radius: var(--radius-input);
+  overflow: hidden;
+}
+
+.ds-bar-fill {
+  block-size: 100%;
+  background: var(--color-text-secondary);
+}
+
+/* A partial bucket is marked rather than scaled up. The hatch is a pattern and not only a
+ * colour, because "marked" has to survive a monochrome print and a colour-blind reader. */
+.ds-bar[data-partial="true"] .ds-bar-fill {
+  background: repeating-linear-gradient(
+    135deg,
+    var(--color-text-secondary) 0 var(--space-1),
+    transparent var(--space-1) var(--space-2)
+  );
+}
+
+.ds-bar-amount {
+  text-align: end;
+}
+
+@media (max-width: 599px) {
+  .ds-bar {
+    grid-template-columns: 9ch minmax(0, 1fr);
+  }
+
+  .ds-bar-amount {
+    grid-column: 2;
+    text-align: start;
+  }
+}

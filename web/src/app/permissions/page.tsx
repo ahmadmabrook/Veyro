@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { Banner } from "@/components/ds/banner";
 import { DataGrid } from "@/components/ds/data-grid";
 import { formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
-import { ApiError, currentSession, gate } from "@/lib/api";
+import { ApiError, currentSession, gate, type GateAnswer } from "@/lib/api";
 import {
   byDomain,
   listRoles,
@@ -63,6 +63,26 @@ export default async function PermissionsPage() {
     }
   }
 
+  // **The gate's own answers, which the permission list above cannot give.** `simulate`
+  // reads role assignments, and MOD-014's finding is that a grant is not a session: a
+  // permission held at an assurance the action refuses is not a permission the action will
+  // accept. So this asks `GET /authz/check`, which asks authorization and assurance together,
+  // and renders the three answers as three different facts.
+  //
+  // **It used to be the product's front door.** `/` printed this table, the caller's identity
+  // uuid and their assurance level, where the design puts the Command Center -- the mismatch
+  // the owner directive names by example. It is diagnostic, it is about MOD-008, and this is
+  // the page about MOD-008, so it lives here beside the roles and the log.
+  const probes = [
+    "people.person.read",
+    "booking.booking.write",
+    "access.decision.evaluate",
+    "devices.command.unlock",
+    "finance.ledger.read",
+    "support.session.start",
+  ] as const;
+  const answers = await Promise.all(probes.map((action) => gate(action)));
+
   let audit: AuditEntry[] = [];
   let verdict: ChainVerdict | null = null;
   let auditFailed: MessageKey | null = null;
@@ -100,6 +120,34 @@ export default async function PermissionsPage() {
             <PermissionList permissions={mine.permissions} locale={locale} />
           </>
         )}
+      </section>
+
+      <section className="page-section" aria-labelledby="gate-heading">
+        <h2 id="gate-heading" style={{ margin: 0 }}>{text("perms.gateTitle")}</h2>
+        <p className="muted" style={{ margin: 0 }}>{text("perms.gateLead")}</p>
+        <DataGrid
+          caption={text("perms.gateTitle")}
+          labelledBy="gate-heading"
+          rows={answers}
+          rowKey={(answer) => answer.action}
+          columns={[
+            {
+              header: text("home.action"),
+              kind: "text",
+              priority: 1,
+              // A permission name is a Latin identifier that may sit inside an RTL
+              // paragraph, so it is isolated rather than left to the bidi algorithm, which
+              // would move the dots.
+              render: (answer) => <span className="data" dir="ltr">{answer.action}</span>,
+            },
+            {
+              header: text("home.gate"),
+              kind: "status",
+              priority: 1,
+              render: (answer) => text(describeGate(answer)),
+            },
+          ]}
+        />
       </section>
 
       <section className="page-section">
@@ -256,5 +304,17 @@ function failure(error: unknown): MessageKey {
     : "error.unexpected";
 }
 
-
-
+/**
+ * Four answers, four messages -- and the order matters.
+ *
+ * `reachable: false` is checked before `step_up_required`, because the gate sets both for an
+ * AAL-3 action: it is true that a stronger sign-in is required and false that one is
+ * available. Reading them the other way round would offer a step-up that can never succeed,
+ * and `support.session.start` -- in the probe list above -- is exactly that case.
+ */
+function describeGate(answer: GateAnswer): MessageKey {
+  if (answer.allowed) return "gate.allowed";
+  if (!answer.reachable) return "gate.unreachable";
+  if (answer.step_up_required) return "gate.stepUp";
+  return "gate.denied";
+}

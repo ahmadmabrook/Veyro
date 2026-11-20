@@ -24,6 +24,10 @@ function verdictFor(page: Page, action: string) {
 test.describe("gate-driven rendering", () => {
   test.beforeEach(async ({ page }) => {
     await useOwnerSession(page);
+    // **The gate table is on `/permissions` now.** It was the landing page while `/` was a
+    // session diagnostic; the Command Center replaced that, and the table moved to the page
+    // about MOD-008 -- beside the roles it disagrees with, which is the point of it.
+    await page.goto("/permissions");
   });
 
   test("an allowed action reads as allowed", async ({ page }) => {
@@ -43,6 +47,7 @@ test.describe("gate-driven rendering", () => {
     // would be a coin flip. What must hold is the *relationship*, which is MOD-014's rule
     // that a grant is not a session.
     const aal = await assuranceLevel(page);
+    await page.goto("/permissions");
     await expect(verdictFor(page, "devices.command.unlock")).toHaveText(
       aal >= 2 ? "Allowed" : "Needs a stronger sign-in",
     );
@@ -64,11 +69,14 @@ test.describe("gate-driven rendering", () => {
   test("the permissions table has an accessible name and is not captioned twice", async ({
     page,
   }) => {
-    const table = page.getByRole("table");
-    await expect(table).toHaveAccessibleName("What this session may do");
+    // **The gate table, not "a table".** `/permissions` carries three of them now -- the
+    // roles, the gate's own answers and the audit log -- so a bare `getByRole("table")`
+    // resolves to several. Naming the one under test is what makes the assertion about it.
+    const table = page.getByRole("table", { name: "What the gate says, action by action" });
+    await expect(table).toHaveAccessibleName("What the gate says, action by action");
     // The heading said it and the caption repeated it, so a screen-reader user heard the
     // sentence twice. `aria-labelledby` gives the table a name without the duplication.
-    await expect(page.getByText("What this session may do")).toHaveCount(1);
+    await expect(page.getByText("What the gate says, action by action")).toHaveCount(1);
   });
 
   test("a permission name renders left-to-right even inside an Arabic document", async ({
@@ -77,7 +85,11 @@ test.describe("gate-driven rendering", () => {
     await page.getByRole("button", { name: "العربية" }).click();
     await expect(page.locator("html")).toHaveAttribute("dir", "rtl");
 
-    const action = page.getByText("people.person.read");
+    // Scoped to the gate table: the permission list above it names the same actions, so an
+    // unscoped text locator resolves to four nodes.
+    const action = page
+      .getByRole("table", { name: /What the gate says|ما تقوله البوابة/ })
+      .getByText("people.person.read");
     await expect(action).toBeVisible();
     // Without an explicit direction the bidi algorithm reorders a dotted identifier inside RTL
     // text, which is how `people.person.read` arrives on screen as something else.

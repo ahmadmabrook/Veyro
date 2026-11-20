@@ -13,6 +13,7 @@ import {
   formatMoney as rawFormatMoney,
   isolate as rawIsolate,
   parseLocale,
+  pluralCategory,
 } from "./conventions.mjs";
 
 export type Locale = "ar" | "en";
@@ -80,7 +81,7 @@ const MESSAGES = {
     "app.name": "Veyro",
     "app.skipToContent": "Skip to content",
     "nav.label": "Sections",
-    "nav.overview": "Overview",
+    "nav.overview": "Command Center",
     "nav.organization": "Organization",
     "nav.people": "People",
     "nav.finance": "Finance",
@@ -400,10 +401,74 @@ const MESSAGES = {
     "theme.light": "Light",
     "theme.dark": "Dark",
     "home.title": "Veyro Admin",
-    "home.signedInAs": "Signed in as",
-    "home.assurance": "Assurance level",
-    "home.permissions": "What this session may do",
-    "home.noPermissions": "This session holds no permissions yet.",
+    // ADM-CC-01..05 -- the Command Center. The heading counts the queue, so the number is a
+    // placeholder inside the phrase rather than concatenated: the grammar differs between the
+    // two languages and composing it in the page would put English word order into Arabic.
+    "cc.title": "Command Center",
+    // Plural messages: an object keyed by CLDR category. English has `one` and `other`;
+    // Arabic has six and uses them below. `fill` picks by `count`.
+    "cc.heading": { one: "{count} thing needs you this morning",
+                    other: "{count} things need you this morning" },
+    "cc.headingClear": "Nothing needs you right now",
+    "cc.headingPartial": "Nothing needs you in what you can see",
+    "cc.headingPartialBody": "Some of what feeds this queue is not readable by this session, so this is not a statement about the whole club.",
+    "cc.headingClearBody": "Payments, access, bookings and staffing are all clear.",
+    "cc.asOf": "Data through",
+    "cc.scope": "All locations",
+    "cc.metrics": "Today's figures",
+    "cc.metricCollected": "Collected · month to date",
+    "cc.metricMembers": "Active members",
+    "cc.metricVisits": "Visits today",
+    "cc.metricLeads": "Lead conversion · 30d",
+    "cc.vsLastMonth": "vs the same point last month",
+    "cc.pace": "pace",
+    "cc.noBaseline": "no figure for last month to compare against",
+    "cc.joinedLeft": "{joined} joined, {left} left",
+    "cc.usualFor": "usual for a {weekday}",
+    "cc.noUsual": "no earlier {weekday} to compare against",
+    "cc.stale": "as of",
+    "cc.unavailable": "Not available",
+    "cc.queue": "Needs you now",
+    "cc.queueCounts": "{open} open · {critical} critical · {assigned} assigned to others",
+    "cc.unassigned": "unassigned",
+    "cc.atRisk": "at risk",
+    "cc.renewalValue": "renewal value",
+    "cc.catMoney": "Money",
+    "cc.catCompliance": "Compliance",
+    "cc.catRetention": "Retention",
+    "cc.catStaffing": "Staffing",
+    "cc.catLeads": "Leads",
+    "cc.moneyTitle": { one: "{count} payment is in recovery",
+                       other: "{count} payments are in recovery" },
+    "cc.moneyBody": "Each cites an invoice that is still unpaid. No access is blocked by this — the recommendation is recorded on the case and nothing here applies it.",
+    "cc.complianceTitle": { one: "{count} invoice was rejected by the tax authority",
+                            other: "{count} invoices were rejected by the tax authority" },
+    "cc.complianceBody": "The sales are recorded and the money is collected — only the filing failed. An invoice is never edited, so a correction is a credit note with its own number.",
+    "cc.retentionTitle": { one: "{count} membership expires within {days} days",
+                           other: "{count} memberships expire within {days} days" },
+    "cc.retentionBody": "The value is what each was sold at, which is the figure a renewal conversation is about. Nothing in this build renews a membership when its period ends.",
+    "cc.staffingTitle": { one: "{count} class has no coach",
+                          other: "{count} classes have no coach" },
+    // Two bodies, because "0 places are held across them" is a sentence with nothing in it.
+    "cc.staffingBody": "Soonest first. {members} places are held across them, so somebody is expecting a class that has no coach.",
+    "cc.staffingBodyEmpty": "Soonest first. Nobody has booked into them yet, which is what makes this the cheap time to fill them.",
+    "cc.openIt": "Open",
+    "cc.charts": "Collections",
+    "cc.chartWeeks": "By week",
+    "cc.chartPartial": "partial week",
+    "cc.chartEntity": "By legal entity",
+    "cc.aiEyebrow": "Veyro interpretation · not a confirmed figure",
+    "cc.aiWithheld": "Veyro is not offering an interpretation. No module in this build produces one, and a plausible reading of these figures written by the page would be a confident answer with nothing behind it.",
+    "cc.gaps": "What this screen does not do yet",
+    "cc.gapLeads": "Lead conversion needs a CRM. ADM-CRM-* is unbuilt, so there is no lead, no trial and no conversion rate to report.",
+    "cc.gapLeadsQueue": "The LEADS queue item needs the same module. An uncontacted lead is not a thing this build can have.",
+    "cc.gapActions": "Every primary action the design puts on a queue row — send the payment links, fix the filings, offer the class to another coach — is a stepped-up financial write with no form in this app. A button that does nothing is worse than one that is absent, so each row links to the record instead.",
+    "cc.gapInterpretation": "The interpretation panel and its evidence links need a module that reasons about revenue. There is none.",
+    "cc.gapByLocation": "The design breaks collections down by club. Money here carries a legal entity, and MOD-004's hierarchy puts brands and locations under one — so three clubs under a single entity are one row.",
+    "cc.gapInteractions": "The period toggle, the resolved-today drawer, the lower-priority collapse, the keyboard queue and the 30-second undo are interactions. This surface renders on the server and has one client component.",
+    "cc.gapScope": "The heading says all locations because there is no scope switcher: every permission check in this build is tenant-wide, which MOD-014 records as its own gap.",
+    "cc.refusedPanel": "You may not see this.",
+    "cc.failedPanel": "This panel could not be read.",
     "nav.back": "Back",
     "access.title": "Doors",
     "access.empty": "No access zones have been declared yet.",
@@ -443,6 +508,8 @@ const MESSAGES = {
     "access.terms.seconds": "seconds",
     "access.terms.years": "years",
     "access.terms.none": "Not restricted",
+    "perms.gateTitle": "What the gate says, action by action",
+    "perms.gateLead": "The list above comes from role assignments. This asks the gate about this session, which weighs the role and the assurance together — so a permission held on a sign-in too weak for it reads differently here, which is the point.",
     "home.action": "Action",
     "home.gate": "Gate",
     "gate.allowed": "Allowed",
@@ -776,7 +843,7 @@ const MESSAGES = {
     "app.name": "فيرو",
     "app.skipToContent": "تخطَّ إلى المحتوى",
     "nav.label": "الأقسام",
-    "nav.overview": "نظرة عامة",
+    "nav.overview": "مركز القيادة",
     "nav.organization": "المؤسسة",
     "nav.people": "الأشخاص",
     "nav.finance": "المالية",
@@ -1096,10 +1163,89 @@ const MESSAGES = {
     "theme.light": "فاتح",
     "theme.dark": "داكن",
     "home.title": "إدارة فيرو",
-    "home.signedInAs": "مسجَّل الدخول باسم",
-    "home.assurance": "مستوى التحقق",
-    "home.permissions": "ما يمكن لهذه الجلسة فعله",
-    "home.noPermissions": "لا تملك هذه الجلسة أي صلاحيات بعد.",
+    // ADM-CC-01..05 — مركز القيادة.
+    "cc.title": "مركز القيادة",
+    "cc.heading": { zero: "لا شيء يحتاج إليك هذا الصباح",
+                    one: "أمر واحد يحتاج إليك هذا الصباح",
+                    two: "أمران يحتاجان إليك هذا الصباح",
+                    few: "{count} أمور تحتاج إليك هذا الصباح",
+                    many: "{count} أمرًا تحتاج إليك هذا الصباح",
+                    other: "{count} أمر يحتاج إليك هذا الصباح" },
+    "cc.headingClear": "لا شيء يحتاج إليك الآن",
+    "cc.headingPartial": "لا شيء يحتاج إليك ضمن ما يمكنك رؤيته",
+    "cc.headingPartialBody": "بعض ما يغذّي هذه القائمة غير قابل للقراءة بهذه الجلسة، لذا فهذا ليس حكمًا على النادي كله.",
+    "cc.headingClearBody": "المدفوعات والوصول والحجوزات والتوظيف كلها على ما يرام.",
+    "cc.asOf": "البيانات حتى",
+    "cc.scope": "جميع الفروع",
+    "cc.metrics": "أرقام اليوم",
+    "cc.metricCollected": "المُحصَّل · منذ بداية الشهر",
+    "cc.metricMembers": "الأعضاء النشطون",
+    "cc.metricVisits": "زيارات اليوم",
+    "cc.metricLeads": "تحويل العملاء المحتملين · ٣٠ يومًا",
+    "cc.vsLastMonth": "مقارنةً بالنقطة نفسها من الشهر الماضي",
+    "cc.pace": "الوتيرة",
+    "cc.noBaseline": "لا يوجد رقم للشهر الماضي للمقارنة",
+    "cc.joinedLeft": "انضم {joined}، وغادر {left}",
+    "cc.usualFor": "المعتاد ليوم {weekday}",
+    "cc.noUsual": "لا يوجد يوم {weekday} سابق للمقارنة",
+    "cc.stale": "حتى",
+    "cc.unavailable": "غير متاح",
+    "cc.queue": "يحتاج إليك الآن",
+    "cc.queueCounts": "{open} مفتوحة · {critical} حرجة · {assigned} مُسندة إلى آخرين",
+    "cc.unassigned": "غير مُسند",
+    "cc.atRisk": "معرَّض للخطر",
+    "cc.renewalValue": "قيمة التجديد",
+    "cc.catMoney": "المال",
+    "cc.catCompliance": "الالتزام",
+    "cc.catRetention": "الاستبقاء",
+    "cc.catStaffing": "التوظيف",
+    "cc.catLeads": "العملاء المحتملون",
+    "cc.moneyTitle": { zero: "لا مدفوعات في مسار التحصيل",
+                       one: "دفعة واحدة في مسار التحصيل",
+                       two: "دفعتان في مسار التحصيل",
+                       few: "{count} مدفوعات في مسار التحصيل",
+                       many: "{count} دفعةً في مسار التحصيل",
+                       other: "{count} دفعة في مسار التحصيل" },
+    "cc.moneyBody": "كل واحدة تستند إلى فاتورة لم تُسدَّد بعد. لا يُحجب أي وصول بسبب هذا — التوصية مسجَّلة على الحالة ولا شيء هنا يطبّقها.",
+    "cc.complianceTitle": { zero: "لا فواتير مرفوضة من دائرة الضريبة",
+                            one: "فاتورة واحدة رفضتها دائرة الضريبة",
+                            two: "فاتورتان رفضتهما دائرة الضريبة",
+                            few: "{count} فواتير رفضتها دائرة الضريبة",
+                            many: "{count} فاتورةً رفضتها دائرة الضريبة",
+                            other: "{count} فاتورة رفضتها دائرة الضريبة" },
+    "cc.complianceBody": "المبيعات مسجَّلة والمال محصَّل — التقديم وحده هو ما فشل. الفاتورة لا تُعدَّل أبدًا، فالتصحيح إشعار دائن له رقمه الخاص.",
+    "cc.retentionTitle": { zero: "لا عضويات تنتهي خلال {days} أيام",
+                           one: "عضوية واحدة تنتهي خلال {days} أيام",
+                           two: "عضويتان تنتهيان خلال {days} أيام",
+                           few: "{count} عضويات تنتهي خلال {days} أيام",
+                           many: "{count} عضويةً تنتهي خلال {days} أيام",
+                           other: "{count} عضوية تنتهي خلال {days} أيام" },
+    "cc.retentionBody": "القيمة هي ما بِيعت به كل عضوية، وهي الرقم الذي يدور حوله حديث التجديد. لا شيء في هذا الإصدار يجدّد عضوية عند انتهاء فترتها.",
+    "cc.staffingTitle": { zero: "لا حصص بلا مدرّب",
+                          one: "حصة واحدة بلا مدرّب",
+                          two: "حصتان بلا مدرّب",
+                          few: "{count} حصص بلا مدرّب",
+                          many: "{count} حصةً بلا مدرّب",
+                          other: "{count} حصة بلا مدرّب" },
+    "cc.staffingBody": "الأقرب أولًا. {members} مقعدًا محجوزًا بينها، أي أن هناك من ينتظر حصة بلا مدرّب.",
+    "cc.staffingBodyEmpty": "الأقرب أولًا. لم يحجز فيها أحد بعد، وهذا ما يجعل الآن أرخص وقت لتعيين مدرّب.",
+    "cc.openIt": "افتح",
+    "cc.charts": "التحصيل",
+    "cc.chartWeeks": "أسبوعيًا",
+    "cc.chartPartial": "أسبوع جزئي",
+    "cc.chartEntity": "حسب الكيان القانوني",
+    "cc.aiEyebrow": "تفسير فيرو · ليس رقمًا مؤكَّدًا",
+    "cc.aiWithheld": "فيرو لا يقدّم تفسيرًا. لا توجد وحدة في هذا الإصدار تُنتج تفسيرًا، وقراءة معقولة لهذه الأرقام تكتبها الصفحة نفسها ستكون جوابًا واثقًا لا شيء خلفه.",
+    "cc.gaps": "ما لا تفعله هذه الشاشة بعد",
+    "cc.gapLeads": "تحويل العملاء المحتملين يحتاج إلى وحدة إدارة علاقات. ADM-CRM-* غير مبنية، فلا يوجد عميل محتمل ولا تجربة ولا معدّل تحويل.",
+    "cc.gapLeadsQueue": "عنصر العملاء المحتملين في القائمة يحتاج إلى الوحدة نفسها. العميل المحتمل غير المتابَع ليس شيئًا يمكن أن يوجد في هذا الإصدار.",
+    "cc.gapActions": "كل إجراء رئيسي يضعه التصميم على صفوف القائمة — إرسال روابط الدفع، تصحيح الفواتير، عرض الحصة على مدرّب آخر — هو كتابة مالية تتطلب تحققًا أقوى ولا نموذج لها في هذا التطبيق. الزر الذي لا يفعل شيئًا أسوأ من غيابه، فكل صف يربط إلى السجل بدلًا من ذلك.",
+    "cc.gapInterpretation": "لوحة التفسير وروابط الأدلة تحتاج إلى وحدة تستنتج عن الإيرادات. لا توجد واحدة.",
+    "cc.gapByLocation": "التصميم يوزّع التحصيل حسب الفرع. المال هنا يحمل كيانًا قانونيًا، وتسلسل MOD-004 يضع العلامات والفروع تحته — فثلاثة فروع تحت كيان واحد هي صف واحد.",
+    "cc.gapInteractions": "مُبدِّل الفترة، ودرج ما تم حله اليوم، وطيّ العناصر الأقل أهمية، والتنقّل بلوحة المفاتيح، والتراجع خلال ثلاثين ثانية كلها تفاعلات. هذه الواجهة تُرسم على الخادم ولها مكوّن عميل واحد.",
+    "cc.gapScope": "العنوان يقول جميع الفروع لأنه لا يوجد مُبدِّل نطاق: كل تحقق صلاحية في هذا الإصدار على مستوى المستأجر، وهو ما تسجّله MOD-014 كثغرة خاصة بها.",
+    "cc.refusedPanel": "لا يُسمح لك برؤية هذا.",
+    "cc.failedPanel": "لم يتمكّن النظام من قراءة هذه اللوحة.",
     "nav.back": "رجوع",
     "access.title": "الأبواب",
     "access.empty": "لم تُعرَّف أي مناطق وصول بعد.",
@@ -1139,6 +1285,8 @@ const MESSAGES = {
     "access.terms.seconds": "ثانية",
     "access.terms.years": "سنة",
     "access.terms.none": "غير مقيَّد",
+    "perms.gateTitle": "ما تقوله البوابة، إجراءً بإجراء",
+    "perms.gateLead": "القائمة أعلاه مستمدّة من إسناد الأدوار. هذه تسأل البوابة عن هذه الجلسة، وهي توازن الدور ومستوى التحقق معًا — فالصلاحية المملوكة على تسجيل دخول أضعف من اللازم تظهر هنا بشكل مختلف، وهذا هو المقصود.",
     "home.action": "الإجراء",
     "home.gate": "البوابة",
     "gate.allowed": "مسموح",
@@ -1474,14 +1622,92 @@ export type MessageKey = keyof (typeof MESSAGES)["en"];
 
 export class MissingMessageError extends Error {}
 
-/** Look up a message. Throws on a missing key rather than falling back to the other locale. */
+/**
+ * Look up a message. Throws on a missing key rather than falling back to the other locale.
+ *
+ * **And throws on a plural key**, which has no single form to return: a message with CLDR
+ * categories needs a count to pick one, so a call site reaching for `t` where it needs
+ * `fill` fails here rather than rendering `[object Object]`.
+ */
 export function t(locale: Locale, key: MessageKey): string {
   const catalogue = MESSAGES[locale];
-  const value = catalogue[key];
+  const value = catalogue[key] as string | Record<string, string> | undefined;
   if (value === undefined) {
     throw new MissingMessageError(`no ${locale} message for ${key}`);
   }
+  if (typeof value !== "string") {
+    throw new MissingMessageError(`${key} is a plural message -- use fill() with a count`);
+  }
   return value;
+}
+
+/** Whether a key carries CLDR plural forms rather than one string. */
+export function isPlural(key: MessageKey): boolean {
+  return typeof MESSAGES.en[key] !== "string";
+}
+
+/**
+ * A message with its placeholders filled, numbers rendered in the locale's own numerals.
+ *
+ * **The number goes inside the phrase, not beside it.** ADM-CC-01's heading is "Three things
+ * need you this morning" and the Arabic word order differs, so a page that concatenated a
+ * count and a sentence would put English structure into an Arabic heading. That is this
+ * repository's own MOD-013 finding one layer down: eight English decision reasons reached an
+ * otherwise-correct Arabic board because the strings never became message keys, and no
+ * structural check could see it.
+ *
+ * **An unfilled placeholder throws.** `{n}` on screen is a defect a reader notices and a
+ * test does not, because an assertion about a label passes either way -- which is the
+ * stronger-assertion lesson the schedule board taught. So a key whose placeholders are not
+ * all supplied is an error, and so is a value supplied for a placeholder the message does
+ * not have, since that is a key and a call site that have drifted apart.
+ */
+export function fill(
+  locale: Locale,
+  key: MessageKey,
+  values: Record<string, string | number>,
+  numbering: Numbering = "latn",
+): string {
+  const entry = MESSAGES[locale][key] as string | Record<string, string>;
+  let template: string;
+  if (typeof entry === "string") {
+    template = entry;
+  } else {
+    // **A plural message picks its form from the count, per CLDR.** Arabic has six
+    // categories and English two, so `n === 1` at a call site is wrong in a way an
+    // English-speaking author cannot see -- and the page rendered "1 payments are in
+    // recovery" before this existed. `other` is the fallback because every locale has one;
+    // a message missing the category its count selects is an error rather than a silent
+    // fall-through, since that is a translation nobody wrote.
+    const count = values["count"];
+    if (typeof count !== "number") {
+      throw new MissingMessageError(`${key} is a plural message and needs a numeric count`);
+    }
+    const category = pluralCategory(locale, count) as string;
+    const picked = entry[category] ?? entry["other"];
+    if (picked === undefined) {
+      throw new MissingMessageError(`${key} has no "${category}" form and no "other"`);
+    }
+    template = picked;
+  }
+  const wanted = new Set(
+    [...template.matchAll(/\{(\w+)\}/g)].map((m) => m[1] as string));
+  for (const name of wanted) {
+    if (!(name in values)) {
+      throw new MissingMessageError(`${key} needs {${name}}`);
+    }
+  }
+  for (const name of Object.keys(values)) {
+    // `count` selects the form and may or may not appear in the text, so it is never an
+    // unexpected value -- a locale whose plural form drops the numeral is ordinary.
+    if (name !== "count" && !wanted.has(name)) {
+      throw new MissingMessageError(`${key} has no {${name}}`);
+    }
+  }
+  return template.replace(/\{(\w+)\}/g, (_: string, name: string) => {
+    const value = values[name] as string | number;
+    return typeof value === "number" ? formatInteger(value, numbering) : value;
+  });
 }
 
 /** Every key, so a test can assert both catalogues cover the same set. */

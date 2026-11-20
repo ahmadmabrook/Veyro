@@ -186,6 +186,59 @@ export type GateAnswer = {
  * available in this build rather than inviting a step-up that can never succeed. Collapsing
  * all three to a boolean is how a UI ends up with a button that can never work.
  */
+/**
+ * The gate's answer for several actions, in one request.
+ *
+ * **A rich page asks the gate many times.** The shell asks about thirteen navigation
+ * entries and the Command Center about six reads, so rendering `/` cost nineteen round
+ * trips -- and MOD-011's `api.request` budget is 600 a minute per identity, whose own
+ * comment says "a limit that trips during ordinary use is a limit somebody will raise to
+ * infinity rather than investigate". The browser suite tripped it, which is the cheap way
+ * to find out.
+ *
+ * **Same semantics, fewer requests.** `/authz/checks` runs the same `authz.check` per
+ * action with the same scope and the same assurance weighing. It is not a permission list:
+ * a client that fetched `effective_permissions` and decided for itself would be MOD-014's
+ * "a grant is not a session", where a permission held on a session too weak for the action
+ * reads as held.
+ *
+ * **Fails closed per action**, like `gate`: an unreachable gate is not permission.
+ */
+export async function gateAll<A extends readonly string[]>(
+  actions: A,
+): Promise<{ [K in keyof A]: GateAnswer }> {
+  const closed = (action: string, reason: string): GateAnswer => ({
+    action,
+    allowed: false,
+    reason,
+    step_up_required: false,
+    required_aal: null,
+    reachable: true,
+    masked_fields: [],
+  });
+  const query = new URLSearchParams();
+  for (const action of actions) query.append("action", action);
+  query.set("correlation_id", correlationId());
+  try {
+    const answer = await api<{ checks: GateAnswer[] }>(`/authz/checks?${query.toString()}`);
+    const byAction = new Map(answer.checks.map((check) => [check.action, check]));
+    return actions.map((action) => {
+      const found = byAction.get(action);
+      // An action the server did not answer about is not permission either.
+      return found === undefined
+        ? closed(action, "gate_unreachable")
+        : { ...closed(action, "gate"), ...found, allowed: found.allowed === true };
+    }) as { [K in keyof A]: GateAnswer };
+  } catch (error) {
+    if (error instanceof ApiError) {
+      return actions.map((action) => closed(action, error.reason)) as {
+        [K in keyof A]: GateAnswer;
+      };
+    }
+    throw error;
+  }
+}
+
 export async function gate(action: string): Promise<GateAnswer> {
   const closed: GateAnswer = {
     action,
