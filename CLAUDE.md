@@ -2431,6 +2431,19 @@ Known gaps, deliberate:
 - **Nineteen free-text columns are residue an erasure cannot reach**, all declared in
   `SUBJECT_COLUMNS` by hand because the sweep matches column *names*, and pinned by a named
   test because a reviewer deleted one declaration and watched every test pass.
+- **The chart and the periods can be listed now; journals deliberately cannot.**
+  `GET /ledger/accounts` and `GET /ledger/periods` make the module observable -- and the
+  second is COM-04-R06's lock made readable at last: a closed period refuses a posting and
+  `closing` admits the close's own entries and no trade, so "which months are shut" decides
+  whether a till works, and until that route existed the only way to find out was to attempt
+  a posting and read the refusal. **There is still no journal listing, and that is the point**:
+  the gap above says this becomes `events.event.read` the day journal ids are enumerable, so
+  `test_there_is_no_journal_listing_route` asserts the absence of `GET /ledger/journals` while
+  asserting the POST is present. Adding one means fixing the journal read first.
+- **A month with no period row has never been opened**, which is not the same as being open,
+  because the lock is enforced per row. `list_periods` returns `absence_means_never_opened`
+  so a surface says that rather than listing twelve months and implying the absent ones are
+  available.
 - **The timeline does not know about any of this either.** MOD-014 projects nine event types
   and none of MOD-018's is among them.
 
@@ -3691,6 +3704,39 @@ module's gate and renders them beside the person. Three gates, asked separately,
 reader may hold any subset -- a coach sees the membership and not the money -- and a refused
 block says it was refused rather than rendering empty.
 
+**MOD-018's board is the period lock, made visible for the first time.** A closed period
+refuses a posting and `closing` admits the close's own entries and no trade at all, so an
+accountant beginning a month-end close is deliberately stopping that entity's till -- and
+nothing in the product told anybody, because neither the periods nor the chart could be
+listed. Two reads closed that, and four decisions carry the board:
+
+  * **`admits_trade` is derived by the server, not by each reader.** `closing` is the state
+    that surprises, and a surface reasoning from `status` alone gets the one case that matters
+    wrong.
+  * **A month that is not listed has never been opened**, which is not the same as being open.
+    The lock is per period row, so a tenant whose later books are filed has no row for any
+    earlier month; a board that listed twelve months would be inventing eleven.
+  * **Both the entity and the currency are derived.** A trial balance is per legal entity and
+    per currency, and the first version of the block said so in its own lead and then rendered
+    only the currency -- the defect the sentence warns about, on the page that warns about it.
+    Naming the entity needs `tenancy.organization.read`, which an accountant may not hold, so
+    the name is looked up when it can be and the id is shown when it cannot.
+  * **A retired account stays on the trial balance and is marked.** It has to stay, because a
+    retired account with a balance is exactly the row somebody needs to notice; unmarked, it
+    reads as a live one. The first version dropped the status the read already carried.
+
+**And there is no journal on that page and no route to list one**, which is the gap MOD-018
+discloses about itself being respected rather than closed in the wrong direction: a lateral
+read around `finance.invoice.read` is safe only while journal ids cannot be enumerated.
+
+**The fixture seeds the chart before the invoice, and the ordering is the evidence.** MOD-018's
+bridge runs inside MOD-017's transaction, so an invoice issued with no chart is posted nowhere
+-- `post_invoice` returns `ledger_skipped_because` rather than refusing, precisely so a tenant
+mid-setup does not find its till has stopped working. With the chart first, an invoice and a
+payment produce a trial balance an accountant can check by hand: `provider_clearing` debited by
+what the card paid, revenue and tax credited by what the invoice said, receivable back to zero.
+Two periods, because the invoice is back-dated ninety days and the payment is today.
+
 **And a second money formatter was written and deleted in the same change.** `money()` took
 `Intl`'s own currency exponent, divided by it and formatted with `Intl.NumberFormat` -- a
 second implementation of money rendering, in the one place this repository already has a
@@ -3725,8 +3771,8 @@ initially asserted the *wrong* number and failed for that reason, which is the c
 arriving in the evidence before it could arrive in the product.
 
 Known gaps: the surface covers the sign-in, the step-up, MOD-004, MOD-008, MOD-010, MOD-011,
-MOD-005, MOD-014, MOD-017, MOD-019, MOD-021 and MOD-022, plus MOD-020's roster on a session.
-The other seven implemented modules have no screens yet,
+MOD-005, MOD-014, MOD-017, MOD-018, MOD-019, MOD-021 and MOD-022, plus MOD-020's roster on a
+session. The other six implemented modules have no screens yet,
 which is the bulk of the remaining work; MOD-019's own surface is read-only -- publishing a
 schedule, substituting an instructor and cancelling a session are all built on the server and
 none has a form, which is the same gap the hierarchy has and for the same reason: every one of
@@ -3746,8 +3792,8 @@ is part of it. So "implemented" above is accurate about the server plane and inc
 the product for every module except MOD-022, and the backlog has two halves.
 
 The first is the screens the eighteen built modules do not have. `web/` covers the sign-in, the
-step-up, MOD-004, MOD-005, MOD-008, MOD-010, MOD-011, MOD-014, MOD-017, MOD-019, MOD-020's
-roster, MOD-021 and MOD-022; `contracts/ui/screen-contracts.yaml` names the rest, and
+step-up, MOD-004, MOD-005, MOD-008, MOD-010, MOD-011, MOD-014, MOD-017, MOD-018, MOD-019,
+MOD-020's roster, MOD-021 and MOD-022; `contracts/ui/screen-contracts.yaml` names the rest, and
 the work is per module rather than per screen because each one needs its gate, its masked
 fields and its failure states wired the way those are. The second is the modules themselves: MOD-023 (Coach Workspace, which
 needs MOD-014 and MOD-008, both built) is the next eligible one, and MOD-006 is the Compose

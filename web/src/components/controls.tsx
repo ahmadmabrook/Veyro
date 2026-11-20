@@ -150,13 +150,19 @@ export function Alert({
   tone = "error",
   children,
 }: {
-  tone?: "error" | "info" | "success";
+  tone?: "error" | "info" | "success" | "warning";
   children: ReactNode;
 }) {
+  // **`warning` is the fourth step and was missing.** The design system's token says what it
+  // is for -- "expiring, approaching a limit, needs review" -- and the severity scale is one
+  // four-step idea, so a surface that needed the fourth step had to choose between calling a
+  // month-end close an error and calling it information. A period somebody is deliberately
+  // closing is neither.
   const colour = {
     error: "var(--color-semantic-error)",
     info: "var(--color-semantic-info)",
     success: "var(--color-semantic-success)",
+    warning: "var(--color-semantic-warning)",
   }[tone];
   return (
     <div

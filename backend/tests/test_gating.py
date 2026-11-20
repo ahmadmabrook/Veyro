@@ -376,6 +376,11 @@ WRITE_ROUTES = [
     ("post", f"/finance/refunds/{_ID}/settle", {"outcome": "succeeded", **_CORR}),
     ("get", f"/finance/payments/{_ID}/refunds", None),
     # MOD-018, COM-04: the ledger.
+    # MOD-018's two listings. There is deliberately no journal listing beside them: that
+    # permission is a lateral read around `finance.invoice.read` and is safe only while
+    # journal ids are not enumerable.
+    ("get", "/ledger/accounts", None),
+    ("get", "/ledger/periods", None),
     ("get", f"/ledger/accounts/{_ID}/balance", None),
     ("get", f"/ledger/trial-balance?legal_entity_id={_ID}&currency=JOD", None),
     ("get", f"/ledger/journals/{_ID}", None),

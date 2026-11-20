@@ -600,6 +600,68 @@ const MUTATIONS = [
     grep: "says reachability is worked out rather than stored",
   },
   {
+    id: "finance-closing-period-takes-no-trade",
+    why: "`closing` is the state that surprises -- it admits the close's own entries and no "
+      + "trade at all -- so a board reasoning from the status alone gets the one case that "
+      + "matters wrong",
+    file: "src/lib/ledger.ts",
+    from: '  return periods.filter((p) => p.status === "closing" || p.status === "reopened");',
+    to: '  return periods.filter((p) => p.status === "reopened");',
+    runner: "vitest",
+    grep: "names a closing period",
+  },
+  {
+    id: "finance-unbalanced-is-lost-rows",
+    why: "every journal balances by a constraint the database enforces, so a difference means "
+      + "rows are missing rather than rounded -- a surface that said 'these columns differ' "
+      + "would send somebody looking for the wrong thing",
+    file: "src/lib/ledger.ts",
+    // **The first version of this mutation was a no-op**, which the sweep reported as a gap:
+    // it inserted a branch guarded by `difference_minor === 0`, and the test's own case has a
+    // difference of -4500, so nothing changed. A mutation that changes nothing is not
+    // evidence -- the trap the backend rules file names, met here in the web half.
+    from: '    : { kind: "lost_rows", differenceMinor: balance.difference_minor };',
+    to: '    : { kind: "balanced", differenceMinor: 0 };',
+    runner: "vitest",
+    grep: "calls an unbalanced ledger lost rows",
+  },
+  {
+    id: "finance-names-the-legal-entity",
+    why: "a trial balance is per legal entity and per currency, and the block's own sentence "
+      + "says so -- rendering only the currency is the defect that sentence warns about",
+    file: "src/app/finance/page.tsx",
+    from: "                  ?.registered_name ?? (",
+    to: "                  ?.nothing_here ?? (",
+    grep: "names the legal entity",
+  },
+  {
+    id: "finance-marks-a-retired-account",
+    why: "a retired account stays on the trial balance because a retired account with a "
+      + "balance is the row somebody needs to notice -- unmarked, it reads as a live one",
+    file: "src/app/finance/page.tsx",
+    from: '                            : ` · ${text("finance.retired")}`}',
+    to: "                            : ``}",
+    grep: "marks a retired account",
+  },
+  {
+    id: "finance-closing-is-named-as-needing-somebody",
+    why: "an accountant who began a close has deliberately stopped that entity's postings, "
+      + "and the banner is the only place the product says so",
+    file: "src/app/finance/page.tsx",
+    from: "        {attention.length > 0 ? (",
+    to: "        {false ? (",
+    grep: "middle of closing",
+  },
+  {
+    id: "finance-absence-is-not-open",
+    why: "the lock is enforced per period row, so a month with no row has never been opened "
+      + "-- a board that implied the absent months were open would say the opposite of true",
+    file: "src/app/finance/page.tsx",
+    from: '            {text("finance.absenceMeansNeverOpened")}',
+    to: "            {null}",
+    grep: "has never been opened",
+  },
+  {
     id: "membership-blocks-ask-their-own-gate",
     why: "three permissions, three blocks -- a reader may hold the person read and none of "
       + "MOD-017, and 'this member has no invoices' is a different fact from 'you may not "

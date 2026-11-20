@@ -35,6 +35,9 @@ const surfaces: [string, string][] = [
   ["the permissions page", "/permissions"],
   ["the people list", "/people"],
   ["a member", `/people/${creds.personId}`],
+  // MOD-018's board is the widest table in the app -- four money columns over a chart of
+  // thirteen accounts -- so it is the one most likely to push the page sideways.
+  ["the finance board", "/finance"],
 ];
 
 test.describe("at phone width", () => {

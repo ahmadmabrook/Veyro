@@ -891,6 +891,36 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
             reason: "ten classes with the membership", correlation_id: cid() },
   });
 
+  // **A ledger chart, before the invoice.** MOD-018's bridge runs inside MOD-017's own
+  // transaction, so an invoice issued with no chart is posted nowhere -- `post_invoice`
+  // returns `ledger_skipped_because` rather than refusing, precisely so a tenant mid-setup
+  // does not find its till has stopped working. Seeding the chart first is what makes the
+  // finance board show a trial balance with something on it rather than that honest skip.
+  for (const [code, kind] of [
+    ["AR", "receivable"], ["BANK", "bank"], ["CASH", "cash"],
+    ["CLEARING", "provider_clearing"], ["CONTRA", "contra_revenue"],
+    ["FEE", "provider_fee"], ["REV", "revenue"], ["SUSPENSE", "suspense"],
+    ["TAX", "tax_payable"], ["UNEARNED", "unearned_revenue"],
+    ["WCASH", "wallet_cash"], ["WPROMO", "wallet_promotional"],
+  ]) {
+    await call("/ledger/accounts", {
+      method: "POST", ...as(token),
+      body: { account_code: code, account_kind: kind, display_name: code,
+              currency: "JOD", correlation_id: cid() },
+    });
+  }
+  // One retired account, so the chart has both states and a board cannot pass by showing
+  // only the happy one.
+  const retiring = await call("/ledger/accounts", {
+    method: "POST", ...as(token),
+    body: { account_code: "REV-OLD", account_kind: "revenue",
+            display_name: "Revenue (merged)", currency: "JOD", correlation_id: cid() },
+  });
+  await call(`/ledger/accounts/${retiring.account_id}/retire`, {
+    method: "POST", ...as(token),
+    body: { reason: "merged into REV", correlation_id: cid() },
+  });
+
   const account = await call("/finance/accounts", {
     method: "POST", ...as(token),
     body: { payer_person_id: person.person_id, account_number: "A-00042",
@@ -931,6 +961,20 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
     body: { outcome: "succeeded", correlation_id: cid() },
   });
 
+  // **A period in `closing`, because otherwise the state nothing writes is the state nothing
+  // proves.** The finance board's "needs somebody" banner, the `Takes a posting: No` cell and
+  // the caption explaining that `closing` admits the close's own entries and no trade are all
+  // unreachable while every period is open -- which is MOD-020's "a declared state nothing
+  // writes" finding arriving in a fixture instead of a service. The back-dated month is the
+  // one to close: everything posted into it is already there, and the current month stays
+  // open so the board shows both states at once.
+  const backDatedKey = startedOn.slice(0, 7);
+  await call("/ledger/periods/close", {
+    method: "POST", ...as(token),
+    body: { legal_entity_id: entity.legal_entity_id, period_key: backDatedKey,
+            target: "closing", correlation_id: cid() },
+  });
+
   // **A consumer the relay can route to.** Without one the outbox is fanned out to nobody and
   // the operations board has no deliveries to show -- which hides the half of that screen
   // that is still a standing gap: a delivery is created and never handled, because no name in
@@ -968,6 +1012,8 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
     pointId: point.point_id,
     personId: person.person_id,
     membershipId: membership.membership_id,
+    retiredAccountId: retiring.account_id,
+    closingPeriodKey: backDatedKey,
     membershipNumber: "GOLD-00042",
     invoiceNumber: invoice.document_number,
     invoiceGrossMinor: invoice.gross_minor,

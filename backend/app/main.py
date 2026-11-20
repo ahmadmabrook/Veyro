@@ -6413,6 +6413,37 @@ def create_app(
         return ledger.account_balance(
             tenant_pool, tenant_id, require_uuid(account_id, "account_id"), as_of=as_of)
 
+    @app.get("/ledger/accounts")
+    def list_ledger_accounts(
+        tenant_id: TenantId, session: Session, legal_entity_id: str | None = None,
+        status: str | None = None, limit: int = 200,
+    ) -> dict[str, Any]:
+        """The chart of accounts, by code.
+
+        **There is deliberately no journal listing beside this.** `finance.ledger.read` is a
+        narrow lateral read around `finance.invoice.read` -- `get_journal` returns an
+        invoice's figures and the payer's `person_id` -- and it stays a gap rather than a
+        defect only because journal ids are not enumerable from any route this permission
+        reaches. A listing would make it MOD-010's `events.event.read` finding.
+        """
+        permit(session, "finance.ledger.read")
+        return ledger.list_accounts(
+            tenant_pool, tenant_id,
+            legal_entity_id=optional_uuid(legal_entity_id, "legal_entity_id"),
+            status=status, limit=limit)
+
+    @app.get("/ledger/periods")
+    def list_ledger_periods(
+        tenant_id: TenantId, session: Session, legal_entity_id: str | None = None,
+        status: str | None = None, limit: int = 50,
+    ) -> dict[str, Any]:
+        """COM-04-R06's lock, made observable. A month with no row has never been opened."""
+        permit(session, "finance.ledger.read")
+        return ledger.list_periods(
+            tenant_pool, tenant_id,
+            legal_entity_id=optional_uuid(legal_entity_id, "legal_entity_id"),
+            status=status, limit=limit)
+
     @app.get("/ledger/trial-balance")
     def ledger_trial_balance(
         tenant_id: TenantId, session: Session, legal_entity_id: str,

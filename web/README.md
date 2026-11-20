@@ -14,7 +14,8 @@ raises and a step-up that actually raises a session's assurance, an admin landin
 every control's visibility comes from MOD-008's gate, a section navigation filtered by that
 same gate, MOD-004's organization hierarchy, MOD-008's roles and audit chain, MOD-014's
 duplicate queue and Member 360 with every masked field marked and MOD-017's membership,
-entitlement and billing blocks composed onto it, MOD-021's fleet board and
+entitlement and billing blocks composed onto it, MOD-018's finance board where the period lock
+is readable for the first time, MOD-021's fleet board and
 device detail, MOD-022's door board and zone detail, MOD-019's schedule board and session
 detail with MOD-020's roster on it, MOD-005's configuration and feature-flag board, an
 operations board over MOD-010's event plane, MOD-011's objectives and the worker runtime's own
@@ -24,9 +25,9 @@ each been shown to fail when the thing they guard is removed.
 | Layer | What it proves | Count | Command |
 |---|---|---|---|
 | Foundation (`tests/unit/`) | Tokens, contrast, type, theme coverage, backend parity. No dependencies, no DOM. | 57 | `npm run test:foundation` |
-| Component (`tests/component/`) | Control semantics, the message catalogue in both directions, the sign-in form's four states, the device-label parity, the hierarchy composer, the mask marker, the redirect guard, the relay verdict, why a flag resolved as it did, reading an instant in a site's own timezone, and what a member's money and entitlements mean -- including that the money renderer is the one the receipt uses rather than a second one -- in jsdom. | 69 | `npm test` |
-| End-to-end (`tests/e2e/*.spec.ts`) | A real browser against a real backend whose fixture ran the real worker, including 27 axe runs across both locales, both themes and phone width, thirteen surfaces checked for horizontal scroll on a phone, the no-JavaScript sign-in replay, seven surfaces driven as a session that may not read them, a withheld field proved against a session that is actually masked, MOD-017's three blocks proved refused against a front desk that holds the person read and none of the money, and a session raised from level 1 to level 2 for real. | 169 + 3 setup | `npm run e2e` |
-| Mutation sweep (`tests/e2e/mutate.mjs`) | Each protection above, broken on purpose, is caught by the test that names it. | 69/69 | `npm run e2e:mutate` |
+| Component (`tests/component/`) | Control semantics, the message catalogue in both directions, the sign-in form's four states, the device-label parity, the hierarchy composer, the mask marker, the redirect guard, the relay verdict, why a flag resolved as it did, reading an instant in a site's own timezone, what a member's money and entitlements mean, which periods need somebody and why an unbalanced ledger means lost rows -- including that the money renderer is the one the receipt uses rather than a second one -- in jsdom. | 76 | `npm test` |
+| End-to-end (`tests/e2e/*.spec.ts`) | A real browser against a real backend whose fixture ran the real worker, including 28 axe runs across both locales, both themes and phone width, fourteen surfaces checked for horizontal scroll on a phone, the no-JavaScript sign-in replay, seven surfaces driven as a session that may not read them, a withheld field proved against a session that is actually masked, MOD-017's three blocks proved refused against a front desk that holds the person read and none of the money, and a session raised from level 1 to level 2 for real. | 183 + 3 setup | `npm run e2e` |
+| Mutation sweep (`tests/e2e/mutate.mjs`) | Each protection above, broken on purpose, is caught by the test that names it. | 75/75 | `npm run e2e:mutate` |
 
 ### Running it
 

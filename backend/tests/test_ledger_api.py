@@ -1800,3 +1800,139 @@ class ReviewRegressionTests(LedgerApiTestCase):
                 **self.correlation()}, headers=owner)
         self.assertEqual(refused.status_code, 409, refused.text)
         self.assertIn("is trade", refused.text)
+
+
+class LedgerListingTests(LedgerApiTestCase):
+    """The chart and the period lock, made observable.
+
+    **The period listing is the one that changes the product.** A closed period refuses a
+    posting and `closing` admits the close's own entries and no trade at all, so "which months
+    are shut" decides whether a till works -- and until this route existed the only way to find
+    out was to attempt a posting and read the refusal.
+    """
+
+    def test_the_chart_lists_by_code_and_says_what_each_account_is(self):
+        tenant_id = self.tenant()
+        chart = self.chart(tenant_id)
+        listed = self.client.get(
+            "/ledger/accounts",
+            headers=self.headers(tenant_id, self.grant(tenant_id, ["finance.ledger.read"])))
+        self.assertEqual(listed.status_code, 200, listed.text)
+        rows = listed.json()["accounts"]
+        codes = [r["account_code"] for r in rows]
+        self.assertEqual(codes, sorted(codes), "the chart is ordered by code")
+        cash = next(r for r in rows if r["account_id"] == chart["cash"])
+        self.assertEqual(cash["account_kind"], "cash")
+        self.assertEqual(cash["currency"], "JOD")
+        self.assertEqual(cash["status"], "active")
+
+    def test_a_retired_account_is_listed_as_retired_rather_than_dropped(self):
+        """An account that vanished would read as one that never existed.
+
+        A retirement is a status change with an actor and a time on it, and a chart that
+        hid retired accounts would make last year's journals reference rows nobody can see.
+        """
+        tenant_id = self.tenant()
+        owner = self.headers(tenant_id)
+        account_id = self.account(tenant_id, "OLD", "revenue")
+        retired = self.client.post(
+            f"/ledger/accounts/{account_id}/retire",
+            json={"reason": "merged into REV", **self.correlation()}, headers=owner)
+        self.assertEqual(retired.status_code, 200, retired.text)
+        head = self.headers(tenant_id, self.grant(tenant_id, ["finance.ledger.read"]))
+        listed = self.client.get("/ledger/accounts", headers=head)
+        row = next(r for r in listed.json()["accounts"] if r["account_id"] == account_id)
+        self.assertEqual(row["status"], "retired")
+        self.assertIsNotNone(row["retired_at"])
+        only_active = self.client.get("/ledger/accounts?status=active", headers=head)
+        self.assertNotIn(
+            account_id, [r["account_id"] for r in only_active.json()["accounts"]])
+
+    def test_a_period_appears_once_something_is_posted_into_it(self):
+        """`_period_for` opens a period when a journal needs one, so the row is the trace."""
+        tenant_id = self.tenant()
+        entity = self.legal_entity(tenant_id)
+        chart = self.chart(tenant_id)
+        self.journal(tenant_id, entity, chart)
+        listed = self.client.get(
+            "/ledger/periods",
+            headers=self.headers(tenant_id, self.grant(tenant_id, ["finance.ledger.read"])))
+        self.assertEqual(listed.status_code, 200, listed.text)
+        rows = listed.json()["periods"]
+        self.assertEqual(len(rows), 1, rows)
+        self.assertEqual(rows[0]["status"], "open")
+        self.assertTrue(rows[0]["admits_trade"])
+        self.assertEqual(rows[0]["legal_entity_id"], entity)
+
+    def test_the_listing_says_a_month_with_no_row_has_never_been_opened(self):
+        """The lock is per period row, so an absent month is not an open one.
+
+        A tenant whose 2026 books are filed has every earlier month with no row at all, and a
+        surface that read the absence as "open" would say the opposite of what is true.
+        """
+        tenant_id = self.tenant()
+        listed = self.client.get(
+            "/ledger/periods",
+            headers=self.headers(tenant_id, self.grant(tenant_id, ["finance.ledger.read"])))
+        self.assertEqual(listed.json()["periods"], [])
+        self.assertTrue(listed.json()["absence_means_never_opened"])
+
+    def test_a_closing_period_reports_that_it_admits_no_trade(self):
+        """`closing` is the state that surprises: it takes the close's entries and nothing else.
+
+        A caller reading only `status` has to know that; `admits_trade` is the fact itself, so
+        a surface cannot get the implication wrong.
+        """
+        tenant_id = self.tenant()
+        entity = self.legal_entity(tenant_id)
+        chart = self.chart(tenant_id)
+        posted = self.journal(tenant_id, entity, chart)
+        head = self.headers(tenant_id, self.grant(tenant_id, ["finance.ledger.read"]))
+        before = self.client.get("/ledger/periods", headers=head).json()["periods"][0]
+        self.assertTrue(before["admits_trade"])
+        closing = self.client.post("/ledger/periods/close", json={
+            "legal_entity_id": entity, "period_key": before["period_key"],
+            "target": "closing", **self.correlation()},
+            headers=self.headers(
+                tenant_id, self.stepped_grant(tenant_id, ["finance.period.close"])))
+        self.assertEqual(closing.status_code, 200, closing.text)
+        after = self.client.get("/ledger/periods", headers=head).json()["periods"][0]
+        self.assertEqual(after["status"], "closing")
+        self.assertFalse(after["admits_trade"])
+        self.assertEqual(after["period_id"], before["period_id"])
+        # And the journal that opened it is still readable, which is the point of closing
+        # rather than deleting.
+        self.assertEqual(
+            self.client.get(f"/ledger/journals/{posted['journal_id']}",
+                            headers=head).status_code, 200)
+
+    def test_an_unknown_status_refuses_and_a_bad_limit_refuses(self):
+        tenant_id = self.tenant()
+        head = self.headers(tenant_id, self.grant(tenant_id, ["finance.ledger.read"]))
+        for path, error in (("/ledger/periods?status=shut", "bad_status"),
+                            ("/ledger/accounts?status=dead", "bad_status"),
+                            ("/ledger/periods?limit=0", "bad_limit"),
+                            ("/ledger/accounts?limit=501", "bad_limit")):
+            refused = self.client.get(path, headers=head)
+            self.assertEqual(refused.status_code, 422, f"{path}: {refused.text}")
+            self.assertEqual(refused.json()["error"], error, path)
+
+    def test_there_is_no_journal_listing_route(self):
+        """Deliberate, and this is the test that keeps it deliberate.
+
+        `finance.ledger.read` returns an invoice's net, tax, gross, document number and the
+        payer's `person_id` out of `GET /ledger/journals/{id}` -- a lateral read around
+        `finance.invoice.read`, which the module discloses. It is a gap rather than a defect
+        only because journal ids are not enumerable from any route that permission reaches.
+        A listing would close that gap in the wrong direction, so adding one means fixing the
+        journal read first.
+        """
+        reads = {
+            (method, getattr(route, "path", ""))
+            for route in self.client.app.routes  # type: ignore[attr-defined]
+            for method in getattr(route, "methods", set())
+        }
+        # `POST /ledger/journals` exists and must: posting is the module's whole job. What
+        # does not exist, and this is the assertion, is a way to *enumerate* journal ids.
+        self.assertIn(("POST", "/ledger/journals"), reads)
+        self.assertNotIn(("GET", "/ledger/journals"), reads)

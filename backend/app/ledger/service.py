@@ -2589,3 +2589,142 @@ def post_refund(
         source_ref=refund_id, description="refund", idempotency_key=f"refund-{refund_id}",
         actor_id=actor_id, correlation_id=correlation_id)
     return {"posted": True, "ledger_journal_id": posted["journal_id"]}
+
+
+# ------------------------------------------------------------------ reads
+#
+# **Two listings, and deliberately not a third.** `CLAUDE.md` records that
+# `finance.ledger.read` is a narrow lateral read around `finance.invoice.read` -- a session
+# holding only it gets an invoice's net, tax, gross, document number and the payer's
+# `person_id` out of `get_journal` -- and that it "stays a gap rather than a defect only
+# because journal ids are not enumerable from any route that permission reaches. **The day a
+# journal-listing route is added, this is MOD-010's `events.event.read` finding.**" So there is
+# no journal listing here, and adding one later means fixing that read first rather than
+# noticing it afterwards.
+#
+# What is listed is the chart and the periods, neither of which carries a figure about a
+# person. The period listing in particular is the module's central control made observable:
+# a closed period refuses a posting, and until now nothing could say which periods were closed.
+
+#: Higher than MOD-017's 200, deliberately: a chart of accounts is legitimately long and is
+#: read whole, where a membership list is a page somebody scrolls. Both are bounded for the
+#: same reason -- unbounded is a bulk export and a denial of service at once.
+LIST_LIMIT = 500
+
+ACCOUNT_STATUSES = frozenset({"active", "retired"})
+PERIOD_STATUSES = frozenset({"open", "closing", "closed", "reopened"})
+
+
+def _bounded(limit: int) -> int:
+    if limit < 1 or limit > LIST_LIMIT:
+        raise InvalidRequest("bad_limit")
+    return limit
+
+
+def list_accounts(
+    pool: Pool, tenant_id: str, *, legal_entity_id: str | None = None,
+    status: str | None = None, limit: int = 200,
+) -> dict[str, Any]:
+    """The chart of accounts, by code.
+
+    **Ordered by `account_code`, which is how an accountant reads a chart** -- and the
+    ordering matters for a second reason here: `chart_for` takes the lower account code when a
+    tenant keeps two of one kind with no entity scope, so a reader comparing this list against
+    what a posting actually used needs the same order the resolver uses.
+
+    An entity-scoped account and an unscoped one are both legitimate, and
+    `legal_entity_id` filters on the column rather than falling back -- "the accounts belonging
+    to this entity" and "the accounts a posting for this entity may use" are different
+    questions, and only the first one is a list.
+    """
+    limit = _bounded(limit)
+    if status is not None and status not in ACCOUNT_STATUSES:
+        raise InvalidRequest("bad_status")
+    where = ["true"]
+    params: list[Any] = []
+    if legal_entity_id is not None:
+        where.append("legal_entity_id = %s")
+        params.append(legal_entity_id)
+    if status is not None:
+        where.append("status = %s")
+        params.append(status)
+    params.append(limit)
+    with tenant_scope(pool, tenant_id) as conn:
+        rows = conn.execute(
+            "SELECT account_id, account_code, account_kind, display_name, currency,"
+            " brand_id, location_id, legal_entity_id, status, retired_at"
+            " FROM plt01.led_accounts"
+            f" WHERE {' AND '.join(where)}"
+            " ORDER BY account_code, account_id LIMIT %s",
+            tuple(params),
+        ).fetchall()
+    return {
+        "accounts": [
+            {"account_id": str(r[0]), "account_code": str(r[1]),
+             "account_kind": str(r[2]), "display_name": str(r[3]),
+             "currency": str(r[4]),
+             "brand_id": str(r[5]) if r[5] else None,
+             "location_id": str(r[6]) if r[6] else None,
+             "legal_entity_id": str(r[7]) if r[7] else None,
+             "status": str(r[8]),
+             "retired_at": r[9].isoformat() if r[9] else None}
+            for r in rows],
+        "count": len(rows), "limit": limit, "truncated": len(rows) == limit,
+    }
+
+
+def list_periods(
+    pool: Pool, tenant_id: str, *, legal_entity_id: str | None = None,
+    status: str | None = None, limit: int = 50,
+) -> dict[str, Any]:
+    """The financial periods and their lock state, newest first.
+
+    **This is COM-04-R06's lock made observable, and nothing could read it before.** A closed
+    period refuses a posting and `closing` admits the close's own entries and no trade, so
+    "which months are shut" decides whether a till works -- and the only way to find out was to
+    try to post and read the refusal.
+
+    **A month that is not here has never been opened**, which is not the same as being open:
+    the lock is enforced per period *row*, so a tenant whose 2026 books are filed has every
+    earlier month with no row at all. The response says how many rows there are rather than
+    implying the absence of one means anything, and a surface has to say the same.
+    """
+    limit = _bounded(limit)
+    if status is not None and status not in PERIOD_STATUSES:
+        raise InvalidRequest("bad_status")
+    where = ["true"]
+    params: list[Any] = []
+    if legal_entity_id is not None:
+        where.append("legal_entity_id = %s")
+        params.append(legal_entity_id)
+    if status is not None:
+        where.append("status = %s")
+        params.append(status)
+    params.append(limit)
+    with tenant_scope(pool, tenant_id) as conn:
+        rows = conn.execute(
+            "SELECT period_id, legal_entity_id, period_key, starts_on, ends_on, status,"
+            " closed_at, closed_by, reopened_at, reopened_by, reopen_reason"
+            " FROM plt01.led_periods"
+            f" WHERE {' AND '.join(where)}"
+            " ORDER BY starts_on DESC, period_id DESC LIMIT %s",
+            tuple(params),
+        ).fetchall()
+    return {
+        "periods": [
+            {"period_id": str(r[0]), "legal_entity_id": str(r[1]),
+             "period_key": str(r[2]), "starts_on": r[3].isoformat(),
+             "ends_on": r[4].isoformat(), "status": str(r[5]),
+             "closed_at": r[6].isoformat() if r[6] else None,
+             "closed_by": str(r[7]) if r[7] else None,
+             "reopened_at": r[8].isoformat() if r[8] else None,
+             "reopened_by": str(r[9]) if r[9] else None,
+             "reopen_reason": str(r[10]) if r[10] else None,
+             # Derived here rather than by every reader, because "may a posting go in" is the
+             # question this table exists to answer and `closing` is the one that surprises:
+             # it admits the close's own entries and no trade at all.
+             "admits_trade": str(r[5]) in ("open", "reopened")}
+            for r in rows],
+        "count": len(rows), "limit": limit, "truncated": len(rows) == limit,
+        "absence_means_never_opened": True,
+    }
