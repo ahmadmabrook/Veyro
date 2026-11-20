@@ -38,6 +38,15 @@ export function LoginForm({ locale }: { locale: Locale }) {
       }}
     >
       <form action={formAction} noValidate className="page-section" style={{ width: "100%", maxWidth: "420px" }}>
+        {/* **The brand lockup, which ADM-AUTH-01 puts above the heading.** A sign-in page is
+            the one screen with no chrome around it, so the mark is what says which product
+            this is -- and without it the form reads as any form on any host, which is the
+            page where that matters most. 24px tile at radius 5 on the warm.900 ground,
+            with the name at 15/1.2, tracking -.012em: the canvas's own measurements. */}
+        <div className="ds-login-brand">
+          <span className="ds-login-mark" aria-hidden="true">{text("app.mark")}</span>
+          <span className="ds-login-name">{text("app.name")}</span>
+        </div>
         <h1>{text("login.title")}</h1>
 
         {state.error ? (
@@ -98,6 +107,26 @@ export function LoginForm({ locale }: { locale: Locale }) {
           idle={state.challenge ? text("login.continue") : text("login.submit")}
           busy={text("login.working")}
         />
+
+        {/* **The canvas's note box, and both sentences in it are true of this build.**
+            ADM-AUTH-01 ends with a note rather than a link, and the first half is the one
+            MOD-007's review paid for: a locked identity used to answer 423 in under two
+            milliseconds while everything else answered 401 in fifty, which identified every
+            registered address in five requests. Every refusal now costs one scrypt and
+            returns the same 401.
+
+            The second half is where the design and this build differ, and the honest place
+            to say so: the canvas resolves the tenant from the email domain and there is no
+            such resolution here -- `/auth/login` takes a tenant header, and inventing a
+            domain-to-tenant map would be inventing product. So the field above is real and
+            the reason it exists is stated, rather than a lookup that does not happen being
+            implied by its absence.
+
+            **And there is no "Forgotten your password?".** MOD-007 has a recovery path and
+            no form for it in this build; a link to a page that does not exist is worse than
+            the gap it hides, which is ADM-MEM-05's rule. */}
+        <p className="ds-login-note">{text("login.sameMessage")}</p>
+        <p className="ds-login-note">{text("login.tenantIsNotResolved")}</p>
       </form>
     </div>
   );

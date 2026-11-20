@@ -118,7 +118,17 @@ export default async function PermissionsPage({
 
   return (
     <div className="stack">
-      <PageHeader title={text("perms.title")} />
+      <PageHeader title={text("perms.title")}
+        figures={
+          <>
+            {fill(locale, "perms.rolesCounted", { count: roles.length })}
+            {" \u00b7 "}
+            {fill(locale, "perms.heldCounted", { count: mine?.permissions.length ?? 0 })}
+            {" \u00b7 "}
+            {fill(locale, "perms.auditCounted", { count: audit.length })}
+          </>
+        }
+       />
 
       <section className="page-section">
         <h2 style={{ margin: 0 }}>{text("perms.mine")}</h2>

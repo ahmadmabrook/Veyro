@@ -1988,3 +1988,54 @@ def person_credentials(
             "Whether this person gets in is decided per presentation against the zone's "
             "policy, their membership and their entitlement. This is only what they hold.",
     }
+
+
+def entries_by_point(
+    pool: Pool, tenant_id: str, *, on: date | None = None,
+) -> dict[str, Any]:
+    """Today's entries per reader, keyed by the device behind it.
+
+    ADM-ACC-01's TODAY column: "9 devices across 3 clubs · 218 entries today", with a count
+    beside each reader. A fleet board without it says which devices are answering and not
+    whether anybody is walking through them, which is the difference between a device that is
+    up and a door that is working.
+
+    **This lives in MOD-022 rather than in MOD-021's fleet read.** A device knows nothing
+    about doors by design -- MOD-021 has the turnstile and no idea who a member is, and
+    `acc_points` is the join MOD-021 deliberately did not make. So the fleet board composes
+    the two, the way the Member 360 composes MOD-014 and MOD-017, rather than MOD-021
+    learning to count entries.
+
+    **The day is local to each point's own location**, which is `visits_on`'s rule one
+    function up and matters for the same reason: a tenant with clubs in two zones has two
+    todays and one `date_trunc` in the host's zone is wrong for both.
+    """
+    on = on or datetime.now(UTC).date()
+    with tenant_scope(pool, tenant_id) as conn:
+        rows = conn.execute(
+            "SELECT p.point_id, p.device_id,"
+            "       count(e.event_id) FILTER ("
+            "         WHERE e.direction = 'entry'"
+            "           AND (e.occurred_at AT TIME ZONE l.timezone)::date = %s)"
+            " FROM plt01.acc_points p"
+            " JOIN plt01.acc_zones z ON z.zone_id = p.zone_id"
+            " JOIN plt01.locations l ON l.location_id = z.location_id"
+            " LEFT JOIN plt01.acc_events e ON e.point_id = p.point_id"
+            " WHERE p.retired_at IS NULL"
+            " GROUP BY p.point_id, p.device_id"
+            " ORDER BY p.point_id",
+            (on,)).fetchall()
+    by_device: dict[str, int] = {}
+    for row in rows:
+        by_device[str(row[1])] = by_device.get(str(row[1]), 0) + int(row[2])
+    return {
+        "date": on.isoformat(),
+        "points": [{"point_id": str(r[0]), "device_id": str(r[1]), "entries": int(r[2])}
+                   for r in rows],
+        # A device may stand at more than one reader, so the per-device figure is a sum.
+        "by_device": by_device,
+        "entries": sum(by_device.values()),
+        "a_device_with_no_point_is_absent":
+            "Only devices standing at a live access point appear here. A scanner that is "
+            "not a door counts nothing, which is not the same as counting zero.",
+    }

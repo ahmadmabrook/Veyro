@@ -172,6 +172,16 @@ test.describe("the writes that need no step-up", () => {
     // Exactly one, because this identity was made by this test: the API login above and the
     // browser login it is reading in.
     await expect(buttons).toHaveCount(1);
+    // **And the row says which session it is.** Revoking one is destructive and the device
+    // it came from is the only thing that tells two apart; this rendered as a bulleted list
+    // of "level 2 · 17:11" rows until somebody opened the page, with the device on every
+    // row of the response and dropped by the rendering.
+    const row = section.locator(".ds-session").first();
+    // This one was opened through the API and carries no device, which is a fact about the
+    // session rather than a gap -- and saying so is the point: a blank would read as a
+    // session from nowhere, and the row a browser opened names the browser instead.
+    await expect(row).toContainText("No device recorded");
+    await expect(row).toContainText("opened");
 
     await buttons.click();
     await expect(section.getByText("Revoked.")).toBeVisible();

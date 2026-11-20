@@ -3,9 +3,10 @@ import { redirect } from "next/navigation";
 
 import { Banner } from "@/components/ds/banner";
 import { DataGrid } from "@/components/ds/data-grid";
-import { formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
+import { fill, formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
 import { PageHeader } from "@/components/ds/page-header";
 import { ApiError, currentSession, gate } from "@/lib/api";
+import { readEntries } from "@/lib/access";
 import { readFleet, type FleetView } from "@/lib/fleet";
 import { presentation } from "@/lib/preferences";
 import { utcStamp } from "@/lib/time";
@@ -58,10 +59,25 @@ export default async function FleetPage() {
   }
 
   const attention = new Set(fleet.needs_attention);
+  // ADM-ACC-01's TODAY column, composed from MOD-022: a device knows nothing about doors,
+  // and `acc_points` is the join MOD-021 deliberately did not make. A reader who may not
+  // see the access plane gets the board without the column rather than a refusal.
+  const entries = (await gate("access.zone.read")).allowed
+    ? await readEntries().catch(() => null)
+    : null;
 
   return (
     <Shell
       locale={locale}
+      // **The title is the finding.** Every canvas in this design heads a board with what it
+      // found -- "One reader is down", "Three things need you this morning" -- and puts the
+      // noun on the rail. A heading that says "Devices" over a table of devices is the one
+      // sentence on the screen that tells a reader nothing.
+      title={
+        attention.size === 0
+          ? text("fleet.allAnswering")
+          : fill(locale, "fleet.someDown", { count: attention.size })
+      }
       // The board's own three answers, as figures: how many devices, how many need somebody,
       // and when the reachability was worked out. The last is the one a reader has to have:
       // nothing polls, so the board is "as of" when it loaded.
@@ -79,29 +95,10 @@ export default async function FleetPage() {
       }
     >
       <section className="page-section">
-        <h2 style={{ margin: 0 }}>{text("fleet.attention")}</h2>
-        <p className="muted" style={{ margin: 0 }}>
-          {text("fleet.attentionDetail")}
-        </p>
-        {attention.size === 0 ? (
-          <Banner severity="info">{text("fleet.allWell")}</Banner>
-        ) : (
-          <ul style={{ margin: 0, paddingInlineStart: "var(--space-5)" }}>
-            {fleet.devices
-              .filter((device) => attention.has(device.device_id))
-              .map((device) => (
-                <li key={device.device_id}>
-                  <Link href={`/fleet/${device.device_id}`}>{device.display_name}</Link>
-                </li>
-              ))}
-          </ul>
-        )}
-      </section>
-
-      <section className="page-section">
-        <h2 id="fleet-heading" style={{ margin: 0 }}>
-          {text("fleet.title")}
-        </h2>
+        {/* The grid's accessible name. Visible, it was the third "Devices" on a screen
+            whose rail entry and title already said so -- and the title says what was found
+            rather than what the table is. */}
+        <h2 id="fleet-heading" className="ds-visually-hidden">{text("fleet.title")}</h2>
         {fleet.devices.length === 0 ? (
           <Banner severity="info">{text("fleet.empty")}</Banner>
         ) : (
@@ -150,6 +147,34 @@ labelledBy="fleet-heading"
                 ),
               },
               {
+                header: text("fleet.club"),
+                kind: "text",
+                // Priority 1: "Sweifieh main door stopped responding" is the sentence
+                // ADM-ACC-01 is built around, and the club is half of it. A board of serial
+                // numbers with no site on them is one nobody can act on.
+                priority: 1,
+                render: (device) => device.location_name,
+              },
+              {
+                header: text("fleet.today"),
+                kind: "text",
+                priority: 2,
+                render: (device) => {
+                  if (entries === null) {
+                    return <span className="muted">{text("fleet.entriesUnknown")}</span>;
+                  }
+                  const count = entries.by_device[device.device_id];
+                  // **A device that is not a door counts nothing, which is not zero.** A
+                  // scanner at no access point has no entries to have; rendering `0` would
+                  // say people are not walking through a thing nobody walks through.
+                  return count === undefined ? (
+                    <span className="muted">{text("fleet.notADoor")}</span>
+                  ) : (
+                    <span className="data" dir="ltr">{formatInteger(count, "latn")}</span>
+                  );
+                },
+              },
+              {
                 header: text("fleet.state"),
                 kind: "status",
                 priority: 2,
@@ -185,6 +210,26 @@ labelledBy="fleet-heading"
           {text("fleet.counted")}
         </p>
       </section>
+
+      <section className="page-section">
+        <h2 style={{ margin: 0 }}>{text("fleet.attention")}</h2>
+        <p className="muted" style={{ margin: 0 }}>
+          {text("fleet.attentionDetail")}
+        </p>
+        {attention.size === 0 ? (
+          <Banner severity="info">{text("fleet.allWell")}</Banner>
+        ) : (
+          <ul style={{ margin: 0, paddingInlineStart: "var(--space-5)" }}>
+            {fleet.devices
+              .filter((device) => attention.has(device.device_id))
+              .map((device) => (
+                <li key={device.device_id}>
+                  <Link href={`/fleet/${device.device_id}`}>{device.display_name}</Link>
+                </li>
+              ))}
+          </ul>
+        )}
+      </section>
     </Shell>
   );
 }
@@ -193,14 +238,20 @@ function Shell({
   locale,
   children,
   figures,
+  title,
 }: {
   locale: Locale;
   children: React.ReactNode;
   figures?: React.ReactNode;
+  /** The finding. Absent on a failure path, where the screen's own name is all there is. */
+  title?: string;
 }) {
   return (
     <div className="stack">
-      <PageHeader title={t(locale, "fleet.title")} {...(figures ? { figures } : {})} />
+      <PageHeader
+        title={title ?? t(locale, "fleet.title")}
+        {...(figures ? { figures } : {})}
+      />
       {children}
       {/* The lead moved to the foot. It is a disclosure rather than a description --
           reachability is derived at read time and nothing polls -- so it answers a question

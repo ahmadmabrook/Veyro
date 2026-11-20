@@ -2995,3 +2995,160 @@ class CommandCentreReadTests(CommercialApiTestCase):
             answer = self.client.get(path, headers=head)
             self.assertEqual(answer.status_code, 200, answer.text)
             self.assertNotIn(name.split()[0], answer.text, path)
+
+
+class PaymentsLedgerTests(CommercialApiTestCase):
+    """ADM-PAY-01's read: money in, money out and money contested on one axis.
+
+    **The screen this answers did not exist, and the read did not either.** MOD-017 could say
+    what one member owed and had nothing that put a tenant's payments, failed attempts,
+    refunds and disputes in one list -- which is the one thing a reconciler opens every
+    morning. The canvas's rule is what these tests are about: "a refund is never shown as a
+    payment of a different colour -- it is a different sign on the same axis".
+    """
+
+    def ledger(self, tenant_id: str, **params: str) -> dict:
+        query = "&".join(f"{k}={v}" for k, v in params.items())
+        read = self.client.get(
+            f"/finance/payments{'?' + query if query else ''}",
+            headers=self.scoped(tenant_id, ["finance.payment.read"]))
+        self.assertEqual(read.status_code, 200, read.text)
+        return dict(read.json())
+
+    def test_a_settled_payment_is_positive_and_needs_nobody(self):
+        tenant_id = self.tenant()
+        paid = self.paid(tenant_id)
+        rows = self.ledger(tenant_id)["entries"]
+        payment = next(r for r in rows if r["kind"] == "payment")
+        self.assertEqual(payment["row_id"], paid["payment_id"])
+        self.assertGreater(payment["amount_minor"], 0)
+        self.assertFalse(payment["needs_action"])
+
+    def test_a_refund_is_a_negative_amount_on_the_same_axis(self):
+        """The canvas's rule, as arithmetic rather than as a colour.
+
+        A board that rendered a refund positive and coloured it would pass any assertion
+        about the row existing, and would make the amount column stop adding up -- which is
+        the one property a reconciler checks it against.
+        """
+        tenant_id = self.tenant()
+        owner = self.headers(tenant_id)
+        paid = self.paid(tenant_id)
+        requested = self.client.post("/finance/refund-requests", json={
+            "payment_id": paid["payment_id"], "amount_minor": 1000,
+            "reason": "charged after she froze", **self.correlation()}, headers=owner)
+        self.assertEqual(requested.status_code, 201, requested.text)
+        approver = self.headers(
+            tenant_id, self.stepped_grant(tenant_id, ["finance.refund.approve"]))
+        approved = self.client.post("/finance/refunds", json={
+            "request_id": requested.json()["request_id"],
+            "approval_reason": "agreed: it should not have run",
+            "idempotency_key": f"rf-{uuid.uuid4().hex[:8]}",
+            **self.correlation()}, headers=approver)
+        self.assertEqual(approved.status_code, 201, approved.text)
+
+        rows = self.ledger(tenant_id)["entries"]
+        refund = next(r for r in rows if r["kind"] == "refund")
+        self.assertEqual(refund["amount_minor"], -1000)
+        # **And it names what it is about**, which is the canvas's parenthetical original: a
+        # negative figure with no story is a figure nobody can check.
+        self.assertEqual(refund["about_payment_id"], paid["payment_id"])
+        # A refund nobody has settled is a row somebody has to act on.
+        self.assertTrue(refund["needs_action"])
+
+    def test_a_failed_charge_is_a_row_rather_than_an_absence(self):
+        """A ledger of successes is a ledger that cannot be reconciled."""
+        tenant_id = self.tenant()
+        owner = self.headers(tenant_id)
+        billing = self.billing(tenant_id, self.person(tenant_id))
+        issued = self.invoice(tenant_id, billing)
+        intent = self.intent(tenant_id, billing, issued)
+        self.assertEqual(self.client.post(
+            f"/finance/payment-intents/{intent['intent_id']}/settle",
+            json={"outcome": "failed", "failure_code": "card_expired",
+                  **self.correlation()}, headers=owner).status_code, 200)
+
+        answer = self.ledger(tenant_id)
+        attempt = next(r for r in answer["entries"] if r["kind"] == "attempt")
+        self.assertEqual(attempt["state"], "failed")
+        self.assertTrue(attempt["needs_action"])
+        self.assertEqual(answer["failed"], 1)
+        # And the intent that *did* settle is not duplicated as an attempt beside its
+        # payment, because a settled intent is the payment above it.
+        self.assertEqual(
+            [r for r in answer["entries"] if r["kind"] == "attempt"], [attempt])
+
+    def test_an_open_dispute_is_negative_and_needs_somebody(self):
+        tenant_id = self.tenant()
+        owner = self.headers(tenant_id)
+        paid = self.paid(tenant_id)
+        opened = self.client.post("/finance/disputes", json={
+            "payment_id": paid["payment_id"], "provider_case_ref": "ACME-1",
+            "dispute_kind": "chargeback", "reason_code": "not_received",
+            "amount_minor": 2000, "currency": "JOD",
+            "opened_on": "2026-01-02", "respond_due_on": "2026-02-01",
+            "idempotency_key": f"dp-{uuid.uuid4().hex[:8]}",
+            **self.correlation()}, headers=owner)
+        self.assertEqual(opened.status_code, 201, opened.text)
+        rows = self.ledger(tenant_id, since="2026-01-01", until="2026-01-31")["entries"]
+        dispute = next(r for r in rows if r["kind"] == "dispute")
+        self.assertEqual(dispute["amount_minor"], -2000)
+        self.assertTrue(dispute["needs_action"])
+        self.assertEqual(dispute["about_payment_id"], paid["payment_id"])
+
+    def test_the_needs_action_filter_drops_the_settled_rows(self):
+        tenant_id = self.tenant()
+        owner = self.headers(tenant_id)
+        self.paid(tenant_id)
+        billing = self.billing(tenant_id, self.person(tenant_id))
+        intent = self.intent(tenant_id, billing)
+        self.client.post(
+            f"/finance/payment-intents/{intent['intent_id']}/settle",
+            json={"outcome": "failed", "failure_code": "do_not_honour",
+                  **self.correlation()}, headers=owner)
+        filtered = self.ledger(tenant_id, needs_action="true")
+        self.assertTrue(filtered["entries"])
+        self.assertTrue(all(r["needs_action"] for r in filtered["entries"]))
+        self.assertNotIn("payment", {r["kind"] for r in filtered["entries"]})
+
+    def test_the_ledger_carries_no_name_and_no_card(self):
+        """**The control is an absence**, so it is asserted as one.
+
+        `finance.payment.read` is tenant-wide. A money permission that returned a member's
+        name would be a lateral read path around `people.person.read` -- MOD-010's
+        `events.event.read` finding, which this repository has paid for once.
+        """
+        tenant_id = self.tenant()
+        self.paid(tenant_id)
+        read = self.client.get(
+            "/finance/payments",
+            headers=self.scoped(tenant_id, ["finance.payment.read"]))
+        self.assertEqual(read.status_code, 200, read.text)
+        for row in read.json()["entries"]:
+            self.assertNotIn("legal_name", row)
+            self.assertNotIn("payer_name", row)
+            self.assertNotIn("payment_method_ref", row)
+            self.assertNotIn("provider_ref", row)
+        self.assertNotIn("Jane", read.text)
+
+    def test_another_tenants_money_is_not_on_this_ledger(self):
+        mine = self.tenant()
+        theirs = self.tenant()
+        self.paid(theirs)
+        self.assertEqual(self.ledger(mine)["entries"], [])
+
+    def test_a_window_that_ends_before_it_starts_is_refused(self):
+        tenant_id = self.tenant()
+        read = self.client.get(
+            "/finance/payments?since=2026-02-01&until=2026-01-01",
+            headers=self.scoped(tenant_id, ["finance.payment.read"]))
+        # 422, not 409: an `InvalidRequest` is a malformed request rather than a conflict
+        # with the tenant's state, and a window that ends before it starts is the first.
+        self.assertEqual(read.status_code, 422, read.text)
+
+    def test_an_unbounded_limit_is_refused_rather_than_served(self):
+        tenant_id = self.tenant()
+        read = self.client.get(
+            "/finance/payments?limit=100000",
+            headers=self.scoped(tenant_id, ["finance.payment.read"]))
+        self.assertEqual(read.status_code, 422, read.text)

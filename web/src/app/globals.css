@@ -2279,3 +2279,75 @@ a {
   font-size: var(--type-caption-size);
   color: var(--color-text-secondary);
 }
+
+/* ------------------------------------------------------------------ sign-in
+   ADM-AUTH-01's lockup and its note box. The sign-in page is the one screen with no chrome
+   around it, so the mark is what says which product this is. */
+
+.ds-login-brand {
+  display: flex;
+  gap: 9px;
+  align-items: center;
+}
+
+.ds-login-mark {
+  inline-size: 24px;
+  block-size: 24px;
+  border-radius: 5px;
+  background: var(--p-warm-900);
+  color: var(--p-warm-0);
+  font-family: var(--font-plex-sans), system-ui, sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 24px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.ds-login-name {
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.2;
+  letter-spacing: -0.012em;
+}
+
+.ds-login-note {
+  margin: 0;
+  padding: 10px 11px;
+  background: var(--color-surface-sunken);
+  border-radius: var(--radius-card);
+  font-size: var(--type-caption-size);
+  line-height: 1.6;
+  color: var(--color-text-secondary);
+}
+
+/* ------------------------------------------------------------------ account sessions
+   A bulleted list of nineteen "level 2 · 17:11" rows is not something anybody can act on,
+   and revoking one is destructive: the device a session came from is what tells them apart,
+   so each row is a three-part grid with the device first. */
+
+.ds-session-list { list-style: none; margin: 0; padding: 0; }
+
+.ds-session {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  flex-wrap: wrap;
+  padding: var(--space-2) 0;
+  border-block-end: 1px solid var(--color-border-subtle);
+}
+
+.ds-session:last-child { border-block-end: 0; }
+
+.ds-session-where { flex: 1; min-inline-size: 180px; }
+
+.ds-session-when {
+  display: block;
+  font-size: var(--type-caption-size);
+  color: var(--color-text-tertiary);
+}
+
+.ds-session-level {
+  font-size: var(--type-caption-size);
+  color: var(--color-text-secondary);
+}

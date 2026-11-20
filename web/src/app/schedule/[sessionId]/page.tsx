@@ -238,9 +238,9 @@ export default async function SessionPage({
                 {mayChange.step_up_required ? (
                   <p style={{ margin: 0 }}>
                     <Link
-                      href={`/step-up?for=financial&next=${encodeURIComponent(
-                        `/schedule/${session.session_id}`,
-                      )}`}
+                      href={`/step-up?for=financial&action=scheduling.session.change`
+                        + `&next=${encodeURIComponent(
+                          `/schedule/${session.session_id}`)}`}
                     >
                       {text("schedule.raiseSession")}
                     </Link>

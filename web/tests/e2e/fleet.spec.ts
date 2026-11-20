@@ -59,7 +59,12 @@ test.describe("the fleet board", () => {
     // The freshness this test is about, created by this test. See `reportHealthy`.
     await reportHealthy(page);
     await page.reload();
-    await expect(page.getByRole("heading", { name: "Devices", level: 1 })).toBeVisible();
+    // **The title is the finding**, which ADM-ACC-01 heads this board with: "One reader is
+    // down" over the table, with the noun on the rail. With every device answering it says
+    // so, which is a sentence rather than the screen's own name.
+    await expect(
+      page.getByRole("heading", { name: /reader/, level: 1 }),
+    ).toBeVisible();
     const board = page.locator("table");
     await expect(board.getByRole("row").filter({ hasText: "North turnstile" })).toContainText(
       "Online",
@@ -70,6 +75,15 @@ test.describe("the fleet board", () => {
     await expect(
       board.getByRole("row").filter({ hasText: "Reception scanner" }),
     ).toContainText("Never reported");
+    // ADM-ACC-01's CLUB column: "Sweifieh main door stopped responding" is the sentence the
+    // canvas is built around, and a board of serial numbers with no site on them is one
+    // nobody can act on.
+    await expect(board.getByRole("row").filter({ hasText: "North turnstile" }))
+      .toContainText("Downtown");
+    // And its TODAY column, composed from MOD-022 -- a device knows nothing about doors, so
+    // a scanner at no access point reads "Not a door" rather than zero.
+    await expect(board.getByRole("row").filter({ hasText: "Reception scanner" }))
+      .toContainText("Not a door");
   });
 
   test("says reachability is worked out rather than stored", async ({ page }) => {

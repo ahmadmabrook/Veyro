@@ -4129,3 +4129,105 @@ def list_dunning_cases(
         "at_risk_is_outstanding":
             "at_risk sums what is still unpaid on each cited invoice, not the invoice total.",
     }
+
+
+def payments_ledger(
+    pool: Pool, tenant_id: str, *, since: date | None = None, until: date | None = None,
+    needs_action_only: bool = False, limit: int = 100,
+) -> dict[str, Any]:
+    """ADM-PAY-01: money in, money out and money contested, on one axis.
+
+    > Refunds carry a negative sign and the parenthetical original. **A refund is never shown
+    > as a payment of a different colour -- it is a different sign on the same axis.**
+
+    That line is the whole design of this read, and it is why the four tables are unioned
+    rather than returned as four lists: a surface that drew payments, then refunds, then
+    disputes would make the reader add up three columns to find out what a day actually
+    took, and would let a refund hide under a heading nobody scrolled to.
+
+    **A failed charge is a row, not an absence.** `fin_payment_intents` carries the attempts
+    that never became payments -- the canvas's "6 failed" -- and leaving them out would make
+    this a list of successes. `needs_action` marks the three kinds that want a person: a
+    failed or unknown intent, a pending refund, and an open dispute.
+
+    **No name, no address, no card.** The row carries `payer_person_id` and the method's
+    *kind*, and nothing else about anybody: `finance.payment.read` is a tenant-wide money
+    permission, and returning names here would make it a lateral read path around
+    `people.person.read` -- MOD-010's `events.event.read` finding, which this repository has
+    paid for once. A surface that wants names composes, the way the members list does.
+    """
+    until = until or datetime.now(UTC).date()
+    since = since or (until - timedelta(days=30))
+    if since > until:
+        raise InvalidRequest("a_ledger_window_ends_after_it_starts")
+    if not 1 <= limit <= 500:
+        raise InvalidRequest("a_payments_ledger_takes_between_one_and_five_hundred")
+    with tenant_scope(pool, tenant_id) as conn:
+        rows = conn.execute(
+            # One SELECT per kind, unioned, each projecting the same seven columns. The
+            # amount's sign is set here rather than by the caller, because "a refund is a
+            # different sign on the same axis" is a property of the data and not of a view.
+            "SELECT * FROM ("
+            "  SELECT 'payment' AS kind, p.payment_id AS row_id, p.received_at AS at,"
+            "         a.payer_person_id, p.method, p.amount_minor, p.currency,"
+            "         'received' AS state, false AS needs_action, p.payment_id AS about"
+            "    FROM plt01.fin_payments p"
+            "    JOIN plt01.fin_billing_accounts a"
+            "      ON a.billing_account_id = p.billing_account_id"
+            "  UNION ALL"
+            # An intent that settled became a payment above; only the ones that did not are
+            # news. `unknown` is MOD-017's "the provider did not answer", which is the state
+            # that most needs a person and is easiest to leave out of a ledger.
+            "  SELECT 'attempt', i.intent_id, i.created_at, a.payer_person_id, i.method,"
+            "         i.amount_minor, i.currency, i.status,"
+            "         i.status IN ('failed', 'unknown'), i.intent_id"
+            "    FROM plt01.fin_payment_intents i"
+            "    JOIN plt01.fin_billing_accounts a"
+            "      ON a.billing_account_id = i.billing_account_id"
+            "   WHERE i.status <> 'succeeded'"
+            "  UNION ALL"
+            "  SELECT 'refund', r.refund_id, r.approved_at, a.payer_person_id, 'refund',"
+            "         -r.amount_minor, r.currency, r.status, r.status = 'pending',"
+            "         r.payment_id"
+            "    FROM plt01.fin_refunds r"
+            "    JOIN plt01.fin_billing_accounts a"
+            "      ON a.billing_account_id = r.billing_account_id"
+            "  UNION ALL"
+            "  SELECT 'dispute', d.dispute_id, d.opened_on::timestamptz, a.payer_person_id,"
+            "         d.dispute_kind, -d.amount_minor, d.currency, d.status,"
+            "         d.status IN ('open', 'under_review'), d.payment_id"
+            "    FROM plt01.fin_disputes d"
+            "    JOIN plt01.fin_billing_accounts a"
+            "      ON a.billing_account_id = d.billing_account_id"
+            ") ledger"
+            " WHERE at::date >= %s AND at::date <= %s"
+            "   AND (NOT %s OR needs_action)"
+            " ORDER BY at DESC, row_id"
+            " LIMIT %s",
+            (since, until, needs_action_only, limit)).fetchall()
+    entries = [
+        {"kind": str(r[0]), "row_id": str(r[1]), "at": r[2].isoformat(),
+         "payer_person_id": None if r[3] is None else str(r[3]),
+         "method": str(r[4]), "amount_minor": int(r[5]), "currency": str(r[6]),
+         "state": str(r[7]), "needs_action": bool(r[8]),
+         # What a refund or a dispute is *about*: the payment it reverses. The canvas calls
+         # it "the parenthetical original", and without it a negative row is a figure with
+         # no story.
+         "about_payment_id": None if r[9] is None else str(r[9])} for r in rows]
+    return {
+        "entries": entries,
+        "count": len(entries),
+        "since": since.isoformat(), "until": until.isoformat(),
+        "needs_action": sum(1 for e in entries if e["needs_action"]),
+        "failed": sum(1 for e in entries
+                      if e["kind"] == "attempt" and e["state"] == "failed"),
+        "refunded": sum(1 for e in entries if e["kind"] == "refund"),
+        "disputed": sum(1 for e in entries if e["kind"] == "dispute"),
+        "truncated": len(entries) == limit,
+        "a_refund_is_a_sign_not_a_kind":
+            "Refunds and disputes carry a negative amount on the same axis as a payment. "
+            "They are never a payment of a different colour.",
+        "no_name_is_returned":
+            "Rows carry payer_person_id and nothing else about anybody. A tenant-wide money "
+            "permission must not become a read path around people.person.read.",
+    }

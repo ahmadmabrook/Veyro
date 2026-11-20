@@ -1589,10 +1589,15 @@ def fleet_view(
         raise InvalidRequest("a_fleet_view_takes_between_one_and_a_thousand")
     with tenant_scope(pool, tenant_id) as conn:
         rows = conn.execute(
+            # **The club's name, not only its id.** ADM-ACC-01 draws a CLUB column beside
+            # every device, and a board of serial numbers against uuids is a board nobody
+            # can act on -- "Sweifieh main door stopped responding" is the sentence the
+            # canvas is built around. `locations` is MOD-004's and every module joins to it.
             "SELECT d.device_id, d.serial_number, d.display_name, d.state,"
-            " d.last_seen_at, d.location_id, t.kind"
+            " d.last_seen_at, d.location_id, t.kind, l.location_name"
             " FROM plt01.dev_devices d"
             " JOIN plt01.dev_device_types t ON t.type_id = d.type_id"
+            " JOIN plt01.locations l ON l.location_id = d.location_id"
             " WHERE (%s::uuid IS NULL OR d.location_id = %s::uuid)"
             " ORDER BY d.last_seen_at NULLS FIRST, d.serial_number"
             " LIMIT %s",
@@ -1603,7 +1608,8 @@ def fleet_view(
         devices.append({
             "device_id": str(row[0]), "serial_number": str(row[1]),
             "display_name": str(row[2]), "state": str(row[3]), "kind": str(row[6]),
-            "location_id": str(row[5]), "reachability": reach,
+            "location_id": str(row[5]), "location_name": str(row[7]),
+            "reachability": reach,
             "blocks_operation": fleet.blocks_operation(str(row[3]), reach),
             "last_seen_at": row[4].isoformat() if row[4] else None})
     return {"devices": devices, "count": len(devices),

@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { readCatalog } from "@/lib/authz";
+
 import { Banner } from "@/components/ds/banner";
 import { t, type Locale, type MessageKey } from "@/i18n/locale";
 import { ApiError, api, currentSession } from "@/lib/api";
@@ -28,7 +30,7 @@ const ACTION_CLASSES = ["routine", "financial", "privileged", "biometric_sensiti
 export default async function StepUpPage({
   searchParams,
 }: {
-  searchParams: Promise<{ for?: string; next?: string }>;
+  searchParams: Promise<{ for?: string; next?: string; action?: string }>;
 }) {
   const { locale } = await presentation();
   const text = (key: MessageKey) => t(locale, key);
@@ -43,6 +45,22 @@ export default async function StepUpPage({
     ? params.for!
     : "financial";
   const next = safeNext(params.next);
+  // **What the reader is about to do, named.** ADM-AUTH-02's line is "You're about to
+  // *export 4,812 member records*" -- the action in the sentence, not a class. A page that
+  // says only "this action needs a stronger sign-in" asks somebody to re-authenticate for
+  // something they have to remember clicking, which is the habit a phishing page relies on.
+  //
+  // The description comes from the catalogue rather than from the link: a caller that could
+  // put arbitrary prose in a query parameter could say anything on the one page where a
+  // reader is about to type a credential. An action the catalogue does not know is dropped
+  // rather than echoed.
+  const describing = typeof params.action === "string" && /^[a-z][a-z0-9_.]{2,80}$/.test(
+    params.action) ? params.action : null;
+  const action = describing === null
+    ? null
+    : await readCatalog()
+      .then((catalog) => catalog.permissions.find((one) => one.name === describing) ?? null)
+      .catch(() => null);
 
   // **Which factor can raise this session is the server's answer, not a guess.** `factors` is
   // on the resolved session, and `policy.assurance_for` reads distinct kinds: a password
@@ -99,7 +117,13 @@ export default async function StepUpPage({
         padding: "var(--space-10) var(--space-4)",
       }}
     >
-      <StepUpForm locale={locale} factor={factor} actionClass={actionClass} next={next} />
+      <StepUpForm
+        locale={locale}
+        factor={factor}
+        actionClass={actionClass}
+        next={next}
+        {...(action ? { about: action.description } : {})}
+      />
       <Link href={next}>{text("stepUp.back")}</Link>
     </div>
   );

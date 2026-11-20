@@ -4,7 +4,7 @@ import { Banner } from "@/components/ds/banner";
 import { PageHeader } from "@/components/ds/page-header";
 import { DataGrid } from "@/components/ds/data-grid";
 import { Prose } from "@/components/prose";
-import { formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
+import { fill, formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
 import { ApiError, currentSession, gate } from "@/lib/api";
 import {
   erasesOf,
@@ -104,7 +104,22 @@ export default async function PrivacyPage() {
   const liveHolds = holds.filter(holdIsLive);
 
   return (
-    <Shell locale={locale}>
+    <Shell
+      locale={locale}
+      figures={
+        <>
+          {fill(locale, "privacy.requestsCounted", { count: requests.length })}
+          {" \u00b7 "}
+          {fill(locale, "privacy.queueCounted", { count: queue.length })}
+          {" \u00b7 "}
+          {fill(locale, "privacy.holdsCounted", { count: liveHolds.length })}
+          {reach === null ? null : (
+            <> {"\u00b7 "}{fill(locale, "privacy.residueCounted",
+              { count: reach.residue_count })}</>
+          )}
+        </>
+      }
+    >
       {failed ? <Banner severity="critical">{text("error.unexpected")}</Banner> : null}
 
       <section className="page-section">
@@ -424,10 +439,26 @@ export default async function PrivacyPage() {
   );
 }
 
-function Shell({ locale, children }: { locale: Locale; children: React.ReactNode }) {
+function Shell({
+  locale,
+  children,
+  figures,
+}: {
+  locale: Locale;
+  children: React.ReactNode;
+  /**
+   * The counts under the title.
+   *
+   * **The design's page header is a title and a line of figures, never a paragraph**, and
+   * every drawn canvas does the same: "4,812 active · 312 expired · 68 frozen · all
+   * locations". A board whose header carried only its own name made a reader scroll to find
+   * out whether anything on it needed them.
+   */
+  figures?: React.ReactNode;
+}) {
   return (
     <div className="stack">
-      <PageHeader title={t(locale, "privacy.title")} />
+      <PageHeader title={t(locale, "privacy.title")} {...(figures ? { figures } : {})} />
       {children}
       {/* **The lead paragraph moved to the foot.** The design's page header is a title and a
           line of figures -- every drawn canvas does the same -- so an explanation of what the

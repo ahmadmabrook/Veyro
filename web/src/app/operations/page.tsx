@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { Banner } from "@/components/ds/banner";
 import { PageHeader } from "@/components/ds/page-header";
 import { DataGrid } from "@/components/ds/data-grid";
-import { formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
+import { fill, formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
 import { ApiError, currentSession, gate } from "@/lib/api";
 import {
   backlogIsExpected,
@@ -77,7 +77,18 @@ export default async function OperationsPage() {
 
   return (
     <div className="stack">
-      <PageHeader title={text("ops.title")} />
+      <PageHeader title={text("ops.title")}
+        figures={
+          <>
+            {fill(locale, "ops.pendingCounted", { count: health?.pending_events ?? 0 })}
+            {" \u00b7 "}
+            {fill(locale, "ops.deliveriesCounted",
+              { count: health?.pending_deliveries ?? 0 })}
+            {" \u00b7 "}
+            {fill(locale, "ops.deadCounted", { count: health?.dead_letters ?? 0 })}
+          </>
+        }
+       />
 
       <section className="page-section">
         <h2 style={{ margin: 0 }}>{text("ops.outbox")}</h2>

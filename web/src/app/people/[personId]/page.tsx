@@ -520,7 +520,12 @@ function IdentityPanel({ person, locale }: { person: Person; locale: Locale }) {
         {identityWithheld ? (
           <p style={{ margin: 0 }}>
             <Link
-              href={`/step-up?for=financial&next=${
+              // **The action, so the prompt can name it.** ADM-AUTH-02's own line is
+              // "You're about to <the action>", and a re-authentication page that says only
+              // "this action needs a stronger sign-in" asks somebody to remember what they
+              // clicked. The step-up page looks the name up in MOD-008's catalogue rather
+              // than echoing it, so a link cannot put prose on that page.
+              href={`/step-up?for=financial&action=member.identity.read&next=${
                 encodeURIComponent(`/people/${person.person_id}`)}`}
             >
               {text("member.raiseSession")}

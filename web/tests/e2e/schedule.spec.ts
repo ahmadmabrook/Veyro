@@ -184,10 +184,17 @@ test.describe("the schedule board", () => {
     await expect(changes).toContainText("Reason withheld");
     const offer = page.getByRole("link", { name: "Sign in more strongly to read it" });
     await expect(offer).toBeVisible();
+    // **And it names the action**, which is ADM-AUTH-02's own line: a prompt that says only
+    // "this action needs a stronger sign-in" asks somebody to remember what they clicked.
+    // The step-up page resolves the name against MOD-008's catalogue rather than echoing
+    // it, so a link cannot put arbitrary prose on the page where a credential is typed.
     await expect(offer).toHaveAttribute(
       "href",
-      `/step-up?for=financial&next=${encodeURIComponent(`/schedule/${creds.sessionId}`)}`,
+      `/step-up?for=financial&action=scheduling.session.change`
+      + `&next=${encodeURIComponent(`/schedule/${creds.sessionId}`)}`,
     );
+    await offer.click();
+    await expect(page.locator("main")).toContainText("You are about to:");
   });
 
   test("says nothing has changed on a session nothing changed", async ({ page }) => {

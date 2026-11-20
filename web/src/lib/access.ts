@@ -152,3 +152,23 @@ export const DISCREET = "please see the front desk";
 export function isRestricted(code: string): boolean {
   return RESTRICTED_CODES.includes(code);
 }
+
+/**
+ * Today's entries per reader, keyed by the device behind it.
+ *
+ * ADM-ACC-01's TODAY column, composed onto the fleet board. **It lives in MOD-022 and not in
+ * MOD-021's fleet read**: a device knows nothing about doors by design, and `acc_points` is
+ * the join MOD-021 deliberately did not make -- so the board asks both modules through both
+ * gates, the way the Member 360 composes MOD-014 and MOD-017.
+ */
+export type EntriesByPoint = {
+  date: string;
+  points: { point_id: string; device_id: string; entries: number }[];
+  /** A device standing at more than one reader is summed. Absent means it is not a door. */
+  by_device: Record<string, number>;
+  entries: number;
+};
+
+export function readEntries(): Promise<EntriesByPoint> {
+  return api("/access/entries");
+}

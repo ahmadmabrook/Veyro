@@ -6,7 +6,7 @@ import { useFormStatus } from "react-dom";
 import { Button } from "@/components/ds/button";
 import { Field } from "@/components/ds/field";
 import { Banner } from "@/components/ds/banner";
-import { t, type Locale, type MessageKey } from "@/i18n/locale";
+import { fill, t, type Locale, type MessageKey } from "@/i18n/locale";
 
 import { stepUp } from "./actions";
 import { STEP_UP_IDLE, type SecondFactor, type StepUpState } from "./state";
@@ -28,11 +28,21 @@ export function StepUpForm({
   locale,
   factor,
   actionClass,
+  about,
   next,
 }: {
   locale: Locale;
   factor: SecondFactor;
   actionClass: string;
+  /**
+   * What the reader is about to do, from MOD-008's catalogue.
+   *
+   * ADM-AUTH-02 names the action in its own sentence -- "You're about to export 4,812 member
+   * records" -- and it is the half that makes a re-authentication prompt legible rather than
+   * alarming. Absent where the link did not name an action the catalogue knows, because a
+   * prompt that invented one would be worse than a generic one.
+   */
+  about?: string;
   next: string;
 }) {
   const text = (key: MessageKey) => t(locale, key);
@@ -48,6 +58,11 @@ export function StepUpForm({
     >
       <h1>{text("stepUp.title")}</h1>
       <p className="muted" style={{ margin: 0 }}>
+        {about === undefined ? null : (
+          <>
+            {fill(locale, "stepUp.about", { action: about })}{" "}
+          </>
+        )}
         {text("stepUp.lead")}
       </p>
       <p className="muted" style={{ margin: 0 }}>

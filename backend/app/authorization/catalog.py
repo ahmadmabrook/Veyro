@@ -459,6 +459,13 @@ PERMISSIONS: dict[str, Permission] = dict([
     # nobody looks. Routine and granted narrowly.
     _p("finance.revenue.read",
        "See collected revenue for the tenant by period and by legal entity", "finance"),
+    # **A read, so routine -- and tenant-wide, so it carries no names.** ADM-PAY-01's ledger
+    # unions payments, failed attempts, refunds and disputes on one axis, which is a daily
+    # reconciler's job rather than an occasion for a step-up. What bounds it is what the rows
+    # carry: `payer_person_id` and the method's kind, never a name or an address, because a
+    # tenant-wide money permission must not become a read path around `people.person.read`.
+    _p("finance.payment.read",
+       "See the tenant's payments, refunds and disputes on one axis", "finance"),
     # **One permission for the whole dispute, because none of it is a Veyro decision.** The
     # refund above is two because somebody chooses to send money back; a dispute is opened by
     # the card scheme, answered by the tenant and decided by the scheme, so every transition

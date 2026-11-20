@@ -324,7 +324,13 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
                     // template goes out under the tenant's name to everybody, so its author
                     // cannot approve it -- MOD-008's separation of duties applied to content,
                     // and a constraint rather than a convention.
-                    "notifications.template.approve"],
+                    "notifications.template.approve",
+                    // **And the refund approval**, because ADM-PAY-01's whole argument is
+                    // that money leaving the business takes two people: the requester is
+                    // the caller's own session and `approved_by <> requested_by` compares
+                    // two identities the server derived. The owner requests; this identity
+                    // decides. A fixture with one session could not seed a refund at all.
+                    "finance.refund.approve"],
       correlation_id: cid(),
     },
   });
@@ -1072,7 +1078,7 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
             method: "card", provider_key: "acme.payments",
             idempotency_key: randomUUID(), correlation_id: cid() },
   });
-  await call(`/finance/payment-intents/${intent.intent_id}/settle`, {
+  const settled = await call(`/finance/payment-intents/${intent.intent_id}/settle`, {
     method: "POST", ...as(token),
     body: { outcome: "succeeded", correlation_id: cid() },
   });
@@ -1106,6 +1112,57 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
     method: "POST", ...as(token),
     body: { invoice_id: inRecovery.invoice_id, idempotency_key: randomUUID(),
             correlation_id: cid() },
+  });
+
+  // ------------------------------------------------- ADM-PAY-01's four kinds
+  //
+  // **A ledger with one settled payment on it demonstrates nothing.** The screen's whole
+  // argument is that a refund is a negative number on the same axis as a payment and never
+  // a payment of a different colour, and that a failed charge is a row rather than an
+  // absence -- neither of which a board can show without one of each. This repository
+  // records the rule five times over now: the fixture carries both members of the pair the
+  // distinction is about.
+  //
+  // A charge that failed, which is the canvas's "6 failed" and the commonest row somebody
+  // has to act on.
+  const failedIntent = await call("/finance/payment-intents", {
+    method: "POST", ...as(token),
+    body: { billing_account_id: account.billing_account_id,
+            invoice_id: inRecovery.invoice_id, amount_minor: inRecovery.gross_minor,
+            method: "card", provider_key: "acme.payments",
+            idempotency_key: randomUUID(), correlation_id: cid() },
+  });
+  await call(`/finance/payment-intents/${failedIntent.intent_id}/settle`, {
+    method: "POST", ...as(token),
+    body: { outcome: "failed", failure_code: "card_expired", correlation_id: cid() },
+  });
+
+  // A refund, which needs two people by constraint: the owner records the request from
+  // their own session and the publisher decides it. `approved_by <> requested_by` compares
+  // two identities the server derived, so this cannot be written with one token.
+  const refundRequest = await call("/finance/refund-requests", {
+    method: "POST", ...as(token),
+    body: { payment_id: settled.payment_id, amount_minor: 1000,
+            reason: "Charged after she froze on the 28th", correlation_id: cid() },
+  });
+  await call("/finance/refunds", {
+    method: "POST", ...as(publisherToken),
+    body: { request_id: refundRequest.request_id,
+            approval_reason: "Agreed: the charge should not have run",
+            acknowledged_amount_minor: 1000,
+            idempotency_key: randomUUID(), correlation_id: cid() },
+  });
+
+  // And a dispute the scheme opened, which is recorded rather than performed -- nothing
+  // here speaks to a card scheme, so the row is a named actor's statement that a case
+  // exists, carrying the scheme's own reference.
+  await call("/finance/disputes", {
+    method: "POST", ...as(token),
+    body: { payment_id: settled.payment_id, provider_case_ref: "ACME-CASE-40118",
+            dispute_kind: "chargeback", reason_code: "product_not_received",
+            amount_minor: 2000, currency: invoice.currency,
+            opened_on: isoDay(-2), respond_due_on: isoDay(10),
+            idempotency_key: randomUUID(), correlation_id: cid() },
   });
 
   // **One invoice the tax authority rejected**, which is ADM-CC-01's COMPLIANCE row. The

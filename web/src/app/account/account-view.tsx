@@ -156,24 +156,33 @@ export function AccountView({
         {others.length === 0 ? (
           <Banner severity="info">{text("account.noOtherSessions")}</Banner>
         ) : (
-          <ul className="stack" style={{ margin: 0, paddingInlineStart: "var(--space-5)" }}>
+          // **A grid, because a bulleted list of nineteen "level 2 · 17:11" rows is not a
+          // thing anybody can act on.** Revoking a session is a destructive act and the
+          // reader has to be able to tell which one they are ending: the device it came
+          // from is what distinguishes them, and the list carried it all along while the
+          // rendering dropped it. Found by looking at the page.
+          <ul className="ds-session-list">
             {others.map((other) => (
-              <li key={other.session_id}>
-                {text("account.level")}{" "}
-                <span className="data">{formatInteger(other.aal, "latn")}</span>
-                {" · "}
-                <span className="data" dir="ltr">
-                  {other.last_seen_at === null
-                    ? other.issued_at.slice(0, 10)
-                    : other.last_seen_at.slice(0, 16).replace("T", " ")}
+              <li key={other.session_id} className="ds-session">
+                <span className="ds-session-where">
+                  {other.device_id === null
+                    ? text("account.noDevice")
+                    : (devices.find((one) => one.device_id === other.device_id)?.label
+                      ?? text("account.unknownDevice"))}
+                  <span className="ds-session-when data" dir="ltr">
+                    {other.last_seen_at === null
+                      ? `${text("account.issued")} ${other.issued_at.slice(0, 10)}`
+                      : `${text("account.lastSeen")} `
+                        + other.last_seen_at.slice(0, 16).replace("T", " ")}
+                  </span>
                 </span>
-                <form action={revokeOne} style={{ display: "inline" }}>
+                <span className="ds-session-level">
+                  {text("account.level")}{" "}
+                  <span className="data">{formatInteger(other.aal, "latn")}</span>
+                </span>
+                <form action={revokeOne}>
                   <input type="hidden" name="session_id" value={other.session_id} />
-                  <Button
-                    type="submit"
-                    label={text("account.revoke")}
-                    style={{ marginInlineStart: "var(--space-3)" }}
-                  />
+                  <Button type="submit" label={text("account.revoke")} />
                 </form>
               </li>
             ))}

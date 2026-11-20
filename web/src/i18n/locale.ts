@@ -94,6 +94,7 @@ const MESSAGES = {
     "nav.overview": "Command Center",
     "nav.organization": "Organization",
     "nav.people": "People",
+    "nav.payments": "Payments",
     "nav.finance": "Finance",
     "nav.operations": "Operations",
     "ops.title": "Operations",
@@ -233,6 +234,15 @@ const MESSAGES = {
     "fleet.title": "Devices",
     "fleet.lead": "Every device at this tenant, what it can do, and whether it is reachable. Reachability is worked out from the last report a device sent — nothing stores it and nothing asks a device for it, so this is what was true when the page was loaded. A scheduled sweep does announce a device in service that has gone quiet; it changes nothing on this board.",
     "fleet.empty": "No devices registered yet.",
+    "fleet.allAnswering": "Every reader is answering",
+    "fleet.someDown": {
+      one: "{count} reader is down",
+      other: "{count} readers are down"
+    },
+    "fleet.club": "Club",
+    "fleet.today": "Today",
+    "fleet.entriesUnknown": "Not permitted",
+    "fleet.notADoor": "Not a door",
     "fleet.device": "Device",
     "fleet.kind": "Kind",
     "fleet.state": "State",
@@ -336,6 +346,7 @@ const MESSAGES = {
     "perms.outcome": "Outcome",
     "perms.when": "When",
     "stepUp.title": "Confirm it is you",
+    "stepUp.about": "You are about to: {action}.",
     "stepUp.lead": "This action needs a stronger sign-in than this session has. Confirming raises it for twelve hours, and the session you are using now is replaced.",
     "stepUp.whyRecovery": "Your session was opened with a password, so the second factor has to be something else. This build can verify a recovery code; TOTP and passkeys are implemented but cannot be verified here, so a recovery code is the only one on offer.",
     "stepUp.whyPassword": "Your session was opened with a recovery code, so your password is the second factor.",
@@ -521,6 +532,8 @@ const MESSAGES = {
     "login.recoveryHint": "This device has not been seen before, so one recovery code is needed.",
     "login.continue": "Continue",
     "login.tenantHint": "The tenant this sign-in belongs to.",
+    "login.sameMessage": "A wrong password and an unknown account produce the same message, and take the same time to produce it — anything else confirms who works here.",
+    "login.tenantIsNotResolved": "The design resolves the tenant from the email domain. This build does not: sign-in takes the tenant explicitly, and a domain-to-tenant map would be product nobody has specified.",
     "login.required": "This field is required.",
     "login.deviceRevoked": "You revoked this device, so you were signed out here. That is permanent: a sign-in from this browser will be refused rather than challenged, so use another browser or another device.",
     "nav.signOut": "Sign out",
@@ -963,6 +976,19 @@ const MESSAGES = {
     "account.openElsewhere": "Open elsewhere",
     "account.atLeast": "or more — this page asks for twenty",
     "account.noOtherSessions": "No other session is open.",
+    "account.noDevice": "No device recorded",
+    "account.unknownDevice": "A device this account no longer lists",
+    "account.issued": "opened",
+    "account.lastSeen": "last used",
+    "account.sessionsCounted": {
+      one: "{count} session open",
+      other: "{count} sessions open"
+    },
+    "account.devicesCounted": {
+      one: "{count} device remembered",
+      other: "{count} devices remembered"
+    },
+    "account.assuranceLevel": "assurance level {level}",
     "account.level": "level",
     "account.revoke": "Revoke",
     "account.trust": "Trust",
@@ -989,6 +1015,171 @@ const MESSAGES = {
     "account.codesIssued": "A new batch was issued, and every earlier code has stopped working.",
     "account.refused": "That was refused.",
     "account.needsStepUp": "That needs a stepped-up session. Step up and try again.",
+    "config.keysCounted": {
+      one: "{count} key declared",
+      other: "{count} keys declared"
+    },
+    "config.unsetCounted": {
+      one: "{count} on its default",
+      other: "{count} on their defaults"
+    },
+    "config.flagsCounted": {
+      one: "{count} flag evaluated",
+      other: "{count} flags evaluated"
+    },
+    "config.killCounted": {
+      one: "{count} kill switch engaged",
+      other: "{count} kill switches engaged"
+    },
+    "perms.rolesCounted": {
+      one: "{count} role",
+      other: "{count} roles"
+    },
+    "perms.heldCounted": {
+      one: "{count} permission on this session",
+      other: "{count} permissions on this session"
+    },
+    "perms.auditCounted": {
+      one: "{count} audit entry",
+      other: "{count} audit entries"
+    },
+    "ops.pendingCounted": {
+      one: "{count} event pending",
+      other: "{count} events pending"
+    },
+    "ops.deliveriesCounted": {
+      one: "{count} delivery waiting",
+      other: "{count} deliveries waiting"
+    },
+    "ops.deadCounted": {
+      one: "{count} dead letter",
+      other: "{count} dead letters"
+    },
+    "org.brandsCounted": {
+      one: "{count} brand",
+      other: "{count} brands"
+    },
+    "org.sitesCounted": {
+      one: "{count} site",
+      other: "{count} sites"
+    },
+    "org.entitiesCounted": {
+      one: "{count} legal entity",
+      other: "{count} legal entities"
+    },
+    "privacy.requestsCounted": {
+      one: "{count} request",
+      other: "{count} requests"
+    },
+    "privacy.queueCounted": {
+      one: "{count} needs somebody",
+      other: "{count} need somebody"
+    },
+    "privacy.holdsCounted": {
+      one: "{count} live legal hold",
+      other: "{count} live legal holds"
+    },
+    "privacy.residueCounted": {
+      one: "{count} column survives an erasure",
+      other: "{count} columns survive an erasure"
+    },
+    "catalog.productsCounted": {
+      one: "{count} product",
+      other: "{count} products"
+    },
+    "catalog.booksCounted": {
+      one: "{count} price book",
+      other: "{count} price books"
+    },
+    "catalog.promotionsCounted": {
+      one: "{count} promotion",
+      other: "{count} promotions"
+    },
+    "integrations.installsCounted": {
+      one: "{count} install",
+      other: "{count} installs"
+    },
+    "integrations.unmetCounted": {
+      one: "{count} without its written obligations",
+      other: "{count} without their written obligations"
+    },
+    "integrations.deadCounted": {
+      one: "{count} run needs somebody",
+      other: "{count} runs need somebody"
+    },
+    "finance.accountsCounted": {
+      one: "{count} account",
+      other: "{count} accounts"
+    },
+    "finance.periodsCounted": {
+      one: "{count} period opened",
+      other: "{count} periods opened"
+    },
+    "finance.attentionCounted": {
+      one: "{count} needs somebody",
+      other: "{count} need somebody"
+    },
+    "notify.authoredCounted": {
+      one: "{count} authored",
+      other: "{count} authored"
+    },
+    "notify.waitingCounted": {
+      one: "{count} waiting for a dispatcher",
+      other: "{count} waiting for a dispatcher"
+    },
+    "notify.suppressedCounted": {
+      one: "{count} address suppressed",
+      other: "{count} addresses suppressed"
+    },
+    "payments.title": "Payments ledger",
+    "payments.heading": "Money, and the one place friction is correct",
+    "payments.collected": "collected",
+    "payments.collectedUnavailable": "Collected revenue needs its own permission",
+    "payments.allLocations": "all locations",
+    "payments.failedCount": {
+      one: "{count} failed",
+      other: "{count} failed"
+    },
+    "payments.refundedCount": {
+      one: "{count} refunded",
+      other: "{count} refunded"
+    },
+    "payments.disputedCount": {
+      one: "{count} disputed",
+      other: "{count} disputed"
+    },
+    "payments.views": "Which rows to show",
+    "payments.needsAction": {
+      one: "Needs action · {count}",
+      other: "Needs action · {count}"
+    },
+    "payments.all": "All",
+    "payments.date": "Date",
+    "payments.member": "Member",
+    "payments.method": "Method",
+    "payments.amount": "Amount",
+    "payments.state": "State",
+    "payments.next": "Next",
+    "payments.rows": "rows in this window",
+    "payments.truncated": "there are more; the window or the bound is what to narrow",
+    "payments.empty": "No payment, attempt, refund or dispute in this window.",
+    "payments.nothingNeedsAction": "Nothing in this window needs anybody. Every charge settled, every refund is done and no dispute is open.",
+    "payments.noPayer": "No payer on the account",
+    "payments.notOnThisPage": "Not on this page's people read",
+    "payments.kind.payment": "payment received",
+    "payments.kind.attempt": "charge attempt",
+    "payments.kind.refund": "refund",
+    "payments.kind.dispute": "dispute",
+    "payments.next.attempt": "Retry or ask for a new card",
+    "payments.next.refund": "Settle it with the provider",
+    "payments.next.dispute": "Respond before the deadline",
+    "payments.notYet": "What this screen cannot do yet",
+    "payments.refundTitle": "Request a refund",
+    "payments.refundWhy": "The design makes this tier 3 and tier 4 at once — the amount typed to confirm, and a second person to approve. `finance.refund.request` is a stepped-up financial permission and there is no form for it in this build; a button that answered 403 would be worse than its absence.",
+    "payments.exportTitle": "Export",
+    "payments.exportWhy": "An export of every payment with its payer needs an object store and a residency decision, which is the same wall the data-subject export hits.",
+    "payments.locationTitle": "By location",
+    "payments.locationWhy": "A payment is recorded against a billing account and a billing account has no location, so there is nothing to group by. The header says “all locations” because that is what it is, not because a filter was left out.",
     "state.empty": "Nothing to show.",
   },
   ar: {
@@ -1004,6 +1195,7 @@ const MESSAGES = {
     "nav.overview": "مركز القيادة",
     "nav.organization": "المؤسسة",
     "nav.people": "الأشخاص",
+    "nav.payments": "المدفوعات",
     "nav.finance": "المالية",
     "nav.operations": "التشغيل",
     "ops.title": "التشغيل",
@@ -1147,6 +1339,19 @@ const MESSAGES = {
     "fleet.title": "الأجهزة",
     "fleet.lead": "كل جهاز في هذا المستأجر، وما يستطيع فعله، وهل يمكن الوصول إليه. تُحسب إمكانية الوصول من آخر تقرير أرسله الجهاز — لا شيء يخزّنها ولا شيء يسأل الجهاز عنها، لذا هذا ما كان صحيحاً لحظة تحميل الصفحة. وهناك مسح مجدول يعلن عن جهاز في الخدمة صمت، ولا يغيّر شيئاً في هذه اللوحة.",
     "fleet.empty": "لا أجهزة مُسجَّلة بعد.",
+    "fleet.allAnswering": "كل القارئات تستجيب",
+    "fleet.someDown": {
+      zero: "لا قارئات متوقفة",
+      one: "قارئ واحد متوقف",
+      two: "قارئان متوقفان",
+      few: "{count} قارئات متوقفة",
+      many: "{count} قارئاً متوقفاً",
+      other: "{count} قارئ متوقف"
+    },
+    "fleet.club": "النادي",
+    "fleet.today": "اليوم",
+    "fleet.entriesUnknown": "غير مسموح",
+    "fleet.notADoor": "ليس باباً",
     "fleet.device": "الجهاز",
     "fleet.kind": "النوع",
     "fleet.state": "الحالة",
@@ -1266,6 +1471,7 @@ const MESSAGES = {
     "perms.outcome": "النتيجة",
     "perms.when": "الوقت",
     "stepUp.title": "أكِّد هويتك",
+    "stepUp.about": "أنت على وشك: {action}.",
     "stepUp.lead": "يحتاج هذا الإجراء تسجيل دخول أقوى مما تملكه هذه الجلسة. التأكيد يرفعها اثنتي عشرة ساعة، وتُستبدل الجلسة التي تستخدمها الآن.",
     "stepUp.whyRecovery": "فُتحت جلستك بكلمة مرور، لذا يجب أن يكون العامل الثاني شيئاً آخر. تستطيع هذه النسخة التحقق من رمز استرداد؛ أما TOTP ومفاتيح المرور فمُنفَّذة ولا يمكن التحقق منها هنا، لذا رمز الاسترداد هو الخيار الوحيد.",
     "stepUp.whyPassword": "فُتحت جلستك برمز استرداد، لذا كلمة مرورك هي العامل الثاني.",
@@ -1475,6 +1681,8 @@ const MESSAGES = {
     "login.recoveryHint": "لم يسبق أن شوهد هذا الجهاز، لذا يلزم رمز استرداد واحد.",
     "login.continue": "متابعة",
     "login.tenantHint": "المستأجر الذي يتبع له تسجيل الدخول.",
+    "login.sameMessage": "كلمة مرور خاطئة وحساب غير معروف ينتجان الرسالة نفسها، ويستغرقان الزمن نفسه لإنتاجها — وأي شيء غير ذلك يكشف من يعمل هنا.",
+    "login.tenantIsNotResolved": "يستنتج التصميم المستأجر من نطاق البريد. وهذا البناء لا يفعل: يأخذ تسجيل الدخول المستأجر صراحةً، وخريطة من النطاق إلى المستأجر منتَج لم يحدّده أحد.",
     "login.required": "هذا الحقل مطلوب.",
     "login.deviceRevoked": "لقد ألغيت هذا الجهاز، فخرجت من الحساب هنا. وهذا نهائي: أي دخول من هذا المتصفح سيُرفض ولن يُتحدّى، فاستخدم متصفحًا آخر أو جهازًا آخر.",
     "nav.signOut": "تسجيل الخروج",
@@ -1939,6 +2147,27 @@ const MESSAGES = {
     "account.openElsewhere": "مفتوحة في مكان آخر",
     "account.atLeast": "أو أكثر — هذه الصفحة تطلب عشرين",
     "account.noOtherSessions": "لا توجد جلسة أخرى مفتوحة.",
+    "account.noDevice": "لا جهاز مُسجَّل",
+    "account.unknownDevice": "جهاز لم يعد هذا الحساب يسرده",
+    "account.issued": "فُتحت",
+    "account.lastSeen": "آخر استخدام",
+    "account.sessionsCounted": {
+      zero: "لا جلسات مفتوحة",
+      one: "جلسة واحدة مفتوحة",
+      two: "جلستان مفتوحتان",
+      few: "{count} جلسات مفتوحة",
+      many: "{count} جلسة مفتوحة",
+      other: "{count} جلسة مفتوحة"
+    },
+    "account.devicesCounted": {
+      zero: "لا أجهزة محفوظة",
+      one: "جهاز واحد محفوظ",
+      two: "جهازان محفوظان",
+      few: "{count} أجهزة محفوظة",
+      many: "{count} جهازاً محفوظاً",
+      other: "{count} جهاز محفوظ"
+    },
+    "account.assuranceLevel": "مستوى التوثيق {level}",
     "account.level": "المستوى",
     "account.revoke": "إلغاء",
     "account.trust": "ائتمان",
@@ -1965,6 +2194,303 @@ const MESSAGES = {
     "account.codesIssued": "صدرت دفعة جديدة، وتوقّف عمل كل رمز سابق.",
     "account.refused": "رُفض ذلك.",
     "account.needsStepUp": "هذا يحتاج جلسة مرفوعة. ارفع الجلسة ثم أعد المحاولة.",
+    "config.keysCounted": {
+      zero: "لا مفاتيح معلنة",
+      one: "مفتاح واحد معلن",
+      two: "مفتاحان معلنان",
+      few: "{count} مفاتيح معلنة",
+      many: "{count} مفتاحاً معلناً",
+      other: "{count} مفتاح معلن"
+    },
+    "config.unsetCounted": {
+      zero: "لا شيء على قيمته الافتراضية",
+      one: "واحد على قيمته الافتراضية",
+      two: "اثنان على قيمتيهما الافتراضيتين",
+      few: "{count} على قيمها الافتراضية",
+      many: "{count} على قيمها الافتراضية",
+      other: "{count} على قيمته الافتراضية"
+    },
+    "config.flagsCounted": {
+      zero: "لا رايات مُقيَّمة",
+      one: "راية واحدة مُقيَّمة",
+      two: "رايتان مُقيَّمتان",
+      few: "{count} رايات مُقيَّمة",
+      many: "{count} راية مُقيَّمة",
+      other: "{count} راية مُقيَّمة"
+    },
+    "config.killCounted": {
+      zero: "لا مفاتيح إيقاف مفعّلة",
+      one: "مفتاح إيقاف واحد مفعّل",
+      two: "مفتاحا إيقاف مفعّلان",
+      few: "{count} مفاتيح إيقاف مفعّلة",
+      many: "{count} مفتاح إيقاف مفعّل",
+      other: "{count} مفتاح إيقاف مفعّل"
+    },
+    "perms.rolesCounted": {
+      zero: "لا أدوار",
+      one: "دور واحد",
+      two: "دوران",
+      few: "{count} أدوار",
+      many: "{count} دوراً",
+      other: "{count} دور"
+    },
+    "perms.heldCounted": {
+      zero: "لا صلاحيات على هذه الجلسة",
+      one: "صلاحية واحدة على هذه الجلسة",
+      two: "صلاحيتان على هذه الجلسة",
+      few: "{count} صلاحيات على هذه الجلسة",
+      many: "{count} صلاحية على هذه الجلسة",
+      other: "{count} صلاحية على هذه الجلسة"
+    },
+    "perms.auditCounted": {
+      zero: "لا قيود تدقيق",
+      one: "قيد تدقيق واحد",
+      two: "قيدا تدقيق",
+      few: "{count} قيود تدقيق",
+      many: "{count} قيد تدقيق",
+      other: "{count} قيد تدقيق"
+    },
+    "ops.pendingCounted": {
+      zero: "لا أحداث معلّقة",
+      one: "حدث واحد معلّق",
+      two: "حدثان معلّقان",
+      few: "{count} أحداث معلّقة",
+      many: "{count} حدثاً معلّقاً",
+      other: "{count} حدث معلّق"
+    },
+    "ops.deliveriesCounted": {
+      zero: "لا تسليمات منتظرة",
+      one: "تسليم واحد منتظر",
+      two: "تسليمان منتظران",
+      few: "{count} تسليمات منتظرة",
+      many: "{count} تسليماً منتظراً",
+      other: "{count} تسليم منتظر"
+    },
+    "ops.deadCounted": {
+      zero: "لا رسائل ميتة",
+      one: "رسالة ميتة واحدة",
+      two: "رسالتان ميتتان",
+      few: "{count} رسائل ميتة",
+      many: "{count} رسالة ميتة",
+      other: "{count} رسالة ميتة"
+    },
+    "org.brandsCounted": {
+      zero: "لا علامات",
+      one: "علامة واحدة",
+      two: "علامتان",
+      few: "{count} علامات",
+      many: "{count} علامة",
+      other: "{count} علامة"
+    },
+    "org.sitesCounted": {
+      zero: "لا مواقع",
+      one: "موقع واحد",
+      two: "موقعان",
+      few: "{count} مواقع",
+      many: "{count} موقعاً",
+      other: "{count} موقع"
+    },
+    "org.entitiesCounted": {
+      zero: "لا كيانات قانونية",
+      one: "كيان قانوني واحد",
+      two: "كيانان قانونيان",
+      few: "{count} كيانات قانونية",
+      many: "{count} كياناً قانونياً",
+      other: "{count} كيان قانوني"
+    },
+    "privacy.requestsCounted": {
+      zero: "لا طلبات",
+      one: "طلب واحد",
+      two: "طلبان",
+      few: "{count} طلبات",
+      many: "{count} طلباً",
+      other: "{count} طلب"
+    },
+    "privacy.queueCounted": {
+      zero: "لا شيء يحتاج أحداً",
+      one: "واحد يحتاج أحداً",
+      two: "اثنان يحتاجان أحداً",
+      few: "{count} تحتاج أحداً",
+      many: "{count} يحتاج أحداً",
+      other: "{count} يحتاج أحداً"
+    },
+    "privacy.holdsCounted": {
+      zero: "لا حجوزات قانونية سارية",
+      one: "حجز قانوني واحد ساري",
+      two: "حجزان قانونيان ساريان",
+      few: "{count} حجوزات قانونية سارية",
+      many: "{count} حجزاً قانونياً سارياً",
+      other: "{count} حجز قانوني ساري"
+    },
+    "privacy.residueCounted": {
+      zero: "لا أعمدة تبقى بعد المحو",
+      one: "عمود واحد يبقى بعد المحو",
+      two: "عمودان يبقيان بعد المحو",
+      few: "{count} أعمدة تبقى بعد المحو",
+      many: "{count} عموداً يبقى بعد المحو",
+      other: "{count} عمود يبقى بعد المحو"
+    },
+    "catalog.productsCounted": {
+      zero: "لا منتجات",
+      one: "منتج واحد",
+      two: "منتجان",
+      few: "{count} منتجات",
+      many: "{count} منتجاً",
+      other: "{count} منتج"
+    },
+    "catalog.booksCounted": {
+      zero: "لا دفاتر أسعار",
+      one: "دفتر أسعار واحد",
+      two: "دفترا أسعار",
+      few: "{count} دفاتر أسعار",
+      many: "{count} دفتر أسعار",
+      other: "{count} دفتر أسعار"
+    },
+    "catalog.promotionsCounted": {
+      zero: "لا عروض",
+      one: "عرض واحد",
+      two: "عرضان",
+      few: "{count} عروض",
+      many: "{count} عرضاً",
+      other: "{count} عرض"
+    },
+    "integrations.installsCounted": {
+      zero: "لا تنصيبات",
+      one: "تنصيب واحد",
+      two: "تنصيبان",
+      few: "{count} تنصيبات",
+      many: "{count} تنصيباً",
+      other: "{count} تنصيب"
+    },
+    "integrations.unmetCounted": {
+      zero: "لا شيء بلا التزاماته المكتوبة",
+      one: "واحد بلا التزاماته المكتوبة",
+      two: "اثنان بلا التزاماتهما المكتوبة",
+      few: "{count} بلا التزاماتها المكتوبة",
+      many: "{count} بلا التزاماتها المكتوبة",
+      other: "{count} بلا التزاماته المكتوبة"
+    },
+    "integrations.deadCounted": {
+      zero: "لا تشغيلات تحتاج أحداً",
+      one: "تشغيل واحد يحتاج أحداً",
+      two: "تشغيلان يحتاجان أحداً",
+      few: "{count} تشغيلات تحتاج أحداً",
+      many: "{count} تشغيلاً يحتاج أحداً",
+      other: "{count} تشغيل يحتاج أحداً"
+    },
+    "finance.accountsCounted": {
+      zero: "لا حسابات",
+      one: "حساب واحد",
+      two: "حسابان",
+      few: "{count} حسابات",
+      many: "{count} حساباً",
+      other: "{count} حساب"
+    },
+    "finance.periodsCounted": {
+      zero: "لا فترات مفتوحة",
+      one: "فترة واحدة مفتوحة",
+      two: "فترتان مفتوحتان",
+      few: "{count} فترات مفتوحة",
+      many: "{count} فترة مفتوحة",
+      other: "{count} فترة مفتوحة"
+    },
+    "finance.attentionCounted": {
+      zero: "لا شيء يحتاج أحداً",
+      one: "واحدة تحتاج أحداً",
+      two: "اثنتان تحتاجان أحداً",
+      few: "{count} تحتاج أحداً",
+      many: "{count} تحتاج أحداً",
+      other: "{count} تحتاج أحداً"
+    },
+    "notify.authoredCounted": {
+      zero: "لا رسائل مُنشأة",
+      one: "رسالة واحدة مُنشأة",
+      two: "رسالتان مُنشأتان",
+      few: "{count} رسائل مُنشأة",
+      many: "{count} رسالة مُنشأة",
+      other: "{count} رسالة مُنشأة"
+    },
+    "notify.waitingCounted": {
+      zero: "لا شيء ينتظر مُرسِلاً",
+      one: "واحدة تنتظر مُرسِلاً",
+      two: "اثنتان تنتظران مُرسِلاً",
+      few: "{count} تنتظر مُرسِلاً",
+      many: "{count} تنتظر مُرسِلاً",
+      other: "{count} تنتظر مُرسِلاً"
+    },
+    "notify.suppressedCounted": {
+      zero: "لا عناوين محجوبة",
+      one: "عنوان واحد محجوب",
+      two: "عنوانان محجوبان",
+      few: "{count} عناوين محجوبة",
+      many: "{count} عنواناً محجوباً",
+      other: "{count} عنوان محجوب"
+    },
+    "payments.title": "سجل المدفوعات",
+    "payments.heading": "المال، والموضع الوحيد الذي يصحّ فيه الاحتكاك",
+    "payments.collected": "محصّلة",
+    "payments.collectedUnavailable": "الإيرادات المحصّلة تحتاج صلاحيتها الخاصة",
+    "payments.allLocations": "كل المواقع",
+    "payments.failedCount": {
+      zero: "لا إخفاقات",
+      one: "إخفاق واحد",
+      two: "إخفاقان",
+      few: "{count} إخفاقات",
+      many: "{count} إخفاقاً",
+      other: "{count} إخفاق"
+    },
+    "payments.refundedCount": {
+      zero: "لا مبالغ مُعادة",
+      one: "مبلغ واحد مُعاد",
+      two: "مبلغان مُعادان",
+      few: "{count} مبالغ مُعادة",
+      many: "{count} مبلغاً مُعاداً",
+      other: "{count} مبلغ مُعاد"
+    },
+    "payments.disputedCount": {
+      zero: "لا نزاعات",
+      one: "نزاع واحد",
+      two: "نزاعان",
+      few: "{count} نزاعات",
+      many: "{count} نزاعاً",
+      other: "{count} نزاع"
+    },
+    "payments.views": "أي الصفوف تُعرَض",
+    "payments.needsAction": {
+      zero: "يحتاج تصرفاً · 0",
+      one: "يحتاج تصرفاً · 1",
+      two: "يحتاج تصرفاً · {count}",
+      few: "يحتاج تصرفاً · {count}",
+      many: "يحتاج تصرفاً · {count}",
+      other: "يحتاج تصرفاً · {count}"
+    },
+    "payments.all": "الكل",
+    "payments.date": "التاريخ",
+    "payments.member": "العضو",
+    "payments.method": "الوسيلة",
+    "payments.amount": "المبلغ",
+    "payments.state": "الحالة",
+    "payments.next": "التالي",
+    "payments.rows": "صفوف في هذه النافذة",
+    "payments.truncated": "هناك المزيد؛ ضيّق النافذة أو الحد",
+    "payments.empty": "لا دفعة ولا محاولة ولا إعادة ولا نزاع في هذه النافذة.",
+    "payments.nothingNeedsAction": "لا شيء في هذه النافذة يحتاج أحداً. كل خصم تمّ، وكل إعادة سُوّيت، ولا نزاع مفتوح.",
+    "payments.noPayer": "لا دافع على الحساب",
+    "payments.notOnThisPage": "ليس ضمن قراءة الأشخاص لهذه الصفحة",
+    "payments.kind.payment": "دفعة مستلمة",
+    "payments.kind.attempt": "محاولة خصم",
+    "payments.kind.refund": "إعادة مبلغ",
+    "payments.kind.dispute": "نزاع",
+    "payments.next.attempt": "أعد المحاولة أو اطلب بطاقة جديدة",
+    "payments.next.refund": "سوّها مع المزوّد",
+    "payments.next.dispute": "ردّ قبل الموعد",
+    "payments.notYet": "ما لا تستطيعه هذه الشاشة بعد",
+    "payments.refundTitle": "طلب إعادة مبلغ",
+    "payments.refundWhy": "يجعل التصميم هذا من الدرجة الثالثة والرابعة معاً — كتابة المبلغ للتأكيد، وشخص ثانٍ للموافقة. و`finance.refund.request` صلاحية مالية مرفوعة الدرجة ولا شاشة لها في هذا البناء؛ وزرّ يردّ 403 أسوأ من غيابه.",
+    "payments.exportTitle": "التصدير",
+    "payments.exportWhy": "تصدير كل دفعة مع دافعها يحتاج مخزن كائنات وقراراً بشأن مكان الإقامة، وهو الجدار نفسه الذي يصطدم به تصدير بيانات صاحب البيانات.",
+    "payments.locationTitle": "حسب الموقع",
+    "payments.locationWhy": "تُسجَّل الدفعة على حساب فوترة، وحساب الفوترة بلا موقع، فلا شيء يُجمَّع عليه. ويقول الترويس «كل المواقع» لأن هذا ما هو عليه، لا لأن مرشّحاً نُسي.",
     "state.empty": "لا يوجد ما يُعرض.",
   },
 } as const;

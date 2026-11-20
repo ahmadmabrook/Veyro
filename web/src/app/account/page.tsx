@@ -1,7 +1,8 @@
 import { redirect } from "next/navigation";
 
 import { Banner } from "@/components/ds/banner";
-import { t, type Locale, type MessageKey } from "@/i18n/locale";
+import { PageHeader } from "@/components/ds/page-header";
+import { fill, t, type Locale, type MessageKey } from "@/i18n/locale";
 import type { AuthEvent, DeviceFact, SessionFact } from "@/lib/account";
 import { listAuthEvents, listDevices, listSessions } from "@/lib/account-reads";
 import { ApiError, currentSession } from "@/lib/api";
@@ -53,8 +54,22 @@ export default async function AccountPage() {
   }
 
   const { AccountView } = await import("./account-view");
+  const live = sessions.filter((one) => one.revoked_at === null);
   return (
-    <Shell locale={locale}>
+    <Shell
+      locale={locale}
+      figures={
+        <>
+          {fill(locale, "account.sessionsCounted", { count: live.length })}
+          {" \u00b7 "}
+          {fill(locale, "account.devicesCounted",
+            { count: devices.filter((one) => one.revoked_at === null).length })}
+          {" \u00b7 "}
+          {fill(locale, "account.assuranceLevel",
+            { level: String(Number(session.aal ?? 1)) })}
+        </>
+      }
+    >
       <AccountView
         locale={locale}
         identityId={identityId}
@@ -71,14 +86,31 @@ export default async function AccountPage() {
   );
 }
 
-function Shell({ locale, children }: { locale: Locale; children: React.ReactNode }) {
+/**
+ * **The lead moved to the foot, which is the rule every other screen in this app follows.**
+ * The design's page header is a title and a line of figures, never a paragraph: an
+ * explanation of what the screen is pushes the facts a reader came for below the fold, and
+ * they only need it once. What is kept is the half that is a disclosure -- these routes
+ * refuse any subject that is not the caller's own, which is why none of them asks for a
+ * permission and why the rail entry is unconditional.
+ */
+function Shell({
+  locale,
+  children,
+  figures,
+}: {
+  locale: Locale;
+  children: React.ReactNode;
+  figures?: React.ReactNode;
+}) {
   return (
     <div className="stack">
-      <h1 style={{ margin: 0 }}>{t(locale, "account.title")}</h1>
-      <p className="muted" style={{ margin: 0 }}>
-        {t(locale, "account.lead")}
-      </p>
+      <PageHeader
+        title={t(locale, "account.title")}
+        {...(figures ? { figures } : {})}
+      />
       {children}
+      <p className="ds-screen-note">{t(locale, "account.lead")}</p>
     </div>
   );
 }

@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { Banner } from "@/components/ds/banner";
 import { PageHeader } from "@/components/ds/page-header";
 import { DataGrid } from "@/components/ds/data-grid";
-import { formatInteger, t, type MessageKey } from "@/i18n/locale";
+import { fill, formatInteger, t, type MessageKey } from "@/i18n/locale";
 import { ApiError, currentSession, gate } from "@/lib/api";
 import {
   evaluateFlags,
@@ -63,9 +63,26 @@ export default async function ConfigurationPage({
     mayFlags.allowed ? evaluateFlags(subject).catch(toNull) : null,
   ]);
 
+  const killSwitches = Object.values(flags ?? {})
+    .filter((decision) => flagReason(decision) === "kill_switch").length;
+  const unset = Object.values(resolved ?? {}).filter(isUnset).length;
+
   return (
     <div className="stack">
-      <PageHeader title={text("config.title")} />
+      <PageHeader title={text("config.title")}
+        figures={
+          <>
+            {fill(locale, "config.keysCounted", { count: definitions?.length ?? 0 })}
+            {" \u00b7 "}
+            {fill(locale, "config.unsetCounted", { count: unset })}
+            {" \u00b7 "}
+            {fill(locale, "config.flagsCounted", { count: Object.keys(flags ?? {}).length })}
+            {killSwitches === 0
+              ? null
+              : <> {"\u00b7 "}{fill(locale, "config.killCounted", { count: killSwitches })}</>}
+          </>
+        }
+       />
 
       <section className="page-section">
         <h2 id="config-heading" style={{ margin: 0 }}>

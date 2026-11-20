@@ -23,6 +23,8 @@ export type FleetDevice = {
   state: string;
   kind: string;
   location_id: string;
+  /** The club, which ADM-ACC-01 draws beside every device. */
+  location_name: string;
   reachability: Reachability;
   /** Derived: `active` and `offline`. What to page on, rather than what is merely unusual. */
   blocks_operation: boolean;

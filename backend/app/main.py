@@ -6567,6 +6567,22 @@ def create_app(
     # month. A balance with two definitions has two answers the day either moves, which is
     # the finding MOD-018's till close shipped and `list_entitlement_grants` records.
 
+    @app.get("/finance/payments")
+    def read_payments_ledger(
+        tenant_id: TenantId, session: Session, since: date | None = None,
+        until: date | None = None, needs_action: bool = False, limit: int = 100,
+    ) -> dict[str, Any]:
+        """ADM-PAY-01: money in, money out and money contested, on one axis.
+
+        A refund is a negative amount on the same axis as a payment, never a payment of a
+        different colour -- the canvas's own rule, and the reason the four tables are unioned
+        rather than returned as four lists.
+        """
+        permit(session, "finance.payment.read")
+        return commercial.payments_ledger(
+            tenant_pool, tenant_id, since=since, until=until,
+            needs_action_only=needs_action, limit=limit)
+
     @app.get("/finance/collections")
     def read_collections(
         tenant_id: TenantId, session: Session, as_of: date | None = None,
@@ -8482,6 +8498,18 @@ def create_app(
         permit(session, "access.zone.read")
         return access.visits_on(
             tenant_pool, tenant_id, on=on, compare_weeks=compare_weeks)
+
+    @app.get("/access/entries")
+    def read_entries_by_point(
+        tenant_id: TenantId, session: Session, on: date | None = None,
+    ) -> dict[str, Any]:
+        """Today's entries per reader, keyed by the device behind it.
+
+        ADM-ACC-01's TODAY column. Behind `access.zone.read` like `/access/visits` and the
+        occupancy count: all three are figures derived from events with nobody named in them.
+        """
+        permit(session, "access.zone.read")
+        return access.entries_by_point(tenant_pool, tenant_id, on=on)
 
     @app.get("/access/attendance")
     def read_person_attendance(

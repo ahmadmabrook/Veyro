@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { Banner } from "@/components/ds/banner";
 import { PageHeader } from "@/components/ds/page-header";
 import { DataGrid } from "@/components/ds/data-grid";
-import { formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
+import { fill, formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
 import { ApiError, currentSession, gate } from "@/lib/api";
 import { money } from "@/lib/membership";
 import {
@@ -94,7 +94,18 @@ export default async function NotificationsPage() {
   const liveSuppressions = suppressions.filter(suppressionIsLive);
 
   return (
-    <Shell locale={locale}>
+    <Shell
+      locale={locale}
+      figures={
+        <>
+          {fill(locale, "notify.authoredCounted", { count: rows.length })}
+          {" \u00b7 "}
+          {fill(locale, "notify.waitingCounted", { count: waiting.length })}
+          {" \u00b7 "}
+          {fill(locale, "notify.suppressedCounted", { count: liveSuppressions.length })}
+        </>
+      }
+    >
       {failed ? <Banner severity="critical">{text("error.unexpected")}</Banner> : null}
 
       {mayNotifications.allowed ? (
@@ -400,10 +411,26 @@ export default async function NotificationsPage() {
   );
 }
 
-function Shell({ locale, children }: { locale: Locale; children: React.ReactNode }) {
+function Shell({
+  locale,
+  children,
+  figures,
+}: {
+  locale: Locale;
+  children: React.ReactNode;
+  /**
+   * The counts under the title.
+   *
+   * **The design's page header is a title and a line of figures, never a paragraph**, and
+   * every drawn canvas does the same: "4,812 active · 312 expired · 68 frozen · all
+   * locations". A board whose header carried only its own name made a reader scroll to find
+   * out whether anything on it needed them.
+   */
+  figures?: React.ReactNode;
+}) {
   return (
     <div className="stack">
-      <PageHeader title={t(locale, "notify.title")} />
+      <PageHeader title={t(locale, "notify.title")} {...(figures ? { figures } : {})} />
       {children}
       {/* **The lead paragraph moved to the foot.** The design's page header is a title and a
           line of figures -- every drawn canvas does the same -- so an explanation of what the

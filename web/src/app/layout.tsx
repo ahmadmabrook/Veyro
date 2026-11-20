@@ -96,7 +96,7 @@ export default async function RootLayout({
     // per-identity budget. Same evaluator, same assurance weighing, one scope resolution.
     const [
       organization, people, access, permissions, devices, operations, schedule, configuration,
-      finance, catalog, privacy, messages, integrations,
+      finance, catalog, privacy, messages, integrations, payments,
     ] = await gateAll([
       "tenancy.organization.read",
       "people.person.read",
@@ -111,6 +111,7 @@ export default async function RootLayout({
       "privacy.dsar.read",
       "notifications.notification.read",
       "integrations.install.read",
+      "finance.payment.read",
     ] as const);
     // **Grouped, iconed and counted, which is what the rail actually is.** The Command
     // Center canvas draws thirteen items under four headings -- OPERATE, PEOPLE, MONEY,
@@ -149,8 +150,15 @@ export default async function RootLayout({
       { href: "/permissions", label: "nav.permissions", allowed: permissions.allowed,
         group: "nav.groupPeople", icon: "permissions" },
 
-      { href: "/finance", label: "nav.finance", allowed: finance.allowed,
+      // **Payments before the general ledger**, which is the canvas's own order and the
+      // order of use: a manager opens the payments ledger every morning and an accountant
+      // opens the general ledger at a month end. `MONEY · Payments · Point of sale ·
+      // Reports` is what ADM-CC-01 draws, and `/finance` is the nearest thing this build
+      // has to Reports.
+      { href: "/payments", label: "nav.payments", allowed: payments.allowed,
         group: "nav.groupMoney", icon: "payments" },
+      { href: "/finance", label: "nav.finance", allowed: finance.allowed,
+        group: "nav.groupMoney", icon: "reports" },
       { href: "/catalog", label: "nav.catalog", allowed: catalog.allowed,
         group: "nav.groupMoney", icon: "point-of-sale" },
 

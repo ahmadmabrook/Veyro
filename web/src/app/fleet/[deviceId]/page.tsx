@@ -1,8 +1,8 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { Banner } from "@/components/ds/banner";
 import { PageHeader } from "@/components/ds/page-header";
+import { RecordHeader } from "@/components/ds/record-header";
 import { formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
 import { ApiError, currentSession, gate } from "@/lib/api";
 import {
@@ -79,36 +79,29 @@ export default async function DevicePage({
   const yesNo = (value: boolean) => text(value ? "device.yes" : "device.no");
 
   return (
-    <Shell locale={locale} name={device.display_name}>
-      <section className="page-section">
-        <h2 style={{ margin: 0 }}>{text("device.capabilities")}</h2>
+    <Shell locale={locale} device={device}>
+      <section className="ds-panel">
+        <div className="ds-panel-head">
+          <h2 className="ds-panel-title">{text("device.capabilities")}</h2>
+        </div>
+        <div className="ds-panel-body">
         <p style={{ margin: 0 }}>
           <span className="data" dir="ltr">
             {device.capabilities.join(", ")}
           </span>
         </p>
-        <p className="muted" style={{ margin: 0 }}>
-          {device.is_access_point ? text("device.isAccessPoint") : text("device.notAccessPoint")}
-        </p>
-        <dl className="facts">
-          <dt className="muted">{text("fleet.state")}</dt>
-          <dd style={{ margin: 0 }}>{device.state}</dd>
-          <dt className="muted">{text("fleet.reachability")}</dt>
-          <dd style={{ margin: 0 }}>
-            {text(`fleet.reach.${device.reachability}` as MessageKey)}
-          </dd>
-          <dt className="muted">{text("fleet.device")}</dt>
-          <dd style={{ margin: 0 }}>
-            <span className="data" dir="ltr">
-              {device.serial_number}
-            </span>
-          </dd>
-        </dl>
+        {/* The state, the reachability and the serial are the header's sub-line now, where
+            a reader meets them before anything else. Repeating them here was the first
+            panel saying what the line above it had just said. */}
+        </div>
       </section>
 
       {device.is_access_point ? (
-        <section className="page-section">
-          <h2 style={{ margin: 0 }}>{text("device.safety")}</h2>
+        <section className="ds-panel">
+          <div className="ds-panel-head">
+            <h2 className="ds-panel-title">{text("device.safety")}</h2>
+          </div>
+          <div className="ds-panel-body">
           {device.safety === null ? (
             <Banner severity="critical">{text("device.noSafety")}</Banner>
           ) : (
@@ -154,11 +147,15 @@ export default async function DevicePage({
               </div>
             ))}
           </dl>
-        </section>
+          </div>
+      </section>
       ) : null}
 
-      <section className="page-section">
-        <h2 style={{ margin: 0 }}>{text("device.certificates")}</h2>
+      <section className="ds-panel">
+        <div className="ds-panel-head">
+          <h2 className="ds-panel-title">{text("device.certificates")}</h2>
+        </div>
+        <div className="ds-panel-body">
         <p className="muted" style={{ margin: 0 }}>
           {text("device.certificatesLead")}
         </p>
@@ -185,10 +182,14 @@ export default async function DevicePage({
             ))}
           </ul>
         )}
+        </div>
       </section>
 
-      <section className="page-section">
-        <h2 style={{ margin: 0 }}>{text("device.health")}</h2>
+      <section className="ds-panel">
+        <div className="ds-panel-head">
+          <h2 className="ds-panel-title">{text("device.health")}</h2>
+        </div>
+        <div className="ds-panel-body">
         {device.health === null ? (
           <Banner severity="info">{text("device.noHealth")}</Banner>
         ) : (
@@ -229,10 +230,14 @@ export default async function DevicePage({
                 : `${text("device.snapshotLive")} ${device.snapshot.expires_at.slice(11, 16)} UTC`}
           </p>
         )}
+        </div>
       </section>
 
-      <section className="page-section">
-        <h2 style={{ margin: 0 }}>{text("device.commands")}</h2>
+      <section className="ds-panel">
+        <div className="ds-panel-head">
+          <h2 className="ds-panel-title">{text("device.commands")}</h2>
+        </div>
+        <div className="ds-panel-body">
         {queue.commands.length === 0 ? (
           <Banner severity="info">{text("device.noCommands")}</Banner>
         ) : (
@@ -249,27 +254,60 @@ export default async function DevicePage({
             ))}
           </ul>
         )}
+        </div>
       </section>
     </Shell>
   );
 }
 
+/**
+ * The record shell.
+ *
+ * **No breadcrumb**: `Devices` is on the rail, and a link above the title repeating a rail
+ * entry is the chrome saying the same thing twice. **And the header carries a band**, which
+ * is what the other three record pages in this app now do: a device that is in service and
+ * unreachable is the one fact somebody opening this page needs before any other.
+ */
 function Shell({
   locale,
-  name,
+  device,
   children,
 }: {
   locale: Locale;
-  name?: string;
+  device?: DeviceDetail;
   children: React.ReactNode;
 }) {
+  const text = (key: MessageKey) => t(locale, key);
+  if (device === undefined) {
+    return (
+      <div className="ds-inspector-pane">
+        <PageHeader title={text("device.title")} />
+        <div className="ds-record-body">{children}</div>
+      </div>
+    );
+  }
   return (
-    <div className="stack">
-      <nav aria-label={t(locale, "fleet.title")}>
-        <Link href="/fleet">{t(locale, "fleet.title")}</Link>
-      </nav>
-      <PageHeader title={name ?? t(locale, "device.title")} />
-      {children}
+    <div className="ds-inspector-pane">
+      <RecordHeader
+        name={device.display_name}
+        {...(device.blocks_operation
+          ? { band: { text: text("fleet.attention"), tone: "critical" as const } }
+          : {})}
+        subline={
+          <>
+            {text(`fleet.reach.${device.reachability}` as MessageKey)}
+            {" · "}
+            {device.state}
+            {" · "}
+            <span className="data" dir="ltr">{device.serial_number}</span>
+            {" · "}
+            {device.is_access_point
+              ? text("device.isAccessPoint")
+              : text("device.notAccessPoint")}
+          </>
+        }
+      />
+      <div className="ds-record-body">{children}</div>
     </div>
   );
 }

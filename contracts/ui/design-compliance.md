@@ -294,23 +294,32 @@ corresponds to them. The others map loosely:
 
 | Existing | Nearest design | Fidelity |
 | --- | --- | --- |
-| `/login` | ADM-AUTH-01 Admin sign-in | layout not compared |
-| `/step-up` | ADM-AUTH-02 Sensitive action re-auth | layout not compared |
-| `/organization` | ADM-SET-01, ADM-SET-02 | not compared |
-| `/people` | ADM-MEM-11 Merge duplicate members (partially) | the members list ADM-MEM-05 specifies does not exist |
-| `/people/{id}` | ADM-MEM-01/02 Member 360 | sections exist; the design's tabs and spine do not |
-| `/schedule` | ADM-SCH-01 Class schedule · week grid | **corrected** — see below |
-| `/schedule/{id}` | ADM-SCH-02 Class detail and roster | partial |
-| `/access`, `/access/{id}` | ADM-ACC-01, ADM-ACC-02 | partial |
-| `/permissions` | ADM-STF-04, ADM-SET-08 | partial |
-| `/catalog` | ADM-POS-01, ADM-POS-03 | partial |
-| `/finance` | ADM-PAY-01 Payments ledger | different subject — this is the GL, not the payments ledger |
-| `/notifications` | ADM-COM-02, ADM-COM-04 | partial |
-| `/configuration`, `/privacy`, `/operations`, `/fleet`, `/integrations` | **none** | module surfaces with no design |
-| `/account` | MBR-33 Security and devices (Member surface) | built without reading it |
+| `/` | ADM-CC-01…05 Command Center | **built from the canvas** |
+| `/members` | ADM-MEM-05 Members list | **built from the canvas**; its three absent columns and six absent controls are named on the screen |
+| `/people/{id}` | ADM-MEM-01/02 Member 360 | **rebuilt to the canvas** — pattern 02, the status band, five MetricCells, the tabs, the timeline spine |
+| `/schedule` | ADM-SCH-01 Class schedule · week grid | **built from the canvas** |
+| `/schedule/{id}` | ADM-SCH-02 Class detail and roster | **rebuilt** — the band, four MetricCells, the roster; the three actions are stepped-up writes with no form |
+| `/payments` | ADM-PAY-01 Payments ledger | **built from the canvas** — four kinds on one axis, signed; refund and export are named as absent |
+| `/fleet` | ADM-ACC-01 Access control dashboard | **rebuilt** — the finding as the title, CLUB and TODAY columns |
+| `/access/{id}` | ADM-ACC-02 Access denial log | **rebuilt** — the policy/fault split, counted by MOD-022's own codes |
+| `/permissions` | ADM-STF-04, ADM-SET-08 | **rebuilt** — the capability matrix, roles across the top |
+| `/login` | ADM-AUTH-01 Admin sign-in | **rebuilt** — the lockup, the note box; the tenant field is a stated deviation |
+| `/step-up` | ADM-AUTH-02 Sensitive action re-auth | **rebuilt** — names the action from MOD-008's catalogue; a page rather than an overlay |
+| `/people` | ADM-MEM-11 Merge duplicate members (partially) | partial — the duplicate queue only |
+| `/organization` | ADM-SET-01, ADM-SET-02 | the hierarchy, with a figures line; the opening hours and floor capacity ADM-SET-02 draws have no read |
+| `/access` | **none** | a zone list, which the design has no canvas for |
+| `/catalog` | ADM-POS-01, ADM-POS-03 | partial — per-club stock and the discount thresholds are MOD-016 gaps |
+| `/finance` | **none** | MOD-018's general ledger. It was counted as ADM-PAY-01 and is a different subject; `/payments` is that screen now |
+| `/notifications` | ADM-COM-02, ADM-COM-04 | partial — no per-event channel matrix, because no recipient preference surface writes |
+| `/configuration`, `/privacy`, `/operations`, `/fleet/{id}`, `/integrations` | **none** | module surfaces with no design |
+| `/account` | MBR-33 Security and devices (Member surface) | the registry leaves MBR-33 unspecified; built to this app's own conventions |
 
-Correcting this is the bulk of the remaining frontend work, and it is per screen rather than
-per module.
+**Every one of these now carries a figures line rather than a paragraph**, which is the
+design's own page-header rule and was the single most widespread deviation: fifteen screens
+led with prose where every drawn canvas leads with counts.
+
+What remains is the ~145 specified screens with no route at all — the Member app, Front Desk,
+POS, Coach and Console surfaces, which are whole products rather than screens.
 
 ## Screens — 178 V1, of which 167 are specified
 
@@ -325,8 +334,8 @@ of the directive asks for; this section is the implementation column.
 | Specified in the design folder | **167** |
 | `NO-UI` — the registry says no screen is needed | 8 |
 | Genuinely unspecified (`ADM-CRM-05`, `ADM-POS-02`, `MBR-33`) | 3 |
-| **Routes in `web/`** | **22** |
-| Of those, built from their design | **3** (ADM-MEM-05, ADM-CC-01…05, ADM-SCH-01) |
+| **Routes in `web/`** | **23** |
+| Of those, built or rebuilt from their design | **11** |
 
 So the remaining frontend work is **implementing specified screens**, not inventing around a
 registry — which is the correction at the top of this file, and it is per screen rather than
@@ -562,3 +571,93 @@ each is a question for the design source or its author.
 | Per-family state matrix beyond the 17 rows | §69 | The matrix names 17 rows for 37 families; several families are grouped (`Select · Combobox`, `Modal · Drawer · Sheet`). Grouped rows are applied to each member. |
 | Screen-level layout detail | `V1 Batch *` | The batch files specify each screen in prose (pattern, intent, content rules) rather than measured layout. Compliance is against the stated pattern and its component contracts. |
 | Density "type step" across registers | `DENSITY`, `TYPE_SCALE` | The scale is not one ladder — headings, body, label, caption, data and eyebrow are separate registers — so "+1 step" has exactly one unambiguous reading, the body ramp. Spacious is "+2 steps" and that ramp has one step above `type.body`; the scale's own usage note assigns `type.bodyLg` to "Member app body, coach prose", which is the surface LAYOUTS puts at Spacious, so the generator clamps to the top of the ramp. **An interpretation, not a value read off the page.** |
+
+## The screen-by-screen pass — what looking at the pages found
+
+The audit above was a reconciliation of the registry against the routes. This section is the
+second half the directive asks for: **every screen opened in a browser at 1400×900 and
+compared against its canvas**, which is the only thing that finds a rendering defect. It
+found eleven, and nine of them were invisible to every test in the repository.
+
+### Four screens had every fact and none of the anatomy
+
+ADM-MEM-01 names its own components — `Member360Header · PersonRow ×6 · AttentionRow(inline)
+· MetricCell ×5 · TimelineItem ×7 · MembershipCard · AccessPass · MoneyValue · Tabs` — and
+what the page rendered was an `<h1>` and nine stacked `<dl>` blocks. ADM-SCH-02 wants a band,
+four cells and a roster. ADM-ACC-02 wants the denial log split by policy and by fault, and
+argues for the split: *"Twenty-seven expired memberships is the system working. Four reader
+failures is a maintenance job. Mixing them in one count hides the second inside the first."*
+ADM-STF-04 wants a matrix and got 4,300 pixels of comma-separated permission names.
+
+Five backend reads existed nowhere and the screens needed them:
+
+| Read | For | Why it is on this side of the line |
+| --- | --- | --- |
+| `GET /access/attendance` | ADM-MEM-01's LAST VISIT | Entries, not decisions: a failing card produces refused decisions for exactly the member somebody is checking. The rate is measured to the last visit, not to today, or every lapsed member reads as one who never came much. |
+| `GET /access/credentials` | ADM-MEM-01's Access block | No digest: the stored value is a SHA-256 and is pseudonymous, so a listing carrying it would let anybody with a candidate card confirm whose it is. Asserted as an absence, mutation-proven. |
+| `GET /access/entries` | ADM-ACC-01's TODAY column | MOD-021 knows nothing about doors by design, and `acc_points` is the join it deliberately did not make — so the board composes the two rather than MOD-021 learning to count entries. |
+| `GET /authz/catalog` | ADM-STF-04's row headings | A statement about the software, like `/privacy/erasure-reach`: no pool, no tenant rows, identical bytes per tenant. |
+| `GET /finance/payments` | **ADM-PAY-01, which had no screen at all** | See below. |
+
+### ADM-PAY-01 existed nowhere and `/finance` was being counted as it
+
+The payments ledger is the one Admin money screen with a drawn canvas and no implementation.
+`/finance` is MOD-018's general ledger — the chart, the period lock, the trial balance — which
+is what an accountant closes a month with; the payments ledger is what a manager opens every
+morning. The ledger read unions four tables because the canvas's rule demands it: *"Refunds
+carry a negative sign and the parenthetical original. A refund is never shown as a payment of
+a different colour — it is a different sign on the same axis."* A failed charge is a row
+rather than an absence, because a ledger of successes cannot be reconciled.
+
+What it does not do is named on the screen: a refund is tier 3 **and** tier 4 in the design's
+own scale — a typed amount and a second person — and `finance.refund.request` is a stepped-up
+financial permission with no form in this build.
+
+### Eleven defects, and what each one teaches
+
+- **A gate naming a permission that does not exist renders as a refusal.** The Member 360's
+  metric row asked for `finance.invoice.read`, which has never existed, and the OUTSTANDING
+  cell told the tenant's owner they lacked a permission. `/authz/checks` refuses an undeclared
+  action with a 422 now, and `tests/unit/permission-names.test.mjs` sweeps every `gate(…)` in
+  the app against the catalogue. Mutation-proven: a structural check that passes vacuously is
+  the thing it exists to prevent.
+- **A TypeScript type is a claim about a response, not a check on it.** Two newly-added fields
+  read as `undefined` against a server that predated them; `undefined / 100` is `NaN`, which
+  `formatInteger` refuses, so one missing field answered 500 for a whole page.
+- **The projection's gaps contradicted the tabs beside them.** MOD-014 says "MOD-017 owns this
+  and nothing here reads it", which is true of the projection and false of the page: that line
+  sat under a Membership tab full of memberships. The same stale-list defect this screen had
+  already paid for, in the other direction.
+- **One `Promise.all` over three reads loses all three.** The permission catalogue being
+  unavailable took the roles and the session's own permissions down with it.
+- **A metric row with a fixed four columns renders a fifth cell as a broken one.** ADM-CC-01
+  draws four and ADM-MEM-01 draws five.
+- **An avatar on a record that is not a person reads as a photograph that failed to load.**
+  The circle is opt-in now.
+- **A bulleted list of nineteen "level 2 · 17:11" rows is not something anybody can act on.**
+  Revoking a session is destructive and the device is what tells two apart — and it was on
+  every row of the response, dropped by the rendering.
+- **"The rows the roles differ on" reduced nothing.** With one role holding everything, every
+  permission differs from the roles that hold almost none. The rows had to be coarser, not
+  fewer: a module summary with a third mark for "some of it".
+- **A message catalogue can hold a translation nothing can select.** English has two CLDR
+  categories, so a `zero:` form in the English catalogue is dead on arrival; three had one.
+  And `payments.next.payment` was a key for a row that can never need action — the parity
+  check caught it, because the em-dash was identical in both locales.
+- **A test whose green depends on spec order.** `operations.spec` asserted zero pending
+  events, which was true right after the fixture and false once `access.spec` had recorded a
+  decision before it. It drains the outbox itself now: a test that asserts a freshness has to
+  create it.
+- **A column name taken from a module's prose rather than from its schema.**
+  `rotating_window_seconds` does not exist on `acc_credentials`; `ruff` and `mypy` are both
+  blind to a column name inside a SQL string, and the only thing that could catch it is a test
+  that runs the query. Nothing did, and the page said "this figure could not be read".
+
+### What the fixture had to grow
+
+Three times, a screen could not demonstrate its own distinction because the fixture had one of
+something: a payments ledger with one settled payment cannot show that a refund is a negative
+number on the same axis, and a fleet board where no device is a door cannot show that "not a
+door" is different from zero. The fixture now seeds a failed charge, a refund approved by a
+second identity, and a dispute — **the rule this repository already records five times over:
+the fixture carries both members of the pair the distinction is about.**

@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { Banner } from "@/components/ds/banner";
 import { PageHeader } from "@/components/ds/page-header";
 import { DataGrid } from "@/components/ds/data-grid";
-import { t, type Locale, type MessageKey } from "@/i18n/locale";
+import { fill, t, type Locale, type MessageKey } from "@/i18n/locale";
 import { ApiError, currentSession, gate } from "@/lib/api";
 import {
   composeTree,
@@ -74,7 +74,21 @@ export default async function OrganizationPage() {
   const { tree, orphanBrands, orphanLocations } = composed;
 
   return (
-    <Shell locale={locale}>
+    <Shell
+      locale={locale}
+      figures={
+        <>
+          {fill(locale, "org.brandsCounted", { count: tree.reduce(
+            (sum, node) => sum + node.brands.length, 0) })}
+          {" \u00b7 "}
+          {fill(locale, "org.sitesCounted", { count: tree.reduce((sum, node) =>
+            sum + node.brands.reduce((n, brand) => n + brand.locations.length, 0), 0) })}
+          {" \u00b7 "}
+          {fill(locale, "org.entitiesCounted", { count: tree.reduce(
+            (sum, node) => sum + node.entities.length, 0) })}
+        </>
+      }
+    >
       {tree.length === 0 ? (
         <Banner severity="info">{text("org.none")}</Banner>
       ) : (
@@ -188,10 +202,26 @@ function OrganizationCard({ node, locale }: { node: OrganizationTree; locale: Lo
   );
 }
 
-function Shell({ locale, children }: { locale: Locale; children: React.ReactNode }) {
+function Shell({
+  locale,
+  children,
+  figures,
+}: {
+  locale: Locale;
+  children: React.ReactNode;
+  /**
+   * The counts under the title.
+   *
+   * **The design's page header is a title and a line of figures, never a paragraph**, and
+   * every drawn canvas does the same: "4,812 active · 312 expired · 68 frozen · all
+   * locations". A board whose header carried only its own name made a reader scroll to find
+   * out whether anything on it needed them.
+   */
+  figures?: React.ReactNode;
+}) {
   return (
     <div className="stack">
-      <PageHeader title={t(locale, "org.title")} />
+      <PageHeader title={t(locale, "org.title")} {...(figures ? { figures } : {})} />
       {children}
       {/* The lead moved to the foot; see `PageHeader`. */}
       <p className="ds-screen-note">{t(locale, "org.lead")}</p>

@@ -95,6 +95,8 @@ READ_ROUTES = [
     ("get", f"/finance/invoices/{_ID}/history", None),
     # ADM-STF-04's row headings: what each permission means and what it costs to use.
     ("get", "/authz/catalog", None),
+    # ADM-PAY-01's ledger.
+    ("get", "/finance/payments", None),
     ("get", "/people", None),
     ("get", "/people/duplicates/all", None),
     ("get", f"/people/merges/plan?source_person_id={_ID}&target_person_id={_SUBJECT}", None),
@@ -108,6 +110,8 @@ READ_ROUTES = [
     # ADM-MEM-01's fourth metric cell and its Access block. Both are person-scoped reads
     # added for the Member 360, so both are swept: a read about one named member is the
     # shape most worth having a case for.
+    # ADM-ACC-01's TODAY column, composed onto the fleet board.
+    ("get", "/access/entries", None),
     ("get", f"/access/attendance?person_id={_ID}", None),
     ("get", f"/access/credentials?person_id={_ID}", None),
     ("get", f"/access/decisions?person_id={_ID}", None),
