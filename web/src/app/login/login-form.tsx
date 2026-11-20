@@ -37,7 +37,7 @@ export function LoginForm({ locale }: { locale: Locale }) {
         padding: "var(--space-10) var(--space-4)",
       }}
     >
-      <form action={formAction} noValidate className="panel stack" style={{ width: "100%", maxWidth: "420px" }}>
+      <form action={formAction} noValidate className="page-section" style={{ width: "100%", maxWidth: "420px" }}>
         <h1>{text("login.title")}</h1>
 
         {state.error ? (

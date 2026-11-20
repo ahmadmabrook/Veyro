@@ -38,33 +38,15 @@ const RAW_TABLES = new Set([
 /**
  * Screens that still group with a bare `.panel` rather than `Card`.
  *
- * `Card` requires a `kind` over the six the source names, which is what makes
- * "cardification" an argument somebody has to make at the call site rather than a default.
+ * **Empty, and the correction was not what it looked like.** The obvious migration was
+ * panel → Card on all 64 sections; the right one was to stop boxing them at all. §31: a Card
+ * is "meaningful grouping only", six kinds, and "a card that only draws a border around a
+ * paragraph is deleted — 'cardification' of every screen is explicitly prohibited". Six
+ * bordered boxes stacked down a report page *is* that anti-pattern at the scale of a surface.
+ * A page section is a heading, its prose and its grid, separated by the type scale and the
+ * shell's gutter; `Card` is kept for content that genuinely is one.
  */
-const RAW_PANELS = new Set([
-  "access/[zoneId]/page.tsx",
-  "access/page.tsx",
-  "account/account-view.tsx",
-  "account/page.tsx",
-  "catalog/page.tsx",
-  "configuration/page.tsx",
-  "finance/page.tsx",
-  "fleet/[deviceId]/page.tsx",
-  "fleet/page.tsx",
-  "integrations/page.tsx",
-  "login/login-form.tsx",
-  "notifications/page.tsx",
-  "operations/page.tsx",
-  "organization/page.tsx",
-  "page.tsx",
-  "people/[personId]/page.tsx",
-  "people/page.tsx",
-  "permissions/page.tsx",
-  "privacy/page.tsx",
-  "schedule/[sessionId]/page.tsx",
-  "schedule/page.tsx",
-  "step-up/step-up-form.tsx",
-]);
+const RAW_PANELS = new Set([]);
 
 function walk(dir) {
   const out = [];

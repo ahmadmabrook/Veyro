@@ -122,19 +122,19 @@ export default async function SessionPage({
         </Banner>
       ) : null}
 
-      <section className="panel stack">
+      <section className="page-section">
         <h2 style={{ margin: 0 }}>{text("schedule.resources")}</h2>
         <Resources list={session.resources} timezone={session.timezone} />
       </section>
 
       {session.former_resources.length > 0 ? (
-        <section className="panel stack">
+        <section className="page-section">
           <h2 style={{ margin: 0 }}>{text("schedule.formerResources")}</h2>
           <Resources list={session.former_resources} timezone={session.timezone} />
         </section>
       ) : null}
 
-      <section className="panel stack">
+      <section className="page-section">
         <h2 style={{ margin: 0 }}>{text("schedule.changes")}</h2>
         {session.changes.length === 0 ? (
           <Banner severity="info">{text("schedule.noChanges")}</Banner>
@@ -194,7 +194,7 @@ export default async function SessionPage({
         )}
       </section>
 
-      <section className="panel stack">
+      <section className="page-section">
         <h2 id="roster-heading" style={{ margin: 0 }}>
           {text("roster.title")}
         </h2>
@@ -291,7 +291,7 @@ export default async function SessionPage({
       </section>
 
       {session.conflict_overrides.length > 0 ? (
-        <section className="panel stack">
+        <section className="page-section">
           <h2 style={{ margin: 0 }}>{text("schedule.overrides")}</h2>
           <ul style={{ margin: 0, paddingInlineStart: "var(--space-5)" }}>
             {session.conflict_overrides.map((override) => (

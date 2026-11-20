@@ -48,7 +48,7 @@ export default async function PeoplePage() {
       <p className="muted" style={{ margin: 0 }}>
         {text("people.lead")}
       </p>
-      <section className="panel stack">
+      <section className="page-section">
         <h2 id="duplicates-heading" style={{ margin: 0 }}>
           {text("people.duplicates")}
         </h2>

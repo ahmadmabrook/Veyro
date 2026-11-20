@@ -71,8 +71,14 @@ obligations, an overdue data-subject request, a promotion that reads active and 
 February. `tests/unit/ds-usage.test.mjs` has stopped being a backlog for tables and become an
 absolute rule: the next raw `<table>` in a screen fails it.
 
-22 screens still group with a bare `.panel` where `Card` applies, swept the same way in both
-directions.
+**And the panel migration was not what it looked like.** The obvious correction was
+`.panel` → `Card` on all 64 sections. The right one was to stop boxing them: §31 says a Card
+is "meaningful grouping only", six kinds, and "a card that only draws a border around a
+paragraph is deleted — 'cardification' of every screen is explicitly prohibited" — and six
+bordered boxes stacked down a report page is that anti-pattern at the scale of a whole
+surface. A page section is now a heading with a rule under it, its prose and its grid,
+separated by the type scale and the shell's gutter. `.panel` is deleted from the stylesheet
+and `Card` is kept for content that genuinely is one.
 
 **One extension beyond what the source states**, recorded here rather than made quietly:
 `DataGrid` takes a per-column `total`, rendered in a `<tfoot>` with the column's own priority.

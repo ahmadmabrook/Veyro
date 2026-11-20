@@ -76,7 +76,7 @@ export default async function ZonePage({
 
   return (
     <Shell locale={locale} title={zone.display_name}>
-      <section className="panel stack">
+      <section className="page-section">
         <h2>{text("access.policy")}</h2>
         <p className="muted" style={{ margin: 0 }}>
           {text("access.risk")}: {text(`access.risk.${zone.risk_class}` as MessageKey)} ·{" "}
@@ -95,7 +95,7 @@ export default async function ZonePage({
 
       {occupancy ? <OccupancyPanel occupancy={occupancy} locale={locale} /> : null}
 
-      <section className="panel stack">
+      <section className="page-section">
         <h2>{text("access.points")}</h2>
         <ul className="stack" style={{ margin: 0, paddingInlineStart: "var(--space-5)" }}>
           {zone.points.map((point) => (
@@ -201,7 +201,7 @@ function Terms({ policy, locale }: { policy: ZonePolicy; locale: Locale }) {
 function OccupancyPanel({ occupancy, locale }: { occupancy: Occupancy; locale: Locale }) {
   const text = (key: MessageKey) => t(locale, key);
   return (
-    <section className="panel stack">
+    <section className="page-section">
       <h2>{text("access.occupancy")}</h2>
       <p className="data" style={{ margin: 0, fontSize: "var(--type-display-size)" }}>
         {formatInteger(occupancy.inside, "latn")}
@@ -221,7 +221,7 @@ function OccupancyPanel({ occupancy, locale }: { occupancy: Occupancy; locale: L
 function DecisionLog({ page, locale }: { page: DecisionPage; locale: Locale }) {
   const text = (key: MessageKey) => t(locale, key);
   return (
-    <section className="panel stack" aria-labelledby="decisions-heading">
+    <section className="page-section" aria-labelledby="decisions-heading">
       <h2 id="decisions-heading">{text("access.decisions")}</h2>
       {page.decisions.length === 0 ? (
         <Banner severity="info">{text("access.noDecisions")}</Banner>

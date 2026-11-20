@@ -105,7 +105,7 @@ export default async function IntegrationsPage() {
         <Banner severity="attention">{text("integrations.nothingSyncs")}</Banner>
       ) : null}
 
-      <section className="panel stack">
+      <section className="page-section">
         <h2 id="installs-heading" style={{ margin: 0 }}>{text("integrations.installs")}</h2>
         <p className="muted" style={{ margin: 0 }}>
           {text("integrations.installsLead")}
@@ -192,7 +192,7 @@ export default async function IntegrationsPage() {
         )}
       </section>
 
-      <section className="panel stack">
+      <section className="page-section">
         <h2 id="connections-heading" style={{ margin: 0 }}>{text("integrations.connections")}</h2>
         <p className="muted" style={{ margin: 0 }}>
           {text("integrations.connectionsLead")}
@@ -270,7 +270,7 @@ export default async function IntegrationsPage() {
         ) : null}
       </section>
 
-      <section className="panel stack">
+      <section className="page-section">
         <h2 style={{ margin: 0 }}>{text("integrations.credentials")}</h2>
         <p className="muted" style={{ margin: 0 }}>
           {text("integrations.credentialsLead")}
@@ -313,7 +313,7 @@ export default async function IntegrationsPage() {
         ) : null}
       </section>
 
-      <section className="panel stack">
+      <section className="page-section">
         <h2 id="runs-heading" style={{ margin: 0 }}>{text("integrations.runs")}</h2>
         <p className="muted" style={{ margin: 0 }}>
           {text("integrations.runsLead")}
@@ -409,7 +409,7 @@ export default async function IntegrationsPage() {
         )}
       </section>
 
-      <section className="panel stack">
+      <section className="page-section">
         <h2 style={{ margin: 0 }}>{text("integrations.cursors")}</h2>
         <p className="muted" style={{ margin: 0 }}>
           {text("integrations.cursorsLead")}

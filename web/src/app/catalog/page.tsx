@@ -104,7 +104,7 @@ export default async function CatalogPage({
     <Shell locale={locale}>
       {failed ? <Banner severity="critical">{text("error.unexpected")}</Banner> : null}
 
-      <section className="panel stack">
+      <section className="page-section">
         <h2 id="products-heading" style={{ margin: 0 }}>{text("catalog.products")}</h2>
         {!mayProducts.allowed ? (
           <Banner severity="info">{text("gate.denied")}</Banner>
@@ -164,7 +164,7 @@ export default async function CatalogPage({
       </section>
 
       {detail === null ? null : (
-        <section className="panel stack">
+        <section className="page-section">
           <h2 id="variants-heading" style={{ margin: 0 }}>
             {detail.display_name ?? detail.product_key}
           </h2>
@@ -254,7 +254,7 @@ export default async function CatalogPage({
         </section>
       )}
 
-      <section className="panel stack">
+      <section className="page-section">
         <h2 id="books-heading" style={{ margin: 0 }}>{text("catalog.books")}</h2>
         <p className="muted" style={{ margin: 0 }}>
           {text("catalog.booksLead")}
@@ -313,7 +313,7 @@ export default async function CatalogPage({
         )}
       </section>
 
-      <section className="panel stack">
+      <section className="page-section">
         <h2 id="promotions-heading" style={{ margin: 0 }}>{text("catalog.promotions")}</h2>
         <p className="muted" style={{ margin: 0 }}>
           {text("catalog.promotionsLead")}

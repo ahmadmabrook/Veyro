@@ -157,7 +157,7 @@ function Shell({ locale, children }: { locale: Locale; children: React.ReactNode
       <h1 id="doors-heading" style={{ margin: 0 }}>
         {t(locale, "access.title")}
       </h1>
-      <section className="panel stack">{children}</section>
+      <section className="page-section">{children}</section>
     </div>
   );
 }

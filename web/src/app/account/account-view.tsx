@@ -72,7 +72,7 @@ export function AccountView({
 
   return (
     <>
-      <section className="panel stack">
+      <section className="page-section">
         <h2 style={{ margin: 0 }}>{text("account.thisSession")}</h2>
         <dl className="facts">
           <dt className="muted">{text("account.assurance")}</dt>
@@ -100,7 +100,7 @@ export function AccountView({
         </dl>
       </section>
 
-      <section className="panel stack">
+      <section className="page-section">
         <h2 style={{ margin: 0 }}>{text("account.recoveryCodes")}</h2>
         <p className="muted" style={{ margin: 0 }}>
           {text("account.recoveryLead")}
@@ -130,7 +130,7 @@ export function AccountView({
         )}
       </section>
 
-      <section className="panel stack">
+      <section className="page-section">
         <h2 style={{ margin: 0 }}>{text("account.otherSessions")}</h2>
         <p className="muted" style={{ margin: 0 }}>
           {text("account.otherSessionsLead")}
@@ -171,7 +171,7 @@ export function AccountView({
         )}
       </section>
 
-      <section className="panel stack">
+      <section className="page-section">
         <h2 style={{ margin: 0 }}>{text("account.devices")}</h2>
         <p className="muted" style={{ margin: 0 }}>
           {text("account.devicesLead")}
@@ -239,7 +239,7 @@ export function AccountView({
         )}
       </section>
 
-      <section className="panel stack">
+      <section className="page-section">
         <h2 id="events-heading" style={{ margin: 0 }}>{text("account.events")}</h2>
         <p className="muted" style={{ margin: 0 }}>
           {text("account.eventsLead")}

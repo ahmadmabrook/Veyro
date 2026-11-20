@@ -91,7 +91,7 @@ export default async function Member360Page({
     <Shell locale={locale}>
       <IdentityPanel person={record.person} locale={locale} />
 
-      <section className="panel stack">
+      <section className="page-section">
         <h2 style={{ margin: 0 }}>{text("member.profile")}</h2>
         {record.member_profile === null ? (
           <Banner severity="info">{text("member.noProfile")}</Banner>
@@ -125,7 +125,7 @@ export default async function Member360Page({
           agreement belongs: beside the person it is with. */}
       <MembershipPanels personId={personId} locale={locale} />
 
-      <section className="panel stack">
+      <section className="page-section">
         <h2 style={{ margin: 0 }}>{text("member.notes")}</h2>
         {record.notes.length === 0 ? (
           <Banner severity="info">{text("member.noNotes")}</Banner>
@@ -148,7 +148,7 @@ export default async function Member360Page({
         )}
       </section>
 
-      <section className="panel stack">
+      <section className="page-section">
         <h2 style={{ margin: 0 }}>{text("member.timeline")}</h2>
         {record.timeline.length === 0 ? (
           <Banner severity="info">{text("member.noTimeline")}</Banner>
@@ -172,7 +172,7 @@ export default async function Member360Page({
         )}
       </section>
 
-      <section className="panel stack">
+      <section className="page-section">
         <h2 style={{ margin: 0 }}>{text("member.sections")}</h2>
         <p className="muted" style={{ margin: 0 }}>
           {text("member.consents")}:{" "}
@@ -219,7 +219,7 @@ function IdentityPanel({ person, locale }: { person: Person; locale: Locale }) {
     || isWithheld(person.preferred_name)
     || isWithheld(person.date_of_birth);
   return (
-    <section className="panel stack">
+    <section className="page-section">
       <h2 style={{ margin: 0 }}>{text("member.identity")}</h2>
       <dl className="facts">
         <Row label={text("member.legalName")}>

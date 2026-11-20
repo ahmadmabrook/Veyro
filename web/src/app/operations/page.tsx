@@ -81,7 +81,7 @@ export default async function OperationsPage() {
         {text("ops.lead")}
       </p>
 
-      <section className="panel stack">
+      <section className="page-section">
         <h2 style={{ margin: 0 }}>{text("ops.outbox")}</h2>
         <Gated gate={mayEvents} value={health} locale={locale}>
           {(outbox: OutboxHealth) => (
@@ -132,7 +132,7 @@ export default async function OperationsPage() {
         </Gated>
       </section>
 
-      <section className="panel stack">
+      <section className="page-section">
         <h2 id="worker-heading" style={{ margin: 0 }}>
           {text("ops.worker")}
         </h2>
@@ -225,7 +225,7 @@ export default async function OperationsPage() {
         </Gated>
       </section>
 
-      <section className="panel stack">
+      <section className="page-section">
         <h2 id="dead-letters-heading" style={{ margin: 0 }}>
           {text("ops.deadLetters")}
         </h2>
@@ -282,7 +282,7 @@ export default async function OperationsPage() {
         </Gated>
       </section>
 
-      <section className="panel stack">
+      <section className="page-section">
         <h2 style={{ margin: 0 }}>{text("ops.subscriptions")}</h2>
         {/* **The standing disclosure is above the table, not inside the empty case.** It used
             to live in the "nothing is subscribed" message, so the day a subscription existed
@@ -314,7 +314,7 @@ export default async function OperationsPage() {
         </Gated>
       </section>
 
-      <section className="panel stack">
+      <section className="page-section">
         <h2 style={{ margin: 0 }}>{text("ops.objectives")}</h2>
         <Gated gate={mayObjectives} value={objectives} locale={locale}>
           {(rows: Objective[]) =>

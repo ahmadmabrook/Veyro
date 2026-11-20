@@ -81,7 +81,7 @@ export default async function PermissionsPage() {
         {text("perms.lead")}
       </p>
 
-      <section className="panel stack">
+      <section className="page-section">
         <h2 style={{ margin: 0 }}>{text("perms.mine")}</h2>
         <p className="muted" style={{ margin: 0 }}>
           {text("perms.mineLead")}
@@ -102,7 +102,7 @@ export default async function PermissionsPage() {
         )}
       </section>
 
-      <section className="panel stack">
+      <section className="page-section">
         <h2 id="roles-heading" style={{ margin: 0 }}>
           {text("perms.roles")}
         </h2>
@@ -134,7 +134,7 @@ export default async function PermissionsPage() {
         )}
       </section>
 
-      <section className="panel stack">
+      <section className="page-section">
         <h2 id="audit-heading" style={{ margin: 0 }}>
           {text("perms.audit")}
         </h2>

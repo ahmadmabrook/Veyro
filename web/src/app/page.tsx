@@ -65,7 +65,7 @@ export default async function HomePage() {
         </div>
       </header>
 
-      <section className="panel stack">
+      <section className="page-section">
         <h2>{text("home.signedInAs")}</h2>
         {/* `.data` is mono and tabular, and switches family in Arabic so an identifier does not
             arrive in a proportional Arabic face. The id itself is Latin either way. */}
@@ -78,7 +78,7 @@ export default async function HomePage() {
         </p>
       </section>
 
-      <section className="panel stack" aria-labelledby="permissions-heading">
+      <section className="page-section" aria-labelledby="permissions-heading">
         <h2 id="permissions-heading">{text("home.permissions")}</h2>
         {answers.every((answer) => !answer.allowed) ? (
           <Banner severity="info">{text("home.noPermissions")}</Banner>

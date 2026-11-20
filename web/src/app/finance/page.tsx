@@ -148,7 +148,7 @@ export default async function FinancePage({
 
   return (
     <Shell locale={locale}>
-      <section className="panel stack">
+      <section className="page-section">
         <h2 id="lock-heading" style={{ margin: 0 }}>{text("finance.lock")}</h2>
         <p className="muted" style={{ margin: 0 }}>
           {text("finance.lockLead")}
@@ -230,7 +230,7 @@ export default async function FinancePage({
         ) : null}
       </section>
 
-      <section className="panel stack">
+      <section className="page-section">
         <h2 id="trial-balance-heading" style={{ margin: 0 }}>{text("finance.trialBalance")}</h2>
         {balance === null ? (
           <Banner severity="info">
@@ -335,7 +335,7 @@ export default async function FinancePage({
         )}
       </section>
 
-      <section className="panel stack">
+      <section className="page-section">
         <h2 id="cases-heading" style={{ margin: 0 }}>{text("finance.cases")}</h2>
         <p className="muted" style={{ margin: 0 }}>
           {text("finance.casesLead")}
@@ -397,7 +397,7 @@ export default async function FinancePage({
         )}
       </section>
 
-      <section className="panel stack">
+      <section className="page-section">
         <h2 style={{ margin: 0 }}>{text("finance.recognition")}</h2>
         <p className="muted" style={{ margin: 0 }}>
           {text("finance.recognitionLead")}

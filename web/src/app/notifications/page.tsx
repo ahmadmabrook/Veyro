@@ -100,7 +100,7 @@ export default async function NotificationsPage() {
         <Banner severity="attention">{text("notify.nothingSends")}</Banner>
       ) : null}
 
-      <section className="panel stack">
+      <section className="page-section">
         <h2 id="authored-heading" style={{ margin: 0 }}>{text("notify.authored")}</h2>
         <p className="muted" style={{ margin: 0 }}>
           {text("notify.authoredLead")}
@@ -194,7 +194,7 @@ export default async function NotificationsPage() {
         )}
       </section>
 
-      <section className="panel stack">
+      <section className="page-section">
         <h2 style={{ margin: 0 }}>{text("notify.suppressions")}</h2>
         <p className="muted" style={{ margin: 0 }}>
           {text("notify.suppressionsLead")}
@@ -234,7 +234,7 @@ export default async function NotificationsPage() {
         )}
       </section>
 
-      <section className="panel stack">
+      <section className="page-section">
         <h2 id="channels-heading" style={{ margin: 0 }}>{text("notify.channels")}</h2>
         <p className="muted" style={{ margin: 0 }}>
           {text("notify.channelsLead")}
@@ -294,7 +294,7 @@ export default async function NotificationsPage() {
         ) : null}
       </section>
 
-      <section className="panel stack">
+      <section className="page-section">
         <h2 id="templates-heading" style={{ margin: 0 }}>{text("notify.templates")}</h2>
         {!mayTemplates.allowed ? (
           <Banner severity="info">{text("gate.denied")}</Banner>
@@ -367,7 +367,7 @@ export default async function NotificationsPage() {
         ) : null}
       </section>
 
-      <section className="panel stack">
+      <section className="page-section">
         <h2 style={{ margin: 0 }}>{text("notify.digests")}</h2>
         <p className="muted" style={{ margin: 0 }}>
           {text("notify.digestsLead")}

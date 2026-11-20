@@ -60,7 +60,7 @@ export default async function FleetPage() {
 
   return (
     <Shell locale={locale}>
-      <section className="panel stack">
+      <section className="page-section">
         <h2 style={{ margin: 0 }}>{text("fleet.attention")}</h2>
         <p className="muted" style={{ margin: 0 }}>
           {text("fleet.attentionDetail")}
@@ -80,7 +80,7 @@ export default async function FleetPage() {
         )}
       </section>
 
-      <section className="panel stack">
+      <section className="page-section">
         <h2 id="fleet-heading" style={{ margin: 0 }}>
           {text("fleet.title")}
         </h2>

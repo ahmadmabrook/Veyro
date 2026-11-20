@@ -79,7 +79,7 @@ export default async function DevicePage({
 
   return (
     <Shell locale={locale} name={device.display_name}>
-      <section className="panel stack">
+      <section className="page-section">
         <h2 style={{ margin: 0 }}>{text("device.capabilities")}</h2>
         <p style={{ margin: 0 }}>
           <span className="data" dir="ltr">
@@ -106,7 +106,7 @@ export default async function DevicePage({
       </section>
 
       {device.is_access_point ? (
-        <section className="panel stack">
+        <section className="page-section">
           <h2 style={{ margin: 0 }}>{text("device.safety")}</h2>
           {device.safety === null ? (
             <Banner severity="critical">{text("device.noSafety")}</Banner>
@@ -156,7 +156,7 @@ export default async function DevicePage({
         </section>
       ) : null}
 
-      <section className="panel stack">
+      <section className="page-section">
         <h2 style={{ margin: 0 }}>{text("device.certificates")}</h2>
         <p className="muted" style={{ margin: 0 }}>
           {text("device.certificatesLead")}
@@ -186,7 +186,7 @@ export default async function DevicePage({
         )}
       </section>
 
-      <section className="panel stack">
+      <section className="page-section">
         <h2 style={{ margin: 0 }}>{text("device.health")}</h2>
         {device.health === null ? (
           <Banner severity="info">{text("device.noHealth")}</Banner>
@@ -230,7 +230,7 @@ export default async function DevicePage({
         )}
       </section>
 
-      <section className="panel stack">
+      <section className="page-section">
         <h2 style={{ margin: 0 }}>{text("device.commands")}</h2>
         {queue.commands.length === 0 ? (
           <Banner severity="info">{text("device.noCommands")}</Banner>

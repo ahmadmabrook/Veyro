@@ -113,7 +113,7 @@ function OrganizationCard({ node, locale }: { node: OrganizationTree; locale: Lo
   const text = (key: MessageKey) => t(locale, key);
   const { organization, brands, entities } = node;
   return (
-    <section className="panel stack">
+    <section className="page-section">
       <h2 style={{ margin: 0 }}>{organization.legal_name}</h2>
       <p className="muted" style={{ margin: 0 }}>
         {text("org.country")}:{" "}

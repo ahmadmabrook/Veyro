@@ -653,9 +653,13 @@ Two things that migration taught, both recorded in `.claude/rules/`:
 a column priority that collapses the low columns into the primary cell rather than pushing
 them off a phone, and a row-level severity edge-mark where the board has a row somebody must
 act on. `tests/unit/ds-usage.test.mjs` has stopped being a backlog for tables and become an
-absolute rule: the next raw `<table>` in a screen fails it. 22 screens still group with a bare
-`.panel` where `Card` applies, swept the same way in **both directions**, so a screen that
-quietly stops being migrated fails and so does an exemption that is no longer true.
+absolute rule: the next raw `<table>` in a screen fails it. And the panel migration turned out not to be a migration: the obvious correction
+was `.panel` → `Card` on all 64 sections, and the right one was to stop boxing them. §31 says
+a Card is "meaningful grouping only" and that "a card that only draws a border around a
+paragraph is deleted — 'cardification' of every screen is explicitly prohibited", and six
+bordered boxes stacked down a report page is exactly that at the scale of a surface. A page
+section is a heading with a rule under it, its prose and its grid; `.panel` is gone from the
+stylesheet and `Card` is kept for content that genuinely is one.
 
 The grid is where the source's responsive contract actually lives, and it is worth measuring
 rather than reading: on the permissions board at 1400px all five columns render and no

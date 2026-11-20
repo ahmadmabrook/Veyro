@@ -106,7 +106,7 @@ export default async function PrivacyPage() {
     <Shell locale={locale}>
       {failed ? <Banner severity="critical">{text("error.unexpected")}</Banner> : null}
 
-      <section className="panel stack">
+      <section className="page-section">
         <h2 id="erasure-heading" style={{ margin: 0 }}>{text("privacy.erasure")}</h2>
         {!mayDsar.allowed ? (
           <Banner severity="info">{text("gate.denied")}</Banner>
@@ -190,7 +190,7 @@ export default async function PrivacyPage() {
         )}
       </section>
 
-      <section className="panel stack">
+      <section className="page-section">
         <h2 id="requests-heading" style={{ margin: 0 }}>{text("privacy.requests")}</h2>
         <p className="muted" style={{ margin: 0 }}>
           {text("privacy.requestsLead")}
@@ -256,7 +256,7 @@ export default async function PrivacyPage() {
         ) : null}
       </section>
 
-      <section className="panel stack">
+      <section className="page-section">
         <h2 style={{ margin: 0 }}>{text("privacy.holds")}</h2>
         <p className="muted" style={{ margin: 0 }}>
           {text("privacy.holdsLead")}
@@ -289,7 +289,7 @@ export default async function PrivacyPage() {
         )}
       </section>
 
-      <section className="panel stack">
+      <section className="page-section">
         <h2 id="retention-heading" style={{ margin: 0 }}>{text("privacy.retention")}</h2>
         {!mayRetention.allowed ? (
           <Banner severity="info">{text("gate.denied")}</Banner>
@@ -345,7 +345,7 @@ export default async function PrivacyPage() {
         ) : null}
       </section>
 
-      <section className="panel stack">
+      <section className="page-section">
         <h2 id="purposes-heading" style={{ margin: 0 }}>{text("privacy.purposes")}</h2>
         {!mayPurposes.allowed ? (
           <Banner severity="info">{text("gate.denied")}</Banner>
@@ -391,7 +391,7 @@ export default async function PrivacyPage() {
         )}
       </section>
 
-      <section className="panel stack">
+      <section className="page-section">
         <h2 style={{ margin: 0 }}>{text("privacy.incidents")}</h2>
         {!mayIncidents.allowed ? (
           <Banner severity="info">{text("gate.denied")}</Banner>

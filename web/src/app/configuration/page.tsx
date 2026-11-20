@@ -69,7 +69,7 @@ export default async function ConfigurationPage({
         {text("config.lead")}
       </p>
 
-      <section className="panel stack">
+      <section className="page-section">
         <h2 id="config-heading" style={{ margin: 0 }}>
           {text("config.registry")}
         </h2>
@@ -165,7 +165,7 @@ export default async function ConfigurationPage({
         )}
       </section>
 
-      <section className="panel stack">
+      <section className="page-section">
         <h2 id="flags-heading" style={{ margin: 0 }}>
           {text("config.flags")}
         </h2>

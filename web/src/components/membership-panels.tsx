@@ -52,7 +52,7 @@ export async function MembershipPanels({
 
   return (
     <>
-      <section className="panel stack">
+      <section className="page-section">
         <h2 style={{ margin: 0 }}>{text("membership.title")}</h2>
         <p className="muted" style={{ margin: 0 }}>
           {text("membership.lead")}
@@ -62,7 +62,7 @@ export async function MembershipPanels({
         </Block>
       </section>
 
-      <section className="panel stack">
+      <section className="page-section">
         <h2 style={{ margin: 0 }}>{text("membership.entitlements")}</h2>
         <Block
           allowed={entitlements.allowed}
@@ -73,7 +73,7 @@ export async function MembershipPanels({
         </Block>
       </section>
 
-      <section className="panel stack">
+      <section className="page-section">
         <h2 style={{ margin: 0 }}>{text("membership.finance")}</h2>
         <Block allowed={finance.allowed} reachable={finance.reachable} locale={locale}>
           <Finance personId={personId} locale={locale} />

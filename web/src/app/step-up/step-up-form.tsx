@@ -43,7 +43,7 @@ export function StepUpForm({
     <form
       action={formAction}
       noValidate
-      className="panel stack"
+      className="page-section"
       style={{ width: "100%", maxWidth: "420px" }}
     >
       <h1>{text("stepUp.title")}</h1>

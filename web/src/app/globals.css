@@ -142,13 +142,9 @@ a {
   }
 }
 
-/* Hairline rules rather than shadows. The DS's base direction, applied to every container. */
-.panel {
-  background: var(--color-surface-default);
-  border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-card);
-  padding: var(--space-5);
-}
+/* `.panel` is gone: a page section is not a card, and §31 prohibits cardifying every
+ * screen. The rule that replaced it is `.page-section`, in the design-system block
+ * below, and `Card` is for content that genuinely is one. */
 
 .stack {
   display: flex;
@@ -930,4 +926,29 @@ a {
   border-block-start: 2px solid var(--color-border-default);
   font-weight: var(--type-label-weight);
   text-align: start;
+}
+
+/* --- Page sections -------------------------------------------------------
+ *
+ * **A page section is not a card.** §31 is explicit: a Card is "meaningful grouping only",
+ * six kinds, and "a card that only draws a border around a paragraph is deleted --
+ * 'cardification' of every screen is explicitly prohibited". Every board here wrapped every
+ * section in a bordered box, which is that anti-pattern at the scale of a whole surface: six
+ * boxes stacked down a page, each holding a heading, a paragraph and a grid.
+ *
+ * What separates sections now is the type scale and the shell's own gutter, which is what
+ * the foundations give them for. `Card` stays for the content that genuinely is one -- a
+ * summary tile, a person, a booking -- which is how the kind prop earns being required.
+ */
+.page-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* The heading carries the separation a border used to, so it needs the room. */
+.page-section > h2 {
+  margin: 0;
+  padding-block-end: var(--space-2);
+  border-block-end: 1px solid var(--color-border-subtle);
 }
