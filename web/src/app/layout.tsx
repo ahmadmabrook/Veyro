@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
 import { AppNav, type NavItem } from "@/components/nav";
+import { AdminShell } from "@/components/ds/shell";
 import { LocaleSwitch } from "@/components/locale-switch";
 import { t } from "@/i18n/locale";
 import { currentSession, gate } from "@/lib/api";
@@ -88,17 +89,41 @@ export default async function RootLayout({
             theme controls on the landing page and the sign-in page, which left a reader who
             followed a link to a zone with no way back to their own language -- and made the
             direction of the whole document depend on which page they happened to enter by. */}
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "flex-end",
-            padding: "var(--space-4) var(--space-4) 0",
-          }}
-        >
-          <LocaleSwitch locale={locale} theme={theme} />
-        </div>
-        <AppNav locale={locale} items={items} />
-        <main id="main">{children}</main>
+        {/* **The Admin shell**, per LAYOUTS: rail 240 expanded / 56 collapsed, content max
+            1440, 24px gutter. A signed-out reader gets no rail and no shell -- the sign-in
+            page is its own surface and wrapping it in an empty rail would be a frame around
+            nothing. */}
+        {items.length === 0 ? (
+          <>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
+                padding: "var(--space-4) var(--space-4) 0",
+              }}
+            >
+              <LocaleSwitch locale={locale} theme={theme} />
+            </div>
+            <main id="main">{children}</main>
+          </>
+        ) : (
+          <AdminShell
+            rail={
+              <>
+                <AppNav locale={locale} items={items} />
+                {/* Global chrome. §21 names five things in it -- scope switcher, ⌘K, tasks,
+                    alerts, account -- of which this build has the account (the rail's own
+                    entry) and the language and theme controls. The other three are recorded
+                    as gaps rather than drawn as controls that do nothing. */}
+                <div className="ds-rail-chrome">
+                  <LocaleSwitch locale={locale} theme={theme} />
+                </div>
+              </>
+            }
+          >
+            <main id="main">{children}</main>
+          </AdminShell>
+        )}
       </body>
     </html>
   );

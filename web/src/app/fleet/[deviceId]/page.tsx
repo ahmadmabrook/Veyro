@@ -263,7 +263,7 @@ function Shell({
   children: React.ReactNode;
 }) {
   return (
-    <div className="stack" style={{ padding: "var(--space-6)", maxWidth: "960px" }}>
+    <div className="stack">
       <nav aria-label={t(locale, "fleet.title")}>
         <Link href="/fleet">{t(locale, "fleet.title")}</Link>
       </nav>

@@ -375,7 +375,7 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 
 function Shell({ locale, children }: { locale: Locale; children: React.ReactNode }) {
   return (
-    <div className="stack" style={{ padding: "var(--space-6)", maxWidth: "960px" }}>
+    <div className="stack">
       <h1 style={{ margin: 0 }}>{t(locale, "member.title")}</h1>
       {children}
     </div>

@@ -313,7 +313,7 @@ function Shell({
   children: React.ReactNode;
 }) {
   return (
-    <div className="stack" style={{ padding: "var(--space-6)", maxWidth: "960px" }}>
+    <div className="stack">
       <nav aria-label={t(locale, "nav.back")}>
         <Link href="/access">{t(locale, "access.title")}</Link>
       </nav>

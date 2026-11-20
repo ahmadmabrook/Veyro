@@ -42,7 +42,7 @@ export default async function HomePage() {
   const answers = await Promise.all(actions.map((action) => gate(action)));
 
   return (
-    <div className="stack" style={{ padding: "var(--space-6)", maxWidth: "960px" }}>
+    <div className="stack">
       <header
         style={{
           display: "flex",

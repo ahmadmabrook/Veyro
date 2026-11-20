@@ -1,0 +1,1570 @@
+{
+  "manifest": "veyro-design-contracts",
+  "note": "Extracted from the authoritative design source. Generated; do not edit by hand. Regenerate with: npm run design:extract",
+  "authority": "veyro-product-experience-design/ is the single authoritative source for frontend design. ds.json carries Step 2 only; this file carries Steps 3, 4 and 5.",
+  "sources": [
+    {
+      "file": "veyro-product-experience-design/project/Veyro DS Core Components.dc.html",
+      "step": "Step 3 — core components",
+      "sha256": "36e4174b1ac5e4c32f62c0def597ed2bc32b5987ea159d70829551c4c9dd4905",
+      "bytes": 74816
+    },
+    {
+      "file": "veyro-product-experience-design/project/Veyro DS Patterns.dc.html",
+      "step": "Step 5 — patterns",
+      "sha256": "bb51adf6ed9dc3969972df4be534e4895d513b71a5bfffa7a70719f0abd4052f",
+      "bytes": 25503
+    },
+    {
+      "file": "veyro-product-experience-design/project/Veyro DS Domain Components.dc.html",
+      "step": "Step 4 — domain components",
+      "sha256": "24f633ef49b5675802165c2b6be26f516fae586b6cdcdfa50265afe8d727b791",
+      "bytes": 44544
+    },
+    {
+      "file": "veyro-product-experience-design/project/Veyro DS Foundations.dc.html",
+      "step": "Step 2 — foundations",
+      "sha256": "3e4cfd1788c9f65517331e8f6960d6378e4cf31fa3925224174920c6c5728abd",
+      "bytes": 73396
+    }
+  ],
+  "taxonomy": {
+    "primitive": [
+      "Button",
+      "IconButton",
+      "Input",
+      "Select",
+      "Combobox",
+      "Checkbox",
+      "Radio",
+      "Switch",
+      "Textarea",
+      "Chip",
+      "Badge",
+      "Avatar",
+      "Icon",
+      "Tooltip",
+      "Divider",
+      "Skeleton",
+      "Spinner"
+    ],
+    "composite": [
+      "DataGrid",
+      "FilterBar",
+      "SavedViewBar",
+      "BulkActionBar",
+      "SearchField",
+      "CommandPalette",
+      "Modal",
+      "Drawer",
+      "Sheet",
+      "Tabs",
+      "SegmentedControl",
+      "Card",
+      "Banner",
+      "Toast"
+    ],
+    "dateTime": [
+      "Calendar",
+      "DatePicker",
+      "DateRangePicker",
+      "TimePicker",
+      "WeekView",
+      "DayView"
+    ]
+  },
+  "stated_apis": {
+    "Button": {
+      "variant": [
+        "primary",
+        "secondary",
+        "tertiary",
+        "ghost",
+        "destructive",
+        "icon",
+        "link"
+      ],
+      "size": [
+        "sm",
+        "md",
+        "lg"
+      ],
+      "state": [
+        "default",
+        "loading",
+        "disabled"
+      ],
+      "icon": "IconName?",
+      "iconSide": [
+        "start",
+        "end"
+      ],
+      "label": "string (required, verb-first)",
+      "fullWidth": "boolean?",
+      "sizes_px": {
+        "sm": 28,
+        "md": 36,
+        "lg": 44
+      },
+      "rules": [
+        "lg (44px) is mandatory in Touch and Spacious density -- the minimum target, not a style.",
+        "sm is Compact-only and never appears on Coach, Member, Front Desk or Kiosk.",
+        "One primary per view. Not per card, per view.",
+        "Destructive is never adjacent to primary.",
+        "Label is verb first, object second, no gerunds. Amounts belong in destructive and financial labels so the confirm reads the consequence."
+      ]
+    },
+    "Input": {
+      "field_types": [
+        "text",
+        "number",
+        "currency",
+        "phone",
+        "email",
+        "password",
+        "search",
+        "textarea",
+        "select",
+        "multiselect",
+        "combobox",
+        "autocomplete",
+        "date",
+        "time",
+        "daterange",
+        "stepper",
+        "slider",
+        "switch"
+      ],
+      "shell": [
+        "label",
+        "control",
+        "description",
+        "message",
+        "prefix",
+        "suffix",
+        "contextual action"
+      ],
+      "rules": [
+        "One shell for all eighteen field types; a new type is a control swap, not a component.",
+        "The message slot holds exactly one message: error > warning > success > description.",
+        "Validate on blur, never on keystroke; re-validate on submit.",
+        "Required is marked, optional is not -- whichever is rarer gets the mark.",
+        "Financial forms state the consequence above the submit, not in a dialog after it."
+      ]
+    },
+    "StatusBadge": {
+      "severity": [
+        "neutral",
+        "info",
+        "attention",
+        "critical"
+      ],
+      "vocabularies": {
+        "membership": [
+          "Active",
+          "Trial",
+          "Frozen",
+          "Expiring",
+          "Expired",
+          "Cancelled"
+        ],
+        "payment": [
+          "Paid",
+          "Pending",
+          "Failed",
+          "Refunded",
+          "Partially refunded"
+        ],
+        "booking": [
+          "Confirmed",
+          "Waitlisted",
+          "Cancelled",
+          "No-show"
+        ],
+        "access": [
+          "Granted",
+          "Denied",
+          "Restricted"
+        ]
+      },
+      "rules": [
+        "Four severities, not five: success is not a severity, it is the neutral case.",
+        "The component takes an enum, not a string, so an engineer cannot invent a status.",
+        "Never colour alone -- every badge carries its label; icon-only status is a defect.",
+        "The edge-mark carries the row-level roll-up; the badge names the specific state."
+      ]
+    }
+  },
+  "common_mistakes": [
+    "Two primaries in one view",
+    "A status rendered by colour alone",
+    "A shadow on a table row",
+    "A dialog on a one-step-undoable action",
+    "A disabled control a role can never enable",
+    "Icon-only tabs",
+    "A bare number with no money kind",
+    "Tracking applied to Arabic",
+    "A bulk action reporting “done”"
+  ],
+  "grid_states": [
+    {
+      "state": "loading",
+      "treatment": "Skeleton rows at the real row height, header already solid, count as “loading…”. Never a centred spinner — layout must not jump when data lands."
+    },
+    {
+      "state": "empty · first use",
+      "treatment": "Explains what the view will contain and offers the action that creates the first record. “No members yet — import your existing list or add one.”"
+    },
+    {
+      "state": "empty · filtered",
+      "treatment": "Names the filters causing it and offers to clear them. Never implies the records do not exist."
+    },
+    {
+      "state": "empty · permission",
+      "treatment": "“You do not have access to members at Abdoun.” Distinct from filtered-empty, because implying absence when the cause is authorization is a lie."
+    },
+    {
+      "state": "partial data",
+      "treatment": "Rows render; a header strip states what is stale and how stale. “Retail figures are 20 minutes behind.”"
+    },
+    {
+      "state": "error",
+      "treatment": "Keeps whatever loaded, states what failed and offers retry. Never replaces a populated grid with an error page."
+    },
+    {
+      "state": "restricted cell",
+      "treatment": "Cell reads “restricted” in tertiary text, not blank and not zero. A blank money cell reads as JOD 0.00 and that is a financial misstatement."
+    },
+    {
+      "state": "bulk in progress",
+      "treatment": "Selection locks, a progress state replaces the bulk bar, rows already processed mark individually. Cancellable, with completed work retained."
+    },
+    {
+      "state": "offline",
+      "treatment": "Grid marks itself cached with the age of the data; write actions in the bulk bar disable with the reason stated."
+    }
+  ],
+  "overlays": [
+    {
+      "name": "Modal",
+      "when": "Anchored decision",
+      "rules": "Max one depth. Financial and destructive variants show the consequence summary above the confirm. Mobile: full-screen sheet with the action pinned. Never for a form longer than one screen."
+    },
+    {
+      "name": "Drawer",
+      "when": "Inspector beside context",
+      "rules": "Right side (inline-end), 380–480px, does not block the list behind it. The Member 360 pattern generalised. Mobile: becomes a full-screen push view with back."
+    },
+    {
+      "name": "Sheet",
+      "when": "Mobile quick choice",
+      "rules": "Two levels maximum. Swipe-to-dismiss plus a visible close. Primary action in the lower third. Height fits content up to 80vh, then scrolls internally."
+    },
+    {
+      "name": "Card",
+      "when": "Meaningful grouping only",
+      "rules": "Six kinds: informational, interactive, summary, media, person, booking. A card that only draws a border around a paragraph is deleted — “cardification” of every screen is explicitly prohibited."
+    },
+    {
+      "name": "Banner",
+      "when": "Condition, not an event",
+      "rules": "Inline (one field or row), page (this screen), global (the whole tenant — outage, billing, integration). Critical banners are not dismissible while the condition holds. Max one global at a time."
+    },
+    {
+      "name": "Toast",
+      "when": "Confirmation only",
+      "rules": "30s undo window, one at a time, never carries information needed after dismissal. If the user must act on it, it is a banner or a task."
+    },
+    {
+      "name": "Tabs",
+      "when": "Peer views of one object",
+      "rules": "Five maximum. Never a substitute for information architecture — Member 360 uses a section rail plus a timeline spine, not fifteen tabs. Mobile: horizontally scrollable with no arrows."
+    },
+    {
+      "name": "SegmentedControl",
+      "when": "2–4 exclusive options",
+      "rules": "Short labels only. Switches how the same content is presented, never what content is shown. Mobile-safe at 44px."
+    }
+  ],
+  "matrix": [
+    {
+      "family": "Button",
+      "default": "●",
+      "hover": "●",
+      "active": "●",
+      "selected": "–",
+      "focus": "●",
+      "disabled": "●",
+      "loading": "●",
+      "error": "–",
+      "warning": "–",
+      "empty": "–",
+      "readonly": "–"
+    },
+    {
+      "family": "IconButton",
+      "default": "●",
+      "hover": "●",
+      "active": "●",
+      "selected": "○",
+      "focus": "●",
+      "disabled": "●",
+      "loading": "●",
+      "error": "–",
+      "warning": "–",
+      "empty": "–",
+      "readonly": "–"
+    },
+    {
+      "family": "Input",
+      "default": "●",
+      "hover": "●",
+      "active": "–",
+      "selected": "–",
+      "focus": "●",
+      "disabled": "●",
+      "loading": "○",
+      "error": "●",
+      "warning": "●",
+      "empty": "–",
+      "readonly": "●"
+    },
+    {
+      "family": "Select · Combobox",
+      "default": "●",
+      "hover": "●",
+      "active": "●",
+      "selected": "●",
+      "focus": "●",
+      "disabled": "●",
+      "loading": "●",
+      "error": "●",
+      "warning": "○",
+      "empty": "●",
+      "readonly": "●"
+    },
+    {
+      "family": "Checkbox · Radio",
+      "default": "●",
+      "hover": "●",
+      "active": "●",
+      "selected": "●",
+      "focus": "●",
+      "disabled": "●",
+      "loading": "–",
+      "error": "●",
+      "warning": "–",
+      "empty": "–",
+      "readonly": "●"
+    },
+    {
+      "family": "Switch",
+      "default": "●",
+      "hover": "●",
+      "active": "●",
+      "selected": "●",
+      "focus": "●",
+      "disabled": "●",
+      "loading": "●",
+      "error": "○",
+      "warning": "–",
+      "empty": "–",
+      "readonly": "●"
+    },
+    {
+      "family": "Chip · Badge",
+      "default": "●",
+      "hover": "○",
+      "active": "–",
+      "selected": "●",
+      "focus": "○",
+      "disabled": "○",
+      "loading": "–",
+      "error": "–",
+      "warning": "–",
+      "empty": "–",
+      "readonly": "–"
+    },
+    {
+      "family": "DataGrid",
+      "default": "●",
+      "hover": "●",
+      "active": "–",
+      "selected": "●",
+      "focus": "●",
+      "disabled": "○",
+      "loading": "●",
+      "error": "●",
+      "warning": "●",
+      "empty": "●",
+      "readonly": "●"
+    },
+    {
+      "family": "FilterBar",
+      "default": "●",
+      "hover": "●",
+      "active": "–",
+      "selected": "●",
+      "focus": "●",
+      "disabled": "○",
+      "loading": "○",
+      "error": "○",
+      "warning": "–",
+      "empty": "●",
+      "readonly": "–"
+    },
+    {
+      "family": "SavedViewBar",
+      "default": "●",
+      "hover": "●",
+      "active": "–",
+      "selected": "●",
+      "focus": "●",
+      "disabled": "○",
+      "loading": "○",
+      "error": "○",
+      "warning": "–",
+      "empty": "●",
+      "readonly": "●"
+    },
+    {
+      "family": "SearchField",
+      "default": "●",
+      "hover": "●",
+      "active": "–",
+      "selected": "–",
+      "focus": "●",
+      "disabled": "●",
+      "loading": "●",
+      "error": "●",
+      "warning": "–",
+      "empty": "●",
+      "readonly": "–"
+    },
+    {
+      "family": "CommandPalette",
+      "default": "●",
+      "hover": "●",
+      "active": "–",
+      "selected": "●",
+      "focus": "●",
+      "disabled": "–",
+      "loading": "●",
+      "error": "●",
+      "warning": "–",
+      "empty": "●",
+      "readonly": "–"
+    },
+    {
+      "family": "Calendar · Pickers",
+      "default": "●",
+      "hover": "●",
+      "active": "–",
+      "selected": "●",
+      "focus": "●",
+      "disabled": "●",
+      "loading": "●",
+      "error": "●",
+      "warning": "●",
+      "empty": "●",
+      "readonly": "●"
+    },
+    {
+      "family": "Modal · Drawer · Sheet",
+      "default": "●",
+      "hover": "–",
+      "active": "–",
+      "selected": "–",
+      "focus": "●",
+      "disabled": "–",
+      "loading": "●",
+      "error": "●",
+      "warning": "●",
+      "empty": "●",
+      "readonly": "–"
+    },
+    {
+      "family": "Tabs · Segmented",
+      "default": "●",
+      "hover": "●",
+      "active": "●",
+      "selected": "●",
+      "focus": "●",
+      "disabled": "●",
+      "loading": "○",
+      "error": "–",
+      "warning": "–",
+      "empty": "–",
+      "readonly": "–"
+    },
+    {
+      "family": "Card",
+      "default": "●",
+      "hover": "○",
+      "active": "○",
+      "selected": "○",
+      "focus": "○",
+      "disabled": "–",
+      "loading": "●",
+      "error": "○",
+      "warning": "○",
+      "empty": "●",
+      "readonly": "–"
+    },
+    {
+      "family": "Banner · Toast",
+      "default": "●",
+      "hover": "–",
+      "active": "–",
+      "selected": "–",
+      "focus": "●",
+      "disabled": "–",
+      "loading": "–",
+      "error": "●",
+      "warning": "●",
+      "empty": "–",
+      "readonly": "–"
+    }
+  ],
+  "contracts": [
+    {
+      "family": "Button",
+      "accessibility": "Accessible name in both languages even when icon-only. Loading sets aria-busy and keeps the label — never replaced by a spinner alone. Never a link styled as a button.",
+      "rtl": "Icon side swaps with logical start/end. Chevrons and arrows mirror; check, clock, play do not.",
+      "responsive": "lg (44px) mandatory in Touch and Spacious. fullWidth in sheets and mobile forms."
+    },
+    {
+      "family": "Input",
+      "accessibility": "Label is a real label, not a placeholder. Error text referenced by the field and read on focus. Prefix and suffix are decorative and excluded from the accessible name.",
+      "rtl": "Text aligns to logical start; numbers, phone, currency and IDs are bidi-isolated. Prefix moves to the inline-start edge.",
+      "responsive": "Full width below bp.sm. Numeric keyboards on number, currency, phone. Sheet lifts so the primary action stays visible above the keyboard."
+    },
+    {
+      "family": "DataGrid",
+      "accessibility": "One composite tab stop with arrow navigation. Header announced once, then row content with position. Sort state announced on change. Money read with its kind.",
+      "rtl": "Column order mirrors; numeric and money columns stay end-aligned on the logical end. Sort arrows mirror. Row expansion chevron mirrors.",
+      "responsive": "Column priority 1–3; drops 3 then 2. Becomes a PersonRow list at bp.xs with the sort key as the secondary line. Never horizontally scrolled on a phone."
+    },
+    {
+      "family": "Calendar",
+      "accessibility": "One tab stop, arrows follow visual direction. Announces weekday, date, relation and availability. Unavailable dates state the reason, not just disabled.",
+      "rtl": "Days mirror, weeks do not. Prev/next mirror in icon and position. Week start from market token. Numerals from tenant setting, grid sized for the widest form.",
+      "responsive": "Inline on desktop, sheet below bp.sm. Range shows two months side by side above bp.md, one month with a scroll below."
+    },
+    {
+      "family": "CommandPalette",
+      "accessibility": "Focus trapped, Esc closes, results are a listbox with aria-activedescendant. Result class announced when it changes. Action previews are read in full before confirmation.",
+      "rtl": "Text and results align to logical start; keyboard hints mirror position. Latin shortcuts stay LTR inside Arabic labels.",
+      "responsive": "Full-screen below bp.sm with the input pinned to the top and the keyboard accounted for. Recents replace results on empty query."
+    },
+    {
+      "family": "Modal",
+      "accessibility": "Focus moves to the modal, trapped until dismissed, returns to the trigger. Title is the accessible name. Esc closes unless the action is destructive and mid-flight.",
+      "rtl": "Layout mirrors; the primary action sits at the logical end of the footer.",
+      "responsive": "Becomes a full-screen sheet below bp.sm with the primary action pinned above the safe area."
+    },
+    {
+      "family": "Drawer",
+      "accessibility": "Same trap-and-return as modal, but the list behind stays readable and its scroll position is preserved on close.",
+      "rtl": "Opens from the inline-end edge — right in LTR, left in RTL.",
+      "responsive": "Overlay at bp.md, full-screen push view below bp.sm with a back affordance."
+    },
+    {
+      "family": "Sheet",
+      "accessibility": "Focus trap, swipe and button dismissal both available. Two levels maximum; a third is a design error.",
+      "rtl": "Content mirrors; drag handle is centred and direction-neutral.",
+      "responsive": "Mobile only. Above bp.md the same content is a Drawer or Modal."
+    },
+    {
+      "family": "Status badge",
+      "accessibility": "Label always present, never colour alone. Severity is in the text, not only the hue. Not a button unless it opens something.",
+      "rtl": "Label mirrors with the row. Severity edge-mark moves to the logical start edge.",
+      "responsive": "Label may abbreviate at Compact but never disappear. Full text in the accessible name regardless."
+    },
+    {
+      "family": "Tabs",
+      "accessibility": "Roving tabindex, arrows move, Home/End jump, selected announced. Panel associated with its tab.",
+      "rtl": "Order mirrors; overflow scroll direction mirrors. Underline indicator follows the logical position.",
+      "responsive": "Horizontally scrollable below bp.sm with no arrow buttons — arrows on a touch surface are a desktop habit."
+    },
+    {
+      "family": "Banner",
+      "accessibility": "role=status for info and success, role=alert only for critical. Never both — an alert interrupts, and most banners should not.",
+      "rtl": "Icon and text mirror; the severity bar sits on the logical start edge.",
+      "responsive": "Stacks above content at every breakpoint. Global banner is fixed and does not scroll away."
+    },
+    {
+      "family": "Toast",
+      "accessibility": "Polite live region. Undo is keyboard-reachable for the full 30 seconds and not dismissed by pointer movement.",
+      "rtl": "Slides from the logical end. Text mirrors.",
+      "responsive": "Bottom-centre on mobile above the nav; bottom inline-end on desktop."
+    }
+  ],
+  "docs": [
+    {
+      "section": "Purpose",
+      "requirement": "Present many records so a user can scan, compare, select and act without leaving the view."
+    },
+    {
+      "section": "When to use",
+      "requirement": "Any list of more than about ten records where comparison across fields matters, or where bulk action is a real workflow."
+    },
+    {
+      "section": "When not to use",
+      "requirement": "Fewer than ten records with no comparison need — use a list. Records with rich media or a single dominant attribute — use cards. A single record — use Member 360."
+    },
+    {
+      "section": "Anatomy",
+      "requirement": "SavedViewBar · FilterBar · header row · rows · cells (text, money, status, person, date, action) · BulkActionBar · pagination or virtual scroll · column config."
+    },
+    {
+      "section": "Variants",
+      "requirement": "selectable | readonly · with inspector | standalone · virtual | paginated · grouped | flat."
+    },
+    {
+      "section": "States",
+      "requirement": "The nine in §04 plus the eleven in the §09 matrix. Required: loading, three empties, partial, error, restricted cell, bulk in progress, offline."
+    },
+    {
+      "section": "Behaviour",
+      "requirement": "Sort single-column, persisted per saved view. Selection survives sort and filter within a session, and the count always states what is selected. Inline actions appear on row focus or hover, never permanently — a permanent action column costs the width the data needs."
+    },
+    {
+      "section": "Content rules",
+      "requirement": "Column headers are nouns, not sentences. Money cells always carry currency and kind. Dates are relative under seven days (\"19d ago\") and absolute beyond. Never a bare number in a money column."
+    },
+    {
+      "section": "Accessibility",
+      "requirement": "See the §10 contract. Additionally: selection announced as a count, not per row, when a range is selected."
+    },
+    {
+      "section": "RTL",
+      "requirement": "See the §10 contract. Additionally: mixed Arabic and Latin names sort by the tenant collation, and both spellings are searchable."
+    },
+    {
+      "section": "Responsive",
+      "requirement": "See the §10 contract. Additionally: column config is a sheet below bp.sm and saved views collapse into a single select."
+    },
+    {
+      "section": "Common mistakes",
+      "requirement": "Shrinking the desktop grid onto a phone · a permanent actions column · colour-only status · blank cells for restricted data · reporting \"done\" after a bulk action · a shadow on a row · putting the primary action in the header where it competes with sort."
+    }
+  ],
+  "patterns": [
+    {
+      "number": "01",
+      "name": "Attention queue",
+      "components": "Header with counts · AttentionRow list · empty-success state · new-items pill.",
+      "rule": "Sorted by severity then money then age, never recency. Never reshuffles under a reading user. This is the Command Center and the Coach Today screen — one pattern, two surfaces."
+    },
+    {
+      "number": "02",
+      "name": "List → inspector",
+      "components": "DataGrid or PersonRow list · Drawer inspector · timeline spine inside.",
+      "rule": "Two panes, never three. The list keeps its scroll and selection when the inspector closes. Member 360, lead detail, invoice detail and staff detail are all this — the Phase 6 decision, generalised."
+    },
+    {
+      "number": "03",
+      "name": "Capture → resolve",
+      "components": "Fixed capture strip (scan or search) · result area · focus returns to capture.",
+      "rule": "Front Desk and POS. After every action focus goes back to the scan field, because the next member is already at the desk. One modal depth maximum."
+    },
+    {
+      "number": "04",
+      "name": "Guided sale",
+      "components": "Cart · member · payment method · receipt choice · done. Inline, one screen.",
+      "rule": "Never a wizard. Membership sale, PT package and retail differ only in cart contents. Tax and terms visible before payment, never after."
+    },
+    {
+      "number": "05",
+      "name": "Assisted create",
+      "components": "Context · generate or template · adjust inline · preview · assign.",
+      "rule": "Workout and nutrition plan creation. The machine drafts, the human edits in place — no second editor, no blank page. Two unknowns asked, never twelve knowns."
+    },
+    {
+      "number": "06",
+      "name": "One-tap log",
+      "components": "Pre-filled value · single 44px primary · adjust affordance · offline-safe write.",
+      "rule": "Set logging, meal logging, check-in, session completion. Adjustment available, never required. Writes locally first and says so."
+    },
+    {
+      "number": "07",
+      "name": "Bulk act",
+      "components": "Select · action bar · preview of scope · progress · partial-result breakdown.",
+      "rule": "Never reports “done”. Always reports what did not happen and why, with each group as an actionable filtered selection."
+    },
+    {
+      "number": "08",
+      "name": "Ask → evidence → act",
+      "components": "Question · answer with linked evidence · proposed action · human confirms.",
+      "rule": "Every AI surface. Marked, evidenced, never auto-executing, confidence in words. Financial and destructive actions excluded."
+    },
+    {
+      "number": "09",
+      "name": "Scoped compare",
+      "components": "Scope switcher (searchable, grouped, multi-select) · aligned metric rows · variance.",
+      "rule": "Chain reporting. Never a dropdown of 50 clubs. Always states the scope in the chrome so “which club is this” never needs a click."
+    },
+    {
+      "number": "10",
+      "name": "Approval request",
+      "components": "Requestable control · request with reason · approver queue · outcome notification.",
+      "rule": "The third permission state made concrete. Over-threshold refunds, long freezes, policy exceptions. Keeps authority intact without making the requester phone someone."
+    }
+  ],
+  "tiers": [
+    {
+      "tier": "1",
+      "mechanism": "Undo",
+      "applies_to": "Sending a message, assigning a task, changing a filter, logging a set, completing a session, most edits — 19 of the 31 audited.",
+      "why": "Reversible within seconds and low-consequence. A dialog here trains dismissal and buys nothing."
+    },
+    {
+      "tier": "2",
+      "mechanism": "Inline confirm",
+      "applies_to": "Cancelling a booking inside its window, removing a cart line, unassigning a coach — 7 of 31.",
+      "why": "Not cleanly reversible but not costly. A one-line “Cancel Dana's 18:00?” in place beats a modal that steals the screen."
+    },
+    {
+      "tier": "3",
+      "mechanism": "Consequence dialog",
+      "applies_to": "Refunds, membership cancellation, destructive plan changes, sensitive exports, biometric removal.",
+      "why": "Real money, real records, or a person's data. States what happens, to whom, and what cannot be undone. The amount goes in the button."
+    },
+    {
+      "tier": "4",
+      "mechanism": "Approval or step-up",
+      "applies_to": "Over-threshold refunds, freezes beyond policy, permission grants, bulk exports of member data.",
+      "why": "The actor may not hold the authority. More typing would not fix that — a second human, or a re-authentication, is the only honest control."
+    }
+  ],
+  "cross": [
+    {
+      "requirement": "Keyboard",
+      "rule": "Every action reachable without a pointer. Composite widgets are one tab stop with arrow navigation inside — a 14-row grid costs one stop, not fourteen.",
+      "where": "Component contract"
+    },
+    {
+      "requirement": "Focus visible",
+      "rule": "System-owned 2px ring with a 1px offset, never brand-configurable, never removed on mouse users.",
+      "where": "Token · not themeable"
+    },
+    {
+      "requirement": "Focus management",
+      "rule": "Overlays trap focus and return it to the trigger. Route changes move focus to the heading, not the body.",
+      "where": "Modal / Drawer / Sheet"
+    },
+    {
+      "requirement": "Screen reader",
+      "rule": "Landmarks on every surface. Live regions polite for confirmations, assertive only for genuine alerts. Money read with its kind; status read as text.",
+      "where": "Component contract"
+    },
+    {
+      "requirement": "Non-colour state",
+      "rule": "Every status carries a label. Severity is edge-mark and chip and wording. Charts state direction in words.",
+      "where": "StatusBadge · Chart"
+    },
+    {
+      "requirement": "Touch targets",
+      "rule": "44px minimum in Touch and Spacious; 32px floor in Compact desktop where a pointer is guaranteed.",
+      "where": "Density mode"
+    },
+    {
+      "requirement": "Text scaling",
+      "rule": "Layouts hold to 200% zoom and to iOS Dynamic Type XXL without clipping or horizontal scroll.",
+      "where": "Responsive contract"
+    },
+    {
+      "requirement": "Reduced motion",
+      "rule": "All durations to 0 except an 80ms opacity crossfade. Rest timers become numeric countdowns; AI text still streams because streaming is the information.",
+      "where": "Motion token"
+    },
+    {
+      "requirement": "RTL layout",
+      "rule": "Logical properties throughout — no left/right in any component. Mirroring is per-element, from the icon manifest.",
+      "where": "Icon manifest · CSS"
+    },
+    {
+      "requirement": "RTL exceptions",
+      "rule": "Days mirror, weeks do not. Range fields keep reading order. Mono columns switch family but keep width. Timelines mirror direction but not chronology.",
+      "where": "Component contract"
+    },
+    {
+      "requirement": "Bidi isolation",
+      "rule": "Money, phone, IDs, card last-four, times and Latin names each isolated. Enforced at the formatter, not per component.",
+      "where": "Formatter · shared"
+    },
+    {
+      "requirement": "Arabic type",
+      "rule": "+0.15 line-height, 13px floor, weight up one step, zero tracking, containers sized from the Arabic string.",
+      "where": "Type token"
+    },
+    {
+      "requirement": "Breakpoints",
+      "rule": "Five, with declared behaviour per surface. Tables become lists below bp.xs; they are never horizontally scrolled on a phone.",
+      "where": "Responsive contract"
+    },
+    {
+      "requirement": "Density",
+      "rule": "Four modes changing row height, spacing step and type step only. Colour, radius, anatomy and hierarchy are invariant.",
+      "where": "Density mode"
+    }
+  ],
+  "platform": [
+    {
+      "concern": "Tokens",
+      "web": "CSS custom properties generated from the JSON source.",
+      "ios": "SwiftUI Color/Font extensions with Dynamic Type mappings.",
+      "android": "Compose theme values with sp/dp scaling."
+    },
+    {
+      "concern": "Navigation",
+      "web": "Rail plus routes; browser back is authoritative.",
+      "ios": "Tab bar, navigation stack, native back and edge swipe.",
+      "android": "Bottom nav, predictive back, up navigation."
+    },
+    {
+      "concern": "Overlays",
+      "web": "Modal, Drawer, Sheet per §29.",
+      "ios": "UISheetPresentation with detents; full-screen for destructive flows.",
+      "android": "Bottom sheet with drag handle; dialog for tier 3."
+    },
+    {
+      "concern": "Lists",
+      "web": "DataGrid virtualised.",
+      "ios": "Native list with cell reuse; swipe actions for tier 1 undo only.",
+      "android": "RecyclerView; swipe actions same restriction."
+    },
+    {
+      "concern": "Scanning",
+      "web": "Keyboard-wedge and USB scanners on Front Desk.",
+      "ios": "Camera with haptic on success; NFC for access passes.",
+      "android": "CameraX with the same haptic contract."
+    },
+    {
+      "concern": "Offline",
+      "web": "Service worker cache; queued writes with visible pending count.",
+      "ios": "Local store with background sync; pending count in the tab badge.",
+      "android": "Room with WorkManager; same badge contract."
+    },
+    {
+      "concern": "Haptics",
+      "web": "None.",
+      "ios": "Success on log and check-in; warning on denial. Never on navigation.",
+      "android": "Same map via HapticFeedbackConstants."
+    },
+    {
+      "concern": "Accessibility",
+      "web": "ARIA per component contract.",
+      "ios": "VoiceOver traits, Dynamic Type, Reduce Motion honoured.",
+      "android": "TalkBack, font scale, animator duration scale honoured."
+    }
+  ],
+  "pay_states": [
+    {
+      "state": "Paid",
+      "severity": "neutral",
+      "copy": "Amount, method, timestamp. No green badge — paid is the expected case and colouring it makes the unpaid row harder to find."
+    },
+    {
+      "state": "Pending",
+      "severity": "info",
+      "copy": "“Sent to the bank, usually clears within an hour.” Never “processing” alone — a duration prevents the second attempt that causes a double charge."
+    },
+    {
+      "state": "Failed",
+      "severity": "critical",
+      "copy": "Reason in plain words (“the card expired”), what was NOT affected (“access is unchanged”), and the single recovery action. Never a provider error code as the headline."
+    },
+    {
+      "state": "Retrying",
+      "severity": "attention",
+      "copy": "Attempt number, next attempt time, and how to stop it. A silent retry loop is how a member gets charged three times."
+    },
+    {
+      "state": "Overdue",
+      "severity": "critical",
+      "copy": "Amount, days late, and whether access is affected under this tenant's policy — the answer differs per tenant and must never be inferred by the reader."
+    },
+    {
+      "state": "Refunded",
+      "severity": "neutral",
+      "copy": "Signed amount, destination, arrival window, reason, and who authorised it. All five, always."
+    },
+    {
+      "state": "Partially refunded",
+      "severity": "neutral",
+      "copy": "Both figures side by side — original and refunded — never a single net number that hides what happened."
+    },
+    {
+      "state": "Disputed",
+      "severity": "critical",
+      "copy": "What the member claims, the evidence deadline, and who owns the response. Time-boxed, so the deadline is the loudest element."
+    },
+    {
+      "state": "Cash pending",
+      "severity": "attention",
+      "copy": "“Collected at the desk, not yet reconciled.” Distinguishes a drawer variance from a real shortfall at close."
+    },
+    {
+      "state": "Wallet applied",
+      "severity": "neutral",
+      "copy": "Credit used and remaining balance, both visible. A wallet with an invisible balance is a support ticket."
+    }
+  ],
+  "families": [
+    {
+      "name": "PersonRow",
+      "anatomy": "Photo · name · membership or role · context line · status · one action. Four densities, four subjects: member, lead, coach, staff.",
+      "decision": "One component, not four. Behaviour is identical — identify a person, see their state, act once — so ClientCard and MemberCard would be the same thing with different words. The subject only changes which context line renders."
+    },
+    {
+      "name": "TimelineItem",
+      "anatomy": "Time · actor · event · amount or object · expandable detail. Types: payment, visit, booking, session, message, note, plan change, document, consent.",
+      "decision": "One spine, chronological, filterable by type — the Member 360 decision generalised. The actor is always named, including “Veyro” for automated events, because “who did this” is the question a timeline exists to answer."
+    },
+    {
+      "name": "MembershipCard",
+      "anatomy": "Plan · status · period · price · renewal terms · freeze allowance used. Variants: active, trial, frozen, expiring, expired, cancelled.",
+      "decision": "Renewal terms are always visible, never behind a link — the single most common member dispute is what they thought they signed up for. Freeze allowance shows used-of-total, so a refusal is never a surprise."
+    },
+    {
+      "name": "BookingCard",
+      "anatomy": "Class or session · time · coach · location · capacity · member state. Variants: confirmed, waitlisted, cancelled, no-show, full, in progress.",
+      "decision": "Waitlist shows position and honest odds (“3rd on the list — usually clears”). Cancellation states the deadline and what happens after it, on the card, before the member commits."
+    },
+    {
+      "name": "AccessPass",
+      "anatomy": "QR or NFC · member name · validity · club. States: valid, expiring today, expired, restricted, offline-cached.",
+      "decision": "Renders offline from cache and says so with a timestamp. A member at a turnstile with no signal is the normal case, not an edge case."
+    },
+    {
+      "name": "TaskRow",
+      "anatomy": "Owner · due · subject · source · one action. Variants: assigned, self-created, from an exception, overdue.",
+      "decision": "Every task names where it came from — an exception, a person, an automation. An orphan task with no provenance gets ignored, which is how a queue dies."
+    },
+    {
+      "name": "PlanBuilderRow",
+      "anatomy": "Day or meal slot · content · macros or volume · alternatives count · lock state.",
+      "decision": "The coach edits in place; nothing opens a second editor. Locked rows show why they are locked (policy, member allergy, medical note) rather than being merely disabled."
+    },
+    {
+      "name": "ConsentBlock",
+      "anatomy": "Purpose · scope · granted date · granting party · withdraw action. Types: marketing, health data, biometric, photo, minor guardian.",
+      "decision": "Health and biometric consent are separate records with separate withdrawal, never bundled into a terms checkbox. Withdrawal is always one action from where the consent is shown — never a support request."
+    },
+    {
+      "name": "StaffAvailability",
+      "anatomy": "Coach · hours · qualifications · current load · conflicts. Variants: available, partial, full, off, unqualified for this class.",
+      "decision": "“Unqualified” is a distinct state from “unavailable” and says which qualification is missing. Assigning an unqualified coach to a class is a safety issue, not a scheduling inconvenience."
+    }
+  ],
+  "jordan": [
+    {
+      "system": "JoFotara",
+      "state": "submitted",
+      "copy": "“Sent to JoFotara · reference JF-88214.” Reference visible immediately, because that is what an accountant is asked for."
+    },
+    {
+      "system": "JoFotara",
+      "state": "accepted",
+      "copy": "Quiet confirmation on the invoice with the timestamp. No banner — acceptance is the expected case."
+    },
+    {
+      "system": "JoFotara",
+      "state": "rejected",
+      "copy": "The specific field at fault, in plain words (“missing buyer tax number”), plus the assurance that the sale and the money are recorded. Fix-and-resubmit is one action."
+    },
+    {
+      "system": "JoFotara",
+      "state": "unreachable",
+      "copy": "“JoFotara is not responding. Invoices are queued and will submit automatically — nothing is lost, and you can keep selling.” Selling never blocks on e-invoicing."
+    },
+    {
+      "system": "CliQ",
+      "state": "awaiting transfer",
+      "copy": "Alias shown, amount shown, “waiting for the member to confirm in their bank app” with a live elapsed timer. Staff know whether to wait or move on."
+    },
+    {
+      "system": "CliQ",
+      "state": "confirmed",
+      "copy": "Matched to the member and the order, with the bank reference retained on the invoice for reconciliation."
+    },
+    {
+      "system": "CliQ",
+      "state": "unmatched",
+      "copy": "“A JOD 55.00 transfer arrived that we could not match.” Sits in a reconciliation queue with the reference and the sender alias — never silently discarded, never auto-assigned to a guess."
+    },
+    {
+      "system": "CliQ",
+      "state": "expired",
+      "copy": "The request timed out; the cart is preserved and another method is offered. The member is not charged and is told so."
+    }
+  ],
+  "character": [
+    [
+      "Intelligent",
+      "The system shows its reasoning. Evidence links, confidence, and “here is why” live in the type hierarchy rather than in badges announcing cleverness."
+    ],
+    [
+      "Confident",
+      "Few colours, generous type scale contrast, no decoration compensating for weak hierarchy. Nothing on screen is hedging."
+    ],
+    [
+      "Efficient",
+      "Hairlines over shadows, 34px rows where the work is, mono numerals that align without effort. Speed is a visual property here, not just a performance one."
+    ],
+    [
+      "Calm",
+      "Warm paper neutrals, semantic colour held in reserve, one accent. A busy Tuesday at Khalda should not look like an emergency."
+    ],
+    [
+      "Premium",
+      "Earned through restraint, alignment and consistency — the same way a well-set financial statement reads expensive without ornament."
+    ],
+    [
+      "Human, not playful",
+      "Editorial scale and plain-language copy for member moments; no mascots, no exclamation marks, no emoji in the product."
+    ],
+    [
+      "Technical, not cold",
+      "Mono for data, sans for speech. Warm greys rather than clinical blue-white — this is a business about bodies, not a laboratory."
+    ],
+    [
+      "Fit, not aggressive",
+      "No black-and-neon, no shouting weights, no motivational bombast. Strength shown through precision."
+    ]
+  ],
+  "semantic": [
+    [
+      "color.surface.canvas",
+      "warm.100",
+      "dark.900 #1a1917",
+      "App background. The field everything sits on."
+    ],
+    [
+      "color.surface.default",
+      "warm.0",
+      "dark.800 #211f1c",
+      "Cards, panels, table bodies, sheets."
+    ],
+    [
+      "color.surface.raised",
+      "warm.0 + e1",
+      "dark.700 #2a2724",
+      "Overlays, popovers, dropdowns, command palette."
+    ],
+    [
+      "color.surface.sunken",
+      "warm.50",
+      "dark.950 #141311",
+      "Table headers, inset wells, code and log areas."
+    ],
+    [
+      "color.surface.hover",
+      "warm.50",
+      "rgba(255,255,255,.04)",
+      "Row and interactive-surface hover only. Never a resting state."
+    ],
+    [
+      "color.surface.selected",
+      "ink.50",
+      "rgba(126,166,232,.16)",
+      "Selected row, active nav item, chosen segment."
+    ],
+    [
+      "color.surface.input",
+      "warm.0",
+      "dark.950",
+      "Field backgrounds across all form controls."
+    ],
+    [
+      "color.surface.overlay",
+      "rgba(23,23,26,.44)",
+      "rgba(0,0,0,.6)",
+      "Scrim behind modals and sheets."
+    ],
+    [
+      "color.text.primary",
+      "warm.900",
+      "warm.50 #f5f2ec",
+      "Headings, values, member names, primary content."
+    ],
+    [
+      "color.text.secondary",
+      "warm.700",
+      "dark.text.2 #b8b3aa",
+      "Supporting copy, descriptions, explanatory lines."
+    ],
+    [
+      "color.text.tertiary",
+      "warm.600",
+      "dark.text.3 #928d84",
+      "Metadata, timestamps, IDs, eyebrow labels. Contrast floor for small text."
+    ],
+    [
+      "color.text.disabled",
+      "warm.500",
+      "rgba(245,242,236,.38)",
+      "Inactive controls only. Always paired with a stated reason."
+    ],
+    [
+      "color.text.inverse",
+      "warm.0",
+      "dark.900",
+      "On filled action and semantic surfaces."
+    ],
+    [
+      "color.text.link",
+      "ink.600",
+      "accent.light #7ea6e8",
+      "Inline links and evidence references."
+    ],
+    [
+      "color.text.critical",
+      "error.600",
+      "error.light #e0836a",
+      "Overdue amounts, failed states, destructive labels."
+    ],
+    [
+      "color.border.subtle",
+      "rgba(23,23,26,.08)",
+      "rgba(255,255,255,.08)",
+      "Row dividers inside a bounded container."
+    ],
+    [
+      "color.border.default",
+      "rgba(23,23,26,.14)",
+      "rgba(255,255,255,.13)",
+      "Container edges, inputs, table outlines. The workhorse."
+    ],
+    [
+      "color.border.strong",
+      "rgba(23,23,26,.28)",
+      "rgba(255,255,255,.26)",
+      "Secondary button outline, emphasised separation."
+    ],
+    [
+      "color.border.focus",
+      "ink.600",
+      "accent.light",
+      "Focus ring. Never brand-configurable."
+    ],
+    [
+      "color.border.error",
+      "error.600",
+      "error.light",
+      "Invalid field outline, paired with a message."
+    ],
+    [
+      "color.action.primary",
+      "ink.600",
+      "accent.light",
+      "Primary button fill, active selection, links."
+    ],
+    [
+      "color.action.pressed",
+      "ink.700",
+      "accent.pressed",
+      "Pressed state on primary."
+    ],
+    [
+      "color.semantic.success",
+      "success.600",
+      "#6fae7f",
+      "Paid, confirmed, resolved, on-plan."
+    ],
+    [
+      "color.semantic.warning",
+      "warning.600",
+      "#d9a256",
+      "Expiring, approaching a limit, needs review."
+    ],
+    [
+      "color.semantic.error",
+      "error.600",
+      "#e0836a",
+      "Failed, denied, overdue, blocking."
+    ],
+    [
+      "color.semantic.info",
+      "info.600",
+      "#8aa9b5",
+      "Neutral system information. Deliberately not the action hue."
+    ],
+    [
+      "color.semantic.ai",
+      "ai.600 #4a3d7a",
+      "ai.light #a397dd",
+      "AI interpretation, recommendation, evidence and executed-action states. SYSTEM-OWNED — never inherits brand.accent. 9.31:1 on warm.0."
+    ],
+    [
+      "color.semantic.ai.wash",
+      "ai.50 #edebf6",
+      "rgba(163,151,221,.16)",
+      "AI panel header and evidence-link background. The only wash that signals machine reasoning."
+    ],
+    [
+      "color.semantic.ai.border",
+      "ai.600 at 1px",
+      "ai.light at 1px",
+      "AI container edge. Distinguishes an interpretation panel from an action panel at a glance."
+    ]
+  ],
+  "themes": [
+    [
+      "Veyro Admin",
+      "LIGHT FIRST · DARK OPT-IN",
+      "Eight hours of tabular reading. Hairline rules and mono columns separate best on a light field, and warm paper is easier at length than a bright white. Dark ships as an opt-in for late shifts, not as a default, and is validated on the data grid before release."
+    ],
+    [
+      "Veyro Front Desk",
+      "LIGHT ONLY",
+      "Lobbies are bright, the screen is read at 1.5m, and staff do not choose their lighting. Dark would cost contrast headroom at exactly the moment resolution speed matters. A deliberate omission, not a gap."
+    ],
+    [
+      "Veyro Coach",
+      "FOLLOWS SYSTEM",
+      "Gym-floor lighting swings from window glare to dim free-weight corners. This is the surface where user control genuinely earns its keep — and the set logger is validated in both."
+    ],
+    [
+      "Veyro Member",
+      "FOLLOWS SYSTEM",
+      "Consumer expectation, plus evening and pre-dawn training sessions. Dark is a first-class member experience here, not a courtesy."
+    ],
+    [
+      "Internal SaaS Console",
+      "LIGHT FIRST · DARK OPT-IN",
+      "Same reasoning as Admin, with incident work often happening at night — which is precisely when the opt-in gets used."
+    ]
+  ],
+  "type_scale": [
+    [
+      "type.display",
+      "34 / 1.10",
+      "500",
+      "-0.02em",
+      "Member milestones, first-run, progress reviews. The editorial register from 1c. Never on Admin."
+    ],
+    [
+      "type.h1",
+      "26 / 1.15",
+      "500",
+      "-0.018em",
+      "Page title. One per screen."
+    ],
+    [
+      "type.h2",
+      "20 / 1.20",
+      "500",
+      "-0.014em",
+      "Section heading, modal title, member name in a 360 header."
+    ],
+    [
+      "type.h3",
+      "16 / 1.30",
+      "500",
+      "-0.01em",
+      "Card title, subsection, exception headline."
+    ],
+    [
+      "type.h4",
+      "14 / 1.35",
+      "500",
+      "0",
+      "Dense group heading inside a panel."
+    ],
+    [
+      "type.bodyLg",
+      "15 / 1.60",
+      "400",
+      "0",
+      "Member app body, coach prose, explanatory paragraphs."
+    ],
+    [
+      "type.body",
+      "14 / 1.60",
+      "400",
+      "0",
+      "Default. Admin content, descriptions, table text."
+    ],
+    [
+      "type.bodySm",
+      "12.5 / 1.55",
+      "400",
+      "0",
+      "Secondary explanation, helper text under a field."
+    ],
+    [
+      "type.label",
+      "12 / 1.35",
+      "500",
+      "0.005em",
+      "Field labels, button text, chips, nav items."
+    ],
+    [
+      "type.caption",
+      "11 / 1.40",
+      "400",
+      "0",
+      "Legal, footnotes, timestamps. Latin only — Arabic floor is 13."
+    ],
+    [
+      "type.data",
+      "13 / 1.20",
+      "500",
+      "0",
+      "Mono tabular. Money, counts, sets, reps, macros, IDs. The reason columns align."
+    ],
+    [
+      "type.eyebrow",
+      "10 / 1.40",
+      "500",
+      "0.09em",
+      "Mono uppercase section markers. Latin only."
+    ]
+  ],
+  "arabic_rules": [
+    [
+      "Line height +0.15",
+      "At any given size, Arabic gets 0.15 more line-height than Latin — type.body is 1.60 in Latin and 1.75 in Arabic. Diacritics and descenders need the room, and dense Arabic without it is the single most common failure in localised SaaS."
+    ],
+    [
+      "Size floor 13px",
+      "Arabic never renders below 13px. type.caption (11) and type.eyebrow (10) are Latin-only tokens; their Arabic counterparts resolve to 13px. A caption that cannot be read is not a caption."
+    ],
+    [
+      "Weight up one step",
+      "Plex Sans Arabic reads optically lighter than Plex Sans at the same weight. Where Latin uses 400, Arabic uses 400; where Latin uses 450 or 500, Arabic uses 500; where Latin uses 500 for emphasis, Arabic uses 600."
+    ],
+    [
+      "Zero letter-spacing",
+      "Never apply tracking to Arabic — it breaks the joins. Any token carrying a track value drops it in Arabic, which is why type.eyebrow has no Arabic form and uses type.label instead."
+    ],
+    [
+      "No italics",
+      "Arabic has no italic convention. Emphasis is weight or colour. Any component using italics for meaning must have a non-italic Arabic path."
+    ],
+    [
+      "Containers sized for Arabic",
+      "Arabic runs 15–30% longer than English here. Every label container, button and column is dimensioned against the Arabic string, not the English one. Design reviews use the Arabic build for width decisions."
+    ],
+    [
+      "Mono is Latin-only",
+      "IBM Plex Mono has no Arabic. Tabular Arabic numerals use Plex Sans Arabic with tabular figures; a mono column in an Arabic table switches family but keeps its alignment and width."
+    ],
+    [
+      "Numerals are a tenant setting",
+      "Latin or Arabic-Indic, chosen once per tenant and applied identically on screen, receipt, export and PDF. Never mixed within a tenant, and never decided per component."
+    ],
+    [
+      "Bidi isolation is mandatory",
+      "Money, phone numbers, member IDs, card last-four, times and Latin lift names are each wrapped in an isolated run. Without it JOD jumps to the wrong side of its amount — a money-ambiguity defect, not a typographic one."
+    ]
+  ],
+  "contrast": [
+    [
+      "color.text.primary · warm.900",
+      "#17171a",
+      "17.74:1",
+      "16.00:1",
+      "14.76:1",
+      "Pass everywhere, all sizes. AAA on all three."
+    ],
+    [
+      "color.text.secondary · warm.700",
+      "#57544d",
+      "7.49:1",
+      "6.75:1",
+      "6.23:1",
+      "Pass everywhere, all sizes."
+    ],
+    [
+      "color.text.tertiary · warm.600",
+      "#6b6a63",
+      "5.38:1",
+      "4.86:1",
+      "4.48:1",
+      "Pass on warm.0 and warm.100 — the small-text floor. FAILS on warm.150 by 0.02: large-text-only there, and the pairing is excluded from the CI allow-list."
+    ],
+    [
+      "warm.500",
+      "#85807a",
+      "3.88:1",
+      "3.50:1",
+      "3.23:1",
+      "FAIL under 18.66px on every surface. Large text, disabled controls and decoration only."
+    ],
+    [
+      "color.text.link · ink.600",
+      "#1b4079",
+      "10.13:1",
+      "9.14:1",
+      "8.43:1",
+      "Pass. Also passes inverse — white on ink.600 is 10.21:1."
+    ],
+    [
+      "color.text.critical · error.600",
+      "#8a3b1f",
+      "7.64:1",
+      "6.89:1",
+      "6.36:1",
+      "Pass. White on error.600 is 7.70:1 for filled badges."
+    ],
+    [
+      "color.semantic.warning",
+      "#8a5a1f",
+      "5.84:1",
+      "5.27:1",
+      "4.86:1",
+      "Pass. The tightest semantic — do not lighten. White on fill is 5.89:1."
+    ],
+    [
+      "color.semantic.success",
+      "#2f5d3a",
+      "7.58:1",
+      "6.84:1",
+      "6.31:1",
+      "Pass as text and as a filled surface — white on fill is 7.64:1."
+    ],
+    [
+      "color.semantic.ai · ai.600",
+      "#4a3d7a",
+      "9.31:1",
+      "8.40:1",
+      "7.75:1",
+      "Pass all sizes. White on ai.600 is 9.38:1. Distinct from ink.600 (10.13:1) by hue, not lightness — the two never share a role."
+    ]
+  ],
+  "density": [
+    {
+      "mode": "Compact",
+      "row_and_control": "34 / 40px",
+      "type_step": "−1 step"
+    },
+    {
+      "mode": "Default",
+      "row_and_control": "40 / 48px",
+      "type_step": "base"
+    },
+    {
+      "mode": "Touch",
+      "row_and_control": "48 / 52px",
+      "type_step": "+1 step"
+    },
+    {
+      "mode": "Spacious",
+      "row_and_control": "56 / 64px",
+      "type_step": "+2 steps"
+    }
+  ],
+  "breakpoints": [
+    {
+      "name": "bp.xs",
+      "range": "0–599",
+      "behaviour": "Single column. Bottom nav of five. Sheets replace modals. Tables become drill-down lists, never shrunken grids."
+    },
+    {
+      "name": "bp.sm",
+      "range": "600–899",
+      "behaviour": "Tablet portrait. Coach gains a two-pane client list. Front Desk minimum. Rail collapses to icons."
+    },
+    {
+      "name": "bp.md",
+      "range": "900–1199",
+      "behaviour": "Tablet landscape and small laptop. Admin usable: rail collapsed, inspector becomes an overlay rather than a column."
+    },
+    {
+      "name": "bp.lg",
+      "range": "1200–1599",
+      "behaviour": "Admin target. Rail expanded at 240, content and inspector side by side."
+    },
+    {
+      "name": "bp.xl",
+      "range": "1600+",
+      "behaviour": "Wide desktop. Content caps at 1440 and centres; the inspector widens to 480 rather than the table stretching indefinitely."
+    }
+  ],
+  "layouts": [
+    {
+      "surface": "Veyro Admin",
+      "specification": "12-column, 24px gutter. Rail 240 expanded / 56 collapsed. Content max 1440. Inspector 380 at bp.lg, 480 at bp.xl. Split view is list + inspector, never three columns — the Member 360 decision from Phase 6 generalised."
+    },
+    {
+      "surface": "Front Desk",
+      "specification": "Two zones, no rail: a fixed capture strip at the top holding scan and search, and a resolution area below. Touch density, one modal depth maximum, keyboard focus returning to the scan field after every action."
+    },
+    {
+      "surface": "Veyro Coach",
+      "specification": "Single column, bottom nav of four plus a create action. Sheets capped at two levels. Primary actions in the lower third for one-handed reach. Two-pane only from bp.sm on tablet."
+    },
+    {
+      "surface": "Veyro Member",
+      "specification": "Single column, Spacious. Bottom nav of five. One “now” card owning the top of the viewport; everything else below the fold. Sheets for swap, filter and quick choices."
+    },
+    {
+      "surface": "SaaS Console",
+      "specification": "Same shell as Admin at Compact density, with an incident banner slot above the rail that no other surface has."
+    }
+  ],
+  "brandable": [
+    [
+      "brand.accent",
+      "One hue, replacing ink.600 for action and selection. The derived pressed, selected-wash and dark-mode variants are computed by the system, not configured — six tokens from one input."
+    ],
+    [
+      "brand.logo",
+      "Wordmark and mark, each with a required monochrome fallback for receipts, exports and single-colour contexts. Clear-space and minimum size enforced."
+    ],
+    [
+      "brand.appIcon",
+      "Member app icon per brand, validated against store requirements at upload."
+    ],
+    [
+      "brand.imagery",
+      "Photography for member home, class listings and store. Aspect ratios fixed by the system; content is the tenant’s."
+    ],
+    [
+      "brand.radiusScale",
+      "Optional, one step softer or sharper across the whole scale. Proportional — a tenant cannot round only the cards. Off by default."
+    ]
+  ],
+  "guardrails": [
+    [
+      "G1",
+      "brand.accent must reach 4.5:1 against surface.default and surface.canvas, and its computed on-accent label colour must reach 4.5:1 against the accent itself.",
+      "Rejected at upload with the nearest passing shade of their own colour offered, shown side by side. They are never left without a route to a brand they recognise."
+    ],
+    [
+      "G2",
+      "brand.accent must sit a minimum perceptual distance from success, warning and error. A brand green close to success.600 fails.",
+      "“This green is too close to the colour Veyro uses for confirmed payments.” Alternative offered, with the reason stated in operational terms rather than colour theory."
+    ],
+    [
+      "G3",
+      "brand.accent may never resolve into a status, money-state, safety or consent token. Enforced by the token boundary — the accent is simply not in scope for those components.",
+      "Not surfaced, because it cannot be attempted. This is the difference between a guardrail and a guideline."
+    ],
+    [
+      "G4",
+      "The focus ring is system-owned in both themes.",
+      "Not configurable. A tenant cannot ship an unnavigable product."
+    ],
+    [
+      "G5",
+      "Dark-mode accent is derived from brand.accent, not configured separately.",
+      "Not surfaced. Prevents a tenant passing light mode and failing dark, which is the most common white-label accessibility regression."
+    ],
+    [
+      "G6",
+      "Logo requires a monochrome fallback before a brand can publish.",
+      "“Add a single-colour version — it is used on receipts, invoices and exports.” Blocks publish rather than degrading silently at the printer."
+    ],
+    [
+      "G7",
+      "color.semantic.ai is system-owned in both themes and is not in scope for brand.accent. AI interpretation, recommendation, evidence and executed-action states resolve to ai.* regardless of tenant.",
+      "Not surfaced, because it cannot be attempted. Rationale: a tenant brand on an AI panel makes machine inference look like a first-party assertion. Veyro carries the accountability for what its AI says, so Veyro carries the colour."
+    ]
+  ],
+  "family_count": 37
+}

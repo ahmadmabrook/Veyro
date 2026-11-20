@@ -1,0 +1,136 @@
+import type { CSSProperties } from "react";
+
+import { SEVERITY, VOCABULARY } from "@/design/contracts.generated";
+
+/**
+ * StatusBadge and the row edge-mark — §30. One four-step scale at two granularities.
+ *
+ * **The component takes an enum, not a string.** The source is explicit about why: "A status
+ * the vocabulary does not contain cannot be rendered — the component takes an enum, not a
+ * string, so an engineer cannot invent 'Semi-active'." Every status this product can render
+ * is one of the twenty below, and TypeScript refuses the rest at the call site rather than at
+ * a design review three months later.
+ *
+ * **Four severities, not five.** "'success' is not a severity, it is the neutral case. A green
+ * badge on every paid invoice makes a table of paid invoices look like a celebration and makes
+ * the one unpaid row harder to find." So `Paid`, `Active` and `Confirmed` are `neutral`, and
+ * there is no green.
+ *
+ * **Never colour alone.** Every badge carries its label; icon-only status is a defect at any
+ * density. At Compact the label may abbreviate but never disappear, and the full text stays in
+ * the accessible name regardless.
+ *
+ * The edge-mark is the same scale expressed at row granularity: it carries the roll-up while
+ * the badge names the specific state, which is what stopped them reading as two independent
+ * signals. In RTL the edge-mark moves to the logical start edge, which `border-inline-start`
+ * does without a direction check.
+ */
+
+export type Severity = "neutral" | "info" | "attention" | "critical";
+
+/**
+ * The fixed vocabularies and their severities — **generated, not transcribed**.
+ *
+ * The first version of this file wrote both out by hand from §30 and was wrong: §30's
+ * "Payment" line names five states, and Step 4's domain-component file names *ten*, each with
+ * its own severity column — Retrying, Overdue, Disputed, Cash pending and Wallet applied are
+ * only in the second. A payment row could not be marked overdue at all, which is the one
+ * payment state a members table exists to surface. Found by a test comparing the map against
+ * the extraction rather than against the prose I had read.
+ *
+ * So `src/design/extract.mjs` builds both from the source and the generator fails if §30's
+ * list stops being a subset of PAY_STATES, or if any vocabulary entry has no severity.
+ */
+export { VOCABULARY, SEVERITY } from "@/design/contracts.generated";
+
+export type Domain = keyof typeof VOCABULARY;
+export type Status = (typeof VOCABULARY)[Domain][number];
+
+const TONE: Record<Severity, { fg: string; edge: string; bg: string }> = {
+  // Neutral is a fact, so it is text and a hairline rather than a colour event.
+  neutral: {
+    fg: "var(--color-text-secondary)",
+    edge: "var(--color-border-default)",
+    bg: "var(--color-surface-sunken)",
+  },
+  info: {
+    fg: "var(--color-text-primary)",
+    edge: "var(--color-semantic-info)",
+    bg: "var(--color-surface-sunken)",
+  },
+  attention: {
+    fg: "var(--color-text-primary)",
+    edge: "var(--color-semantic-warning)",
+    bg: "var(--color-surface-sunken)",
+  },
+  critical: {
+    fg: "var(--color-text-critical)",
+    edge: "var(--color-semantic-error)",
+    bg: "var(--color-surface-sunken)",
+  },
+};
+
+export function StatusBadge({
+  status,
+  abbreviated,
+  style,
+}: {
+  status: Status;
+  /** Compact only. The label shortens; the accessible name does not. */
+  abbreviated?: string;
+  style?: CSSProperties;
+}) {
+  const severity = SEVERITY[status] ?? "neutral";
+  const tone = TONE[severity];
+  return (
+    <span
+      // Not a button: the source says a badge is "not a button unless it opens something",
+      // and nothing here opens anything.
+      className={`ds-badge ds-badge-${severity}`}
+      // The full text stays in the accessible name whatever the visible label does.
+      aria-label={abbreviated ? status : undefined}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: "var(--space-1)",
+        paddingBlock: "var(--space-05)",
+        paddingInline: "var(--space-2)",
+        borderRadius: "var(--radius-button)",
+        background: tone.bg,
+        color: tone.fg,
+        // The severity edge-mark on the logical start edge, so it mirrors with the row.
+        borderInlineStart: `2px solid ${tone.edge}`,
+        fontSize: "var(--type-label-size)",
+        fontWeight: "var(--type-label-weight)",
+        letterSpacing: "var(--type-label-tracking)",
+        whiteSpace: "nowrap",
+        ...style,
+      }}
+    >
+      {abbreviated ?? status}
+    </span>
+  );
+}
+
+/**
+ * The row-level roll-up, as a style to spread onto a row container.
+ *
+ * Same scale, coarser granularity: a row carries the worst severity among its cells and the
+ * badge still names the specific state. A row with no severity gets no mark at all rather than
+ * a neutral one, because a mark on every row is not a signal.
+ */
+export function edgeMark(severity: Severity | null): CSSProperties {
+  if (severity === null || severity === "neutral") return {};
+  return { borderInlineStart: `3px solid ${TONE[severity].edge}` };
+}
+
+/** The worst severity in a set, for a row roll-up. */
+export function rollUp(statuses: readonly Status[]): Severity | null {
+  const order: Severity[] = ["neutral", "info", "attention", "critical"];
+  let worst = -1;
+  for (const s of statuses) {
+    const at = order.indexOf(SEVERITY[s] ?? "neutral");
+    if (at > worst) worst = at;
+  }
+  return worst < 0 ? null : (order[worst] ?? null);
+}

@@ -19,10 +19,12 @@
     "test:watch": "vitest",
     "e2e": "playwright test",
     "audit:ci": "npm audit --audit-level=high",
-    "verify": "npm run tokens:check && npm run lint && npm run test:foundation && npm run typecheck && npm test && echo 'verify: every check passed'",
+    "verify": "npm run design:check && npm run tokens:check && npm run lint && npm run test:foundation && npm run typecheck && npm test && echo 'verify: every check passed'",
     "api": "node tests/e2e/serve.mjs",
     "fixture": "node tests/e2e/fixture.mjs",
-    "e2e:mutate": "node tests/e2e/mutate.mjs"
+    "e2e:mutate": "node tests/e2e/mutate.mjs",
+    "design:extract": "node src/design/extract.mjs",
+    "design:check": "node src/design/extract.mjs --check"
   },
   "dependencies": {
     "next": "16.4.6",

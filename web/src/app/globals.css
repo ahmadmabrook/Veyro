@@ -177,38 +177,22 @@ a {
  * rather than a colour alone, because colour is not a distinction a reader with low vision or
  * a monochrome display can rely on -- WCAG 1.4.1.
  */
-.app-nav {
-  border-block-end: 1px solid var(--color-border-subtle);
-  padding: 0 var(--space-4);
-}
-
-.app-nav ul {
-  display: flex;
-  gap: var(--space-5);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  flex-wrap: wrap;
-}
-
+/* The horizontal strip is gone: §21 specifies a rail, and the rail's own rules are in the
+ * design-system section below. What survives here is the one thing the strip got right --
+ * the current item is marked by something other than colour, because colour alone is not a
+ * distinction a reader with low vision or a monochrome display can rely on (WCAG 1.4.1).
+ * On a rail that marker is an inline-start bar rather than a bottom border. */
 .nav-link {
-  display: inline-block;
-  /* A 44px target: the DS's minimum for every density mode, met by padding rather than by a
-     height, so a long label in Arabic grows the row instead of being clipped. */
-  padding: var(--space-3) var(--space-1);
-  min-height: 44px;
-  color: var(--color-text-secondary);
+  display: block;
+  /* A 44px target, met by padding rather than a height, so a long Arabic label grows the row
+     instead of being clipped. */
+  min-block-size: 44px;
   text-decoration: none;
-  border-block-end: 2px solid transparent;
-}
-
-.nav-link:hover {
-  color: var(--color-text-primary);
+  border-inline-start: 2px solid transparent;
 }
 
 .nav-link[aria-current="page"] {
-  color: var(--color-text-primary);
-  border-block-end-color: var(--color-action-default);
+  border-inline-start-color: var(--color-action-primary);
   font-weight: var(--type-label-weight);
 }
 
@@ -305,5 +289,511 @@ a {
     display: block;
     max-width: 100%;
     overflow-x: auto;
+  }
+}
+
+/* ===========================================================================
+ * Design system — component layer
+ *
+ * **These rules are the responsive and RTL contracts, not styling preference.** The source
+ * puts accessibility, RTL and responsive behaviour "in the component, not in a screen spec"
+ * (§59–§62, the P0-5 fix) precisely so that every new screen inherits them instead of
+ * re-implementing them — which is what fifteen screens did before this layer existed.
+ *
+ * Every length is a token. Breakpoint literals are the only numbers here, because a media
+ * query cannot read a custom property; they are generated into `--bp-*` as well so a test can
+ * compare the literals against the design source.
+ * ======================================================================== */
+
+.ds-visually-hidden {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* --- DataGrid ----------------------------------------------------------- */
+
+.ds-grid-table {
+  inline-size: 100%;
+  border-collapse: collapse;
+  font-size: var(--density-type-size);
+  line-height: var(--density-type-line);
+}
+
+.ds-grid-table th {
+  text-align: start;
+  padding: var(--density-gap);
+  background: var(--color-surface-sunken);
+  border-block-end: 1px solid var(--color-border-default);
+  font-size: var(--type-label-size);
+  font-weight: var(--type-label-weight);
+  letter-spacing: var(--type-label-tracking);
+  white-space: nowrap;
+}
+
+.ds-grid-table td {
+  text-align: start;
+  vertical-align: top;
+  padding: var(--density-gap);
+  block-size: var(--density-row);
+  border-block-end: 1px solid var(--color-border-subtle);
+}
+
+/* No shadow on a table row — it is on the common-mistakes checklist by name. */
+.ds-grid-table tr {
+  box-shadow: none;
+}
+
+/* Money and numeric columns stay end-aligned on the LOGICAL end, so they mirror. */
+.ds-col-money {
+  text-align: end;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: var(--type-data-size);
+  font-weight: var(--type-data-weight);
+}
+
+.ds-money {
+  unicode-bidi: isolate;
+}
+
+/* "Cell reads 'restricted' in tertiary text, not blank and not zero." */
+.ds-restricted {
+  color: var(--color-text-tertiary);
+  font-style: normal;
+}
+
+.ds-skeleton {
+  display: block;
+  block-size: 0.8em;
+  inline-size: 70%;
+  background: var(--color-surface-sunken);
+  border-radius: var(--radius-card);
+}
+
+.ds-grid-strip {
+  padding: var(--space-2) var(--density-gap);
+  background: var(--color-surface-sunken);
+  border: 1px solid var(--color-border-default);
+  border-block-end: 0;
+  font-size: var(--type-bodySm-size);
+  color: var(--color-text-secondary);
+}
+
+.ds-grid-strip-error {
+  border-inline-start: 3px solid var(--color-semantic-error);
+  color: var(--color-text-critical);
+}
+
+.ds-grid-count {
+  padding: var(--space-2) var(--density-gap);
+  font-size: var(--type-caption-size);
+  color: var(--color-text-tertiary);
+}
+
+.ds-grid-empty {
+  padding: var(--space-6);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-card);
+  background: var(--color-surface-default);
+  color: var(--color-text-secondary);
+  font-size: var(--type-body-size);
+}
+
+/* The secondary line that dropped columns collapse into. Hidden while its column shows. */
+.ds-row-secondary {
+  display: block;
+  margin-block-start: var(--space-1);
+  color: var(--color-text-secondary);
+  font-size: var(--type-bodySm-size);
+}
+
+.ds-sec {
+  display: none;
+  margin-inline-end: var(--space-3);
+}
+
+.ds-sec-label {
+  color: var(--color-text-tertiary);
+}
+
+/* bp.md and below: priority 3 drops into the secondary line. */
+@media (max-width: 1199px) {
+  .ds-col-p3 { display: none; }
+  .ds-sec-p3 { display: inline; }
+}
+
+/* bp.xs: priority 2 drops as well, and the grid is a list rather than a shrunken table.
+ * "Horizontal scrolling of a data table on a phone is never the answer." */
+@media (max-width: 599px) {
+  .ds-col-p2 { display: none; }
+  .ds-sec-p2 { display: inline; }
+
+  .ds-grid-table,
+  .ds-grid-table tbody,
+  .ds-grid-table tr,
+  .ds-grid-table td {
+    display: block;
+    inline-size: 100%;
+  }
+
+  .ds-grid-table thead {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+
+  .ds-grid-table tr {
+    padding-block: var(--space-2);
+    border-block-end: 1px solid var(--color-border-subtle);
+  }
+
+  .ds-grid-table td {
+    border-block-end: 0;
+    padding-block: var(--space-05);
+    /* Touch density for the list form, which is what the source specifies at bp.xs. */
+    block-size: auto;
+    min-block-size: 44px;
+  }
+}
+
+/* --- Button ------------------------------------------------------------- */
+
+.ds-button:focus-visible,
+.ds-grid-table:focus-visible {
+  /* System-owned, never brand-configurable, never removed on mouse users. */
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 1px;
+}
+
+.ds-button-primary:hover:not(:disabled) {
+  filter: brightness(0.95);
+}
+
+.ds-button-primary:active:not(:disabled) {
+  background: var(--color-action-pressed);
+  border-color: var(--color-action-pressed);
+}
+
+.ds-button-secondary:hover:not(:disabled),
+.ds-button-tertiary:hover:not(:disabled),
+.ds-button-ghost:hover:not(:disabled),
+.ds-button-icon:hover:not(:disabled) {
+  background: var(--color-surface-hover);
+}
+
+.ds-button-destructive:hover:not(:disabled) {
+  background: var(--color-surface-hover);
+}
+
+/* Reduced motion: all durations to 0 except an 80ms opacity crossfade. */
+@media (prefers-reduced-motion: reduce) {
+  .ds-button,
+  .ds-banner,
+  .ds-card {
+    transition-duration: 80ms !important;
+    transition-property: opacity !important;
+    animation: none !important;
+  }
+}
+
+/* --- The Admin shell ---------------------------------------------------- */
+/*
+ * The numbers are generated tokens; only the media-query breakpoints are literal, because a
+ * media query cannot read a custom property. `tests/unit/shell-tokens.test.mjs` compares
+ * those literals against the generated `--bp-*` so the two cannot drift.
+ */
+
+.ds-shell {
+  min-block-size: 100dvh;
+  background: var(--color-surface-canvas);
+}
+
+.ds-shell-banner {
+  position: sticky;
+  inset-block-start: 0;
+  z-index: 30;
+}
+
+.ds-shell-body {
+  display: grid;
+  /* Rail then content. Logical columns, so the rail sits at the inline start in both
+   * directions -- in Arabic it is on the right, which is what mirroring means. */
+  grid-template-columns: var(--shell-rail) minmax(0, 1fr);
+  align-items: start;
+}
+
+.ds-shell-rail {
+  position: sticky;
+  inset-block-start: 0;
+  block-size: 100dvh;
+  overflow-y: auto;
+  padding: var(--space-4) var(--space-3);
+  border-inline-end: 1px solid var(--color-border-default);
+  background: var(--color-surface-default);
+}
+
+.ds-shell-content {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--shell-gutter);
+  padding: var(--shell-gutter);
+  /* "Content caps at 1440 and centres" -- the cap is on the content, not the viewport. */
+  max-inline-size: var(--shell-content-max);
+  margin-inline: auto;
+  inline-size: 100%;
+}
+
+.ds-shell[data-has-inspector="true"] .ds-shell-content {
+  /* Two panes. Never three: there is no third track and no component that asks for one. */
+  grid-template-columns: minmax(0, 1fr) var(--shell-inspector);
+}
+
+.ds-shell-main {
+  min-inline-size: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--shell-gutter);
+}
+
+.ds-shell-inspector {
+  position: sticky;
+  inset-block-start: var(--shell-gutter);
+  min-inline-size: 0;
+  padding: var(--space-4);
+  background: var(--color-surface-default);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-card);
+}
+
+/* The 12-column grid. */
+.ds-grid-12 {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: var(--shell-gutter);
+}
+
+/* bp.xl 1600+: the inspector widens to 480 rather than the table stretching indefinitely. */
+@media (min-width: 1600px) {
+  .ds-shell[data-has-inspector="true"] .ds-shell-content {
+    grid-template-columns: minmax(0, 1fr) var(--shell-inspector-wide);
+  }
+}
+
+/* bp.md 900–1199: rail collapsed to icons, inspector becomes an overlay rather than a column. */
+@media (max-width: 1199px) {
+  .ds-shell-body {
+    grid-template-columns: var(--shell-rail-collapsed) minmax(0, 1fr);
+  }
+
+  .ds-shell-rail {
+    padding-inline: var(--space-2);
+  }
+
+  .ds-shell-rail .ds-rail-label {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .ds-shell[data-has-inspector="true"] .ds-shell-content {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .ds-shell-inspector {
+    position: static;
+  }
+}
+
+/* bp.xs 0–599: single column, and the rail becomes a bottom nav. */
+@media (max-width: 599px) {
+  .ds-shell-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .ds-shell-rail {
+    position: fixed;
+    inset-block-start: auto;
+    inset-block-end: 0;
+    inset-inline: 0;
+    block-size: auto;
+    display: flex;
+    justify-content: space-around;
+    gap: var(--space-1);
+    padding: var(--space-2);
+    border-inline-end: 0;
+    border-block-start: 1px solid var(--color-border-default);
+    z-index: 20;
+  }
+
+  .ds-shell-rail .ds-rail-label {
+    position: static;
+    inline-size: auto;
+    block-size: auto;
+    clip-path: none;
+  }
+
+  .ds-shell-content {
+    /* Clear of the bottom nav, 44px plus its padding plus the safe area. */
+    padding-block-end: calc(64px + env(safe-area-inset-bottom, 0px));
+    padding-inline: var(--space-4);
+  }
+
+  .ds-grid-12 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* The rail's own list and chrome. The old horizontal `.app-nav` is gone: §21 specifies a
+ * rail, and a horizontal strip of fifteen links wrapping onto three lines is not one. */
+.ds-rail-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.ds-rail-list a {
+  display: block;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-button);
+  color: var(--color-text-secondary);
+  text-decoration: none;
+  font-size: var(--type-label-size);
+  font-weight: var(--type-label-weight);
+  letter-spacing: var(--type-label-tracking);
+}
+
+.ds-rail-list a:hover {
+  background: var(--color-surface-hover);
+  color: var(--color-text-primary);
+}
+
+.ds-rail-list a[aria-current="page"] {
+  background: var(--color-surface-selected);
+  color: var(--color-text-primary);
+}
+
+.ds-rail-chrome {
+  margin-block-start: var(--space-6);
+  padding-block-start: var(--space-4);
+  border-block-start: 1px solid var(--color-border-subtle);
+}
+
+@media (max-width: 599px) {
+  .ds-rail-list {
+    flex-direction: row;
+    gap: var(--space-1);
+    inline-size: 100%;
+    justify-content: space-around;
+  }
+
+  .ds-rail-list a {
+    min-block-size: 44px;
+    display: flex;
+    align-items: center;
+    font-size: var(--type-caption-size);
+  }
+
+  /* The chrome does not belong in a bottom nav of five. */
+  .ds-rail-chrome {
+    display: none;
+  }
+}
+
+/* --- The field shell ---------------------------------------------------- */
+
+.ds-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.ds-field-label {
+  font-size: var(--type-label-size);
+  font-weight: var(--type-label-weight);
+  letter-spacing: var(--type-label-tracking);
+  color: var(--color-text-primary);
+}
+
+.ds-field-mark {
+  color: var(--color-text-tertiary);
+  font-weight: 400;
+}
+
+.ds-field-control {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  background: var(--color-surface-input);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-button);
+  padding-inline: var(--space-3);
+  /* The control height follows the density mode, which is what makes a Touch form usable
+     without every form choosing its own number. */
+  min-block-size: var(--density-control);
+}
+
+.ds-field-control:focus-within {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 1px;
+}
+
+.ds-field-input {
+  flex: 1;
+  min-inline-size: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-text-primary);
+  font: inherit;
+  font-size: var(--type-body-size);
+  padding-block: var(--space-2);
+  /* Text aligns to the logical start, so Arabic starts on the right without a rule. */
+  text-align: start;
+}
+
+.ds-field-input:focus {
+  outline: none; /* the ring is on the control, so prefix and suffix sit inside it */
+}
+
+.ds-field-affix {
+  color: var(--color-text-tertiary);
+  font-size: var(--type-bodySm-size);
+  white-space: nowrap;
+}
+
+.ds-field-message {
+  margin: 0;
+  font-size: var(--type-bodySm-size);
+  line-height: var(--type-bodySm-line);
+  color: var(--color-text-secondary);
+}
+
+.ds-field-message-error {
+  color: var(--color-text-critical);
+}
+
+.ds-field-message-warning {
+  color: var(--color-text-primary);
+}
+
+/* An invalid field is outlined and paired with a message -- never one without the other. */
+.ds-field-control:has(.ds-field-input[aria-invalid="true"]) {
+  border-color: var(--color-border-error);
+}
+
+/* Full width below bp.sm. */
+@media (max-width: 599px) {
+  .ds-field-control {
+    inline-size: 100%;
   }
 }

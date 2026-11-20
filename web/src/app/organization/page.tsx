@@ -194,7 +194,7 @@ function OrganizationCard({ node, locale }: { node: OrganizationTree; locale: Lo
 
 function Shell({ locale, children }: { locale: Locale; children: React.ReactNode }) {
   return (
-    <div className="stack" style={{ padding: "var(--space-6)", maxWidth: "960px" }}>
+    <div className="stack">
       <h1 style={{ margin: 0 }}>{t(locale, "org.title")}</h1>
       {children}
     </div>

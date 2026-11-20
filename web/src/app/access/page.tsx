@@ -134,7 +134,7 @@ export default async function DoorBoardPage() {
 
 function Shell({ locale, children }: { locale: Locale; children: React.ReactNode }) {
   return (
-    <div className="stack" style={{ padding: "var(--space-6)", maxWidth: "960px" }}>
+    <div className="stack">
       <nav aria-label={t(locale, "nav.back")}>
         <Link href="/">{t(locale, "home.title")}</Link>
       </nav>

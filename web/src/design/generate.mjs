@@ -24,6 +24,10 @@ import { fileURLToPath } from "node:url";
 
 const here = (name) => fileURLToPath(new URL(name, import.meta.url));
 const ds = JSON.parse(readFileSync(here("./ds.json"), "utf8"));
+// **Extracted from the design source and pinned by digest**, which `ds.json` is not:
+// `ds.json` is Step 2 and this is Steps 3 to 5. The density modes, the breakpoint
+// ranges and the Admin shell all live here, and none of them was emitted before.
+const contracts = JSON.parse(readFileSync(here("./contracts.json"), "utf8"));
 
 /**
  * Layer 1, both halves.
@@ -151,8 +155,100 @@ function buildCss() {
     lines.push(`  --${slug}-tracking: ${tracking};`);
   }
   lines.push("}");
+
+  // ------------------------------------------------------------------ density and the shell
+  //
+  // **These come from `contracts.json`, which is extracted from the design source and pinned
+  // by digest.** They were in `ds.json` from the start and nothing emitted them, so the four
+  // density modes and the Admin shell were specifications this app had read and ignored --
+  // every page shipped a horizontal nav over a 960px column while the source states a
+  // 12-column grid, a 240px rail and a 1440px cap.
+  //
+  // Density changes "row height, spacing step and type step only. Colour, radius, anatomy and
+  // hierarchy are invariant" (Patterns, CROSS). So each mode redefines three things and
+  // nothing else, and `--density-*` is what a row-rendering component consumes.
+  lines.push("", "/* Density. Four modes, three variables, nothing else moves. */");
+  for (const mode of contracts.density) {
+    const [row, control] = mode.row_and_control.split("/").map((s) => parseInt(s.trim(), 10));
+    const step = TYPE_STEP[mode.type_step];
+    if (step === undefined) throw new Error(`unknown density type step: ${mode.type_step}`);
+    const gapIndex = SPACE.findIndex(([name]) => name === "3") + step;
+    const gap = SPACE[gapIndex];
+    if (!gap) throw new Error(`density ${mode.mode}: spacing step ${step} falls off the scale`);
+    // **The ramp is shorter than the step count, and the source resolves that itself.**
+    // Spacious is "+2 steps" and the body ramp has one step above `type.body`. The scale's
+    // own usage note assigns `type.bodyLg` to "Member app body, coach prose" -- which are
+    // exactly the surfaces LAYOUTS puts at Spacious -- so the top of the ramp is the stated
+    // answer for that surface rather than a shortfall to invent a token for. Clamped, and
+    // recorded in contracts/ui/design-compliance.md as an interpretation rather than a value
+    // read straight off the page.
+    const wanted = BODY_RAMP.indexOf("type.body") + step;
+    const body = BODY_RAMP[Math.min(Math.max(wanted, 0), BODY_RAMP.length - 1)];
+    const [px, lh] = ds.TYPE_SCALE.find(([n]) => n === body)[1].split("/").map((s) => s.trim());
+    const selector =
+      mode.mode === "Default"
+        ? ':root, :root[data-density="default"]'
+        : `:root[data-density="${mode.mode.toLowerCase()}"]`;
+    lines.push(
+      `${selector} {`,
+      `  --density-row: ${row}px;`,
+      `  --density-control: ${control}px;`,
+      `  --density-gap: ${gap[1]}px; /* spacing step ${mode.type_step} from --space-3 */`,
+      `  --density-type-size: ${px}px; /* ${body} */`,
+      `  --density-type-line: ${lh};`,
+      "}",
+    );
+  }
+
+  // The Admin shell, quoted from LAYOUTS. The numbers are the source's, parsed rather than
+  // retyped, because a transcribed number is how four precision slips happened in the design
+  // project itself -- the Foundations document says so and the discipline transfers.
+  const admin = contracts.layouts.find((l) => l.surface === "Veyro Admin").specification;
+  const n = (re) => {
+    const found = admin.match(re);
+    if (!found) throw new Error(`the Admin layout no longer states: ${re}`);
+    return found[1];
+  };
+  lines.push(
+    "",
+    "/* The Admin shell, from LAYOUTS: 12-column, 24px gutter, rail 240/56, content max 1440,",
+    " * inspector 380 at bp.lg and 480 at bp.xl. Split view is list + inspector, never three",
+    " * columns. */",
+    ":root {",
+    `  --shell-columns: ${n(/(\d+)-column/)};`,
+    `  --shell-gutter: ${n(/(\d+)px gutter/)}px;`,
+    `  --shell-rail: ${n(/Rail (\d+) expanded/)}px;`,
+    `  --shell-rail-collapsed: ${n(/expanded \/ (\d+) collapsed/)}px;`,
+    `  --shell-content-max: ${n(/Content max (\d+)/)}px;`,
+    `  --shell-inspector: ${n(/Inspector (\d+) at bp\.lg/)}px;`,
+    `  --shell-inspector-wide: ${n(/bp\.lg, (\d+) at bp\.xl/)}px;`,
+    "}",
+  );
+
+  // The five breakpoints as values. Media queries need literals, so these exist for the
+  // component layer to reason with and for a test to compare the literals against.
+  lines.push("", "/* Breakpoints. The ranges are the source's; the behaviour is per surface. */", ":root {");
+  for (const bp of contracts.breakpoints) {
+    const from = bp.range.match(/^(\d+)/)[1];
+    lines.push(`  --${bp.name.replace(".", "-")}: ${from}px;`);
+  }
+  lines.push("}");
+
   return { css: lines.join("\n") + "\n", unresolved };
 }
+
+/** `−1 step` and friends, as an offset. The minus is U+2212, not a hyphen. */
+const TYPE_STEP = { "−1 step": -1, base: 0, "+1 step": 1, "+2 steps": 2 };
+
+/**
+ * The only ramp in the type scale a density step can walk.
+ *
+ * The scale is not one ladder -- headings, body, label, caption, data and eyebrow are separate
+ * registers -- so "+1 step" has exactly one unambiguous reading, which is the body ramp. That
+ * ambiguity is recorded in `contracts/ui/design-compliance.md` rather than resolved by
+ * inventing a mapping for the other registers.
+ */
+const BODY_RAMP = ["type.bodySm", "type.body", "type.bodyLg"];
 
 /** The spacing scale, read from the foundations' own annotations. */
 const SPACE = [

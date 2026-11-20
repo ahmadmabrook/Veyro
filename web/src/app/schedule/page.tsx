@@ -203,7 +203,7 @@ function SiteLink({
 
 function Shell({ locale, children }: { locale: Locale; children: React.ReactNode }) {
   return (
-    <div className="stack" style={{ padding: "var(--space-6)", maxWidth: "960px" }}>
+    <div className="stack">
       <h1 id="schedule-heading" style={{ margin: 0 }}>
         {t(locale, "schedule.title")}
       </h1>

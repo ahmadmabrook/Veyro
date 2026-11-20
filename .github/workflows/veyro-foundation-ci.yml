@@ -238,6 +238,15 @@ jobs:
         working-directory: web
         run: npm run lint
 
+      # **The design contracts come first**, because the tokens are generated from them: a
+      # stale extraction would regenerate tokens that agree with the wrong source and
+      # tokens:check would pass. `veyro-product-experience-design/` is the authority, and
+      # every source file is pinned by digest, so a design revision fails here until somebody
+      # re-extracts and reads the diff.
+      - name: Design contracts match the authoritative source
+        working-directory: web
+        run: npm run design:check
+
       - name: Design tokens are generated, not hand-edited
         working-directory: web
         run: npm run tokens:check

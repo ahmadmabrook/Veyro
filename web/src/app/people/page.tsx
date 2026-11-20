@@ -42,7 +42,7 @@ export default async function PeoplePage() {
   }
 
   return (
-    <div className="stack" style={{ padding: "var(--space-6)", maxWidth: "960px" }}>
+    <div className="stack">
       <h1 style={{ margin: 0 }}>{text("people.title")}</h1>
       <p className="muted" style={{ margin: 0 }}>
         {text("people.lead")}
