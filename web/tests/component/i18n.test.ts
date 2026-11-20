@@ -146,3 +146,31 @@ describe("numerals and money", () => {
     expect(isolate("ACME Ltd", "ltr")).toBe("⁦ACME Ltd⁩");
   });
 });
+
+describe("a message is text, not an escape sequence", () => {
+  /**
+   * **Found by looking at a page, twice removed from anything a test could see.** A message
+   * written through a generator came out carrying a literal `“` -- two characters and
+   * four digits where a quotation mark was meant -- and rendered exactly that way on the
+   * messages board. Every existing check passed: the key is in both catalogues, the plural
+   * forms match, the parity test compares key sets, and `“` is a perfectly ordinary
+   * string as far as any of them are concerned.
+   *
+   * A catalogue entry is read by a person. A backslash-escape in it is never intentional --
+   * TypeScript interprets the real ones at parse time, so anything that survives into the
+   * value is one that was escaped twice.
+   */
+  it("carries no literal backslash escape in either locale", () => {
+    const offenders: string[] = [];
+    for (const locale of ["en", "ar"] as const) {
+      for (const key of MESSAGE_KEYS) {
+        const entry = MESSAGES[locale][key];
+        const values = typeof entry === "string" ? [entry] : Object.values(entry);
+        for (const value of values) {
+          if (/\\[unrt]/.test(value)) offenders.push(`${locale}:${key}`);
+        }
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+});

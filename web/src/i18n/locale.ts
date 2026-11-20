@@ -880,7 +880,7 @@ const MESSAGES = {
     "notify.noMatrixTitle": "No per-event channel matrix",
     "notify.noMatrixWhy": "ADM-COM-04 draws one row per event with a column per channel, and says the defaults are deliberately quiet. MOD-013's preferences are per recipient, per category and per channel — there is no tenant-wide default to show or to set, so a matrix here would be inventing one.",
     "notify.noPairTitle": "A template may be published with one language",
-    "notify.noPairWhy": "ADM-COM-02 is explicit: \\u201cEvery template exists as a pair. A template with only one language cannot be published.\\u201d MOD-013 keys a version on key, channel and locale and enforces no pairing, and its own record names the gap: there is no localization fallback chain, because quietly sending English to somebody who asked for Arabic is worse than refusing. Closing this needs the constraint, not a column.",
+    "notify.noPairWhy": "ADM-COM-02 is explicit: “Every template exists as a pair. A template with only one language cannot be published.” MOD-013 keys a version on key, channel and locale and enforces no pairing, and its own record names the gap: there is no localization fallback chain, because quietly sending English to somebody who asked for Arabic is worse than refusing. Closing this needs the constraint, not a column.",
     "notify.authored": "Messages authored",
     "notify.authoredLead": "Every request is authored even when it is suppressed, because a request that vanished is one nobody can account for when the member asks why they never heard anything.",
     "notify.noneAuthored": "Nothing has been requested.",
