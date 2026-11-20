@@ -218,9 +218,68 @@ Seven columns, three quick filters, a saved-view control, a bounded selection wi
 was in the registry, and none of it is in this app.
 
 `web/src/design/screens.mjs` extracts all of it to `screens.generated.json`, pinned by
-SHA-256 and checked by `npm run design:check` like the contracts. **37 of the 170 screens have
-a design this detailed; the other 133 have identity only** — a name and a ux group — which is
-a genuine gap in the source rather than something to invent around.
+SHA-256 and checked by `npm run design:check` like the contracts.
+
+### The first extraction found 37 screens and the design folder specifies 167
+
+**That number was written into this file as a gap in the design source, and it was a gap in
+the extraction.** The correction matters more than the arithmetic, because the wrong number is
+what made composing a screen from backend routes look like the only option available.
+
+The section boundary was matched inside a single CSS signature:
+
+```
+/letter-spacing:\.1em">([^<]{4,300})<\/div>/
+```
+
+which occurs in **nine of the forty-eight** design documents. The eyebrow in the others is set
+at `.07em`, `.08em` or `.09em`, so every one of them was read as containing no screens:
+
+| Missed | What is in it |
+| --- | --- |
+| `Veyro HF Command Center` | ADM-CC-01…05 — five canvases, 1440×900, the owner day, the branch-manager day, the critical exception, the quiet day and degraded data |
+| `Veyro HF Member 360` | ADM-MEM-01…04 |
+| `Veyro HF Front Desk and POS` | FD-01, POS-01 |
+| `Veyro HF Coach` | CCH-01…03 |
+| `Veyro HF Member App` | MBR-01, MBR-02 |
+| `Veyro HF CRM and Console` | ADM-CRM-01, CON-01 |
+| `Veyro HF Remaining Modules` | ADM-SCH-01, ADM-PAY-01/02, MBR-03, ADM-AUT-02, CON-02 |
+| `V1 Batch M` … `Batch Q` | 12 screens each, and each announces that in its own header — "BATCH M · 12 SCREENS DRAWN · FD-02 → POS-07 · FRONT DESK & POS COMPLETE" |
+
+So the boundary is now the **text** rather than its styling: a run beginning with one or more
+screen ids and a middot, which is how all four generations of document in the folder title a
+screen. The `HF` files title by role and state instead — `CANVAS 1 · OWNER · ALL LOCATIONS ·
+NORMAL OPERATIONAL DAY · 1440×900` — and the registry's own `note` field is what names the id
+for each (`ADM-CC-01` is "HF Command Center c1"), so those resolve through a declared mapping
+that **fails the extraction if a note resolves to nothing**. That check caught its own first
+version: the `V1 *` documents were listed in the mapping and title their screens by id, so
+their canvas prefixes matched nothing.
+
+**The real coverage, from the registry's own 178 V1 rows:**
+
+| | |
+| --- | --- |
+| **Specified** — drawn, with copy, states and layout rules | **167** |
+| `NO-UI` — the registry says the screen is not needed | 8 |
+| **Genuinely unspecified** | **3** |
+
+The three are `ADM-CRM-05` (trial in progress · day N of 7), `ADM-POS-02` (inventory and
+stock) and `MBR-33` (security and devices). Each has a registry identity and a one-line note
+and no drawn screen anywhere in the folder; they are named in
+`screens.generated.json → coverage.unspecified_ids` and nothing invents around them.
+
+**And the registry's own `status` column is stale, which is why it is not the authority here.**
+It marks 41 screens `DONE` and 129 `GAP`, while the batch documents drew 126 more after it was
+last written — `FD-02` reads `GAP` in the registry and is drawn in full in `Batch M`. The
+registry is authoritative for a screen's *identity*; the documents are authoritative for its
+*design*.
+
+`tests/unit/screen-coverage.test.mjs` is what stops this recurring. It pins the coverage count,
+recomputes the set of documents that title a screen **independently of `screens.mjs`** and
+compares both directions, asserts the seven `HF` files by name, and requires each `Batch M`–`Q`
+document to contribute at least the twelve sections its own header claims. Mutation-proven: an
+extraction narrowed to skip the batch documents drops coverage to 101 and fails four of its
+seven assertions.
 
 ### And the existing surface does not follow the design's information architecture
 

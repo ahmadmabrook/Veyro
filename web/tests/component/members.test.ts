@@ -9,7 +9,7 @@ import {
   type MembershipRow,
 } from "@/lib/members";
 
-import screens from "@/design/screens.generated.json";
+import { specFor, specTextFor } from "@/design/screen-specs";
 
 /**
  * ADM-MEM-05's decisions, and the screen's claim about its own gaps.
@@ -21,13 +21,12 @@ import screens from "@/design/screens.generated.json";
 
 describe("the members list is built from a design that exists", () => {
   it("finds ADM-MEM-05 in the extracted source", () => {
-    const section = screens.screens.find((s) => s.ids.includes("ADM-MEM-05"));
-    expect(section, "ADM-MEM-05 is not in the extraction").toBeTruthy();
+    const spec = specFor("ADM-MEM-05");
     // The eyebrow states the density and the width the screen was drawn at, which is why the
     // page sets `data-density="compact"` rather than inheriting the Admin default.
-    expect(section!.eyebrow).toContain("COMPACT");
+    expect(spec.sections.map((s) => s.title).join(" ")).toContain("COMPACT");
     // And the scale rule the footer's two numbers exist for.
-    expect(section!.text).toContain("There is no state where 4,812 rows render");
+    expect(specTextFor("ADM-MEM-05")).toContain("There is no state where 4,812 rows render");
   });
 
   it("names every column the design specifies that this build cannot answer", () => {
