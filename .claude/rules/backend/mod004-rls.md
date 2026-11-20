@@ -658,6 +658,27 @@ passed and a not-overdue one is a date still to come -- so the date sort already
 The remedy is the one this file records for a constraint subsumed by a sibling: delete it and
 keep the primitive statement, rather than contriving a case that cannot exist.
 
+**An unbounded read is not a defect until something renders it, and then it is two.** MOD-007's
+`list_sessions` returned every session an identity had ever opened, which was invisible for as
+long as the only caller was a test asserting that one of them was there. The first page to
+render it was 13,542 pixels tall -- and the bigger half is that bounding it in the *client*
+would have fixed the page and nothing else: the response still carries every device that person
+has signed in from, which is a read of their whole login history served to answer "am I signed
+in anywhere else". **The bound belongs where the rows are selected**, with the same two
+properties every other listing read in this build has: a ceiling the server refuses above, and
+a filter for the question actually being asked (`live_only`, here, because a revoked session is
+not something a member can act on). This is the "a writer with no reader" gap from the other
+side -- a read nobody rendered is a read nobody sized.
+
+**A test that consumes a product budget provisions its own, and this is the fourth instance.**
+A single-use recovery code spent on a device challenge; thirty logins a minute spent by a
+`beforeEach`; five recovery failures that lock the path with nothing in the build to reset it;
+and now minting recovery codes, which needs a step-up, which spends a recovery code. Each was
+green on a fresh fixture and red on the second run, which is a green that depends on how many
+times the suite has been run rather than on the behaviour under test. The fixture carries a
+fourth identity for the reissue test for exactly this reason. **Running the suite twice in a
+row is what finds these**, and nothing else does.
+
 **A rate limit whose budget is not declared is not a rate limit, and the structural test has
 to be mutation-proven too.** MOD-022's evaluate route named a budget `ratelimit.BUDGETS` did
 not carry, and `decide` defaulted to allowing -- so the route read as limited and was not.

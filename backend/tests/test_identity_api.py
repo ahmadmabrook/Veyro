@@ -909,5 +909,159 @@ class ReviewRegressionTests(IdentityTestCase):
                          "only the login is an authentication")
 
 
+class SessionListingBoundsTests(IdentityTestCase):
+    """The session inventory is bounded and can be filtered to what still works.
+
+    **It had no bound at all.** A session row is written on every sign-in and every rotation
+    and `iam.sessions` has no DELETE grant for any role, so an identity that had signed in a
+    few hundred times got a few hundred rows -- which made the honest answer to "show me my
+    sessions" a page thirteen thousand pixels tall. Found by building the account surface and
+    looking at it.
+    """
+
+    def test_the_listing_is_bounded_and_newest_first(self):
+        tenant_id, identity_id, email = self.identity()
+        token = self.session(tenant_id, email)
+        # A second sign-in, so there is more than one row to bound.
+        self.session(tenant_id, email, device_fingerprint="device-b")
+        listed = self.client.get(
+            f"/identities/{identity_id}/sessions?limit=1",
+            headers=self.headers(tenant_id, token))
+        self.assertEqual(listed.status_code, 200, listed.text)
+        self.assertEqual(len(listed.json()), 1)
+
+    def test_a_limit_outside_the_ceiling_refuses(self):
+        tenant_id, identity_id, email = self.identity()
+        head = self.headers(tenant_id, self.session(tenant_id, email))
+        for query in ("limit=0", "limit=501"):
+            refused = self.client.get(
+                f"/identities/{identity_id}/sessions?{query}", headers=head)
+            self.assertEqual(refused.status_code, 422, f"{query}: {refused.text}")
+            self.assertEqual(refused.json()["error"], "bad_limit", query)
+
+    def test_the_log_refuses_the_same_way_rather_than_clamping(self):
+        """One module, one answer to an out-of-range limit.
+
+        `auth_events` clamped silently -- `max(1, min(limit, 500))` -- so a caller asking for
+        a thousand rows got five hundred and was told nothing, and a page that asked for
+        everything rendered what it got believing it had the lot. MOD-017's and MOD-018's
+        listing reads both refuse, which made this the odd one in the build; found by writing
+        the two reads this page needs one file apart.
+        """
+        tenant_id, identity_id, email = self.identity()
+        head = self.headers(tenant_id, self.session(tenant_id, email))
+        for query in ("limit=0", "limit=501"):
+            refused = self.client.get(f"/auth/events?{query}", headers=head)
+            self.assertEqual(refused.status_code, 422, f"{query}: {refused.text}")
+            self.assertEqual(refused.json()["error"], "bad_limit", query)
+        # And the ordinary read still works, bounded to what was asked for.
+        fine = self.client.get("/auth/events?limit=1", headers=head)
+        self.assertEqual(fine.status_code, 200, fine.text)
+        self.assertEqual(len(fine.json()), 1, fine.text)
+
+    def test_live_only_drops_a_revoked_session_and_the_default_keeps_it(self):
+        """A revoked row is the evidence a sign-out happened, which a reviewer wants.
+
+        A member looking at "where am I signed in" wants the ones that still work. Both are
+        real reads, so the caller says which -- and the default is the one that hides nothing.
+        """
+        tenant_id, identity_id, email = self.identity()
+        head = self.headers(tenant_id, self.session(tenant_id, email))
+        everything = self.client.get(
+            f"/identities/{identity_id}/sessions", headers=head).json()
+        self.assertGreaterEqual(len(everything), 1)
+        # Revoke one that is not the caller's own, by opening a second session first.
+        second_token = self.session(tenant_id, email, device_fingerprint="device-b")
+        second = self.client.get(
+            "/auth/session", headers=self.headers(tenant_id, second_token),
+        ).json()["session_id"]
+        revoked = self.client.post(
+            f"/sessions/{second}/revoke",
+            json={"correlation_id": str(uuid.uuid4()), "reason": "revoked_by_user"},
+            headers=head)
+        self.assertEqual(revoked.status_code, 200, revoked.text)
+        after_all = self.client.get(
+            f"/identities/{identity_id}/sessions", headers=head).json()
+        after_live = self.client.get(
+            f"/identities/{identity_id}/sessions?live_only=true", headers=head).json()
+        self.assertIn(second, [s["session_id"] for s in after_all])
+        self.assertNotIn(second, [s["session_id"] for s in after_live])
+
+
+class RevokedDeviceReadmissionTests(IdentityTestCase):
+    """A revoked device is refused at the next sign-in, not challenged again.
+
+    **This is the half of `revoke_device` nothing tested.** Its docstring records the
+    regression -- "the first version revoked the sessions, left the fingerprint usable" -- and
+    the control that closed it was guarded by no test in this suite, in either direction.
+    It matters because the account surface now has a button for it: the device a member is
+    reading the page in can be revoked with one click, and if the effect were a re-challenge
+    rather than a refusal the page's warning would be wrong in the direction that locks
+    somebody out without telling them.
+
+    The refusal is also deliberately indistinguishable from a wrong password, which is the
+    second thing asserted here: a 200 saying `authenticated: false` with no challenge, the
+    same answer a bad credential gets, so nobody can probe whether a fingerprint is known.
+    """
+
+    def _device_of(self, tenant_id: str, identity_id: str, token: str) -> str:
+        listed = self.client.get(
+            f"/identities/{identity_id}/devices", headers=self.headers(tenant_id, token))
+        self.assertEqual(listed.status_code, 200, listed.text)
+        self.assertEqual(len(listed.json()), 1, listed.text)
+        return str(listed.json()[0]["device_id"])
+
+    def test_the_device_and_its_sessions_go_together(self):
+        tenant_id, identity_id, email, token = self.signed_in()
+        device_id = self._device_of(tenant_id, identity_id, token)
+        revoked = self.client.post(
+            f"/devices/{device_id}/revoke",
+            json={"correlation_id": str(uuid.uuid4()), "reason": "revoked_by_user"},
+            headers=self.headers(tenant_id, token))
+        self.assertEqual(revoked.status_code, 200, revoked.text)
+        self.assertGreaterEqual(revoked.json()["sessions_revoked"], 1, revoked.text)
+        # The token the revoke was made with is gone with it, which is what makes the
+        # account page's warning true rather than decorative.
+        after = self.client.get("/auth/session", headers=self.headers(tenant_id, token))
+        self.assertEqual(after.status_code, 401, after.text)
+
+    def test_signing_in_again_from_it_is_refused_rather_than_challenged(self):
+        tenant_id, identity_id, email, token = self.signed_in()
+        device_id = self._device_of(tenant_id, identity_id, token)
+        self.client.post(
+            f"/devices/{device_id}/revoke",
+            json={"correlation_id": str(uuid.uuid4()), "reason": "lost"},
+            headers=self.headers(tenant_id, token))
+
+        again = self.login(tenant_id, email)
+        self.assertEqual(again.status_code, 401, again.text)
+        self.assertEqual(again.json()["error"], "authentication_failed", again.text)
+        # Not a challenge: there is nothing to answer, and offering one would say the
+        # fingerprint is recognised.
+        self.assertNotIn("challenge", again.json(), again.text)
+        self.assertNotIn("token", again.json(), again.text)
+
+        # **And it is the same answer a wrong password gets, byte for byte.** That is the
+        # property the page's copy rests on: a member who revoked their own browser cannot
+        # tell afterwards why they are being refused, which is why the warning has to be in
+        # front of the button rather than in the error.
+        wrong = self.login(tenant_id, email, password="not-the-password",
+                           device_fingerprint="device-c")
+        self.assertEqual(wrong.status_code, again.status_code, wrong.text)
+        self.assertEqual(wrong.json(), again.json(), wrong.text)
+
+    def test_another_fingerprint_still_works(self):
+        """Revoking a device is about that device, not about the account."""
+        tenant_id, identity_id, email, token = self.signed_in()
+        device_id = self._device_of(tenant_id, identity_id, token)
+        self.client.post(
+            f"/devices/{device_id}/revoke",
+            json={"correlation_id": str(uuid.uuid4()), "reason": "lost"},
+            headers=self.headers(tenant_id, token))
+        elsewhere = self.login(tenant_id, email, device_fingerprint="device-b")
+        self.assertEqual(elsewhere.status_code, 200, elsewhere.text)
+        self.assertTrue(elsewhere.json()["authenticated"], elsewhere.text)
+
+
 if __name__ == "__main__":
     unittest.main()

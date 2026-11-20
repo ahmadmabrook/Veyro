@@ -600,6 +600,63 @@ const MUTATIONS = [
     grep: "says reachability is worked out rather than stored",
   },
   {
+    id: "account-own-revoke-leaves-a-dead-page",
+    why: "revoking your own device ends the session that pressed the button, so a success "
+      + "message returns to a page with no session to render it -- the reader sees nothing "
+      + "and is thrown to sign-in later with no explanation",
+    file: "src/app/account/actions.ts",
+    from: "      signedOut: (await currentSession()) === null,",
+    to: "      signedOut: false,",
+    grep: "signs you out here",
+  },
+  {
+    id: "account-this-browser-unmarked",
+    why: "revoking the device you are reading the page in signs you out and locks this "
+      + "browser out for good, so the one device that must be marked is that one",
+    file: "src/lib/account.ts",
+    from: "  const mine = sessions.find((s) => s.session_id === sessionId);",
+    to: "  const mine = sessions.find(() => false);",
+    grep: "marks the browser it is reading from",
+  },
+  {
+    id: "account-revoke-warning-deleted",
+    why: "a revoked device is refused at the next sign-in rather than challenged, in the same "
+      + "words a wrong password gets -- so the cost has to be said before the button, because "
+      + "nothing afterwards can say it",
+    file: "src/app/account/account-view.tsx",
+    from: "                    {text(\"account.revokingThisSignsYouOut\")}",
+    to: "                    {null}",
+    grep: "marks the browser it is reading from",
+  },
+  {
+    id: "account-codes-need-a-step-up",
+    why: "minting codes takes the current password or a stepped-up session and nothing else, "
+      + "so a button offered to a level-1 session offers an action the server refuses",
+    file: "src/lib/account.ts",
+    from: "  return aal >= 2;",
+    to: "  return true;",
+    grep: "offers no reissue button",
+  },
+  {
+    id: "account-session-is-live-needs-both",
+    why: "a session is live only if it is neither revoked nor expired -- checking the flag "
+      + "alone lists a fortnight-old session as still open",
+    file: "src/lib/account.ts",
+    from: "  return session.revoked_at === null && session.expires_at > nowIso;",
+    to: "  return session.revoked_at === null;",
+    runner: "vitest",
+    grep: "not revoked, and not expired",
+  },
+  {
+    id: "account-codes-are-shown-once",
+    why: "only a hash is kept, so a batch exists in one HTTP response -- a page that did not "
+      + "say so would imply they can be fetched again",
+    file: "src/app/account/account-view.tsx",
+    from: '            <Alert tone="warning">{text("account.codesShownOnce")}</Alert>',
+    to: "            {null}",
+    grep: "shows the batch once",
+  },
+  {
     id: "integrations-obligations-bind-critical",
     why: "the check was keyed on `live_critical`, which the column never holds, so every "
       + "install reported the written obligations did not apply -- including one carrying "

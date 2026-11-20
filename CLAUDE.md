@@ -301,8 +301,8 @@ Known gaps, deliberate:
   counts are not this one, so it does not guess at them, and it never deletes anything to make a
   smaller plan fit — it refuses, lists the breaches, and proceeds only when acknowledged.
 
-**MOD-007 (IAM-01 identity, authentication, passkeys and device sessions) — implemented
-server-side, and reviewed.** A third plane: schema `iam`, role `veyro_iam_app`, seven tables, all
+**MOD-007 (IAM-01 identity, authentication, passkeys and device sessions) — implemented,
+reviewed, and the first module with a surface that writes.** A third plane: schema `iam`, role `veyro_iam_app`, seven tables, all
 tenant-bound under forced RLS. Working: identities linked across tenants by a bare `person_id`,
 scrypt passwords, recovery codes, device inventory with confirmation, trust and revocation, bearer
 sessions stored only as a SHA-256 digest, rotation with stolen-token reuse detection, assurance
@@ -364,6 +364,11 @@ Things to know before extending it:
   lock here would shut the only door left, and sharing one counter could not do both jobs.
 - **AAL-3 is unreachable today**, and `/auth/require/*` says so in a `reachable` field rather than
   implying otherwise. It needs a hardware authenticator, which needs WebAuthn verification.
+- **The session listing is bounded and filterable**, which it was not until something rendered
+  it: `list_sessions` takes `limit` (default `SESSION_PAGE = 50`, refused above it) and
+  `live_only`, because an unbounded read of every session an identity ever opened is a page
+  describing every device that person has signed in from. The bound belongs here rather than in
+  the client for the same reason MOD-017's listing reads are bounded on the server.
 
 Known gaps, deliberate:
 
@@ -3443,10 +3448,12 @@ queue and Member 360, with MOD-017's membership, entitlement and billing blocks 
 it; MOD-019's schedule board and session detail with MOD-020's roster on
 it; MOD-005's configuration and feature-flag board; MOD-021's fleet board and
 device detail; an operations board over MOD-010's event plane, MOD-011's objectives and the
-worker's own scheduled jobs; and MOD-022's door board and zone detail, which read the real
+worker's own scheduled jobs; MOD-022's door board and zone detail, which read the real
 routes and render the public code, the policy terms, the advisory occupancy with paragraph
 4180's disclaimer, the access points, the gaps the module discloses about itself and the
-decision log with its public/private split.
+decision log with its public/private split; and MOD-007's account page -- the **only screen in
+this app that writes**, with four of them: revoking another live session, revoking a device,
+trusting one, and minting a batch of recovery codes.
 
 **The Member 360 is where `Decision.mask` finally reaches a reader.** MOD-008 computed
 `masked_fields` on every allowed decision and from MOD-008 to MOD-013 nothing read it; MOD-014
@@ -3920,16 +3927,58 @@ with a caption saying so. The test that proves no MOD-017 data leaks to a refuse
 initially asserted the *wrong* number and failed for that reason, which is the confusion
 arriving in the evidence before it could arrive in the product.
 
-Known gaps: the surface covers the sign-in, the step-up, MOD-004, MOD-008, MOD-010, MOD-011,
-MOD-005, MOD-009, MOD-012, MOD-013, MOD-014, MOD-016, MOD-017, MOD-018, MOD-019, MOD-021
-and MOD-022, plus MOD-020's roster on a session. The other two implemented modules have no
-screens yet,
-which is the bulk of the remaining work; MOD-019's own surface is read-only -- publishing a
-schedule, substituting an instructor and cancelling a session are all built on the server and
-none has a form, which is the same gap the hierarchy has and for the same reason: every one of
-those writes is stepped-up;
-a step-up spends a recovery code and there is no screen for reissuing a batch, because TOTP and
-passkeys are implemented and unverifiable here so a recovery code is the only second factor;
+**The account page is the first screen in this app that writes, and which four writes it is
+was decided by the gate rather than chosen.** Every other surface here is read-only because
+every `tenancy.*`, `config.*`, `catalog.*` and `finance.*` write is a stepped-up financial
+permission, so a form for one is a form whose first act is a step-up. MOD-007's identity
+routes are the exception: `owned(session, identity_id)` refuses any subject that is not the
+session's own with a 404, so there is **nothing to authorize** -- which is also why the
+navigation entry is unconditional rather than gated, and why these are the four writes a
+member can be given without inventing an approval flow.
+
+Four decisions carry it, and the first is the reason the page is a client component at all:
+
+- **A batch of recovery codes exists in one HTTP response and nowhere else**, because MOD-007
+  stores only a hash. A redirect would lose it, and carrying it in a query string or a cookie
+  to survive one would be writing permanent credentials into somewhere a browser keeps things.
+  `useActionState` renders it in place, once, and the page says that out loud -- a reader who
+  assumed the codes could be fetched again would write none of them down.
+- **The button is offered only where the server would accept it.** `_issue_codes_in_tx` takes
+  the current password or a stepped-up session and deliberately *not* the recovery allowance
+  `set_password` has, because MOD-007's second review found a stolen recovery session minting
+  ten fresh codes with no password and those codes surviving the owner's own reset. So
+  `mayIssueRecoveryCodes` is `aal >= 2` and a level-1 session is told what it needs rather
+  than shown a button that fails.
+- **A live session is two facts.** Revoked is explicit, expired is a comparison, and a board
+  reading only the flag lists a fortnight-old session as open. The bound and the filter went
+  on the **server** -- `list_sessions` takes `limit` and `live_only` now, with
+  `SESSION_PAGE = 50` -- because a client that fetched everything and sliced would still have
+  carried every device a member has ever signed in from across the wire. The page was 13,542
+  pixels tall before that and is 3,923 after it.
+- **The decisions import nothing, and that is not tidiness.** The first version put them beside
+  the fetchers, which reach `@/lib/api` and therefore `next/headers`; a client component that
+  imports a module touching `next/headers` fails the build, so **the login page started
+  answering 500**. `account.ts` (decisions, no imports) and `account-reads.ts` (I/O) is the
+  split the backend makes between `domain` and `service`, arrived at the hard way.
+
+**And the fixture grew a fourth identity for it.** This repository already records three
+tests whose green depended on how many times the suite had been run, all of them spending a
+product budget somebody else needed; minting recovery codes needs a step-up, a step-up spends
+a recovery code, and five wrong ones lock the recovery path with nothing in the build to
+reset it. So the reissue test signs in as an identity nobody else touches. **The rule is the
+one already written down**: a test that consumes a product budget provisions its own.
+
+Known gaps: the surface covers the sign-in, the step-up, the account page, MOD-004, MOD-005,
+MOD-007, MOD-008, MOD-009, MOD-010, MOD-011, MOD-012, MOD-013, MOD-014, MOD-016, MOD-017,
+MOD-018, MOD-019, MOD-021 and MOD-022, plus MOD-020's roster on a session. MOD-015 is the one
+implemented module with no screen at all, which is the bulk of the remaining work; MOD-019's
+own surface is read-only -- publishing a schedule, substituting an instructor and cancelling a
+session are all built on the server and none has a form, which is the same gap the hierarchy
+has and for the same reason: every one of those writes is stepped-up;
+a step-up still spends a recovery code, and the account page's reissue needs a stepped-up
+session, so the batch that runs out pays for the step-up that mints the next one with its own
+last code -- a member who spends all ten without reissuing has no way back from this surface,
+because TOTP and passkeys are implemented and unverifiable here;
 every `tenancy.*.write` is a stepped-up
 financial permission and none of those forms is built, so the hierarchy and the people surfaces
 are read-only; there is no mobile client and no edge agent; and nothing here is deployed
@@ -3943,8 +3992,9 @@ is part of it. So "implemented" above is accurate about the server plane and inc
 the product for every module except MOD-022, and the backlog has two halves.
 
 The first is the screens the eighteen built modules do not have. `web/` covers the sign-in, the
-step-up, MOD-004, MOD-005, MOD-008, MOD-009, MOD-010, MOD-011, MOD-012, MOD-013, MOD-014,
-MOD-016, MOD-017, MOD-018, MOD-019, MOD-020's roster, MOD-021 and MOD-022;
+step-up, the account page, MOD-004, MOD-005, MOD-007, MOD-008, MOD-009, MOD-010, MOD-011,
+MOD-012, MOD-013, MOD-014, MOD-016, MOD-017, MOD-018, MOD-019, MOD-020's roster, MOD-021 and
+MOD-022 -- so **MOD-015 is the only implemented module with no screen at all**;
 `contracts/ui/screen-contracts.yaml` names the rest, and
 the work is per module rather than per screen because each one needs its gate, its masked
 fields and its failure states wired the way those are. The second is the modules themselves: MOD-023 (Coach Workspace, which

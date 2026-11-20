@@ -57,6 +57,10 @@ export default async function RootLayout({
       // The overview is this session's own page -- what it is and what it may do -- so it
       // needs no permission beyond having signed in.
       { href: "/", label: "nav.overview", allowed: true },
+      // **No gate.** Every route this page reads is scoped to the caller's own
+      // identity and refuses any other subject with a 404, so there is nothing to
+      // authorize -- which is why it is present for every signed-in reader.
+      { href: "/account", label: "nav.account", allowed: true },
       { href: "/organization", label: "nav.organization", allowed: organization.allowed },
       { href: "/people", label: "nav.people", allowed: people.allowed },
       { href: "/schedule", label: "nav.schedule", allowed: schedule.allowed },

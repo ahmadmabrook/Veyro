@@ -52,6 +52,12 @@ export type Fixture = {
   deskPassword: string;
   /** The published membership product MOD-016's board opens, with one variant and one price. */
   productId: string;
+  // **The account spec takes no credential from here, deliberately.** Every one of its
+  // writes is destructive -- a trust that cannot be asserted twice, a revoke that locks the
+  // subject out of the product for good -- so it registers a subject per test through the
+  // open registration route instead. A fixture identity would have made it green on a fresh
+  // database and red on the second run, which is the failure this repository has now
+  // recorded four times.
 };
 
 const FILENAME = ".env.e2e.local";

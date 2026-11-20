@@ -792,6 +792,57 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
   await confirmWebDevice(
     tenantId, deskSession.identity_id, deskSignIn.token, deskEmail, deskPassword);
 
+  // ------------------------------------------------ a second identity: a person can type it
+  //
+  // **Nothing in the suite uses this one.** It exists because every other credential here is
+  // a UUID in a file -- the owner's email carries a timestamp and its password is
+  // `e2e-<uuid>` -- which is right for a test and unusable for a person who wants to open the
+  // product and look at it. A fixed email and a typeable password cost nothing in a tenant
+  // that is synthetic, local and thrown away on the next run, and they are what make the
+  // surface reviewable by hand rather than only by Playwright.
+  //
+  // **The order is the whole trick.** A brand-new identity holds no second factor, so
+  // `_authenticate_in_tx` skips the risk challenge as unanswerable and confirms the device on
+  // the strength of that login -- so signing in once with this app's own fingerprint *before*
+  // any recovery code exists is what stops the web form asking for one afterwards. Issuing
+  // the codes second gives it a step-up without taking that away.
+  const EASY_EMAIL = "admin@veyro.invalid";
+  const EASY_PASSWORD = "veyro-local-1";
+  const easy = await call("/identities", {
+    method: "POST", tenant: tenantId,
+    body: { display_name: "Local Admin", correlation_id: cid(), email: EASY_EMAIL,
+            password: EASY_PASSWORD },
+  });
+  const easyFirst = await call("/auth/login", {
+    method: "POST", tenant: tenantId,
+    body: { identifier: EASY_EMAIL, password: EASY_PASSWORD, correlation_id: cid(),
+            device_fingerprint: browserFingerprint(tenantId, EASY_EMAIL),
+            device_label: "Veyro web" },
+  });
+  if (easyFirst.challenge) {
+    throw new Error(
+      "the local admin's first login was challenged, which means a second factor existed "
+      + "before the device was confirmed -- the order in this block is what prevents that",
+    );
+  }
+  // The bootstrap's role, so this identity sees what the owner sees. `assign_role` refuses to
+  // grant what the grantor does not hold, and the owner holds everything.
+  // The bootstrap's role key is read back from the owner's own assignment rather than passed
+  // in: `provision` holds it and this function does not, and a hard-coded "tenant_admin"
+  // would be a second spelling of something the server already knows.
+  const ownerRoles = await call(
+    `/authz/assignments/${ownerIdentityId}?correlation_id=${cid()}`, as(token));
+  const ownerRole = ownerRoles[0]?.role_key;
+  if (!ownerRole) throw new Error("the owner holds no role, so there is nothing to grant");
+  await call("/authz/assignments", {
+    method: "POST", ...as(token),
+    body: { identity_id: easy.identity_id, role_key: ownerRole, correlation_id: cid() },
+  });
+  const easyCodes = await call(`/identities/${easy.identity_id}/recovery-codes`, {
+    method: "POST", tenant: tenantId, token: easyFirst.token,
+    body: { correlation_id: cid(), current_password: EASY_PASSWORD },
+  });
+
   // ---------------------------------------------------------------- MOD-017, a membership
   //
   // The member's agreement, what it entitles them to, and one invoice that has been paid.
@@ -1262,6 +1313,9 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
     twinPersonId: twin.person_id,
     deskEmail,
     deskPassword,
+    easyEmail: EASY_EMAIL,
+    easyPassword: EASY_PASSWORD,
+    easyRecoveryCode: easyCodes.codes[0],
     publisherEmail: secondEmail,
     publisherPassword: secondPassword,
     locationId: location.location_id,
@@ -1311,6 +1365,11 @@ if (invokedDirectly) {
       `VEYRO_E2E_SESSION_ID=${fixture.firstSessionId}`,
       `VEYRO_E2E_BOOKED_SESSION_ID=${fixture.bookedSessionId}`,
       `VEYRO_E2E_PRODUCT_ID=${fixture.productId}`,
+      "# A person can type these. Nothing in the suite uses them; they exist so the product",
+      "# can be opened and looked at, which is how four of this surface's defects were found.",
+      `VEYRO_E2E_EASY_EMAIL=${fixture.easyEmail}`,
+      `VEYRO_E2E_EASY_PASSWORD=${fixture.easyPassword}`,
+      `VEYRO_E2E_EASY_RECOVERY_CODE=${fixture.easyRecoveryCode}`,
       "",
     ].join("\n"),
     { mode: 0o600 },
@@ -1325,6 +1384,9 @@ if (invokedDirectly) {
   console.log(`decision    ${fixture.decisionCode}`);
   console.log(`schedule    ${fixture.sessionsGenerated} sessions from one template`);
   console.log(`booking     ${fixture.bookingId === null ? "none" : "one on tomorrow's class"}`);
+  // The password is printed here on purpose and the others deliberately are not: this one is
+  // a constant in this file, so a terminal scrollback learns nothing it could not read.
+  console.log(`sign in as  ${fixture.easyEmail} / ${fixture.easyPassword}`);
   console.log(`worker      ${fixture.workerRuns} runs, ${fixture.workerFailed} failed`);
   console.log(`credentials written to web/.env.e2e.local (mode 600)`);
 }

@@ -44,6 +44,7 @@ const surfaces: [string, string][] = [
   ["the privacy board", "/privacy"],
   ["the messages board", "/notifications"],
   ["the integrations board", "/integrations"],
+  ["your account", "/account"],
 ];
 
 test.describe("at phone width", () => {

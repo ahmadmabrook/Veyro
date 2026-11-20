@@ -29,8 +29,8 @@ each been shown to fail when the thing they guard is removed.
 | Layer | What it proves | Count | Command |
 |---|---|---|---|
 | Foundation (`tests/unit/`) | Tokens, contrast, type, theme coverage, backend parity. No dependencies, no DOM. | 57 | `npm run test:foundation` |
-| Component (`tests/component/`) | Control semantics, the message catalogue in both directions, the sign-in form's four states, the device-label parity, the hierarchy composer, the mask marker, the redirect guard, the relay verdict, why a flag resolved as it did, reading an instant in a site's own timezone, what a member's money and entitlements mean, which periods need somebody and why an unbalanced ledger means lost rows -- including that the money renderer is the one the receipt uses rather than a second one -- in jsdom. | 108 | `npm test` |
-| End-to-end (`tests/e2e/*.spec.ts`) | A real browser against a real backend whose fixture ran the real worker, including 32 axe runs across both locales, both themes and phone width, nineteen surfaces checked for horizontal scroll on a phone, the no-JavaScript sign-in replay, seven surfaces driven as a session that may not read them, a withheld field proved against a session that is actually masked, MOD-017's three blocks proved refused against a front desk that holds the person read and none of the money, and a session raised from level 1 to level 2 for real. | 234 + 3 setup | `npm run e2e` |
+| Component (`tests/component/`) | Control semantics, the message catalogue in both directions, the sign-in form's four states, the device-label parity, the hierarchy composer, the mask marker, the redirect guard, the relay verdict, why a flag resolved as it did, reading an instant in a site's own timezone, what a member's money and entitlements mean, which periods need somebody and why an unbalanced ledger means lost rows, and when a session is live, which device a session came from and whether it may mint new recovery codes -- including that the money renderer is the one the receipt uses rather than a second one -- in jsdom. | 117 | `npm test` |
+| End-to-end (`tests/e2e/*.spec.ts`) | A real browser against a real backend whose fixture ran the real worker, including 32 axe runs across both locales, both themes and phone width, twenty surfaces checked for horizontal scroll on a phone, the no-JavaScript sign-in replay, seven surfaces driven as a session that may not read them, a withheld field proved against a session that is actually masked, MOD-017's three blocks proved refused against a front desk that holds the person read and none of the money, a session raised from level 1 to level 2 for real, and the four writes on the account page driven end to end against a subject each test registers for itself -- a session revoked, a device trusted, a batch of recovery codes minted after a step-up, and a device revoked that signs the reader out and refuses the way back. | 246 + 3 setup | `npm run e2e` |
 | Mutation sweep (`tests/e2e/mutate.mjs`) | Each protection above, broken on purpose, is caught by the test that names it. | 92/92 | `npm run e2e:mutate` |
 
 ### Running it
@@ -253,6 +253,15 @@ None of the three is visible in a single run. `npm run e2e` **twice in a row** i
 them, and it is worth doing after any change to the fixture or to a test that presents a
 credential.
 
+**And a fixture identity is not always enough, which is the refinement the account spec
+forced.** It got a fixture identity of its own for exactly this rule and was still green once
+and red twice, because its writes are not merely expensive but *terminal*: a device can be
+trusted only once, and revoking the one this app signs in from locks that subject out of the
+product permanently. A per-fixture subject makes such a test a function of how many times the
+suite has been run against one database. So each of those tests registers a subject of its own
+through the open registration route -- three runs in a row against one fixture, all green --
+and the fixture's fourth identity was deleted, because nothing used it afterwards.
+
 **And the sibling of that rule: a test that asserts a freshness has to create it.** The fleet
 board shows `Online` only while a device has reported within ten minutes, which is true
 because the fixture's health report made it true -- so the assertion expires. CI provisions
@@ -370,7 +379,7 @@ looking at it, which until then nobody had done.
 page with a table — so a reader on a phone could not see that `Free` and `Status` existed at
 all. Neither defect is subtle; both are invisible to assertions about text and structure,
 which is what every layer of this suite had been. There are now two more: `inZone` is tested
-where it is decided, and `tests/e2e/phone.spec.ts` drives all thirteen surfaces at 375px and
+where it is decided, and `tests/e2e/phone.spec.ts` drives all twenty surfaces at 375px and
 fails on a single pixel of horizontal scroll, with one axe run at that width because making a
 table scroll is also what makes it a scrollable region that needs keyboard access.
 
@@ -511,6 +520,66 @@ granted, an approval decided. The fixture's own log shows `role.assigned` with o
 `recorded`, which is how the claim was caught. A surface that describes a log wrongly is worse
 than one that does not describe it.
 
+**The account page is the first screen in this app that writes, and the write is why it
+exists.** Everything before it is a read -- deliberately, because every `tenancy.*`,
+`config.*`, `catalog.*` and `finance.*` write is a stepped-up financial permission and a form
+for one is a form whose first act is a step-up. MOD-007's own routes are the exception: they
+are scoped to the caller's own identity by `owned`, which refuses any other subject with a 404,
+so there is nothing to authorize and nothing to step up *for* -- which makes them the four
+writes a member can be given without inventing an approval flow.
+
+Four decisions carry it:
+
+- **It is a client component, and the recovery codes are why.** MOD-007 stores only a hash of
+  a code, so a fresh batch exists in exactly one HTTP response and nowhere else. A redirect
+  would lose it; carrying it in a query string or a cookie to survive one would be writing
+  permanent credentials into somewhere a browser keeps things. `useActionState` renders the
+  batch in place, once, and the page says so -- because a reader who assumed they could fetch
+  them again would write none of them down.
+- **The button is offered only where the server would accept it.** `_issue_codes_in_tx` takes
+  the current password or a stepped-up session and deliberately *not* the recovery allowance
+  `set_password` has, because MOD-007's second review found a stolen recovery session minting
+  ten fresh codes with no password and those codes surviving the owner's own reset. So
+  `mayIssueRecoveryCodes` is `aal >= 2`, a level-1 session is told what it needs rather than
+  shown a button that fails, and the mutation sweep returns `true` to prove the assertion bites.
+- **A live session is two facts, not one.** Revoked is explicit and expired is a comparison,
+  and a board that read only the flag would list a fortnight-old session as still open. The
+  server filters and bounds the page -- `live_only=true&limit=20`, added for this -- and
+  `sessionIsLive` is the belt that keeps a row out if the clock moved between the read and the
+  render.
+- **The decisions have no imports, and that is not tidiness.** The first version put them in
+  `src/lib/account.ts` beside the fetchers, which reach `@/lib/api` and therefore
+  `next/headers` -- and a client component that imports a module touching `next/headers` fails
+  the build, so **the login page started answering 500**. The split into `account.ts`
+  (decisions, importing nothing) and `account-reads.ts` (I/O) is the one the backend makes
+  between `domain` and `service`, arrived at the hard way.
+
+**And the most consequential button on it gave no feedback at all.** Revoking a device
+revokes every session on it, so revoking the device you are reading the page in ends the
+session that pressed the button -- and the action returned a success message to a page that
+no longer had a session to render it on. Nothing appeared, the reader was left looking at a
+stale screen, and the next navigation threw them to sign-in with no explanation. It now asks
+the server whether it still has a session -- derived, rather than a hidden field saying "this
+one is mine" -- clears the cookies and sends the reader to sign-in with the reason named. The
+redirect has to happen **outside** the action's own catch, because `redirect` works by
+throwing and the catch would have reported the navigation as a refusal.
+
+That is also why the page says what revoking costs *before* the button. MOD-007 refuses a
+revoked device at the next sign-in rather than challenging it -- `device.readmission_refused`,
+answered as the same 401 a wrong password gets -- and the fingerprint is derived from the
+tenant and the identifier, so the next attempt produces the same value. The copy said the
+sign-in would be "challenged again", which is the one reading that lets somebody lock
+themselves out believing they can get back in. Nothing in 2,089 backend tests covered that
+refusal until this page needed it, although `revoke_device`'s own docstring records the
+regression it closed.
+
+**And the page was 13,542 pixels tall when it first rendered**, because it listed every
+session an identity had ever opened beside a hundred authentication events. Both reads are
+bounded at twenty now and it is 3,923 -- but the interesting half is that the bound had to go
+on the *server*: a client that fetched everything and sliced would still have carried the whole
+list across the wire, which for a session list is a page describing every device a member has
+ever signed in from.
+
 ## Findings raised against the sources
 
 **`ai.600`'s published contrast ratios do not match its published hex.** `ds.json`'s CONTRAST
@@ -526,24 +595,30 @@ other 8 of 9 tokens recompute to the printed hundredth on all three surfaces.
 
 ## What this does not yet cover
 
-- **Sixteen screens of a hundred and seventy.** `contracts/ui/screen-contracts.yaml` lists 170
-  V1 screens across five surfaces; what exists is sign-in, an admin landing page, MOD-004's
-  organization hierarchy, MOD-014's duplicate queue and Member 360, MOD-019's schedule board
-  and session detail, MOD-005's configuration board, MOD-022's door board and zone detail,
-  MOD-008's permissions page, MOD-021's fleet board and device detail, the operations board,
-  and the step-up flow. Every one of them is read-only: every write in the modules they cover
-  is a stepped-up permission, and no form is built. The foundation, the controls, the gate wiring and the four test
-  layers are built to carry the rest, and the per-module work is wiring each one's gate, its
-  masked fields and its failure states the way MOD-022's are.
+- **Twenty-one screens of a hundred and seventy.** `contracts/ui/screen-contracts.yaml` lists
+  170 V1 screens across five surfaces; what exists is sign-in, the step-up, an admin landing
+  page, the account page, MOD-004's organization hierarchy, MOD-005's configuration board,
+  MOD-009's erasure disclosure, MOD-012's integrations board, MOD-013's messages board,
+  MOD-014's duplicate queue and Member 360 (with MOD-017's three blocks composed onto it),
+  MOD-016's catalog board and product page, MOD-018's finance board, MOD-019's schedule board
+  and session detail (with MOD-020's roster on it), MOD-021's fleet board and device detail,
+  MOD-022's door board and zone detail, MOD-008's permissions page and the operations board.
+  **All but the account page are read-only**, because every write in the modules they cover is
+  a stepped-up financial permission and no form is built; MOD-007's four writes are the
+  exception, for the reason the account section above gives. The foundation, the controls, the
+  gate wiring and the six test layers are built to carry the rest, and the per-module work is
+  wiring each one's gate, its masked fields and its failure states the way MOD-022's are.
 - **`color.action.pressed` has no dark value**, declared in `ds.json`'s `DARK_GAPS`. The source
   names `accent.pressed` on that token and gives it no value anywhere — not in the ramps, not in
   the semantic table, not in the dark-mode note — and inventing a hex would be inventing design.
   Nothing renders a pressed state yet, so the defect is latent; the day a component implements
   one, this is the value to ask for.
-- **Signing out clears the cookie and does not revoke the session.** MOD-007 has
-  `/identities/{id}/sessions` for listing and revoking, but no "revoke the one I am holding"
-  route, and revoking *all* of them would sign a member out of their phone because they closed a
-  browser tab. The token stays valid until it expires; it is simply unreachable from this browser.
+- **Signing out clears the cookie and does not revoke the session.** MOD-007 has no "revoke
+  the one I am holding" route, and revoking *all* of them would sign a member out of their
+  phone because they closed a browser tab. The token stays valid until it expires; it is
+  simply unreachable from this browser. The account page closes the half that *is* reachable
+  -- every **other** live session is listed with a revoke button -- which is the useful half
+  anyway, because the session somebody wants gone is the one they are not holding.
 - **No visual regression baseline.** The E2E suite asserts computed tokens and layout
   relationships rather than pixels, which catches the defects found so far and would not catch a
   spacing regression.
@@ -567,8 +642,10 @@ other 8 of 9 tokens recompute to the printed hundredth on all three surfaces.
   is slow on purpose.
 - **A step-up spends a recovery code, and nothing in this build mints more on its own.** TOTP
   and passkeys are implemented and cannot be verified here, so a recovery code is the only
-  second factor -- which means ten step-ups per batch and a trip to
-  `POST /identities/{id}/recovery-codes` after that. There is no screen for reissuing them.
+  second factor -- which means ten step-ups per batch. The account page reissues them now,
+  which needs a stepped-up session, so the batch that runs out pays for the step-up that
+  mints the next one with its own last code. A member who spends all ten without reissuing
+  has no way back from this surface.
 - **The people and access surfaces are read-only.** MOD-022's writes — declaring a zone, commissioning a
   point, publishing a policy, issuing a credential, ordering an emergency release — all have
   routes and none has a form yet. The two that need the most care are the two with a second

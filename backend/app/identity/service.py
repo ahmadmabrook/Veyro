@@ -1053,15 +1053,41 @@ def _revoke_chain(
     return len(rows)
 
 
-def list_sessions(pool: Pool, tenant_id: str, *, identity_id: str) -> list[dict[str, Any]]:
-    """Session inventory (IAM-01-R05). No token or digest is ever returned."""
+#: The most sessions one read returns. A session row is written on every sign-in and every
+#: rotation and `iam.sessions` has no DELETE grant, so an identity that has signed in a
+#: thousand times has a thousand rows -- and this read had no bound at all, which made the
+#: honest answer to "show me my sessions" a page thirteen thousand pixels tall. Newest first,
+#: so the bound keeps the rows a person came for.
+SESSION_PAGE = 50
+
+#: The authentication log's ceiling. Larger than the session page because the log is the read
+#: somebody does when investigating an account rather than managing one, and it is insert-only.
+EVENT_PAGE = 500
+
+
+def list_sessions(
+    pool: Pool, tenant_id: str, *, identity_id: str, limit: int = SESSION_PAGE,
+    live_only: bool = False,
+) -> list[dict[str, Any]]:
+    """Session inventory (IAM-01-R05). No token or digest is ever returned.
+
+    **`live_only` is the filter an account page wants and a reviewer does not.** A revoked or
+    expired session is the evidence that a sign-out happened, which is exactly what somebody
+    investigating an account asks for; a member looking at "where am I signed in" wants the
+    ones that still work. Both are real reads, so the caller says which.
+    """
+    if limit < 1 or limit > 500:
+        raise InvalidRequest("bad_limit")
+    where = "identity_id = %s"
+    if live_only:
+        where += " AND revoked_at IS NULL AND expires_at > now()"
     with tenant_scope(pool, tenant_id) as conn:
         _require_identity(conn, identity_id)
         rows = conn.execute(
             "SELECT session_id, device_id, aal, factors, issued_at, expires_at, last_seen_at,"
-            " revoked_at, revoke_reason FROM iam.sessions WHERE identity_id = %s"
-            " ORDER BY issued_at DESC",
-            (identity_id,),
+            f" revoked_at, revoke_reason FROM iam.sessions WHERE {where}"
+            " ORDER BY issued_at DESC LIMIT %s",
+            (identity_id, limit),
         ).fetchall()
     return [
         {"session_id": str(r[0]), "device_id": str(r[1]) if r[1] else None, "aal": int(r[2]),
@@ -1535,14 +1561,20 @@ def auth_events(
     in the tenant to an unauthenticated caller, which handed out the identity ids that made the
     rest of the takeover chain possible.
     """
-    capped = max(1, min(int(limit), 500))
+    if limit < 1 or limit > EVENT_PAGE:
+        # **Refuse rather than clamp**, which is what this did and what `list_sessions` beside
+        # it does not. A silent clamp answers a request for a thousand rows with five hundred
+        # and says nothing, so a caller that asked for everything renders what it got and
+        # believes it has the lot -- the same shape as "a default is not a setting". MOD-017's
+        # and MOD-018's listing reads both refuse, which makes this the odd one in the build.
+        raise InvalidRequest("bad_limit")
     with tenant_scope(pool, tenant_id) as conn:
         _require_identity(conn, identity_id)
         rows = conn.execute(
             "SELECT identity_id, kind, outcome, factor, reason, occurred_at"
             " FROM iam.auth_events WHERE identity_id = %s"
             " ORDER BY occurred_at DESC, event_id DESC LIMIT %s",
-            (identity_id, capped),
+            (identity_id, limit),
         ).fetchall()
     return [
         {"identity_id": str(r[0]) if r[0] else None, "kind": r[1], "outcome": r[2],

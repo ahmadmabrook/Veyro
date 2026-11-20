@@ -3481,10 +3481,19 @@ def create_app(
 
     @app.get("/identities/{identity_id}/sessions")
     def identity_sessions(
-        tenant_id: TenantId, session: Session, identity_id: str
+        tenant_id: TenantId, session: Session, identity_id: str,
+        limit: int = identity.SESSION_PAGE, live_only: bool = False,
     ) -> list[dict[str, Any]]:
+        """The caller's own sessions, newest first and bounded.
+
+        A session row is written on every sign-in and every rotation, and `iam.sessions` has
+        no DELETE grant for any role -- so this returned every session an identity had ever
+        held. `live_only` is the filter a member wants and a reviewer does not: a revoked row
+        is the evidence a sign-out happened.
+        """
         return identity.list_sessions(
-            identity_pool, tenant_id, identity_id=owned(session, identity_id)
+            identity_pool, tenant_id, identity_id=owned(session, identity_id),
+            limit=limit, live_only=live_only,
         )
 
     @app.post("/sessions/{session_id}/revoke")
