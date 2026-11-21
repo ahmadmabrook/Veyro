@@ -654,6 +654,79 @@ def activate_membership(
             "current_period_end": period_end.isoformat(), "repeated": False}
 
 
+def freeze_allowance(
+    pool: Pool, tenant_id: str, membership_id: str, *, at: date | None = None,
+) -> dict[str, Any]:
+    """What is left of a membership's freeze allowance, before anybody freezes anything.
+
+    **`allowance_days_used_before` was returned by the *write* and by nothing else**, so the
+    only way to learn how much of the contract's allowance a member had spent was to spend
+    some more of it and read the answer. The seventh instance of this build's "a writer with
+    no reader" shape, and ADM-MSH-03 cannot be drawn without it: the canvas states "2 of 3
+    freeze months used this year" **in the consequence panel, before the button**, which is
+    the same decision ADM-PAY-09 makes about a till -- the figure that bounds the act is
+    shown before the act, because the common problem is a mistake rather than a fraud.
+
+    **Every number here comes from the function the write uses**, not from a second
+    expression that agrees with it today: `_contract_year`, `lifecycle.freeze_days_used` and
+    `lifecycle.check_freeze`. MOD-018's `_expected_in_drawer` had a sibling thirty lines away
+    that differed by a date bound, and one journal dated next year made a short till balance.
+    A screen that said "2 of 3 used" while the write counted differently would be worse than
+    one that said nothing.
+    """
+    today = at or _today()
+    with tenant_scope(pool, tenant_id) as conn:
+        membership = _membership(conn, membership_id)
+        terms = _terms_of(conn, membership["agreement_id"])
+        year_start, year_end = _contract_year(membership["starts_on"], today)
+        windows = [
+            lifecycle.FreezeWindow(
+                starts_on=r[0], ends_on=r[1], counts_against_allowance=bool(r[2]))
+            for r in conn.execute(
+                "SELECT starts_on, ends_on, counts_against_allowance FROM plt01.mem_freezes"
+                " WHERE membership_id = %s", (membership_id,)).fetchall()
+        ]
+        used = lifecycle.freeze_days_used(windows, year_start, year_end)
+    allowed = int(terms.freeze_days_per_year)
+    remaining = max(0, allowed - used)
+    # **An open freeze is counted to the end of the contract year**, which is
+    # `freeze_days_used`'s own conservative direction: it is spending the allowance right
+    # now, and treating it as free until it closes would let somebody hold a membership
+    # frozen indefinitely inside a thirty-day allowance. That is right and it makes the
+    # figure surprising -- a seven-day freeze taken today reads as 275 of 30 used -- so the
+    # read says which case it is rather than leaving a panel to print a number nobody can
+    # reconcile against the days they asked for.
+    counting_open = any(
+        w.counts_against_allowance and w.ends_on is None for w in windows)
+    return {
+        "membership_id": membership_id,
+        "status": membership["status"],
+        "counting_an_open_freeze": counting_open,
+        "contract_year": {"from": year_start.isoformat(), "to": year_end.isoformat()},
+        "allowance_days": allowed,
+        "days_used": used,
+        "days_remaining": remaining,
+        # **The window a freeze may start in, because the module refuses anything else.**
+        # `freeze_membership` takes a start within the month before today -- a month back
+        # because one agreed at the desk on Friday is recorded on Monday -- and refuses a
+        # future date outright, since nothing in this build applies a booked freeze when its
+        # day arrives and a booked freeze that never takes effect is worse than one that
+        # cannot be booked. A form that offered a future date would be offering a refusal.
+        "may_start_between": {
+            "from": (today - _days(31)).isoformat(), "to": today.isoformat()},
+        "allows_freezing": allowed > 0,
+        "an_open_freeze_counts_to_the_year_end": (
+            "a freeze that has not been resumed is counted to the end of the contract year, "
+            "because it is spending the allowance now -- so while one is open the figure is "
+            "what it would cost if nobody resumed it, not the days anybody asked for"),
+        "the_figure_is_the_writes_own": (
+            "days_used is `lifecycle.freeze_days_used` over this membership's own freezes "
+            "inside the contract year containing today, which is the expression "
+            "`freeze_membership` checks against -- not a second one that agrees with it "
+            "today"),
+    }
+
+
 def freeze_membership(
     pool: Pool, tenant_id: str, membership_id: str, *, freeze_kind: str, starts_on: date,
     days: int, reason: str, idempotency_key: str, actor_id: str, correlation_id: str,

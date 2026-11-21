@@ -449,6 +449,100 @@ class ContractAndAgreementTests(CommercialApiTestCase):
 
 
 class LifecycleTests(CommercialApiTestCase):
+    def allowance(self, tenant_id: str, membership_id: str) -> dict:
+        read = self.client.get(f"/memberships/{membership_id}/freeze-allowance",
+                               headers=self.headers(tenant_id))
+        self.assertEqual(read.status_code, 200, read.text)
+        return dict(read.json())
+
+    def test_the_allowance_can_be_read_before_anybody_spends_it(self):
+        """**`allowance_days_used_before` came back from the write and from nothing else**,
+        so the only way to learn how much of a contract's allowance a member had spent was to
+        spend more of it and read the answer. The seventh "a writer with no reader" in this
+        build, and ADM-MSH-03 cannot be drawn without it: the canvas puts "2 of 3 freeze
+        months used this year" in the consequence panel, *before* the button."""
+        tenant_id = self.tenant()
+        live = self.membership(tenant_id, contract={"freeze_days_per_year": 30})
+        fresh = self.allowance(tenant_id, live["membership_id"])
+        self.assertEqual(30, fresh["allowance_days"])
+        self.assertEqual(0, fresh["days_used"])
+        self.assertEqual(30, fresh["days_remaining"])
+        self.assertTrue(fresh["allows_freezing"])
+
+    def test_the_read_counts_what_the_write_counted(self):
+        """One definition, not two that agree today. MOD-018's `_expected_in_drawer` had a
+        sibling thirty lines away that differed by a date bound, and one journal dated next
+        year made a short till balance."""
+        tenant_id = self.tenant()
+        live = self.membership(tenant_id, contract={"freeze_days_per_year": 30})
+        frozen = self.client.post(
+            f"/memberships/{live['membership_id']}/freeze", json={
+                "freeze_kind": "freeze", "starts_on": day(0), "days": 7,
+                "reason": "travel", "idempotency_key": "f-read",
+                **self.correlation()}, headers=self.headers(tenant_id))
+        self.assertEqual(frozen.status_code, 201, frozen.text)
+        self.assertEqual(0, frozen.json()["allowance_days_used_before"])
+
+        # **While it is open the figure is what it would cost if nobody resumed it.**
+        # `freeze_days_used` counts an unresumed freeze to the end of the contract year --
+        # the conservative direction, because it is spending the allowance now -- so a
+        # seven-day freeze taken today reads as far more than seven. That is right and it is
+        # surprising, so the read says which case it is rather than leaving a consequence
+        # panel to print a number nobody can reconcile against the days they asked for.
+        during = self.allowance(tenant_id, live["membership_id"])
+        self.assertTrue(during["counting_an_open_freeze"])
+        self.assertGreater(during["days_used"], 7)
+        self.assertEqual(0, during["days_remaining"])
+        self.assertEqual("frozen", during["status"])
+
+        resumed = self.client.post(
+            f"/memberships/{live['membership_id']}/resume", json={
+                "reason": "back early", "idempotency_key": "r-read",
+                **self.correlation()}, headers=self.headers(tenant_id))
+        self.assertEqual(resumed.status_code, 200, resumed.text)
+
+        # Closed, the figure is the days actually frozen -- one, since it began and ended
+        # today -- and the write's own count is what the read reports.
+        after = self.allowance(tenant_id, live["membership_id"])
+        self.assertFalse(after["counting_an_open_freeze"])
+        self.assertEqual(1, after["days_used"])
+        self.assertEqual(29, after["days_remaining"])
+
+    def test_a_medical_hold_is_absent_from_the_allowance_the_read_reports(self):
+        """The kind exists precisely so it does not spend the commercial term, and a panel
+        that counted it would tell a member they had used an allowance they still have."""
+        tenant_id = self.tenant()
+        live = self.membership(tenant_id, contract={"freeze_days_per_year": 30})
+        held = self.client.post(
+            f"/memberships/{live['membership_id']}/freeze", json={
+                "freeze_kind": "medical_hold", "starts_on": day(0), "days": 60,
+                "reason": "knee surgery", "evidence_ref": "s3://notes/abc",
+                "idempotency_key": "f-med-read", **self.correlation()},
+            headers=self.headers(tenant_id))
+        self.assertEqual(held.status_code, 201, held.text)
+        after = self.allowance(tenant_id, live["membership_id"])
+        self.assertEqual(0, after["days_used"])
+        self.assertEqual(30, after["days_remaining"])
+
+    def test_the_read_states_the_window_a_freeze_may_start_in(self):
+        """A form that offered a future date would be offering a refusal: `freeze_membership`
+        takes a start within the month before today and refuses anything later, because
+        nothing in this build applies a booked freeze when its day arrives."""
+        tenant_id = self.tenant()
+        live = self.membership(tenant_id, contract={"freeze_days_per_year": 30})
+        window = self.allowance(tenant_id, live["membership_id"])["may_start_between"]
+        self.assertEqual(window["to"], day(0))
+        self.assertEqual(window["from"], day(-31))
+
+    def test_a_contract_that_allows_no_freezing_says_so(self):
+        """`check_freeze` refuses one outright, so a form that rendered a date picker over it
+        would be a refusal with a button on it."""
+        tenant_id = self.tenant()
+        live = self.membership(tenant_id, contract={"freeze_days_per_year": 0})
+        body = self.allowance(tenant_id, live["membership_id"])
+        self.assertFalse(body["allows_freezing"])
+        self.assertEqual(0, body["days_remaining"])
+
     def test_a_freeze_past_the_contract_allowance_is_refused(self):
         """The allowance is what the member agreed to. A freeze beyond it is a commercial
         decision somebody has to make deliberately, not a longer freeze that quietly exceeds

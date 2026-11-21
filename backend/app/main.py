@@ -6289,6 +6289,28 @@ def create_app(
             actor_id=session["identity_id"], correlation_id=body.correlation_id,
         )
 
+    @app.get("/memberships/{membership_id}/freeze-allowance")
+    def read_freeze_allowance(
+        tenant_id: TenantId, session: Session, membership_id: str
+    ) -> dict[str, Any]:
+        """What is left of the contract's freeze allowance. COM-01-R04.
+
+        **`allowance_days_used_before` came back from the *write* and from nothing else**, so
+        the only way to learn how much of it a member had spent was to spend more of it. The
+        seventh "a writer with no reader" in this build, and ADM-MSH-03 cannot be drawn
+        without it -- the canvas puts "2 of 3 freeze months used this year" in the
+        consequence panel, *before* the button, which is ADM-PAY-09's decision about a till
+        in another module: the figure that bounds the act is shown before the act.
+
+        **Behind `membership.record.read`, which is routine**, and that is the right side of
+        the line: this returns a day count, a date window and nothing about the person. A
+        front desk that may see a membership may see how much of its allowance is left --
+        and `membership.lifecycle.change`, which is financial, is what the act itself costs.
+        """
+        permit(session, "membership.record.read")
+        return commercial.freeze_allowance(
+            tenant_pool, tenant_id, require_uuid(membership_id, "membership_id"))
+
     @app.post("/memberships/{membership_id}/freeze", status_code=201)
     def freeze_membership(
         tenant_id: TenantId, session: Session, membership_id: str, body: FreezeBody

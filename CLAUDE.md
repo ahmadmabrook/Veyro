@@ -2229,6 +2229,18 @@ Known gaps, deliberate:
   with both has two. Found by rendering them on one page. Relating them is a product decision
   -- which of the two is *the* number -- so it is disclosed on the surface rather than guessed
   at here.
+- **The freeze allowance can be read before anybody spends it**, and until it could
+  ADM-MSH-03 was undrawable. `allowance_days_used_before` came back from the *write* and from
+  nothing else, so the only way to learn how much of a contract's allowance a member had used
+  was to use more of it and read the answer -- the seventh instance of this build's "a writer
+  with no reader" shape. `GET /memberships/{id}/freeze-allowance` returns the contract year,
+  the days used, the days remaining and the window a freeze may start in, **all from the
+  expressions `freeze_membership` itself checks against** rather than a second set that
+  agrees with them today. It also says which case the figure is: **an open freeze is counted
+  to the end of the contract year**, because it is spending the allowance now, so a seven-day
+  freeze taken today reads as 275 of 30 used -- right, surprising, and the reason the read
+  carries `counting_an_open_freeze` rather than leaving a consequence panel to print a number
+  nobody can reconcile against the days they asked for.
 - **The listing reads exist now and they are reads only.** `GET /memberships`,
   `GET /memberships/{id}`, `GET /member-entitlements`, `GET /finance/accounts` and
   `GET /finance/invoices` make the module observable; nothing on the surface *writes* to it.

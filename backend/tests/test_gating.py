@@ -369,6 +369,7 @@ WRITE_ROUTES = [
     ("post", "/memberships",
      {"agreement_id": _ID, "membership_number": "SWEEP-1",
       "idempotency_key": "sweep-m1", **_CORR}),
+    ("get", f"/memberships/{_ID}/freeze-allowance", None),
     ("post", f"/memberships/{_ID}/freeze",
      {"freeze_kind": "freeze", "starts_on": "2026-02-01", "days": 7,
       "reason": "holiday", "idempotency_key": "sweep-f2", **_CORR}),

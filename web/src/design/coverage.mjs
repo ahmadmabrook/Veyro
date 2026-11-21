@@ -108,7 +108,17 @@ const BLOCKED = {
     + "acting for a member as privileged, which needs an assurance level nobody can reach",
   "ADM-SRCH-01": "module: search is ENG-01's, and a LIKE scan presented as search would be a "
     + "read path with no freshness contract and no permission pre-filter",
-  "ADM-SCH-07": "stepped-up: scheduling.session.cancel is financial class",
+  // **Read the canvas before writing the reason.** The first version of this entry said
+  // "stepped-up", which is true of the permission and is not what blocks the screen. The
+  // canvas's own rule is "cannot commit without choosing what the members get. A
+  // cancellation that notifies nobody is the most damaging thing this screen could permit,
+  // so the notification is the action rather than a follow-up" -- and it offers two
+  // remedies, moving all eighteen to another session or crediting each of them. MOD-013
+  // authors and never sends, and neither bulk remedy exists anywhere. A cancel form without
+  // them would be exactly the screen the canvas forbids.
+  "ADM-SCH-07": "module: a messaging provider, and a bulk transfer or bulk credit. The "
+    + "canvas makes the notification the action and refuses to commit without choosing what "
+    + "the members get; MOD-013 sends nothing and neither remedy is a built operation",
   "ADM-COM-03": "module: broadcast needs a segment, and PPL-01-R05's segments are unbuilt",
   "ADM-TSK-01": "module: tasks",
   "ADM-AUT-01": "module: automation",
