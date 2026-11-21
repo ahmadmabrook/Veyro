@@ -1551,8 +1551,10 @@ def member_360(
             # without that distinction puts a flat contradiction under a tab that is showing
             # somebody their visits, which is this screen's own stale-claim defect in a new
             # place.
-            "attendance": "unavailable: class attendance -- who was marked present at a "
-                          "session -- is MOD-020's (OPS-02) and nothing here reads it. Door "
+            # An em-dash, not two hyphens: this string is rendered to a reader. The `--`
+            # house style belongs in comments, and the siblings here carry none.
+            "attendance": "unavailable: class attendance \u2014 who was marked present at a "
+                          "session \u2014 is MOD-020's (OPS-02) and nothing here reads it. Door "
                           "entries are MOD-022's and the surface reads them directly; they "
                           "are not in this projection",
             "bookings": "unavailable: MOD-019 (OPS-01) owns this and nothing here reads it",

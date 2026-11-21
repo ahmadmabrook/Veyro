@@ -1096,3 +1096,26 @@ stores is never a label, and the check that would catch it cannot.**
 
 The fixture seeds fourteen door entries across the chart's own window with a gap in the
 middle, because a member with none renders four empty states and twelve blank columns.
+
+
+## ADM-ACC-03 — the member's credentials, and the last-four this build never had
+
+The Access tab showed each credential's kind, state and expiry. The canvas draws a second
+line — "Card ··· 8841 · Issued 4 Mar 2024 · 214 uses", "App pass · Rotating QR · last used
+31 Jul" — and **that line is what makes the row actionable**: `state` reads `active` for a
+card used this morning and for one nobody has presented in two years, and only the use count
+and the date tell them apart. Both are counted from entries rather than decisions, which is
+MOD-022's own separation: a granted decision nobody walked through is not a use.
+
+**Never presented is said, not counted as zero.** A card issued today and one issued two
+years ago both read 0 uses; only `last_used_at` being null distinguishes a new card from a
+dead one.
+
+**The last-four is the interesting absence.** The canvas draws `Card ··· 8841`; this build
+stores a SHA-256 of the presented secret and never held a partial card number, which is the
+stronger position rather than a gap. It is now said on the screen, because a reader looking
+for the number and finding a kind would otherwise assume the page lost it.
+
+Issuing a card and reporting one lost are the canvas's two actions. Both are writes behind a
+stepped-up permission with no form in this build, and the screen says so rather than drawing
+a button that answers "not permitted".

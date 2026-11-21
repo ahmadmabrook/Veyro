@@ -2082,12 +2082,23 @@ def person_credentials(
     as two ways in.
     """
     with tenant_scope(pool, tenant_id) as conn:
+        # **How often each one has been used, and when last.** ADM-ACC-03 draws
+        # "Card ...8841 · Issued 4 Mar 2024 · 214 uses" and "App pass · Rotating QR · last
+        # used 31 Jul", and both halves are what make the row actionable: a card issued two
+        # years ago and never presented is a card somebody should cancel, and one used this
+        # morning is not. Counted from entries rather than decisions, which is MOD-022's own
+        # separation -- a granted decision nobody walked through is not a use.
         rows = conn.execute(
-            "SELECT credential_id, kind, state, issued_at, expires_at, revoked_at,"
-            "       revocation_epoch"
-            " FROM plt01.acc_credentials"
-            " WHERE person_id = %s AND (%s OR state <> 'revoked')"
-            " ORDER BY issued_at DESC",
+            "SELECT c.credential_id, c.kind, c.state, c.issued_at, c.expires_at,"
+            "       c.revoked_at, c.revocation_epoch,"
+            "       count(e.event_id), max(e.occurred_at)"
+            " FROM plt01.acc_credentials c"
+            " LEFT JOIN plt01.acc_events e"
+            "   ON e.credential_id = c.credential_id AND e.direction = 'entry'"
+            " WHERE c.person_id = %s AND (%s OR c.state <> 'revoked')"
+            " GROUP BY c.credential_id, c.kind, c.state, c.issued_at, c.expires_at,"
+            "          c.revoked_at, c.revocation_epoch"
+            " ORDER BY c.issued_at DESC",
             (person_id, include_revoked)).fetchall()
     live = [r for r in rows if str(r[2]) == "active"]
     return {
@@ -2100,7 +2111,13 @@ def person_credentials(
              # The credential's own epoch, not the device's: revoking one card must not
              # invalidate every policy snapshot in the building, so each carries its own and
              # a reader compares the one it was issued against.
-             "revocation_epoch": int(r[6])} for r in rows],
+             "revocation_epoch": int(r[6]),
+             "uses": int(r[7]),
+             # Null where it has never been presented, which is not the same as zero uses
+             # long ago -- a card issued today and one issued in 2024 both read 0, and only
+             # the date tells them apart.
+             "last_used_at": None if r[8] is None else r[8].isoformat()}
+            for r in rows],
         "live": len(live),
         "no_digest_is_returned":
             "The stored digest is a SHA-256 of the presented secret and is pseudonymous, so "

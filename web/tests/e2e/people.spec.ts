@@ -191,6 +191,29 @@ test.describe("the member record", () => {
     await expect(page.locator("main")).not.toContainText("CARD-");
   });
 
+  test("a credential says how often it has been used and when last", async ({ page }) => {
+    // ADM-ACC-03's second line: "Card ...8841 · Issued 4 Mar 2024 · 214 uses". Both halves
+    // are what make the row actionable -- `state` reads `active` for a card used this
+    // morning and for one nobody has presented in two years.
+    await page.goto(`/people/${fixture().personId}?tab=access`);
+    const panel = page.locator("section").filter({ hasText: "Access" }).first();
+    await expect(panel).toContainText("Issued");
+    await expect(panel).toContainText(/\d+ uses/);
+    await expect(panel).toContainText("last used");
+  });
+
+  test("says there is no last-four and never was, rather than losing it quietly", async ({
+    page,
+  }) => {
+    // The canvas draws "Card ··· 8841" and this build stores a one-way digest, so a reader
+    // looking for the number would otherwise assume the screen dropped it. The stronger
+    // position said out loud, not a gap apologised for.
+    await page.goto(`/people/${fixture().personId}?tab=access`);
+    await expect(page.locator("main")).toContainText("no last-four here and never was");
+    // And nothing resembling a card number reaches the page.
+    await expect(page.locator("main")).not.toContainText("CARD-");
+  });
+
   test("offers no reading of the chart, and says why", async ({ page }) => {
     await page.goto(`/people/${fixture().personId}?tab=attendance`);
     await expect(page.locator("main")).toContainText("confident answer with nothing behind it");

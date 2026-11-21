@@ -63,6 +63,15 @@ export type Credential = {
   expires_at: string | null;
   revoked_at: string | null;
   revocation_epoch: number;
+  /** Entries presented with this credential. A granted decision nobody walked through is not one. */
+  uses: number;
+  /**
+   * Null where it has never been presented, which is not the same as zero uses long ago.
+   *
+   * A card issued today and one issued two years ago both read 0, and only the date tells
+   * them apart -- which is the difference between a new card and one somebody should cancel.
+   */
+  last_used_at: string | null;
 };
 
 export type CredentialSet = {

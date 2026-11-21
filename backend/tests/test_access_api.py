@@ -1070,6 +1070,41 @@ class VisitTests(AccessApiTestCase):
             headers=self.headers(floor["tenant_id"]))
         self.assertEqual(recorded.status_code, 201, recorded.text)
 
+    def test_a_credential_says_how_often_it_has_been_used_and_when_last(self):
+        """ADM-ACC-03: "Card ...8841 · Issued 4 Mar 2024 · 214 uses".
+
+        Both halves are what make the row actionable. A card issued two years ago and never
+        presented is one somebody should cancel; one used this morning is not, and the state
+        column says `active` for both.
+        """
+        floor = self.floor()
+        for back in (0, 5):
+            self.entry(floor, when=datetime.now(UTC) - timedelta(days=back))
+        read = self.client.get(
+            f"/access/credentials?person_id={floor['person_id']}",
+            headers=self.headers(floor["tenant_id"]))
+        self.assertEqual(read.status_code, 200, read.text)
+        held = read.json()["credentials"]
+        self.assertEqual(len(held), 1, held)
+        self.assertEqual(held[0]["uses"], 2, held[0])
+        self.assertIsNotNone(held[0]["last_used_at"])
+        # And still no digest, which is the absence this listing is built around.
+        self.assertNotIn("credential_digest", json.dumps(held))
+
+    def test_a_credential_never_presented_says_so_rather_than_counting_zero_uses(self):
+        """Null is not zero here.
+
+        A card issued today and one issued two years ago both read 0 uses, and only the date
+        tells them apart -- so `last_used_at` is null rather than a date nobody can act on.
+        """
+        floor = self.floor()
+        read = self.client.get(
+            f"/access/credentials?person_id={floor['person_id']}",
+            headers=self.headers(floor["tenant_id"]))
+        held = read.json()["credentials"][0]
+        self.assertEqual(held["uses"], 0)
+        self.assertIsNone(held["last_used_at"])
+
     def test_attendance_carries_the_three_figures_the_tab_draws(self):
         """ADM-MEM-07: `19d SINCE LAST · 2.8 WEEKLY AVG · 214 LIFETIME`.
 

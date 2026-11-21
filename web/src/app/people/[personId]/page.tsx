@@ -584,6 +584,29 @@ async function AccessTab({ personId, locale }: { personId: string; locale: Local
                     {credential.expires_at.slice(0, 10)}
                   </span></>
                   : null}
+                {/* **ADM-ACC-03's second line, and it is what makes the row actionable.**
+                    The canvas draws "Issued 4 Mar 2024 · 214 uses" and "last used 31 Jul".
+                    A card issued two years ago and never presented is one somebody should
+                    cancel; one used this morning is not, and `state` reads `active` for
+                    both. Never presented is said rather than counted as zero uses "long
+                    ago", because only the date tells a new card from a dead one. */}
+                <div className="muted" style={{ fontSize: "var(--type-caption-size)" }}>
+                  {text("credential.issued")}{" "}
+                  <span className="data" dir="ltr">{credential.issued_at.slice(0, 10)}</span>
+                  {" \u00b7 "}
+                  {credential.last_used_at === null
+                    ? text("credential.neverUsed")
+                    : (
+                      <>
+                        {fill(locale, "credential.uses", { count: credential.uses })}
+                        {" \u00b7 "}
+                        {text("credential.lastUsed")}{" "}
+                        <span className="data" dir="ltr">
+                          {credential.last_used_at.slice(0, 10)}
+                        </span>
+                      </>
+                    )}
+                </div>
               </Fact>
             ))}
           </dl>
@@ -594,6 +617,17 @@ async function AccessTab({ personId, locale }: { personId: string; locale: Local
           construction: there is no column a credential's value could be read from, because
           the stored value is a SHA-256 digest and the read never returns it. */}
       <p className="ds-panel-note">{text("member.credentialNote")}</p>
+      {/* **The canvas draws a last-four and this build has none**, which is the stronger
+          position rather than a gap to apologise for: `credential_digest` is a SHA-256 of
+          the presented secret and no column ever held a partial card number. Said out loud,
+          because a reader looking for "Card ···8841" and finding a kind would otherwise
+          assume the screen lost it. */}
+      <p className="ds-panel-note">{text("credential.noLastFour")}</p>
+      {/* ADM-ACC-03's two actions are writes: issuing a card and reporting one lost both
+          need `devices.credential.write`, a stepped-up financial-class permission with no
+          form in this build. A button that answered "not permitted" is worse than one that
+          is absent -- ADM-MEM-05's rule. */}
+      <p className="ds-panel-note">{text("credential.noWrites")}</p>
     </section>
   );
 }

@@ -610,6 +610,12 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
   //
   // An entry is a recorded event rather than a decision. MOD-022 keeps the two apart on
   // purpose: a granted decision nobody walked through is not a visit.
+  //
+  // **The credential's own `issued_at` is `now()` and is not settable**, so on the Access tab
+  // this card reads "Issued today · 14 uses · last used yesterday". That is an artefact of
+  // seeding backwards, not of the screen: a real card is issued before it is used. Adding an
+  // API field so a fixture could backdate it would be inventing surface for a seed, which is
+  // the wrong trade.
   for (const daysBack of [1, 9, 12, 16, 19, 23, 26, 33, 37, 44, 51, 58, 65, 72]) {
     const when = new Date(Date.now() - daysBack * 86400000);
     // Mid-morning local, so an entry never lands on a neighbouring day by accident of the
