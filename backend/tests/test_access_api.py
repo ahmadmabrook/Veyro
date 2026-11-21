@@ -17,8 +17,8 @@ import json
 import unittest
 import uuid
 from datetime import UTC, datetime, timedelta
-from zoneinfo import ZoneInfo
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from tests.support import GatedApiTestCase
 

@@ -4397,12 +4397,20 @@ implemented module with no screen at all**;
 `contracts/ui/screen-contracts.yaml` names the rest.
 
 **Of the specified Admin screens with no route, the ones with reads behind them are what to
-build next.** An audit of the 81 specified Admin screens puts 43 of them in neither the source
-nor this inventory, and most are blocked for a stated reason: CRM, Automation, Tasks and Search
-are modules this repository does not have, and the forms are stepped-up financial writes. Some
-of the 43 are *states* of screens that are built -- the Command Center's quiet day, the Member
-360's three variants -- which is a labelling gap rather than a build gap and is worth not
-confusing with one. **ADM-SCH-04 came off the list by writing the read it needed**, and the
+build next.** That audit is a **check** now rather than a count somebody re-derives, because
+doing it by hand gave a different answer each time: `web/src/design/coverage.mjs`, in
+`design:check` and therefore in CI, requires every one of the 81 specified Admin screens to be
+named in `contracts/ui/design-compliance.md`, mapped to a screen it is a *state* of, or given a
+reason that names one of four causes -- a missing module, a stepped-up financial write, data
+the backend does not hold, or an object store. **"Not built yet" is not a cause and there is
+deliberately no token for it**, which is `GateCoverageTests.UNGATED`'s discipline one layer up:
+adding to the list is meant to be uncomfortable.
+
+It reads **41 in the inventory, 6 states of those, 34 blocked with a reason**, and it checks
+both directions -- a reason for a screen the inventory now argues is a stale excuse and fails,
+which is the schedule board's "gap note that outlived its gap" caught structurally. My own hand
+audit had said 43 were missing; the truth was that most were built, mislabelled or states, and
+the number that is genuinely unaccounted for is zero. **ADM-SCH-04 came off the list by writing the read it needed**, and the
 read was the finding: `set_availability` had had a writer and no reader since MOD-019 was
 built, so a rota could be set and the only way to learn what it said was to publish a template
 against it and read the refusal. `/rota` is also where the standing claim that every form here

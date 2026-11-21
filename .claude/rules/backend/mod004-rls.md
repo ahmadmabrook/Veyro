@@ -1126,6 +1126,14 @@ other failed login or it becomes an oracle about which tenants exist. **The gene
 where a role is deliberately blind to a referenced table, every write that crosses that
 reference is a 500 waiting for input the caller controls.**
 
+**Run the lint after the last edit, not after the last edit you were thinking about.**
+`ruff`, `mypy` and the suites are separate commands in this project precisely "so one failure
+does not hide the rest", and that cuts both ways: a green run proves the tree as it was when
+it ran. A fix to a *test* file made after the lint passed shipped a one-line import-order
+error to CI, which the backend suite could not see and the local judgement never re-ran. The
+cheap discipline is that the last thing done before a commit is the whole gate, in order, on
+the tree being committed -- not whichever check the last change seemed to belong to.
+
 **The frame a date is bucketed in is neither the runner's nor UTC -- it is the subject's,
 and a test asserting a date takes it from there.** This file already records the
 local-clock-versus-UTC flake and notes that CI never saw it "because CI runs in UTC". MOD-022
