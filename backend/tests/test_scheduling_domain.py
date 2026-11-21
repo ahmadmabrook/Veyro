@@ -837,3 +837,130 @@ class ReviewRegressionTests(unittest.TestCase):
         with self.assertRaises(ScheduleError):
             conflicts.detect(
                 window, [resources.Requirement("staff", quantity=0)], chart, held)
+
+
+class RotaWeekTests(unittest.TestCase):
+    """ADM-SCH-04's grid: the rota as a background, with the three cases that bit before.
+
+    Every figure on that screen comes from here, and the one worth the most care is the
+    denominator: "26 of 34 available hours booked" is meaningless for a room that has no rota,
+    so `None` and `0` have to stay apart.
+    """
+
+    @staticmethod
+    def window(kind: str, start: str, end: str, *, weekday: int | None = None,
+               on_date: date | None = None, tz: str = "Asia/Amman") -> availability.Window:
+        return availability.Window(
+            kind=kind, timezone=tz,
+            starts_at=time.fromisoformat(start), ends_at=time.fromisoformat(end),
+            weekday=weekday, on_date=on_date)
+
+    # --- the week ------------------------------------------------------------
+
+    def test_a_week_is_normalised_to_its_sunday_whichever_day_is_asked_for(self):
+        """Two readers asking about the same week get the same seven dates."""
+        sunday = date(2026, 8, 16)
+        for offset in range(7):
+            self.assertEqual(
+                availability.week_from(sunday + timedelta(days=offset))[0], sunday)
+        self.assertEqual(7, len(availability.week_from(sunday)))
+
+    def test_the_week_runs_sunday_first_which_is_what_the_design_draws(self):
+        # ADM-SCH-04's columns are SUN-SAT and its sample week is dated to a Sunday, which is
+        # the working week in this product's own market. `Window.weekday` is 0-Monday and that
+        # is a storage convention: the rota rows are keyed by weekday number whichever day the
+        # grid starts on, so only the order of the seven dates moves.
+        week = availability.week_from(date(2026, 8, 19))
+        self.assertEqual([6, 0, 1, 2, 3, 4, 5], [d.weekday() for d in week])
+        self.assertEqual(date(2026, 8, 16), week[0])
+        self.assertEqual(date(2026, 8, 22), week[6])
+
+    # --- which windows bind --------------------------------------------------
+
+    def test_a_weekly_window_binds_its_weekday_and_a_dated_one_its_date(self):
+        weekly = self.window("working", "09:00", "17:00", weekday=0)
+        dated = self.window("working", "10:00", "12:00", on_date=date(2026, 8, 19))
+        monday, wednesday = date(2026, 8, 17), date(2026, 8, 19)
+        self.assertEqual([weekly], availability.windows_on([weekly, dated], monday))
+        self.assertEqual([dated], availability.windows_on([weekly, dated], wednesday))
+
+    def test_the_windows_come_back_in_a_deterministic_order(self):
+        """A pure function that answers differently depending on row order is wrong whatever
+        builds the list -- `publishing.assess` keyed a dict on a start time and dropped a
+        session, and which one depended on the query planner. A rota read straight from a
+        table has no order at all."""
+        early = self.window("working", "07:00", "11:00", weekday=0)
+        late = self.window("working", "17:00", "20:00", weekday=0)
+        monday = date(2026, 8, 17)
+        self.assertEqual(
+            availability.windows_on([early, late], monday),
+            availability.windows_on([late, early], monday))
+        self.assertEqual("07:00:00", availability.windows_on(
+            [late, early], monday)[0].starts_at.isoformat())
+
+    # --- what is open --------------------------------------------------------
+
+    def test_a_break_in_the_middle_splits_the_day_into_two_open_spans(self):
+        windows = [self.window("working", "09:00", "17:00", weekday=0),
+                   self.window("break", "12:00", "13:00", weekday=0)]
+        spans = availability.open_spans_on(windows, date(2026, 8, 17))
+        self.assertEqual(
+            [("09:00:00", "12:00:00"), ("13:00:00", "17:00:00")],
+            [(s.isoformat(), e.isoformat()) for s, e in spans])
+        self.assertEqual(7 * 60, availability.open_minutes_on(windows, date(2026, 8, 17)))
+
+    def test_time_off_over_the_whole_shift_leaves_a_day_that_binds_and_is_shut(self):
+        """**The pair this screen is about.** A rota that binds and is fully removed is zero
+        open minutes; a resource with no rota is `None`. Rendering both as 0 would read as
+        "never available" for a room nobody wrote a rota for."""
+        day = date(2026, 8, 20)
+        windows = [self.window("working", "09:00", "17:00", weekday=3),
+                   self.window("time_off", "08:00", "18:00", on_date=day)]
+        self.assertTrue(availability.rota_binds_on(windows, day))
+        self.assertEqual([], availability.open_spans_on(windows, day))
+        self.assertEqual(0, availability.open_minutes_on(windows, day))
+
+    def test_a_resource_with_no_rota_has_no_open_hours_rather_than_none_of_them(self):
+        day = date(2026, 8, 17)
+        self.assertFalse(availability.rota_binds_on([], day))
+        self.assertIsNone(availability.open_minutes_on([], day))
+        # And a removal on a rota-less resource still binds, which is the module's own rule --
+        # it subtracts from nothing, so the answer is still "nobody wrote a rota".
+        off = [self.window("time_off", "08:00", "18:00", on_date=day)]
+        self.assertFalse(availability.rota_binds_on(off, day))
+        self.assertIsNone(availability.open_minutes_on(off, day))
+
+    def test_a_weekly_rota_binds_every_day_including_the_ones_it_leaves_out(self):
+        """A coach rostered Monday is not available on Friday: a weekly rota is a statement
+        about the week. This is what stops the rule above from being fail-open."""
+        windows = [self.window("working", "09:00", "17:00", weekday=0)]
+        self.assertTrue(availability.rota_binds_on(windows, date(2026, 8, 21)))
+        self.assertEqual(0, availability.open_minutes_on(windows, date(2026, 8, 21)))
+
+    def test_only_dated_working_windows_bind_only_their_own_dates(self):
+        """"Open specially this Sunday" must not close the rest of the week."""
+        sunday = date(2026, 8, 23)
+        windows = [self.window("working", "10:00", "14:00", on_date=sunday)]
+        self.assertTrue(availability.rota_binds_on(windows, sunday))
+        self.assertEqual(4 * 60, availability.open_minutes_on(windows, sunday))
+        self.assertFalse(availability.rota_binds_on(windows, date(2026, 8, 17)))
+        self.assertIsNone(availability.open_minutes_on(windows, date(2026, 8, 17)))
+
+    def test_two_overlapping_working_windows_do_not_double_count_their_overlap(self):
+        windows = [self.window("working", "09:00", "13:00", weekday=0),
+                   self.window("working", "11:00", "15:00", weekday=0)]
+        # Two rows covering 09:00-15:00 with a two-hour overlap is six hours open, not eight.
+        # The first version reported eight: the overlap was counted twice, and that figure is
+        # the denominator of the canvas's own "N of M available hours booked".
+        spans = availability.open_spans_on(windows, date(2026, 8, 17))
+        self.assertEqual([("09:00:00", "15:00:00")],
+                         [(s.isoformat(), e.isoformat()) for s, e in spans])
+        self.assertEqual(6 * 60, availability.open_minutes_on(windows, date(2026, 8, 17)))
+
+    def test_a_malformed_window_is_refused_rather_than_drawn(self):
+        for bad in (self.window("sabbatical", "09:00", "17:00", weekday=0),
+                    self.window("working", "17:00", "09:00", weekday=0),
+                    availability.Window(kind="working", timezone="Asia/Amman",
+                                        starts_at=time(9), ends_at=time(17))):
+            with self.assertRaises(ScheduleError):
+                availability.windows_on([bad], date(2026, 8, 17))

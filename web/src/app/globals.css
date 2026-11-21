@@ -1640,6 +1640,25 @@ a {
  */
 .ds-week-scroll {
   overflow-x: auto;
+  /* **A genuine scroll container's overflow still reaches the document root.** The table below
+     is 64rem wide by design and this box scrolls it, which is what the design asks for -- and
+     without a containment boundary the page itself scrolled sideways by 95px at phone width,
+     hiding the right-hand edge of every screen that draws a week. `.ds-matrix-scroll` carries
+     the identical rule for the identical reason and records that `paint` would clip the focus
+     ring two rules down while `inline-size` does nothing. **This is the first page in the app
+     to render a week grid**, so the boundary was never needed until there was a caller: the
+     component was correct in isolation and wrong on a phone. Established by hiding one subtree
+     at a time and re-measuring, not by reading the stylesheet. */
+  contain: layout;
+  /* **And the grid sits on a card, because its quietest fill is defined against one.**
+     ADM-SCH-04 draws the week inside a white panel, so "available, unbooked" is a pale block
+     a reader can see. Rendered straight onto the page ground that fill *is* the ground:
+     correcting the inverted weights made every working hour of the week invisible, which is
+     the same defect as the one before it with the sign flipped. `.ds-matrix-scroll` is the
+     app's own precedent for a wide scrollable table and carries the identical three rules. */
+  background: var(--color-surface-default);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-card);
 }
 
 .ds-week-scroll:focus-visible {
@@ -2759,4 +2778,106 @@ a {
   line-height: var(--type-bodySm-line);
   color: var(--color-text-primary);
   text-wrap: pretty;
+}
+
+
+/* ------------------------------------------------- ADM-SCH-04's cells
+ *
+ * The grid itself is `WeekGrid` -- ADM-SCH-01's own component, which already carries the
+ * sideways scroll, the focusable region, the row and column headers and the containment
+ * boundary. What is here is only what fills a cell.
+ *
+ * **The five states are semantic tokens, not the canvas's primitives.** It paints `warm.150`,
+ * `info.600`, `warm.100` and `warning.600`, and the generated token file says components must
+ * not reference layer 1 -- "a theme is a remapping of layer 2 rather than a rewrite of layer
+ * 1" -- so a light warm grey hard-coded here is a cell that vanishes into a dark card. The
+ * attendance chart's heat tiers were mapped the same way and for the same reason.
+ *
+ * **`bookedConflict` is a fill plus an edge, which is both rules at once.** The canvas's own
+ * requirement is that a booking inside an exception shows both -- "the grid shows both and the
+ * booking is flagged rather than silently honoured or silently dropped" -- and `WeekGrid`'s
+ * rule is that severity is an edge-mark and never a fill. The booked fill says what it is and
+ * the warning border says it is in trouble.
+ */
+/* **The resting state, which is "not working": an empty slot on the card.**
+   ADM-SCH-04's whole structure is one sentence -- "Working hours are the background;
+   bookings are drawn on top" -- so the weights run quiet, quieter, dark, and the only
+   saturated fills on ninety cells are the ones a reader is meant to find. */
+.ds-rota-mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  block-size: 26px;
+  min-inline-size: 26px;
+  border-radius: 2px;
+  background: var(--color-surface-sunken);
+  border: 1px solid var(--color-border-subtle);
+}
+
+/* The mark a cell prints. Mono and small, because it is a code in a grid rather than prose,
+   and `dir="ltr"` is not needed: both catalogues give a word, never a number. */
+.ds-rota-mark-text {
+  font-family: var(--font-mono);
+  font-size: var(--type-caption-size);
+  line-height: 1;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* **Available and unbooked, and this is the one that was wrong.** It was
+   `--color-border-strong`, a *border* token used as a fill, so the resting state of the grid
+   was a mid-grey block: a week with one booking in it rendered as a wall of solid marks and
+   read as fully booked. The canvas's own fill here is warm.150, a step above the card and
+   nothing more. Found by photographing the canvas and the screen and looking at them. */
+.ds-rota-mark[data-state="open"] {
+  background: var(--color-surface-canvas);
+  border-color: transparent;
+}
+
+/* Booked. The canvas draws a class and a personal-training session in two tones; nothing in
+   this build distinguishes them, and the screen says so rather than colouring a guess. */
+.ds-rota-mark[data-state="booked"] {
+  background: var(--color-semantic-info);
+  border-color: transparent;
+  color: var(--color-text-inverse);
+}
+
+.ds-rota-mark[data-state="bookedConflict"] {
+  background: var(--color-semantic-info);
+  border: 2px solid var(--color-semantic-warning);
+  color: var(--color-text-inverse);
+}
+
+/* An exception carries the warning edge *and* the word, which is how the canvas draws it:
+   a pale fill with OFF in warning.600. There is no warning-wash surface token, so the fill
+   is the quiet one and the edge and the text carry the meaning. */
+.ds-rota-mark[data-state="exception"] {
+  background: var(--color-surface-default);
+  border: 1px solid var(--color-semantic-warning);
+  color: var(--color-semantic-warning);
+}
+
+.ds-rota-legend {
+  list-style: none;
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  display: flex;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  font-family: var(--font-mono);
+  font-size: var(--type-caption-size);
+  color: var(--color-text-secondary);
+}
+
+.ds-rota-legend li {
+  display: inline-flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.ds-rota-legend .ds-rota-mark {
+  block-size: 11px;
+  min-inline-size: 11px;
+  inline-size: 11px;
+  flex-shrink: 0;
 }

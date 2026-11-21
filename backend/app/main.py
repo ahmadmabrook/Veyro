@@ -7472,6 +7472,35 @@ def create_app(
             weekday=body.weekday, on_date=body.on_date, reason=body.reason,
             actor_id=session["identity_id"], correlation_id=body.correlation_id)
 
+    @app.get("/scheduling/availability")
+    def read_resource_availability(
+        tenant_id: TenantId, session: Session, resource_id: str,
+        from_date: date | None = None, weeks: int = 1,
+    ) -> dict[str, Any]:
+        """ADM-SCH-04: one resource's rota for a week, with what is booked on top of it.
+
+        **`set_availability` has had no reader since the module was built.** The schedule
+        board's own gap note says "nothing here reads a resource's availability", so a rota
+        could be written and the only way to learn what it said was to publish a template
+        against it and read the refusal.
+
+        Behind `scheduling.schedule.read`, the module's own routine read: a rota is who works
+        when, and it is strictly less disclosing than the session detail that permission
+        already returns -- which carries the holds and, for a caller who may change a session,
+        the prose on every change.
+
+        **A time-off reason is masked unless the caller could have written one.** It is the
+        one window kind the schema requires a reason on, and it is prose about why a person is
+        away. The exception itself is never hidden; only the sentence is.
+        """
+        permit(session, "scheduling.schedule.read")
+        return scheduling.resource_week(
+            tenant_pool, tenant_id,
+            resource_id=require_uuid(resource_id, "resource_id"),
+            from_date=from_date, weeks=weeks,
+            may_read_reasons=(
+                "scheduling.availability.write" in held_permissions(session)))
+
     @app.post("/scheduling/templates", status_code=201)
     def draft_schedule_template(
         tenant_id: TenantId, session: Session, body: ScheduleTemplateBody

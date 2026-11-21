@@ -175,6 +175,36 @@ export function weekDays(from: string, locale: "en" | "ar", todayLocal: string):
 }
 
 /**
+ * A local date as a day and a month, which is how ADM-SCH-04 writes its week: "Week of 17
+ * August".
+ *
+ * **Beside `weekDays` because it shares that function's one subtlety**, which is worth not
+ * re-deriving: a bare `YYYY-MM-DD` parses as UTC midnight, so the formatter is pinned to UTC
+ * and reads back the same calendar date it was given. Formatted in the host's zone instead,
+ * a date west of UTC renders as the day before for part of every day.
+ *
+ * No year, because the heading above the sub-line carries the full range and a week that
+ * needs a year to disambiguate is one nobody is looking at.
+ */
+export function monthDayLabel(date: string, locale: "en" | "ar"): string {
+  return new Intl.DateTimeFormat(locale === "ar" ? "ar" : "en-GB", {
+    timeZone: "UTC", day: "numeric", month: "long",
+  }).format(new Date(`${date}T00:00:00Z`));
+}
+
+/**
+ * A local date moved by whole weeks, for the previous/next links on a week grid.
+ *
+ * Same UTC-parse reasoning as `weekDays` and `monthDayLabel`: a bare `YYYY-MM-DD` is UTC
+ * midnight and adding days in UTC never crosses a clock change, where the host's own zone
+ * gives six days or eight on the two nights a year it shifts.
+ */
+export function shiftWeek(date: string, weeks: number): string {
+  return new Date(Date.parse(`${date}T00:00:00Z`) + weeks * 7 * 86_400_000)
+    .toISOString().slice(0, 10);
+}
+
+/**
  * The grid: one row per distinct local start time, each with one slot per day.
  *
  * **Bucketed by the local clock, not the instant.** MOD-019 stores a UTC instant *and* the

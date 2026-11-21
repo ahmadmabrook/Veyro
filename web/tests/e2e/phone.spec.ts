@@ -25,6 +25,11 @@ const surfaces: [string, string][] = [
   ["the overview", "/"],
   ["the schedule board", "/schedule"],
   ["a session", `/schedule/${creds.bookedSessionId}`],
+  // **A week grid whose width is seven columns plus an hour label**, and the only other
+  // place in this product where a sideways scroll is sanctioned. The cells are 26px marks
+  // rather than text, so a reader at phone width is reading a scrollable region.
+  ["the availability grid",
+   `/rota?resource=${creds.coachResourceId}&from=${creds.rotaExceptionDay}`],
   ["the configuration board", "/configuration"],
   ["the operations board", "/operations"],
   ["the fleet board", "/fleet"],
@@ -198,4 +203,43 @@ test.describe("at phone width", () => {
       .analyze();
     expect(results.violations).toEqual([]);
   });
+
+  test("the week grid really scrolls inside itself, rather than being contained empty",
+    async ({ page }) => {
+      // **The sideways-scroll assertion above cannot see this state, and it is the state that
+      // shipped on `/permissions`.** A wrapper with `contain: layout` around a table pinned to
+      // `inline-size: 100%` reports zero document overflow and has nothing to scroll: the
+      // columns are clipped and unreachable, and every assertion about text still passes
+      // because the cells are in the DOM. So the property is asserted from both sides -- the
+      // page does not scroll, and the region does.
+      //
+      // The region is `tabIndex={0}` with a labelled `role="region"`, which is what makes a
+      // scrollable area reachable without a mouse; axe requires that and the test above runs
+      // it. Here the subject is the scrolling itself.
+      await useOwnerSession(page);
+      await page.goto(
+        `/rota?resource=${creds.coachResourceId}&from=${creds.rotaExceptionDay}`);
+      const region = page.locator(".ds-week-scroll");
+      await expect(region).toBeVisible();
+      const measured = await region.evaluate((el) => ({
+        scrolls: el.scrollWidth - el.clientWidth,
+        clientWidth: el.clientWidth,
+        tableWidth: Math.round(
+          (el.querySelector(".ds-week") as HTMLElement).getBoundingClientRect().width),
+        focusable: (el as HTMLElement).tabIndex,
+      }));
+      // **The subject is the table *box*, not the scroller's scroll width**, and the
+      // difference is the whole finding. Pinning the table to `inline-size: 100%` leaves its
+      // cells overflowing the box they sit in, so the wrapper still reports a scrollable
+      // width -- 117px of it -- while every column is squeezed and the design's 64rem is
+      // gone. Asserting "the region scrolls" passes in that state, which is how the mutation
+      // that removes `min-inline-size` first came back uncaught. The table has to be allowed
+      // to *grow*, which is what `.ds-matrix-scroll`'s own comment says one screen over.
+      expect(measured.tableWidth,
+        "the week grid is pinned to its container, so its columns are squeezed")
+        .toBeGreaterThan(measured.clientWidth);
+      expect(measured.scrolls, "the region does not scroll, so the columns are unreachable")
+        .toBeGreaterThan(0);
+      expect(measured.focusable, "a scrollable region needs a keyboard").toBe(0);
+    });
 });

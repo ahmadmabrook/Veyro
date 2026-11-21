@@ -35,7 +35,7 @@ which means the check needs each session's location and not just its times.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 from app.scheduling.recurrence import ScheduleError
@@ -264,3 +264,134 @@ def check_travel(
         return (f"{gap} minutes between {earlier.location_id} and {later.location_id}, and "
                 f"the travel buffer is {buffer_minutes}")
     return None
+
+
+# ------------------------------------------------- ADM-SCH-04: a week of a rota
+#
+# **The grid is the rota as a background with bookings drawn on top**, which is the canvas's
+# own sentence and the reason these are separate functions from `available`: that one answers
+# "may this session be placed", and a screen has to answer "what does this week look like"
+# for a resource that may have no rota at all.
+#
+# Nothing here reads a session. `service.resource_week` composes the two and calls
+# `unavailable_reason` per held session, so a booking inside a day off is **flagged rather
+# than dropped** -- "reducing availability never deletes a booking ... because the member on
+# the other end has already been told a time."
+
+
+def week_from(any_day: date) -> tuple[date, ...]:
+    """The seven local dates of the week containing `any_day`, **Sunday first**.
+
+    The caller may hand in any day; the week is normalised so two readers asking about the
+    same week get the same seven dates.
+
+    **Sunday, not Monday, and that is the design's call rather than this module's.**
+    ADM-SCH-04 draws its columns SUN-SAT and dates its sample week to a Sunday, which is the
+    working week in this product's own market -- Sunday to Thursday. The first version started
+    on Monday because `Window.weekday` is 0-Monday, which is MOD-019's storage convention and
+    says nothing about how a week is read: the rota rows are keyed by weekday number either
+    way, and only the order of the seven dates moves.
+
+    What this is *not* is a declaration of which days are the working week.
+    `GET /reports/attendance` refuses to label a day set "weekdays" because nothing in this
+    build records one, and that still holds -- a column order is where the week begins, not
+    which of its days anybody works.
+    """
+    # `date.weekday()` is 0-Monday, so Sunday is 6; `(weekday + 1) % 7` is days since Sunday.
+    start = any_day - timedelta(days=(any_day.weekday() + 1) % 7)
+    return tuple(start + timedelta(days=offset) for offset in range(7))
+
+
+def windows_on(windows: list[Window], day: date) -> list[Window]:
+    """The windows that bind on one local date, weekly and dated alike.
+
+    Sorted by start so a grid can draw them in order without choosing an order of its own --
+    a pure function that answered differently depending on row order is MOD-019's
+    `publishing.assess` finding, and a rota read straight from a table has no order.
+    """
+    for window in windows:
+        check_window(window)
+    return sorted(
+        (w for w in windows
+         if w.on_date == day or (w.weekday is not None and w.weekday == day.weekday())),
+        key=lambda w: (w.starts_at, w.ends_at, w.kind))
+
+
+def _minutes(start: time, end: time) -> int:
+    return (end.hour * 60 + end.minute) - (start.hour * 60 + start.minute)
+
+
+def _subtract(spans: list[tuple[time, time]], cut: tuple[time, time]) -> list[tuple[time, time]]:
+    out: list[tuple[time, time]] = []
+    for start, end in spans:
+        if cut[1] <= start or end <= cut[0]:
+            out.append((start, end))
+            continue
+        if start < cut[0]:
+            out.append((start, cut[0]))
+        if cut[1] < end:
+            out.append((cut[1], end))
+    return out
+
+
+def _merge(spans: list[tuple[time, time]]) -> list[tuple[time, time]]:
+    """Overlapping spans joined, so an hour covered twice is counted once.
+
+    **Two working rows on one weekday are ordinary and were double-counted.** A rota entered
+    as 09:00-13:00 and then widened by adding 11:00-15:00 -- rather than by editing the first
+    row, which nothing in this module makes anybody do -- is six hours open and reported as
+    eight. That figure is the denominator of the canvas's own "26 of 34 available hours
+    booked", so inflating it makes somebody look less booked than they are. Found by the test
+    written for it, which is the argument for writing the arithmetic one down.
+    """
+    out: list[tuple[time, time]] = []
+    for start, end in sorted(spans):
+        if out and start <= out[-1][1]:
+            if end > out[-1][1]:
+                out[-1] = (out[-1][0], end)
+        else:
+            out.append((start, end))
+    return out
+
+
+def open_spans_on(windows: list[Window], day: date) -> list[tuple[time, time]]:
+    """The working time left on one day once breaks and time off are removed.
+
+    **A resource with no working window that binds is not "zero hours open" -- it is
+    unconstrained**, and this function returns an empty list for both. The caller has to tell
+    them apart with `rota_binds_on`, because rendering "0 of 0 hours" for a room that has no
+    rota in any meaningful sense is the confident wrong answer `_is_constrained` exists to
+    prevent. A removal binds whether or not a rota exists, which is why time off on a
+    rota-less resource still subtracts from nothing and the result is still empty.
+    """
+    today = windows_on(windows, day)
+    spans = _merge([(w.starts_at, w.ends_at) for w in today if w.kind == "working"])
+    for window in today:
+        if window.kind in ("break", "time_off"):
+            spans = _subtract(spans, (window.starts_at, window.ends_at))
+    return sorted(spans)
+
+
+def rota_binds_on(windows: list[Window], day: date) -> bool:
+    """Whether this resource's rota is a statement about this day at all.
+
+    The same three cases `_is_constrained` decides, asked about a date rather than about a
+    placement: any weekly working window binds the whole week, a dated one binds its own date,
+    and a resource with neither is unconstrained.
+    """
+    if any(w.kind == "working" and w.weekday is not None for w in windows):
+        return True
+    return any(w.kind == "working" for w in windows_on(windows, day))
+
+
+def open_minutes_on(windows: list[Window], day: date) -> int | None:
+    """Minutes this resource is open on one day, or `None` where no rota binds.
+
+    `None` rather than a large number and rather than zero: "available all day because nobody
+    wrote a rota" and "available for no minutes because the rota says so" are different facts
+    with different remedies, and a figure that conflated them would be the denominator of the
+    canvas's own "26 of 34 available hours booked".
+    """
+    if not rota_binds_on(windows, day):
+        return None
+    return sum(_minutes(start, end) for start, end in open_spans_on(windows, day))

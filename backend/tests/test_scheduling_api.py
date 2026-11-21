@@ -14,6 +14,7 @@ override permission, and that a cancelled session gives its places back.
 
 from __future__ import annotations
 
+import json
 import unittest
 import uuid
 from datetime import UTC, date, datetime, timedelta
@@ -1349,3 +1350,243 @@ class UnstaffedSessionTests(SchedulingApiTestCase):
         refused = self.client.get(
             "/scheduling/unstaffed", headers=self.headers(gym["tenant_id"], nobody))
         self.assertEqual(refused.status_code, 403, refused.text)
+
+
+class RotaWeekApiTests(SchedulingApiTestCase):
+    """ADM-SCH-04 over HTTP: a resource's rota, and the booking the rota now refuses.
+
+    `set_availability` had a writer and no reader since the module was built -- the schedule
+    board's own gap note says "nothing here reads a resource's availability" -- so a rota
+    could be written and the only way to learn what it said was to publish a template against
+    it and read the refusal.
+    """
+
+    def window(self, gym: dict[str, Any], resource_id: str, kind: str,
+               starts: str, ends: str, **extra: Any) -> None:
+        created = self.client.post("/scheduling/availability", json={
+            "resource_id": resource_id, "window_kind": kind,
+            "starts_at": starts, "ends_at": ends, **extra, **self.correlation()},
+            headers=self.headers(gym["tenant_id"]))
+        self.assertEqual(created.status_code, 201, created.text)
+
+    def week(self, gym: dict[str, Any], resource_id: str, *,
+             reader: str | None = None, **query: Any) -> dict[str, Any]:
+        params = "".join(f"&{k}={v}" for k, v in query.items())
+        read = self.client.get(
+            f"/scheduling/availability?resource_id={resource_id}{params}",
+            headers=self.headers(gym["tenant_id"], reader))
+        self.assertEqual(read.status_code, 200, read.text)
+        body: dict[str, Any] = read.json()
+        return body
+
+    def test_the_rota_can_be_read_at_last(self) -> None:
+        gym = self.gym()
+        self.window(gym, gym["coach"], "working", "09:00", "17:00", weekday=1)
+        body = self.week(gym, gym["coach"])
+        self.assertEqual(7, len(body["days"]))
+        tuesday = next(d for d in body["days"] if d["weekday"] == 1)
+        self.assertTrue(tuesday["rota_binds"])
+        self.assertEqual(8 * 60, tuesday["open_minutes"])
+        self.assertEqual([{"starts_at": "09:00", "ends_at": "17:00"}],
+                         tuesday["open_spans"])
+
+    def test_every_time_is_the_resources_own_zone_and_not_the_sessions(self) -> None:
+        """The defect this module shipped: `Window.timezone` was declared, written from the
+        resource's own location and read by nothing, so a London coach rostered 09:00-17:00
+        was available for an 09:00 class in Amman -- 06:00 their time. A grid of somebody's
+        week is where that would be least questioned."""
+        gym = self.gym(timezone="Europe/London")
+        self.window(gym, gym["coach"], "working", "09:00", "17:00", weekday=1)
+        body = self.week(gym, gym["coach"])
+        self.assertEqual("Europe/London", body["timezone"])
+        tuesday = next(d for d in body["days"] if d["weekday"] == 1)
+        self.assertEqual("Europe/London", tuesday["windows"][0]["timezone"])
+
+    def test_a_resource_with_no_rota_has_null_open_minutes_rather_than_zero(self) -> None:
+        """A room, a court and a bike have no rota in any meaningful sense, and on the day a
+        gym opens nobody has one. "26 of 0 hours booked" is the figure zero would produce."""
+        gym = self.gym()
+        body = self.week(gym, gym["studio"])
+        self.assertIsNone(body["open_minutes"])
+        for one in body["days"]:
+            self.assertFalse(one["rota_binds"])
+            self.assertIsNone(one["open_minutes"])
+        self.assertIn("nobody wrote a rota",
+                      body["an_unconstrained_resource_has_no_open_hours"])
+
+    def test_a_rota_that_binds_and_is_fully_removed_is_zero_not_null(self) -> None:
+        """**The pair the screen is about**, and the fixture carries both members of it."""
+        gym = self.gym()
+        tuesday = next_weekday(1, after=1)
+        self.window(gym, gym["coach"], "working", "09:00", "17:00", weekday=1)
+        self.window(gym, gym["coach"], "time_off", "08:00", "18:00",
+                    on_date=tuesday.isoformat(), reason="annual leave")
+        body = self.week(gym, gym["coach"], from_date=tuesday.isoformat())
+        day_off = next(d for d in body["days"] if d["date"] == tuesday.isoformat())
+        self.assertTrue(day_off["rota_binds"])
+        self.assertEqual(0, day_off["open_minutes"])
+        self.assertEqual([], day_off["open_spans"])
+
+    def test_a_break_splits_the_open_span_rather_than_shortening_it(self) -> None:
+        gym = self.gym()
+        self.window(gym, gym["coach"], "working", "09:00", "17:00", weekday=1)
+        self.window(gym, gym["coach"], "break", "12:00", "13:00", weekday=1)
+        tuesday = next(d for d in self.week(gym, gym["coach"])["days"]
+                       if d["weekday"] == 1)
+        self.assertEqual([{"starts_at": "09:00", "ends_at": "12:00"},
+                          {"starts_at": "13:00", "ends_at": "17:00"}],
+                         tuesday["open_spans"])
+        self.assertEqual(7 * 60, tuesday["open_minutes"])
+
+    # --- the canvas's own case ----------------------------------------------
+
+    def test_a_booking_inside_a_day_off_is_shown_and_flagged_never_dropped(self) -> None:
+        """ADM-SCH-04's own sentence, and the reason this screen exists:
+
+        "Thursday afternoon is an exception -- he asked for it off three weeks ago. His 17:30
+        with Hala sits inside it, so the grid shows both and the booking is flagged rather
+        than silently honoured or silently dropped ... reducing availability never deletes a
+        booking, because the member on the other end has already been told a time."
+        """
+        gym = self.gym()
+        template_id = self.published(gym)
+        created = self.generate(gym, template_id)
+        self.assertGreater(created["created"], 0, created)
+        booked = created["sessions"][0]
+        # The rota arrives *after* the sessions, which is the realistic order: a class is on
+        # the calendar and somebody then asks for the afternoon off.
+        # **The window has to contain the session, or the wrong rule answers.**
+        # `unavailable_reason` checks working-hours containment first, so a 17:50-19:10 hold
+        # against 09:00-17:00 is refused for being outside the rota and the time-off overlap
+        # is never reached. The canvas's case is a day he *does* work, with the afternoon off
+        # -- so the rota covers the evening and the exception is what the booking collides
+        # with. Found by the test reading back a correct refusal for the other reason.
+        self.window(gym, gym["coach"], "working", "09:00", "21:00", weekday=1)
+        self.window(gym, gym["coach"], "time_off", "12:00", "20:00",
+                    on_date=booked["local_date"], reason="annual leave")
+
+        body = self.week(gym, gym["coach"], from_date=booked["local_date"])
+        held = [s for s in body["sessions"] if s["session_id"] == booked["session_id"]]
+        self.assertEqual(1, len(held), body["sessions"])
+        self.assertTrue(held[0]["conflicts_with_availability"])
+        self.assertIn("time off", held[0]["conflict_reason"])
+        self.assertEqual(1, body["conflicts"])
+        self.assertIn("already been told a time", body["a_booking_is_never_dropped"])
+
+    def test_a_booking_the_rota_admits_carries_no_conflict(self) -> None:
+        gym = self.gym()
+        created = self.generate(gym, self.published(gym))
+        booked = created["sessions"][0]
+        # 18:00 for an hour, with setup and cleanup either side, sits inside 09:00-21:00.
+        self.window(gym, gym["coach"], "working", "09:00", "21:00", weekday=1)
+        body = self.week(gym, gym["coach"], from_date=booked["local_date"])
+        held = [s for s in body["sessions"] if s["session_id"] == booked["session_id"]]
+        self.assertEqual(1, len(held))
+        self.assertFalse(held[0]["conflicts_with_availability"], held[0])
+        self.assertIsNone(held[0]["conflict_reason"])
+        self.assertEqual(0, body["conflicts"])
+
+    def test_booked_and_open_are_two_numbers_because_the_ratio_can_exceed_one(self) -> None:
+        """A session outside the rota is booked and not open, which is the whole point of the
+        screen -- so a single percentage would have to be over 100 or wrong."""
+        gym = self.gym()
+        created = self.generate(gym, self.published(gym))
+        booked = created["sessions"][0]
+        self.window(gym, gym["coach"], "working", "09:00", "10:00", weekday=1)
+        body = self.week(gym, gym["coach"], from_date=booked["local_date"])
+        self.assertGreater(body["booked_minutes"], 0)
+        assert body["open_minutes"] is not None
+        self.assertGreater(body["booked_minutes"], body["open_minutes"])
+
+    def test_a_cancelled_session_occupies_nobody(self) -> None:
+        gym = self.gym()
+        created = self.generate(gym, self.published(gym))
+        booked = created["sessions"][0]
+        self.window(gym, gym["coach"], "working", "09:00", "21:00", weekday=1)
+        cancelled = self.client.post(
+            f"/scheduling/sessions/{booked['session_id']}/cancel",
+            json={"cancellation_reason": "instructor_unavailable",
+                  "reason": "the instructor is ill", **self.correlation()},
+            headers=self.headers(gym["tenant_id"]))
+        self.assertEqual(cancelled.status_code, 200, cancelled.text)
+        body = self.week(gym, gym["coach"], from_date=booked["local_date"])
+        self.assertEqual([], [s for s in body["sessions"]
+                              if s["session_id"] == booked["session_id"]])
+
+    # --- the masked reason ---------------------------------------------------
+
+    def test_a_time_off_reason_needs_the_permission_that_could_have_written_it(self) -> None:
+        """The one window kind the schema requires a reason on is the one about why a person
+        is away, which is where a health fact goes in practice -- MOD-017's rule, and the
+        same prose `sch_session_changes.reason` is masked for one table over."""
+        gym = self.gym()
+        tuesday = next_weekday(1, after=1)
+        self.window(gym, gym["coach"], "working", "09:00", "17:00", weekday=1)
+        self.window(gym, gym["coach"], "time_off", "12:00", "17:00",
+                    on_date=tuesday.isoformat(), reason="chemotherapy on Tuesdays")
+
+        reader = self.grant(gym["tenant_id"], ["scheduling.schedule.read"])
+        masked = self.week(gym, gym["coach"], reader=reader,
+                           from_date=tuesday.isoformat())
+        off = [w for d in masked["days"] for w in d["windows"] if w["kind"] == "time_off"]
+        self.assertEqual(1, len(off))
+        # **The exception itself is never hidden** -- a grid that dropped it would be the rota
+        # lying about who is working. Only the sentence is.
+        self.assertTrue(off[0]["reason_masked"])
+        self.assertIsNone(off[0]["reason"])
+        self.assertNotIn("chemotherapy", json.dumps(masked))
+
+        setter = self.grant(gym["tenant_id"],
+                            ["scheduling.schedule.read", "scheduling.availability.write"])
+        open_to = self.week(gym, gym["coach"], reader=setter,
+                            from_date=tuesday.isoformat())
+        off = [w for d in open_to["days"] for w in d["windows"] if w["kind"] == "time_off"]
+        self.assertFalse(off[0]["reason_masked"])
+        self.assertEqual("chemotherapy on Tuesdays", off[0]["reason"])
+
+    def test_a_working_window_has_no_reason_to_mask(self) -> None:
+        gym = self.gym()
+        self.window(gym, gym["coach"], "working", "09:00", "17:00", weekday=1)
+        tuesday = next(d for d in self.week(gym, gym["coach"])["days"]
+                       if d["weekday"] == 1)
+        self.assertFalse(tuesday["windows"][0]["reason_masked"])
+        self.assertIsNone(tuesday["windows"][0]["reason"])
+
+    # --- the bounds ----------------------------------------------------------
+
+    def test_an_unbounded_window_is_refused(self) -> None:
+        gym = self.gym()
+        for weeks in (0, 5, 100000):
+            with self.subTest(weeks=weeks):
+                read = self.client.get(
+                    f"/scheduling/availability?resource_id={gym['coach']}&weeks={weeks}",
+                    headers=self.headers(gym["tenant_id"]))
+                self.assertEqual(read.status_code, 422, read.text)
+
+    def test_a_malformed_or_unknown_resource_is_422_then_404(self) -> None:
+        gym = self.gym()
+        bad = self.client.get(
+            "/scheduling/availability?resource_id=not-a-uuid",
+            headers=self.headers(gym["tenant_id"]))
+        self.assertEqual(bad.status_code, 422, bad.text)
+        missing = self.client.get(
+            f"/scheduling/availability?resource_id={uuid.uuid4()}",
+            headers=self.headers(gym["tenant_id"]))
+        self.assertEqual(missing.status_code, 404, missing.text)
+
+    def test_the_rota_read_needs_the_schedule_read(self) -> None:
+        gym = self.gym()
+        nobody = self.grant(gym["tenant_id"], [])
+        refused = self.client.get(
+            f"/scheduling/availability?resource_id={gym['coach']}",
+            headers=self.headers(gym["tenant_id"], nobody))
+        self.assertEqual(refused.status_code, 403, refused.text)
+
+    def test_nobody_is_named_in_a_rota_read(self) -> None:
+        """A rota is who works when. The resource row carries a `person_id` and nothing on
+        this read resolves it to a name, which is `people.person.read`'s to answer."""
+        gym = self.gym()
+        self.window(gym, gym["coach"], "working", "09:00", "17:00", weekday=1)
+        body = json.dumps(self.week(gym, gym["coach"]))
+        for leaked in ("legal_name", "date_of_birth", "email", "phone"):
+            self.assertNotIn(leaked, body)

@@ -293,6 +293,65 @@ const PLANS = [
     ],
   },
   {
+    // **ADM-SCH-04's central claim, asked as a question rather than restated as a test.**
+    // The canvas: "Thursday afternoon is an exception -- he asked for it off three weeks
+    // ago. His 17:30 with Hala sits inside it, so the grid shows both and the booking is
+    // flagged rather than silently honoured or silently dropped." Both failures it names are
+    // silent, which is exactly what an in-repo assertion written by the same hand on the
+    // same day is worst at noticing: a grid that dropped the booking and a grid that drew it
+    // as ordinary would each look correct to somebody who already knew what to expect.
+    name: "A booking inside a coach's time off is shown and flagged, not quietly dropped",
+    description:
+      "Reducing a coach's availability must never delete a booking that already exists, " +
+      "because the member on the other end has been told a time. The week grid has to show " +
+      "the exception and the booking that falls inside it at once, and mark the clash.",
+    priority: "p0",
+    planSteps: [
+      ...signIn,
+      {
+        type: "action",
+        description:
+          "Open the Schedule section and switch to the view that shows one coach's " +
+          "availability for a week, rather than the list of classes.",
+      },
+      {
+        type: "assertion",
+        description:
+          "Verify the week is a grid of days against hours, that the hours the coach is " +
+          "available are visibly distinguishable from the hours they are not, and that the " +
+          "grid is legible as mostly free when only a few hours are booked -- a grid where " +
+          "nearly every cell looks the same shade is a failure, because the whole purpose " +
+          "is to see at a glance when somebody can work.",
+      },
+      {
+        type: "action",
+        description:
+          "Find a week in which this coach has time off. The page opens on the current " +
+          "week, which may be empty, so use the page's own controls to move between weeks " +
+          "and look at the next two or three weeks until you find one with time off in it. " +
+          "If no week has any, try a different coach.",
+      },
+      {
+        type: "assertion",
+        description:
+          "On the week you found, locate the day where the coach has time off and a " +
+          "booking falls inside that time off. Verify BOTH are visible: the time off is " +
+          "marked as an exception, and the " +
+          "booking inside it is still shown and is marked differently from an ordinary " +
+          "booking. Verify the page also lists that clash in words somewhere beneath the " +
+          "grid, naming the session, so a reader does not have to spot a single marked " +
+          "cell among ninety. A page that showed only the time off, or only the booking, " +
+          "or drew the clashing booking the same as any other, is a failure.",
+      },
+      {
+        type: "assertion",
+        description:
+          "Verify every time on this page is stated in one timezone and that the page says " +
+          "which timezone that is.",
+      },
+    ],
+  },
+  {
     name: "A withheld field on a member's record is marked, never blank",
     description:
       "MOD-014 applies the gate's masked-field list and this surface renders it. An empty " +

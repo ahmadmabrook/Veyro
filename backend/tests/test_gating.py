@@ -141,6 +141,9 @@ READ_ROUTES = [
 
     ("get", f"/scheduling/calendar?location_id={_ID}&from_date=2026-11-01"
             "&to_date=2026-11-30", None),
+    # ADM-SCH-04's week grid. `sch_availability_windows` had a writer and no reader until
+    # this route; the rota is behind the module's own routine read.
+    ("get", f"/scheduling/availability?resource_id={_ID}", None),
     ("get", f"/scheduling/sessions/{_ID}", None),
     ("get", f"/scheduling/sessions/{_ID}/conflicts", None),
     ("get", f"/scheduling/sessions/{_ID}/eligibility?person_id={_ID}", None),

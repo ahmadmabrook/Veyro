@@ -1120,6 +1120,76 @@ const MUTATIONS = [
     grep: "nobody in this build can use",
   },
   {
+    id: "rota-shows-both-a-booking-and-its-exception",
+    why: "the canvas's own requirement and the reason the screen exists: a booking inside a "
+      + "day off is flagged rather than silently honoured or silently dropped, because the "
+      + "member on the other end has already been told a time",
+    file: "src/lib/rota.ts",
+    from: `    return here.some((one) => one.conflicts_with_availability)
+      ? "bookedConflict"
+      : "booked";`,
+    to: '    return "booked";',
+    runner: "vitest",
+    grep: "shows BOTH where a booking sits inside an exception",
+  },
+  {
+    id: "rota-an-exception-is-not-quietly-open",
+    why: "an hour a break or a day off removes must not read as available, or the grid is "
+      + "the rota lying about who is working",
+    file: "src/lib/rota.ts",
+    from: "  if (removed) return \"exception\";",
+    to: "",
+    runner: "vitest",
+    grep: "is an exception where a break or a day off removes the time",
+  },
+  {
+    id: "rota-a-cell-counts-only-its-own-day",
+    why: "a session on Friday marking Tuesday's cell booked would make every column the "
+      + "same, and the grid is addressed by day and hour together",
+    file: "src/lib/rota.ts",
+    from: "    (one) => one.local_date === day.date\n      && overlaps(",
+    to: "    (one) => overlaps(",
+    runner: "vitest",
+    grep: "only counts sessions on that day",
+  },
+  {
+    id: "rota-nothing-to-draw-is-not-a-grid",
+    why: "twenty-four rows of \"not working\" for a room nobody wrote a rota for reads as a "
+      + "studio that can never be booked, which is the opposite of true",
+    file: "src/lib/rota.ts",
+    from: "  if (edges.length === 0) return null;",
+    to: "  if (edges.length === 0) return { first: 0, last: 23 };",
+    runner: "vitest",
+    grep: "is null where there is nothing at all to draw",
+  },
+  {
+    id: "rota-the-week-grid-is-contained-not-pinned",
+    why: "a scroller with `contain: layout` around a table pinned to its container reports "
+      + "zero document overflow and has nothing to scroll, so the columns are clipped and "
+      + "unreachable while every assertion about text still passes -- the state that shipped "
+      + "on /permissions, and the reason this property is asserted from both sides",
+    file: "src/app/globals.css",
+    from: "  min-inline-size: 64rem;\n  table-layout: fixed;",
+    to: "  table-layout: fixed;",
+    runner: "playwright",
+    grep: "the week grid really scrolls inside itself",
+  },
+  {
+    id: "rota-the-week-grid-does-not-push-the-page-sideways",
+    why: "a week grid is 64rem wide by design and a genuine scroll container's overflow still "
+      + "reaches the document root, so without the containment boundary the page scrolled "
+      + "sideways by 95px at phone width and hid its own right-hand edge",
+    file: "src/app/globals.css",
+    from: "at a time and re-measuring, not by reading the stylesheet. */\n  contain: layout;",
+    to: "at a time and re-measuring, not by reading the stylesheet. */",
+    runner: "playwright",
+    // **The pair of properties is caught by a pair of tests, and this grep was first pointed
+    // at the wrong one of them.** Removing the boundary leaves the region scrolling exactly as
+    // before -- that test stayed green and the sweep reported a gap. The test that sees this is
+    // the sideways sweep, which is the whole reason both sides are asserted.
+    grep: "the availability grid does not scroll sideways",
+  },
+  {
     id: "attendance-hour-axis-is-a-clock",
     why: "the axis is the one place a 12-hour form would put \"6 AM\" under a heading whose "
       + "other end reads 22:00, and ADM-RPT-04's whole output is an hour",

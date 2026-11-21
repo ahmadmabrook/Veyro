@@ -43,6 +43,7 @@ from app.scheduling import (
     resources,
     substitution,
 )
+from app.scheduling.recurrence import ScheduleError
 
 
 def _now() -> datetime:
@@ -2191,4 +2192,216 @@ def sessions_without_staff(
             "A substitution supersedes the outgoing assignment and leaves the row, so a live "
             "assignment is one with no superseded_at. Counting rows would report a class "
             "whose coach was substituted away as staffed.",
+    }
+
+
+def _window_key(window: availability.Window) -> tuple[str, str, str, int | None, str | None]:
+    """A window's identity for matching its stored reason, which the decisions do not carry."""
+    return (window.kind, window.starts_at.isoformat(), window.ends_at.isoformat(),
+            window.weekday, window.on_date.isoformat() if window.on_date else None)
+
+
+#: The days ADM-SCH-04's grid draws, and the ceiling on how far a caller may ask back or on.
+#: A week is the unit the canvas reads ("Week of 17 August") and a rota is weekly, so a month
+#: of them is as much as a screen can show without becoming a different chart.
+AVAILABILITY_WEEKS = 4
+
+
+def resource_week(
+    pool: Pool, tenant_id: str, *, resource_id: str, from_date: date | None = None,
+    weeks: int = 1, may_read_reasons: bool = False,
+) -> dict[str, Any]:
+    """ADM-SCH-04: one resource's rota for a week, with what is already booked on top of it.
+
+    **`sch_availability_windows` had a writer and no reader.** `set_availability` has existed
+    since the module was built and nothing in the product could show what it wrote -- the
+    schedule board's own gap note says "nothing here reads a resource's availability" -- so a
+    rota could be set and the only way to find out what it said was to publish a template
+    against it and read the refusal. The fifth instance of this build's "a writer with no
+    reader" shape.
+
+    **Every span is in the resource's own location zone, never the session's.** That is the
+    defect this module shipped and a reviewer found: `Window.timezone` was declared, stored
+    from the resource's own location and read by nothing, so a London coach rostered
+    09:00-17:00 was available for an 09:00 class in Amman -- 06:00 their time. A *grid* of
+    somebody's week is the place that error would be most visible and least questioned, so
+    the windows are read in their own zone by `availability.windows_on` and each booked
+    session is converted with `AT TIME ZONE` against the resource's location.
+
+    **A booking inside a day off is flagged, never dropped**, which is the canvas's own
+    requirement: "Thursday afternoon is an exception -- he asked for it off three weeks ago.
+    His 17:30 with Hala sits inside it, so the grid shows both and the booking is flagged
+    rather than silently honoured or silently dropped ... reducing availability never deletes
+    a booking, because the member on the other end has already been told a time." So every
+    held session comes back whatever the rota says, with `availability.unavailable_reason`
+    beside it.
+
+    **A time-off window states why, and that prose is masked like a session change's.** The
+    schema requires a reason on `time_off` and forbids one on a rota row, so the one window
+    kind that carries free text is the one about why a person is away -- which is exactly
+    where a health fact goes in practice, and MOD-017's rule that it is a health fact whatever
+    column it is in. A reviewer read "she is having chemotherapy on Tuesdays" out of
+    `sch_session_changes.reason` holding only the routine schedule read; this is the same
+    prose one table over, so it needs `scheduling.availability.write` -- whoever may set a
+    rota may read why somebody is off it. The *exception itself* is never hidden, because a
+    grid that dropped it would be the rota lying about who is working.
+
+    **Open minutes are `null` where no rota binds, not zero.** A room, a court and a bike have
+    no rota in any meaningful sense and on the day a gym opens nobody has one, so "26 of 0
+    hours booked" is the figure a resource with no working hours would otherwise report.
+    `availability.rota_binds_on` is the same three-case reading `_is_constrained` uses.
+    """
+    if weeks < 1 or weeks > AVAILABILITY_WEEKS:
+        raise InvalidRequest(f"the window is 1 to {AVAILABILITY_WEEKS} weeks")
+    with tenant_scope(pool, tenant_id) as conn:
+        row = conn.execute(
+            "SELECT r.resource_code, r.resource_kind, r.display_name, r.quantity,"
+            "       r.status, r.location_id, r.person_id,"
+            "       l.location_name, l.timezone,"
+            "       (now() AT TIME ZONE coalesce(l.timezone, 'UTC'))::date"
+            " FROM plt01.sch_resources r"
+            " LEFT JOIN plt01.locations l ON l.location_id = r.location_id"
+            " WHERE r.resource_id = %s",
+            (resource_id,)).fetchone()
+        if row is None:
+            raise NotFound("resource_not_found")
+        # **A resource with no location has no zone to read a rota in.** Every window carries
+        # its own, written from the location at the time it was set, so the fallback here is
+        # only for the resource row's own "today" and for a window whose zone is blank -- which
+        # the schema does not allow and `_applicable` still guards against.
+        tz = str(row[8]) if row[8] else "UTC"
+        anchor = from_date or row[9]
+        days = availability.week_from(anchor)
+        if weeks > 1:
+            last = days[-1]
+            for extra in range(1, weeks):
+                days = days + availability.week_from(last + timedelta(days=1 + 7 * (extra - 1)))
+        first_day, last_day = days[0], days[-1]
+        windows = _windows(conn, resource_id)
+        # The reasons, keyed by the same shape the decision module carries, so a window that
+        # states why is matched to its prose without the pure module learning about it.
+        reasons = {
+            _window_key(availability.Window(
+                kind=str(r[0]), timezone=str(r[1]), starts_at=r[2], ends_at=r[3],
+                weekday=int(r[4]) if r[4] is not None else None, on_date=r[5])): str(r[6])
+            for r in conn.execute(
+                "SELECT window_kind, timezone, starts_at, ends_at, weekday, on_date, reason"
+                " FROM plt01.sch_availability_windows"
+                " WHERE resource_id = %s AND reason IS NOT NULL",
+                (resource_id,)).fetchall()}
+        # **The sessions this resource holds, and only the holds that still apply.** A
+        # cancelled class does not occupy anybody and a superseded hold is a coach who was
+        # substituted out -- `_held_over`'s own reasoning, which is why the predicates match
+        # it rather than being written again.
+        booked = conn.execute(
+            "SELECT a.session_id, t.display_name, a.holds_from, a.holds_until,"
+            "       (a.holds_from AT TIME ZONE %s)::date,"
+            "       (a.holds_from AT TIME ZONE %s)::time,"
+            "       (a.holds_until AT TIME ZONE %s)::time,"
+            "       s.location_id, s.status, a.quantity"
+            " FROM plt01.sch_session_resources a"
+            " JOIN plt01.sch_sessions s ON s.session_id = a.session_id"
+            " JOIN plt01.sch_templates t ON t.template_id = s.template_id"
+            " WHERE a.resource_id = %s"
+            "   AND a.superseded_at IS NULL"
+            "   AND s.status = 'scheduled'"
+            "   AND (a.holds_from AT TIME ZONE %s)::date BETWEEN %s AND %s"
+            " ORDER BY a.holds_from, a.session_id",
+            (tz, tz, tz, resource_id, tz, first_day, last_day)).fetchall()
+    sessions: list[dict[str, Any]] = []
+    for b in booked:
+        placement = availability.Placement(
+            starts_at=b[2], ends_at=b[3],
+            location_id=str(b[7]) if b[7] else None)
+        # The rota's own verdict on a session that is already in the diary. `None` means the
+        # rota admits it; a sentence means somebody has to resolve the two.
+        try:
+            refusal = availability.unavailable_reason(placement, windows, timezone=tz)
+        except ScheduleError as e:
+            # A session that crosses local midnight cannot be checked against a day's
+            # availability -- the module refuses rather than guessing which day it belongs to.
+            # It is still a booking and still drawn, so the refusal becomes the reason.
+            refusal = str(e)
+        sessions.append({
+            "session_id": str(b[0]), "label": str(b[1]),
+            "local_date": b[4].isoformat(),
+            "starts_at_local": b[5].strftime("%H:%M"),
+            "ends_at_local": b[6].strftime("%H:%M"),
+            "minutes": availability._minutes(b[5], b[6]),
+            "quantity": int(b[9]),
+            "conflicts_with_availability": refusal is not None,
+            "conflict_reason": refusal,
+        })
+    booked_by_day: dict[str, int] = {}
+    for one in sessions:
+        booked_by_day[one["local_date"]] = (
+            booked_by_day.get(one["local_date"], 0) + int(one["minutes"]))
+    grid = []
+    for day in days:
+        key = day.isoformat()
+        binds = availability.rota_binds_on(windows, day)
+        grid.append({
+            "date": key,
+            "weekday": day.weekday(),
+            "rota_binds": binds,
+            "open_minutes": availability.open_minutes_on(windows, day),
+            "open_spans": [
+                {"starts_at": s.strftime("%H:%M"), "ends_at": e.strftime("%H:%M")}
+                for s, e in availability.open_spans_on(windows, day)],
+            "windows": [
+                {"kind": w.kind, "timezone": w.timezone,
+                 "starts_at": w.starts_at.strftime("%H:%M"),
+                 "ends_at": w.ends_at.strftime("%H:%M"),
+                 "recurring": w.weekday is not None,
+                 # Only `time_off` carries one -- the schema requires it there and forbids it
+                 # on a rota row -- so this is `None` for a working window and a break
+                 # whether or not the caller may read reasons.
+                 "reason": reasons.get(_window_key(w)) if may_read_reasons else None,
+                 "reason_masked": (
+                     not may_read_reasons and _window_key(w) in reasons)}
+                for w in availability.windows_on(windows, day)],
+            "booked_minutes": booked_by_day.get(key, 0),
+        })
+    open_total = [d["open_minutes"] for d in grid if d["open_minutes"] is not None]
+    return {
+        "resource_id": resource_id,
+        "resource_code": str(row[0]),
+        "resource_kind": str(row[1]),
+        "display_name": str(row[2]),
+        "quantity": int(row[3]),
+        "status": str(row[4]),
+        "location_id": str(row[5]) if row[5] else None,
+        "location_name": str(row[7]) if row[7] else None,
+        # The zone every time on this grid is in, which is the resource's own and not any
+        # session's.
+        "timezone": tz,
+        "weeks": weeks,
+        "window": {"first_day": first_day.isoformat(), "last_day": last_day.isoformat()},
+        "days": grid,
+        "sessions": sessions,
+        # The canvas's own figure, as two numbers rather than a ratio: a session outside the
+        # rota is booked and not open, so the ratio can exceed one and that case is the whole
+        # point of the screen. `null` where no day in the window has a rota that binds.
+        "open_minutes": sum(open_total) if open_total else None,
+        "booked_minutes": sum(int(one["minutes"]) for one in sessions),
+        "conflicts": sum(1 for one in sessions if one["conflicts_with_availability"]),
+        "an_unconstrained_resource_has_no_open_hours":
+            "open_minutes is null where no working window binds in the window asked for. A "
+            "room, a court and a bike have no rota in any meaningful sense, and on the day a "
+            "gym opens nobody has one -- so zero would read as 'never available' rather than "
+            "'nobody wrote a rota'.",
+        "a_booking_is_never_dropped":
+            "Every session this resource still holds is returned whatever the rota says, with "
+            "the reason the rota refuses it where it does. Reducing availability does not "
+            "delete a booking: the member on the other end has already been told a time.",
+        "times_are_the_resources_own_zone":
+            "Every window and every session time here is read in the resource's own location "
+            "timezone, not the session's. A coach's rota is a statement about where they are.",
+        "a_time_off_reason_is_masked":
+            "Only a time-off window carries a reason and it is prose about why a person is "
+            "away, so it needs scheduling.availability.write -- whoever may set a rota may "
+            "read why somebody is off it. The exception itself is always shown.",
+        "a_session_kind_is_not_recorded":
+            "Nothing distinguishes a class from a personal-training session in this build, so "
+            "a booked hour is one state rather than two. The design draws them apart.",
     }

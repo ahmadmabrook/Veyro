@@ -22,6 +22,14 @@ export type Fixture = {
   /** One unused code, for the device challenge a browser gets on its first sign-in. */
   recoveryCode: string;
   zoneId: string;
+  /** ADM-SCH-04's subject: the coach with a weekly rota and one exception. */
+  coachResourceId: string;
+  /** The substitute coach: holds a booking and has no rota at all, which is the
+   *  unconstrained case -- a room, a court and a bike have none either. */
+  standInResourceId: string;
+  noRotaResourceId: string;
+  /** The local date whose evening the coach has off, with a class inside it. */
+  rotaExceptionDay: string;
   pointId: string;
   /** The site MOD-019's calendar is addressed by, and whose timezone it converts in. */
   locationId: string;
@@ -121,6 +129,9 @@ export function fixture(): Fixture {
     "VEYRO_E2E_PASSWORD",
     "VEYRO_E2E_RECOVERY_CODE",
     "VEYRO_E2E_ZONE_ID",
+    "VEYRO_E2E_COACH_RESOURCE_ID",
+    "VEYRO_E2E_STANDIN_RESOURCE_ID",
+    "VEYRO_E2E_ROTA_EXCEPTION_DAY",
     "VEYRO_E2E_POINT_ID",
     "VEYRO_E2E_PERSON_ID",
     "VEYRO_E2E_DEVICE_ID",
@@ -150,6 +161,10 @@ export function fixture(): Fixture {
     password: env.VEYRO_E2E_PASSWORD!,
     recoveryCode: env.VEYRO_E2E_RECOVERY_CODE!,
     zoneId: env.VEYRO_E2E_ZONE_ID!,
+    coachResourceId: env.VEYRO_E2E_COACH_RESOURCE_ID!,
+    standInResourceId: env.VEYRO_E2E_STANDIN_RESOURCE_ID!,
+    noRotaResourceId: env.VEYRO_E2E_NO_ROTA_RESOURCE_ID!,
+    rotaExceptionDay: env.VEYRO_E2E_ROTA_EXCEPTION_DAY!,
     pointId: env.VEYRO_E2E_POINT_ID!,
     locationId: env.VEYRO_E2E_LOCATION_ID!,
     sessionId: env.VEYRO_E2E_SESSION_ID!,

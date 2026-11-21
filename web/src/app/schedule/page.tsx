@@ -163,10 +163,14 @@ export default async function SchedulePage({
         </nav>
       ) : null}
 
-      {/* Week · Day. Links rather than controls, so the view survives being sent to
-          somebody and works with no JavaScript -- the same decision the members list's
-          filters make. `Coaches` is in the gaps below: it is a grid of rota rows rather
-          than of sessions, and nothing here reads a resource's availability. */}
+      {/* Week · Day · Coaches. Links rather than controls, so the view survives being sent
+          to somebody and works with no JavaScript -- the same decision the members list's
+          filters make.
+
+          **`Coaches` was in the gaps below until there was a rota to read.** It is a grid of
+          rota rows rather than of sessions, and the note here said "nothing here reads a
+          resource's availability" -- which was true of the whole build: `set_availability`
+          had a writer and no reader. `/rota` is ADM-SCH-04 and the read behind it is new. */}
       <nav aria-label={text("schedule.views")} className="ds-filter-bar">
         <Link
           href={`/schedule?site=${chosen}&from=${from}`}
@@ -181,6 +185,9 @@ export default async function SchedulePage({
           className="ds-filter-chip"
         >
           {text("schedule.day")}
+        </Link>
+        <Link href={`/rota?site=${chosen}`} className="ds-filter-chip">
+          {text("schedule.coaches")}
         </Link>
       </nav>
 

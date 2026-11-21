@@ -1099,3 +1099,63 @@ Three things came out of fixing it, and they generalise past CSS:
     the intent, so `scrollWidth - clientWidth` on the root correctly reports zero while a
     table is far too wide. That assertion is still the right one for the defect it was written
     for; it is the wrong one for anything a scroll wrapper absorbs.
+
+
+**A design-system component is correct in isolation and untested until a page renders it.**
+`WeekGrid` has existed since ADM-SCH-01 and had no live caller, so its scroll wrapper had
+`overflow-x: auto` and no containment boundary -- and the first page to draw a week scrolled
+the whole document sideways by 95px at phone width, hiding its own right-hand edge. That is
+verbatim the `/permissions` finding this file already records, in a component whose own
+stylesheet comment explains why the table is 64rem wide. **And the property needs asserting
+from both sides**, because the two wrong states are mutually invisible: with the boundary and
+a table pinned to `inline-size: 100%` the document reports zero overflow and the region has
+nothing to scroll, so the columns are clipped and unreachable while every assertion about text
+still passes. One test says the page does not scroll; the other says the region does. A
+mutation against either passes the other, which is how the first attempt at the second
+mutation came back as a gap -- its grep named the wrong one of the pair.
+
+**And "the region scrolls" is not that second property.** The first version asserted
+`scrollWidth > clientWidth` on the wrapper, which reads like "the columns are reachable" and
+is not: a table pinned to `inline-size: 100%` leaves its *cells* overflowing the box they sit
+in, so the wrapper still reported 117px of scrollable width with every column squeezed and the
+design's 64rem gone. The mutation that removes `min-inline-size` came back **uncaught** against
+it. The subject is the table *box* -- `tableWidth > wrapper.clientWidth`, the table allowed to
+grow, which is what `.ds-matrix-scroll`'s own comment already said one screen over. Found by
+applying the mutation by hand and reading the three numbers, not by reasoning about the engine.
+
+**A test can name the right property and point at the wrong row, and then the branch it exists
+for has never rendered.** `/rota` has an "unconstrained" branch for a resource with no rota --
+no grid, no open-hours figure -- and its e2e test was pointed at the fixture's stand-in, which
+**has** a rota: a substitution is refused unless the replacement's week covers the class, so
+the fixture had to give it one. The test therefore asserted "no rota binds" against a page
+showing 112 open hours across a full grid, and the claim it was written to prove had never been
+rendered at all. This file already records that a surface branch no fixture can reach is
+vacuity one layer up, in four modules; the new part is that the fixture *did* carry both kinds
+of resource and the test chose the wrong one, which no amount of re-reading the test would
+show. **The fixture now seeds a third staff resource with nothing written against it**, which
+is also the realistic shape: on the day a gym opens nobody has a rota.
+
+**This app has one number-rendering path and a figure must be an integer in its unit.**
+`formatInteger` throws `ConventionError("integer required")` for a fraction, deliberately:
+`tests/unit/conventions-parity.test.mjs` spawns Python and compares the JavaScript conventions
+against the backend's character for character, because a receipt is rendered by the backend and
+two implementations pass their own tests forever while drifting apart. A new screen's hours
+figure returned tenths, so the page answered **500 from inside `fill`** on every request -- in
+the one place the figure is rendered, with the route and the data both correct. The fix is the
+unit, not a second formatter: round to the whole hour and say on the screen that it is rounded,
+because across a week that is immaterial and below an hour it is not. The invariant is pinned
+for every input rather than for three somebody picked, since the throw is the contract.
+
+**A connected client makes `verify_db.sh` skip the whole isolation proof, and the only tell is
+its exit code.** The script drops and rebuilds the database, so PostgreSQL refuses while
+anything else holds a session: `ERROR: database "veyro" is being accessed by other users /
+DETAIL: There are 12 other sessions using the database`, and the script exits 3 having run no
+check at all. The output is two lines rather than 111 passes, which is easy to skim past when
+it is one of several commands in a chain and the next one is a 2,400-test suite that scrolls
+for twelve minutes. **So read the exit code, not the absence of a failure** — the proof that
+did not run looks nothing like the proof that passed, but it also looks nothing like a red.
+
+The ordinary cause is a `uvicorn` left over from seeding the browser fixture, or a backend
+suite still running: both hold pools. `pg_stat_activity` named by `datname` is what says which.
+And `ps aux | grep -c "[u]vicorn"` is not the check — a pipeline counts its own `grep`, which
+is the same shape as the `pgrep` loop that matches its own shell.

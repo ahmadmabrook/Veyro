@@ -775,6 +775,30 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
     method: "POST", ...as(token), body: { correlation_id: cid() },
   });
 
+  // **ADM-SCH-04's own case, and the one thing that screen exists to show.** The canvas:
+  // "Thursday afternoon is an exception -- he asked for it off three weeks ago. His 17:30
+  // with Hala sits inside it, so the grid shows both and the booking is flagged rather than
+  // silently honoured or silently dropped ... reducing availability never deletes a booking,
+  // because the member on the other end has already been told a time."
+  //
+  // So the exception is written *after* the sessions, which is the realistic order: a class
+  // is on the calendar and somebody then asks for the evening off. The rota above is
+  // 06:00-22:00 every day and the class holds 17:50-19:10 with its margins, so a time-off
+  // window over the evening makes that one session conflict and leaves the other six alone.
+  // A fixture with no conflict renders the grid and demonstrates nothing -- "the fixture
+  // carries both members of the pair the distinction is about".
+  //
+  // **The reason is deliberately private**, because it is the one free-text column in a rota
+  // and the one place a health fact goes in practice. The spec reads it back as masked on a
+  // session holding only the schedule read, and unmasked for one that could have written it.
+  const rotaExceptionDay = isoDay(1);
+  await call("/scheduling/availability", {
+    method: "POST", ...as(token),
+    body: { resource_id: instructor.resource_id, window_kind: "time_off",
+            starts_at: "12:00", ends_at: "22:00", on_date: rotaExceptionDay,
+            reason: "hospital appointment", correlation_id: cid() },
+  });
+
   // **A class with no coach, which is ADM-CC-01's STAFFING item.** The template above names
   // a staff requirement and the queue is about the ones that do not -- so without this the
   // Command Center's busiest row is unreachable and every assertion about it passes
@@ -831,6 +855,21 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
               starts_at: "06:00", ends_at: "22:00", weekday, correlation_id: cid() },
     });
   }
+  // **And a staff resource with no rota at all, because the unconstrained branch needs one.**
+  // The stand-in cannot be that case: a substitution is refused unless the replacement's rota
+  // covers the class, so the loop above is what makes the line below succeed. Pointing the
+  // "unconstrained" spec at the stand-in proved nothing -- it has a rota, so the branch that
+  // says "no rota binds" and draws no grid had never rendered. This repository's own rule is
+  // that the fixture carries both members of the pair the distinction is about, and this is the
+  // member that was missing. A new hire with nothing written yet is also the realistic shape:
+  // on the day a gym opens, nobody has a rota.
+  const noRota = await call("/scheduling/resources", {
+    method: "POST", ...as(token),
+    body: { resource_code: "COACH-3", resource_kind: "staff",
+            display_name: "Rami New-hire", location_id: location.location_id,
+            correlation_id: cid() },
+  });
+
   const substituted = generated.sessions?.[0]?.session_id ?? null;
   if (substituted !== null) {
     await call(`/scheduling/sessions/${substituted}/substitute`, {
@@ -1931,9 +1970,11 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
     sessionsGenerated: generated.created,
     firstSessionId: substituted,
     standInResourceId: standIn.resource_id,
+    noRotaResourceId: noRota.resource_id,
     bookingId: booking?.booking_id ?? null,
     bookedSessionId: bookable,
     instructorResourceId: instructor.resource_id,
+    rotaExceptionDay,
     workerRuns: tick.runs,
     workerFailed: tick.failed,
     deviceId: device.device_id,
@@ -1993,6 +2034,10 @@ if (invokedDirectly) {
       `VEYRO_E2E_PASSWORD=${fixture.password}`,
       `VEYRO_E2E_RECOVERY_CODE=${fixture.recoveryCode}`,
       `VEYRO_E2E_ZONE_ID=${fixture.zoneId}`,
+      `VEYRO_E2E_COACH_RESOURCE_ID=${fixture.instructorResourceId}`,
+      `VEYRO_E2E_STANDIN_RESOURCE_ID=${fixture.standInResourceId}`,
+      `VEYRO_E2E_NO_ROTA_RESOURCE_ID=${fixture.noRotaResourceId}`,
+      `VEYRO_E2E_ROTA_EXCEPTION_DAY=${fixture.rotaExceptionDay}`,
       `VEYRO_E2E_POINT_ID=${fixture.pointId}`,
       `VEYRO_E2E_PERSON_ID=${fixture.personId}`,
       `VEYRO_E2E_DEVICE_ID=${fixture.deviceId}`,

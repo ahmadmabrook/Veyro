@@ -298,6 +298,7 @@ corresponds to them. The others map loosely:
 | `/members` | ADM-MEM-05 Members list | **built from the canvas**; its three absent columns and six absent controls are named on the screen |
 | `/people/{id}` | ADM-MEM-01/02 Member 360 | **rebuilt to the canvas** — pattern 02, the status band, five MetricCells, the tabs, the timeline spine |
 | `/schedule` | ADM-SCH-01 Class schedule · week grid | **built from the canvas** |
+| `/rota` | ADM-SCH-04 Coach availability · week grid | **built from the canvas** — the schedule board's own missing third view, over a read that did not exist |
 | `/schedule/{id}` | ADM-SCH-02 Class detail and roster | **rebuilt** — the band, four MetricCells, the roster; the three actions are stepped-up writes with no form |
 | `/payments` | ADM-PAY-01 Payments ledger | **built from the canvas** — four kinds on one axis, signed; refund and export are named as absent |
 | `/finance/invoices/{id}` | ADM-PAY-03 Invoice detail | **built from the canvas** — lines, the life, the filing; no edit at any permission, which is the canvas's own rule and this schema's property |
@@ -514,6 +515,116 @@ and `allocate` splits by largest remainder: 999 fils shows as `JOD 1.00` and one
 `JOD 0.00`. A column of shown line amounts therefore need not sum to the shown total, which
 is the ordinary property of any rounded display. **The minor units are the record; this is
 the rendering.**
+
+## ADM-SCH-04 — coach availability
+
+**The schedule board's own gap note said this screen's read did not exist, and it was right
+about the whole build.** That note: "`Coaches` is in the gaps below: it is a grid of rota rows
+rather than of sessions, and nothing here reads a resource's availability." `set_availability`
+has existed since MOD-019 was built and nothing in the product could show what it wrote — so a
+rota could be set and the only way to learn what it said was to publish a template against it
+and read the refusal. The fifth instance of this build's "a writer with no reader" shape, and
+`GET /scheduling/availability` closes it. `/rota` is now the board's third view chip.
+
+Six decisions carry the screen:
+
+- **The rota is the background and the bookings are drawn on top**, which is the canvas's own
+  structure. A session the rota now refuses is **drawn and flagged**, never dropped and never
+  silently honoured — the canvas argues it: *"Reducing availability never deletes a booking —
+  it surfaces the conflict for a person to resolve, because the member on the other end has
+  already been told a time."* So `bookedConflict` is a cell state of its own, and the refused
+  bookings are listed beneath the grid as well, because a marked cell in a grid of ninety is
+  something somebody has to find.
+- **Every time is the resource's own zone, never a session's.** That is the defect MOD-019
+  shipped and a reviewer found — `Window.timezone` was declared, written from the resource's
+  own location and read by nothing, so a London coach rostered 09:00–17:00 was available for
+  an 09:00 class in Amman. A grid of somebody's week is where that error would be least
+  questioned, so the zone is named on the page.
+- **Open hours are no figure where no rota binds, not zero.** A room, a court and a bike have
+  no rota in any meaningful sense and on the day a gym opens nobody has one, so the page says
+  "unconstrained" and draws no grid rather than seven columns of "not working" — which would
+  read as a studio nothing can be booked into. The fixture carries both members of that pair,
+  and the first attempt got it wrong: the test was pointed at the stand-in, which **has** a
+  rota, because a substitution is refused unless the replacement's week covers the class — so
+  the assertion ran against a page showing 112 open hours and the branch had never rendered.
+  A third staff resource with nothing written against it is the member that was missing.
+- **`WeekGrid` is the design system's own component for this shape**, and hand-rolling a
+  second one was caught by the usage sweep, which is what that sweep is for. Its rule —
+  *severity is an edge-mark and never a fill* — holds here rather than conflicting with this
+  canvas: that rule is about a *class* cell, where a week with three tinted classes reads as a
+  week three-quarters wrong. These cells are states of availability and the fill is the
+  information the legend names; the one severity on the grid is a booking the rota refuses,
+  and the canvas marks that with a border, which is the edge-mark the rule asks for.
+- **A time-off reason is masked unless the caller could have written one.** It is the one
+  window kind the schema requires a reason on, and it is prose about why a person is away —
+  MOD-017's rule that a health fact is a health fact whatever column it is in, and the same
+  prose `sch_session_changes.reason` is already masked for one table over. **The exception
+  itself is never hidden**: a grid that dropped it would be the rota lying about who is
+  working.
+- **The grid is hourly and the hours are rounded**, which is the attendance chart's split —
+  a chart is for scanning and a number is for acting on — and the screen says which it is.
+  `formatInteger` throws for a fraction because this app has one number-rendering path and a
+  cross-runtime parity test behind it, so the figure is whole hours; across a week that is
+  immaterial and below one it is not, and the exact minutes are on the route.
+- **The week starts on Sunday, because the canvas draws SUN–SAT** and dates its sample week
+  to a Sunday, which is the working week in this product's own market. `Window.weekday` is
+  0-Monday and that is a *storage* convention — the rota rows are keyed by weekday number
+  whichever day the grid begins on, so only the order of the seven dates moved.
+  `availability.week_from` carries the reason. This is not a declaration of which days anybody
+  works: `GET /reports/attendance` still refuses to label a day set "weekdays", because
+  nothing in this build records one.
+
+**Verified against the canvas by photographing both and comparing**, at 1400px, light, English
+— and the comparison found four things no assertion in four layers could see:
+
+| What the canvas does | What the screen did | Now |
+| --- | --- | --- |
+| Available, unbooked is a pale block; bookings are the dark marks | the resting state used `--color-border-strong`, a *border* token as a fill, so a week with one booking rendered as a wall of solid blocks and read as fully booked | a quiet surface, on a card |
+| Prints `PT`, `CLS` or `OFF` in a cell | colour was the only visible channel | `Booked` and `Off`, blank in the quiet states, both in the message catalogue |
+| Columns run SUN–SAT | ran MON–SUN | `week_from` starts on Sunday |
+| States the week in one sub-line, with no metric row | added four metric cells repeating open, booked and conflicts | removed; the sub-line is the figure |
+
+Four declarations the canvas uses and this screen does not, each with a reason: the canvas's
+**second** booked tone (`warm.700` for personal training, 26 cells) — this build cannot tell a
+class from a personal-training session, so the two tones the design draws are one mark and the
+gap note says so; the **"Add an exception" button's** edge, which is the form above; and two
+container-edge alphas between the semantic token's steps, which would need a hard-coded alpha
+the design system forbids a component to write.
+
+**TestSprite found the one thing none of this could**, which is the argument for a layer that
+has not read the repository: the page opened on the current week and had **no way to leave
+it**. `here({ from })` was defined in the page and nothing called it, and every spec here
+navigates straight to `?from=`, so not one of them could notice. The screen answers "when can
+this coach work", and the question is almost always about a week that is not this one — the
+canvas's own example is an exception agreed three weeks before the day it covers, which is
+exactly the shape the fixture seeds and exactly what was unreachable. Previous / this / next
+are links now, and the journey passes 10 of 10.
+
+**And correcting the weights broke the screen the other way first, which is worth recording.**
+With the fills fixed but the grid still drawn straight onto the page ground, "available,
+unbooked" *was* the ground and every working hour of the week became invisible — the same
+defect as the one before it with the sign reversed. The canvas draws the grid inside a white
+panel, and the quiet fill is defined against that panel; `.ds-week-scroll` carries the card
+now, which is what `.ds-matrix-scroll` already does for the other wide scrollable table.
+
+**And "Add an exception" is the first write form in this app that is not blocked.** The design
+draws the button, and every other form here is absent because "a button that answered 403 is
+worse than its absence" — every `tenancy.*`, `catalog.*` and `finance.*` write is a stepped-up
+financial permission. `scheduling.availability.write` is **not**: it is `configuration` with no
+financial class, and the catalogue says exactly why — *"A rota is edited by the people who run
+the floor, and refusing them a step-up every time somebody books a day off would make the rota
+wrong instead."* MOD-019's own gap note claims every scheduling write is stepped-up, which is
+false for the one the design puts a button on. The form is the next piece of work on this
+screen and the screen says so, as a gap rather than a refusal.
+
+**ADM-SCH-06 (Rooms and resources) is not built, and two of its three columns are why.** The
+canvas draws name, capacity and equipment, and says *"Capacity here is the ceiling every class
+inherits."* `sch_resources` has `quantity` — how many of a thing there are — and capacity in
+MOD-019 lives on a template's own `sch_capacity_policies`, per class. There is no equipment
+column at all. So the screen as drawn would have one real column and two invented ones, and
+rendering `quantity` under a heading reading "Capacity" would be the confident wrong answer in
+the place a scheduler sets a class size. `GET /scheduling/resources` exists, so the screen is
+blocked on the data rather than on a read.
 
 ## ADM-SCH-01 — the week grid
 

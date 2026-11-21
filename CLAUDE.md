@@ -2732,6 +2732,34 @@ Known gaps, deliberate:
   nothing completes a session whose time has passed, sweeps a lapsed hold or expires a booking
   window. The worker runtime exists and none of these is wired: completing a session is a
   statement that it happened, which is the same judgement MOD-020's settlement needs.
+- **`sch_availability_windows` has a reader now, and had none since the module was built.**
+  `set_availability` wrote working hours, breaks and dated absences and nothing in the product
+  could show what it wrote -- so a rota could be set and the only way to learn what it said
+  was to publish a template against it and read the refusal. The fifth instance of this
+  build's "a writer with no reader" shape. `GET /scheduling/availability` is a resource's week:
+  the rota rows that bind on each local day, the sessions it still holds, and
+  `availability.unavailable_reason` per held session -- so **a booking the rota now refuses is
+  returned and flagged rather than dropped**, which is ADM-SCH-04's own requirement. Three
+  decisions in it are worth knowing: every span is read in the *resource's* own location zone
+  and never the session's, which is the defect a reviewer found in `Window.timezone`; open
+  minutes are `null` where no working window binds rather than zero, because "a room has no
+  rota" and "the rota says no hours" are different facts and `26 of 0 hours booked` is what
+  conflating them produces; and a `time_off` reason is masked unless the caller holds
+  `scheduling.availability.write`, because it is the one free-text column in a rota and the one
+  place a health fact goes in practice -- the exception itself is never hidden.
+- **`week_from` starts the week on Sunday, which is the design's call and not this module's.**
+  ADM-SCH-04 draws its columns SUN-SAT and dates its sample week to a Sunday, the working week
+  in this product's own market. The first version started on Monday because `Window.weekday` is
+  0-Monday -- which is a *storage* convention and says nothing about how a week is read: the
+  rota rows are keyed by weekday number either way and only the order of the seven dates moved.
+  It is **not** a declaration of which days anybody works; `GET /reports/attendance` still
+  refuses to label a day set "weekdays", because nothing in this build records one.
+- **Two overlapping working rows double-counted their overlap**, found by the test written for
+  the arithmetic rather than by a reviewer. A rota entered as 09:00-13:00 and then widened by
+  adding 11:00-15:00 -- rather than by editing the first row, which nothing in this module
+  makes anybody do -- is six hours open and was reported as eight. That figure is the
+  denominator of ADM-SCH-04's own "26 of 34 available hours booked", so inflating it makes
+  somebody look less booked than they are. `availability._merge` is the fix.
 - **No travel buffer is enforced.** `availability.check_travel` decides and nothing calls it:
   the buffer is a per-tenant figure the sources do not state, and paragraph 1835's
   cross-location case needs a resource scheduled at two sites in one day, which the location
@@ -2753,11 +2781,17 @@ Known gaps, deliberate:
   is a person's own name and *is* cleared, because the row says which person it is.
 - **The timeline does not know about any of this.** MOD-014 projects nine event types and none
   of MOD-019's five is among them, so a member's timeline shows no class they were booked into.
-- **The surface is read-only.** `web/` renders the calendar and one session -- see "The web
-  app" -- and every write here is a form that does not exist: publishing a schedule,
-  generating occurrences, substituting an instructor, cancelling and relocating. Each is a
-  stepped-up permission, which is the same reason the hierarchy surface is read-only, and the
-  step-up flow that would carry them is built.
+- **The surface is read-only, and one of its writes was never the reason why.** `web/`
+  renders the calendar, one session and now a resource's rota -- see "The web app" -- and
+  every write here is a form that does not exist: publishing a schedule, generating
+  occurrences, substituting an instructor, cancelling and relocating. **This bullet used to
+  say each is a stepped-up permission, and that was false for the one the design puts a
+  button on.** `scheduling.availability.write` is `configuration` with no financial class --
+  routine, AAL 1 -- and the catalogue says why: "a rota is edited by the people who run the
+  floor, and refusing them a step-up every time somebody books a day off would make the rota
+  wrong instead". So ADM-SCH-04's "Add an exception" is a form this app could build today,
+  and `/rota` names it as the next piece of work rather than as a refusal. The other five
+  writes really are stepped-up, which is the same reason the hierarchy surface is read-only.
 - **The board shows today onwards**, which means its row count drops by one each time UTC
   midnight passes after a fixture is seeded. That is a property of the window rather than a
   defect, and it is why the spec asserts what every row *says* rather than how many there
@@ -3948,6 +3982,69 @@ promotion's `percent_bp` is basis points, so rendering the stored number puts `1
 for ten percent. That is MOD-015's money discipline one field over, and an assertion about the
 word "worth" passes either way.
 
+**ADM-SCH-04's grid is the schedule board's missing third view, and its read did not exist.**
+That board's own note said so -- "`Coaches` is in the gaps below: it is a grid of rota rows
+rather than of sessions, and nothing here reads a resource's availability" -- and it was right
+about the whole build: `set_availability` had a writer and no reader since MOD-019 was built.
+`/rota` is the screen and `GET /scheduling/availability` is the read. Five things about it are
+decisions rather than rendering:
+
+  * **The rota is the background and the bookings are drawn on top**, and a booking the rota
+    now refuses is **drawn and flagged** rather than dropped or silently honoured. The canvas
+    argues it: "reducing availability never deletes a booking -- it surfaces the conflict for
+    a person to resolve, because the member on the other end has already been told a time."
+    So `bookedConflict` is a cell state of its own, and the refused bookings are also listed
+    beneath the grid, because a marked cell in a grid of ninety is something somebody has to
+    find. The fixture seeds exactly the canvas's case: an evening off with a class inside it,
+    written *after* the class, which is the realistic order.
+  * **Open hours are no figure where no rota binds, not zero**, so the page says
+    "unconstrained" and draws no grid rather than seven columns of "not working" -- which
+    would read as a studio nothing can be booked into. The fixture carries both members of
+    that pair, and getting that wrong is how the branch nearly shipped unrendered: it was
+    first pointed at the stand-in, which **has** a rota, because a substitution is refused
+    unless the replacement's week covers the class -- so the test asserting "no rota binds"
+    ran against a page showing 112 open hours across a full grid. A third staff resource
+    with nothing written against it is the member that was missing, and a new hire is the
+    realistic shape, since on the day a gym opens nobody has a rota.
+  * **The hours figure is a whole number, and the alternative was a 500 on every request.**
+    `formatInteger` throws for a fraction, because this app has exactly one
+    number-rendering path and a cross-runtime parity test that compares it against the
+    backend's character for character. The first version returned tenths, so the page
+    answered 500 from inside `fill` with the route and the data both correct. Rounding to
+    the hour is the fix and the screen says so, because across a week it is immaterial and
+    below an hour it is not: a half-hour booking reads as no hours beside a cell that is
+    visibly booked, and the exact minutes are on the route.
+  * **The grid scrolls inside itself, and that needs a containment boundary.** `WeekGrid`
+    had no live caller until this screen, so its wrapper scrolled and nothing stopped the
+    overflow reaching the document root -- 95px of sideways scroll at phone width, which is
+    `/permissions`' own finding in a component whose comment explains why the table is
+    64rem wide. **Both halves are asserted**, because the two wrong states hide each other:
+    a table pinned to its container inside a contained wrapper reports zero document
+    overflow and has nothing to scroll, so the columns are clipped and unreachable while
+    every assertion about text still passes.
+  * **A week grid needs a way to leave the week it opened on, and this one had none.**
+    Found by TestSprite, which is what an independent layer is for: `here({ from })` was
+    defined in the page and called by nothing, and every spec here navigates straight to
+    `?from=`, so none of them could notice. The screen answers "when can this coach work"
+    and the question is almost always about a week that is not this one -- the canvas's own
+    example is an exception agreed three weeks before the day it covers, which is the shape
+    the fixture seeds and exactly what was unreachable.
+  * **`WeekGrid` is the design system's own component for this shape**, and hand-rolling a
+    second one was caught by the usage sweep. Its rule -- *severity is an edge-mark and never
+    a fill* -- holds rather than conflicting: that rule is about a class cell, where a week
+    with three tinted classes reads as three-quarters wrong, while these cells are states of
+    availability and the fill is what the legend names. The one severity here is a refused
+    booking, which the canvas marks with a border.
+  * **A time-off reason is masked unless the caller could have written one**, because it is
+    the one free-text column in a rota and the one place a health fact goes in practice. The
+    exception itself is never hidden.
+  * **"Add an exception" is the first write form in this app that is not blocked.** Every
+    other absent form here is a stepped-up financial permission and "a button that answered
+    403 is worse than its absence"; `scheduling.availability.write` is routine, and the
+    catalogue says why. MOD-019's own gap note claimed every scheduling write is stepped-up,
+    which was false for the one the design puts a button on. The screen says the form is the
+    next piece of work rather than a refusal.
+
 **ADM-RPT-04's board is one chart and one sentence, and the sentence is the requirement.**
 The canvas's own note says why it is derived rather than left to the reader: "The conclusion is
 written in words beneath the chart. A manager should not have to interpret a heat strip to find
@@ -4214,7 +4311,8 @@ re-running the fixture invalidates every test already created.
 
 Known gaps: the surface covers the sign-in, the step-up, the account page, MOD-004, MOD-005,
 MOD-007, MOD-008, MOD-009, MOD-010, MOD-011, MOD-012, MOD-013, MOD-014, MOD-016, MOD-017,
-MOD-018, MOD-019, MOD-021 and MOD-022, plus MOD-020's roster on a session, ADM-STF-01/02's
+MOD-018, MOD-019, MOD-021 and MOD-022, plus MOD-020's roster on a session, ADM-SCH-04's
+availability grid at `/rota`, ADM-STF-01/02's
 staff list and staff record, ADM-PAY-05's
 recovery workspace, ADM-PAY-10's dispute board, ADM-RPT-01/02/03/04
 under `/reports`, ADM-PAY-07's wallet on a member's billing tab and ADM-MEM-07's attendance
@@ -4250,7 +4348,21 @@ implemented module with no screen at all**;
 `contracts/ui/screen-contracts.yaml` names the rest.
 
 **Of the specified Admin screens with no route, the ones with reads behind them are what to
-build next.** **ADM-RPT-04 came off that list by writing the read it needed**, and the
+build next.** An audit of the 81 specified Admin screens puts 43 of them in neither the source
+nor this inventory, and most are blocked for a stated reason: CRM, Automation, Tasks and Search
+are modules this repository does not have, and the forms are stepped-up financial writes. Some
+of the 43 are *states* of screens that are built -- the Command Center's quiet day, the Member
+360's three variants -- which is a labelling gap rather than a build gap and is worth not
+confusing with one. **ADM-SCH-04 came off the list by writing the read it needed**, and the
+read was the finding: `set_availability` had had a writer and no reader since MOD-019 was
+built, so a rota could be set and the only way to learn what it said was to publish a template
+against it and read the refusal. `/rota` is also where the standing claim that every form here
+is blocked turned out to be wrong -- `scheduling.availability.write` is routine, so the
+design's "Add an exception" is buildable today. **ADM-SCH-06 did not come off it**, and for a
+reason worth recording: the canvas draws capacity and equipment columns, `sch_resources` has
+`quantity` -- how many of a thing there are -- and capacity lives on a template's own policy,
+so the screen as drawn would have one real column and two invented ones.
+**ADM-RPT-04 came off that list by writing the read it needed**, and the
 interesting half was deciding what *not* to answer: `GET /reports/attendance` buckets entries
 into a club's own local hours over complete local days of a caller-chosen day set, and
 `app/access/attendance.py` derives the busiest window and the quietest attended hour, which is
