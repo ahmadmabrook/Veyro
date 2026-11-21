@@ -4095,6 +4095,16 @@ decisions rather than rendering:
   * **A time-off reason is masked unless the caller could have written one**, because it is
     the one free-text column in a rota and the one place a health fact goes in practice. The
     exception itself is never hidden.
+  * **ADM-MSH-03's freeze is the first *stepped-up* write form, and it falsifies a claim
+    this file has repeated for every absent form.** "A button that answered 403 is worse
+    than its absence" is true of a button that just fails, and says nothing about one that
+    offers the step-up first -- which this app already does for a masked *read*. The honest
+    cost is one recovery code per twelve-hour window rather than one per act. The allowance
+    reads on the routine permission, so the figure that bounds the act is legible without
+    stepping up at all; the act offers the step-up with `next` back to the member. The same
+    shape as MOD-019's note claiming every scheduling write was stepped-up when the one the
+    design put a button on was routine: a blanket reason covering a dozen screens is worth
+    re-deriving for each of them.
   * **"Add an exception" is built, and it is the first write in this app that is not a
     member acting on their own account.** Every other absent form here is a stepped-up
     financial permission and "a button that answered 403 is worse than its absence";
@@ -4353,6 +4363,15 @@ they already have.
 credential kind -- each a column's value rendered where a word belongs, and each Latin
 letters in the middle of an Arabic line. `MESSAGE_KEYS` cannot see any of them: it compares
 the two catalogues against each other and is blind to a string that never became a key.
+
+**TestSprite cannot see anything behind a step-up, and that bounds the layer rather than
+the product.** This build's only verifiable second factor is a single-use recovery code --
+TOTP and passkeys are implemented and unverifiable here -- so an outside reader can be given
+no credential that would raise a session, and handing one to a stored test would spend it on
+the first run. ADM-MSH-03's journey established the bound by hitting it: it verified the
+figure that bounds a freeze reads *without* a step-up, offered to go further, and stopped
+exactly where a real reader without a code would. Everything past that wall is the browser
+suite's, which holds the password and mints a fresh code per run.
 
 **TestSprite is the independent layer**, and `qa/testsprite/plans.mjs` generates four journeys
 from the live fixture. Its value is that it has not read this repository: a Playwright spec and

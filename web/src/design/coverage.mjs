@@ -76,7 +76,6 @@ const BLOCKED = {
     + "wall MOD-009's export and MOD-014's progress media hit",
   "ADM-MEM-10": "stepped-up: people.person.write is financial class",
   "ADM-MSH-02": "stepped-up: membership.record.write is financial class",
-  "ADM-MSH-03": "stepped-up: membership.record.write is financial class",
   "ADM-MSH-04": "stepped-up: membership.record.write is financial class",
   "ADM-MSH-06": "stepped-up: membership.record.write is financial class",
   "ADM-MSH-09": "stepped-up: catalog.price.write and catalog.product.write are financial",

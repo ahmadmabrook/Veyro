@@ -1,5 +1,6 @@
 import { formatMoney } from "@/i18n/locale";
 import { api } from "@/lib/api";
+import type { FreezeAllowance } from "@/lib/freeze";
 
 /**
  * MOD-017's reads, typed: what a member agreed to, what it entitles them to, and what they owe.
@@ -243,4 +244,17 @@ export function outstandingMinor(invoices: InvoiceRow[]): number {
   return invoices
     .filter(isOutstanding)
     .reduce((total, invoice) => total + invoice.gross_minor - invoice.paid_minor, 0);
+}
+
+/**
+ * What is left of a membership's freeze allowance. ADM-MSH-03.
+ *
+ * **The figure the canvas puts in the consequence panel before the button**, and it was
+ * unreadable until this route existed: `allowance_days_used_before` came back from the write
+ * and from nothing else, so the only way to learn how much a member had spent was to spend
+ * more of it. The seventh "a writer with no reader" in this build.
+ */
+export function readFreezeAllowance(membershipId: string): Promise<FreezeAllowance> {
+  return api<FreezeAllowance>(
+    `/memberships/${encodeURIComponent(membershipId)}/freeze-allowance`);
 }

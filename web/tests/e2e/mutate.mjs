@@ -1163,6 +1163,54 @@ const MUTATIONS = [
     grep: "is null where there is nothing at all to draw",
   },
   {
+    id: "freeze-both-ends-of-the-span-are-counted",
+    why: "`freeze_membership` stores `planned_ends_on = starts_on + days - 1`, so a freeze "
+      + "from the first to the first is one day -- treating the pair as exclusive spends "
+      + "somebody's annual allowance a day at a time, in the direction nobody checks",
+    file: "src/lib/freeze.ts",
+    from: "  return span + 1;",
+    to: "  return span;",
+    runner: "vitest",
+    grep: "counts both ends",
+  },
+  {
+    id: "freeze-the-start-window-is-named-before-the-allowance",
+    why: "the order of refusals is the server's, so a form that checked the allowance first "
+      + "would tell somebody to shorten a freeze whose date the server was going to refuse "
+      + "anyway -- two wrong instructions for one mistake",
+    file: "src/lib/freeze.ts",
+    from: '  if (!startIsAllowed(from, allowance.may_start_between)) {\n    return "freeze.startOutsideWindow";\n  }',
+    to: "",
+    runner: "vitest",
+    grep: "names the start window before the allowance",
+  },
+  {
+    id: "freeze-a-step-up-is-offered-rather-than-a-button-that-fails",
+    why: "every other write form in this app is absent because a button that answered 403 "
+      + "is worse than its absence; what makes this one buildable is the offer, so a block "
+      + "that rendered the form regardless would be the thing the whole rule is against",
+    file: "src/components/membership-panels.tsx",
+    from: '      ) : affordance === "form" ? (',
+    to: '      ) : true ? (',
+    runner: "playwright",
+    grep: "offers the step-up rather than a button",
+  },
+  {
+    id: "freeze-a-contract-that-forbids-it-gets-no-step-up",
+    why: "a step-up cannot grant what `check_freeze` refuses outright, so offering one for a "
+      + "contract with no allowance sends somebody to find a second factor that changes "
+      + "nothing -- the member record's own rule about a health field, applied to a write",
+    // **Moved from the component to the decision, because the branch was unreachable.**
+    // The fixture's contract allows thirty days, so the component's no-allowance path never
+    // rendered and deleting it passed a green suite. A decision is testable where a rendered
+    // branch is not, which is the remedy the rules file states for this exact shape.
+    file: "src/lib/freeze.ts",
+    from: '  if (!allowance.allows_freezing) return "no_allowance";',
+    to: "",
+    runner: "vitest",
+    grep: "offers neither where the contract forbids freezing",
+  },
+  {
     id: "cash-the-count-is-scaled-to-the-stored-minor-units",
     why: "JOD is stored in fils and shown with two decimals, so reading a 135.50 count as "
       + "13550 makes it 13.55 and posts a 121.95 shortfall to suspense -- on the one screen "

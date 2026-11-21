@@ -105,8 +105,20 @@
         "failed": 0
       },
       "found": "Re-created and re-run against the reseeded tenant, because a created test carries its tenant's id for ever. 24 of 24."
+    },
+    {
+      "journey": "A member's freeze can be reached from an ordinary sign-in",
+      "testId": "c330754d-f0a1-447b-8056-722fb13c49d8",
+      "runId": "0004c1b1-b842-4928-87fd-fbc8f9475550",
+      "status": "passed",
+      "steps": {
+        "total": 11,
+        "passed": 11,
+        "failed": 0
+      },
+      "found": "ADM-MSH-03. The first attempt came back BLOCKED and the observation is the useful part: 'The membership page showed 0 of 30 freeze days used this contract year' -- the assertion that mattered, that the figure bounding the act reads without a step-up, verified by a reader that has not seen this repository. It then stopped where every outside reader must: **this build's only verifiable second factor is a single-use recovery code**, so nothing behind a step-up can be covered by this layer at all. TOTP and passkeys are implemented and unverifiable here. The journey now ends where that wall is and asserts the page says plainly what it needs; what is past it is covered by the browser suite, which holds the password and can mint a fresh code."
     }
   ],
-  "finishedAt": "2026-11-21T21:55:00Z",
+  "finishedAt": "2026-11-22T00:20:00Z",
   "correction": "The journey 'A report this session cannot open is absent, not locked' failed three times against a product that was right, and the fault was the plan. Its description quoted the canvas's Club Manager scenario -- 'the two financial ones are absent' -- while its steps signed in as the owner, so the agent checked the financial reports were absent for a session holding every permission and reported them present. It was right to. A plan's description is read as the specification, which is the point of writing them in English; one that describes a different session from the one the steps open is a plan contradicting itself. It is now the two halves it should always have been. The misdiagnosis in between is written up in contracts/ui/design-compliance.md: a theory that explains a failure is not the cause of it."
 }

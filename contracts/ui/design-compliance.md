@@ -298,6 +298,7 @@ corresponds to them. The others map loosely:
 | `/members` | ADM-MEM-05 Members list | **built from the canvas**; its three absent columns and six absent controls are named on the screen |
 | `/people/{id}` | ADM-MEM-01/02 Member 360 | **rebuilt to the canvas** — pattern 02, the status band, five MetricCells, the tabs, the timeline spine |
 | `/people/{id}?tab=billing` | ADM-MEM-06 Member · billing tab | **built** — the membership, the entitlements and the invoices composed from MOD-017 through three gates, each refusing separately |
+| `/people/{id}?tab=membership` (freeze) | ADM-MSH-03 Membership · freeze | **built from the canvas, and the first stepped-up write form in this app** — the allowance reads routine, the act offers the step-up with `next` back here; the override at the limit and the thirty-second undo are named as absent |
 | `/people/{id}?tab=notes` | ADM-MEM-09 Member · notes | **read built, write blocked** — `people.note.write` is financial class, because a note cannot be edited and will be read in a dispute; a redacted note is marked rather than dropped |
 | `/integrations` | ADM-SET-05 Integrations index | **built** — the install, its criticality and its written obligations; nothing syncs and the board says so |
 | `/schedule` | ADM-SCH-01 Class schedule · week grid | **built from the canvas** |

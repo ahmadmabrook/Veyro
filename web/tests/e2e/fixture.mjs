@@ -1071,8 +1071,13 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
   const contractKey = `terms${Date.now().toString(36)}`;
   const version = await call("/memberships/contract-versions", {
     method: "POST", ...as(token),
+    // **Thirty freeze days a year**, because the default is nought and a contract that
+    // allows no freezing makes ADM-MSH-03 undemonstrable: the panel reads "0 of 0", the
+    // form never renders, and the screen's whole subject -- what a freeze costs against an
+    // allowance -- has nothing to show. Thirty is the ordinary commercial term and is what
+    // the canvas's "2 of 3 freeze months" implies.
     body: { contract_key: contractKey, body: "Standard membership terms.",
-            correlation_id: cid() },
+            freeze_days_per_year: 30, correlation_id: cid() },
   });
   // Published by the *second* identity. See the role above.
   await call(`/memberships/contract-versions/${version.contract_version_id}/publish`, {

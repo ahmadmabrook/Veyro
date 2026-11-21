@@ -3,7 +3,11 @@ import Link from "next/link";
 import { Banner } from "@/components/ds/banner";
 import { MoneyValue } from "@/components/ds/money-value";
 import { fill, formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
-import { gateAll, gateMessage, failureMessage, type GateAnswer } from "@/lib/api";
+import { gate, gateAll, gateMessage, gateVerdict, failureMessage, type GateAnswer }
+  from "@/lib/api";
+import { readFreezeAllowance } from "@/lib/membership";
+import { affordanceFor, type FreezeAllowance } from "@/lib/freeze";
+import { FreezeForm } from "@/app/people/[personId]/freeze-form";
 import {
   kindName,
   kindWord,
@@ -93,6 +97,17 @@ export async function MembershipPanels({
           <Memberships personId={personId} locale={locale} />
         </Block>
       </section>
+      ) : null}
+
+      {/* **ADM-MSH-03, and the first stepped-up form in this app.** Every other absent form
+          here is a financial-class write and the inventory said so -- "a button that
+          answered 403 is worse than its absence". What makes this one buildable is not a
+          change to the permission but the step-up this app already has: the block offers it
+          with `next` back to this member, the way the member record already offers one for a
+          masked field. A step-up opens a twelve-hour window, so it is one recovery code a
+          shift rather than one an act, and the allowance panel reads without one. */}
+      {show("membership") ? (
+        <Freezing personId={personId} locale={locale} />
       ) : null}
 
       {show("membership") ? (
@@ -627,3 +642,111 @@ const cell: React.CSSProperties = {
 };
 
 const caption: React.CSSProperties = { fontSize: "var(--type-caption-size)" };
+
+
+/**
+ * ADM-MSH-03's freeze, with the consequence panel the canvas puts above the button.
+ *
+ * **Three answers, not two.** The allowance reads on `membership.record.read`, which is
+ * routine; the act needs `membership.lifecycle.change`, which is financial. So a reader can
+ * be in one of three states and each has a different next step: they may act, they may act
+ * after a step-up, or they may not act at all. A page that collapsed the last two would send
+ * somebody to find a second factor that changes nothing.
+ */
+async function Freezing({ personId, locale }: { personId: string; locale: Locale }) {
+  const text = (key: MessageKey) => t(locale, key);
+  let live: MembershipRow | undefined;
+  try {
+    live = (await listMemberships(personId)).memberships.find(
+      (row) => row.status === "active" || row.status === "frozen");
+  } catch {
+    // The block above already reported the failure; a second banner for the same request
+    // would be the same fact twice.
+    return null;
+  }
+  if (live === undefined) return null;
+
+  let allowance: FreezeAllowance;
+  try {
+    allowance = await readFreezeAllowance(live.membership_id);
+  } catch {
+    return null;
+  }
+
+  const may = await gate("membership.lifecycle.change");
+  const affordance = affordanceFor(allowance, {
+    allowed: may.allowed, verdict: gateVerdict(may),
+  });
+
+  return (
+    <section className="page-section" aria-labelledby={`freeze-${live.membership_id}`}>
+      <h2 id={`freeze-${live.membership_id}`} style={{ margin: 0 }}>
+        {text("freeze.title")}
+      </h2>
+
+      {/* **The allowance, before anything else.** The canvas puts "2 of 3 freeze months used
+          this year" in the consequence panel, and this is the figure behind it -- readable
+          at last, and from the expression the write itself checks against. */}
+      <p style={{ margin: 0 }}>
+        {fill(locale, "freeze.used", {
+          used: formatInteger(allowance.days_used, "latn"),
+          allowed: formatInteger(allowance.allowance_days, "latn"),
+        })}
+      </p>
+      {allowance.counting_an_open_freeze ? (
+        <Banner severity="attention">{text("freeze.openNow")}</Banner>
+      ) : null}
+      <p className="muted" style={{ margin: 0 }}>
+        {fill(locale, "freeze.window", {
+          from: allowance.may_start_between.from, to: allowance.may_start_between.to,
+        })}
+        {" · "}
+        {text("freeze.windowWhy")}
+      </p>
+
+      {/* **Four answers, decided in one place.** `affordanceFor` is a function so that every
+          branch of it has a test: the "this contract allows no freezing" path had none,
+          because the fixture's contract allows thirty days and the branch never rendered --
+          a mutation deleting it passed a green suite, which is the "branch no fixture can
+          reach" shape this repository records for four modules. */}
+      {affordance === "no_allowance" ? (
+        <Banner severity="info">{text("freeze.noAllowance")}</Banner>
+      ) : affordance === "form" ? (
+        <FreezeForm
+          locale={locale}
+          numbering="latn"
+          personId={personId}
+          membershipId={live.membership_id}
+          allowance={allowance}
+        />
+      ) : affordance === "step_up" ? (
+        <>
+          <Banner severity="info">{text("freeze.stepUpFirst")}</Banner>
+          <Link
+            href={`/step-up?for=financial&action=membership.lifecycle.change&next=${
+              encodeURIComponent(`/people/${personId}?tab=membership`)}`}
+          >
+            {text("freeze.stepUp")}
+          </Link>
+        </>
+      ) : (
+        <Banner severity="info">
+          {affordance === "refused" && gateVerdict(may) === "denied"
+            ? text("freeze.notPermitted") : text(gateMessage(may))}
+        </Banner>
+      )}
+
+      <dl className="facts">
+        {([
+          ["freeze.gapOverrideLabel", "freeze.gapOverride"],
+          ["freeze.gapUndoLabel", "freeze.gapUndo"],
+        ] as [MessageKey, MessageKey][]).map(([label, why]) => (
+          <div key={label} style={{ display: "contents" }}>
+            <dt className="muted">{text(label)}</dt>
+            <dd style={{ margin: 0 }}>{text(why)}</dd>
+          </div>
+        ))}
+      </dl>
+    </section>
+  );
+}

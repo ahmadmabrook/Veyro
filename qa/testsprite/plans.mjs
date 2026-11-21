@@ -461,6 +461,62 @@ const PLANS = [
     ],
   },
   {
+    // **ADM-MSH-03, and the claim worth an outside reader is the route rather than the
+    // form.** Every absent write form in this app was justified with "a button that
+    // answered 403 is worse than its absence"; this one offers the stronger sign-in
+    // instead. Whether that is actually a way through is not something the people who
+    // built it can judge -- TestSprite found the last two dead ends on this product by
+    // trying to get somewhere and failing.
+    name: "A member's freeze can be reached from an ordinary sign-in",
+    description:
+      "Freezing a membership changes what somebody is charged, so it needs a stronger " +
+      "sign-in. A reader who starts without one must be able to see what it would cost " +
+      "without signing in more strongly, and must be offered a way through rather than a " +
+      "dead end. What is behind the stronger sign-in is out of reach here: the only " +
+      "verifiable second factor in this build is a single-use recovery code.",
+    priority: "p0",
+    planSteps: [
+      ...signIn,
+      {
+        type: "action",
+        description:
+          "Open the Members section, open the first member in the list, and go to the " +
+          "tab about their membership.",
+      },
+      {
+        type: "assertion",
+        description:
+          "Verify the page already says how much of this membership's annual freeze " +
+          "allowance has been used, and over what period, WITHOUT asking for a stronger " +
+          "sign-in first. A screen that hid that figure would make somebody sign in more " +
+          "strongly just to find out whether it was worth doing.",
+      },
+      {
+        type: "assertion",
+        description:
+          "Verify the page offers a way to act rather than a dead end: if freezing needs a " +
+          "stronger sign-in, there is a visible link or button to do that, and the page " +
+          "says in words why it is needed. A page that simply refused, or showed a button " +
+          "that would fail, is the failure this journey is about.",
+      },
+      {
+        type: "action",
+        description:
+          "Follow that offer as far as you can. **Stop when it asks for a credential you " +
+          "were not given** — this build's only verifiable second factor is a single-use " +
+          "recovery code, and you have none; that is a known limitation and not a defect " +
+          "to report.",
+      },
+      {
+        type: "assertion",
+        description:
+          "Verify that what it asked you for is stated plainly — which credential, and " +
+          "why — rather than a generic refusal or an error. A reader who cannot proceed " +
+          "should at least know exactly what they need.",
+      },
+    ],
+  },
+  {
     name: "A withheld field on a member's record is marked, never blank",
     description:
       "MOD-014 applies the gate's masked-field list and this surface renders it. An empty " +

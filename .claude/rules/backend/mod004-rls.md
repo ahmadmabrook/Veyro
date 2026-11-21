@@ -1126,6 +1126,27 @@ other failed login or it becomes an oracle about which tenants exist. **The gene
 where a role is deliberately blind to a referenced table, every write that crosses that
 reference is a 500 waiting for input the caller controls.**
 
+**Completing a step-up revokes the session every other spec adopts, so one saved session
+can be stepped up exactly once per run.** MOD-007 does not elevate a session in place: it
+revokes the one it came from with `revoke_reason = 'stepped_up'` and opens a new one,
+"because a session's lifetime follows what it can do and a level-2 window is twelve hours
+rather than a fortnight". The new cookie lives in that browser context; the saved state file
+still holds the old one. So the *next* test to adopt it is signed out, and so is every spec
+that runs after that file. `step-up.spec.ts` never hit this because it sorts last; the first
+spec to need a stepped-up session sorted first, and four of that spec's tests failed the
+moment it existed -- as refusals, which read like a product defect rather than a harness one.
+A spec that needs level 2 signs in for itself rather than adopting the shared cookie: a few
+logins against MOD-011's thirty a minute, and nothing shared is spent.
+
+**And "a form behind a financial permission cannot be built" was too strong.** Every absent
+write form in this app was justified with "a button that answered 403 is worse than its
+absence", which is true of a button that just fails and says nothing about one that offers
+the step-up first -- which this app already does for *reads*, on a masked field. The honest
+cost is one recovery code per twelve-hour window rather than one per act, and that is a
+sentence a screen can say. The same shape as MOD-019's gap note claiming every scheduling
+write was stepped-up when the one the design put a button on was routine: **a blanket reason
+covering a dozen screens is worth re-deriving for each of them.**
+
 **Run the lint after the last edit, not after the last edit you were thinking about.**
 `ruff`, `mypy` and the suites are separate commands in this project precisely "so one failure
 does not hide the rest", and that cuts both ways: a green run proves the tree as it was when
