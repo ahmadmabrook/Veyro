@@ -939,3 +939,26 @@ for `stateName`, `planName` and `UNANSWERABLE` now.
 AAL 1, and the step-up that lifts it was offered on a member's record only — so a reader of
 the list had a withheld name against every member and nothing on the page to act on. Found by
 TestSprite, which clicked the marker looking for one.
+
+
+## Round 2, and the defect only CI could find
+
+The directive asks for two complete verification rounds, the second from a clean build. Round
+2: `.next` removed, a fresh fixture, a fresh production bundle, then every layer again — 334
+browser tests, 95 backend access and structural tests, `npm run verify`, and the four
+TestSprite journeys re-created against the new tenant and re-run through a tunnel.
+
+**Between the rounds, CI failed on something no local run had hit.** ADM-CC-01's third metric
+is "VISITS TODAY", and its read filtered on each club's *local* date while comparing it
+against `datetime.now(UTC).date()`. The two frames agree for most of the day. In the hours
+after a club's local date has turned over — 23:17 UTC at a UTC+3 club — the day's count read
+zero, **the location dropped out of the response altogether**, and the member record's LAST
+VISIT cell was fed `days_since: -1`.
+
+Both reads' own docstrings already stated the rule they broke. The regression test uses two
+clubs, `Pacific/Kiritimati` (UTC+14) and `Etc/GMT+12` (UTC−12), whose windows of disagreement
+with UTC cover the clock between them — a single zone would make the test as flaky as the bug.
+Mutation-proven.
+
+It is worth naming what caught it: not the visual comparison, not TestSprite, not 334 browser
+tests. A scheduled run at an hour I had not run at.
