@@ -2532,3 +2532,36 @@ a {
   color: var(--color-text-tertiary);
 }
 
+
+/* ------------------------------------------------- ADM-PAY-05's message preview
+ *
+ * The canvas draws the message in a white inset inside the panel:
+ * `padding:10px 12px; background:#fffefb; border:1px solid rgba(23,23,26,.1);
+ *  border-radius:4px; font:400 12.5px/1.7`.
+ *
+ * `pre-wrap` because a template's own line breaks are part of what somebody authored, and
+ * `78ch` because this is prose a person reads rather than a column that has to line up.
+ */
+.ds-message {
+  margin: 0;
+  padding: 10px 12px;
+  max-inline-size: 78ch;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-card);
+  background: var(--color-surface-raised);
+  font-size: var(--type-bodySm-size);
+  line-height: 1.7;
+  white-space: pre-wrap;
+  text-wrap: pretty;
+}
+
+/* The canvas's amber `review first`, which is the one hint on ADM-PAY-05 that is not
+ * neutral: `link ready` is the ordinary outcome and `review first` is the row somebody has
+ * to stop at. `color.semantic.warning` is the design system's own token for "needs review"
+ * and its contrast table rates it 5.84 / 5.27 / 4.86 — "the tightest semantic; do not
+ * lighten" — so it passes at every size this is used at.
+ *
+ * The colour is never alone: the row carries the attention bar and the word itself says
+ * "Review first", which is §15's rule that nothing carries meaning by colour.
+ */
+.ds-wants-review { color: var(--color-semantic-warning); }

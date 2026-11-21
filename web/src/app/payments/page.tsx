@@ -279,9 +279,21 @@ export default async function PaymentsPage({
                 // this repository names in four modules, in a message catalogue. The
                 // parity check caught it: the em-dash was identical in both locales
                 // because nothing was ever going to render it.
+                // **A failed charge has somewhere to go.** ADM-PAY-05 is the workspace for
+                // exactly these rows -- it pairs each with the failure that opened it and
+                // the membership its invoice cites, and says which want a message and which
+                // want a person. The cell said "Retry or ask for a new card" and offered no
+                // way to do either, which is the shape an independent tester found on the
+                // members list: a marker somebody clicks looking for the remedy.
                 render: (entry) =>
                   entry.needs_action && entry.kind !== "payment" ? (
-                    text(`payments.next.${entry.kind}` as MessageKey)
+                    entry.kind === "attempt" ? (
+                      <Link href="/payments/recovery">
+                        {text("payments.next.attempt")}
+                      </Link>
+                    ) : (
+                      text(`payments.next.${entry.kind}` as MessageKey)
+                    )
                   ) : (
                     <span className="muted">—</span>
                   ),

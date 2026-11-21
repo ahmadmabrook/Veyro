@@ -74,6 +74,10 @@ READ_ROUTES = [
     ("get", "/integrations/cursors", None),
     ("get", "/integrations/runs", None),
     ("get", "/notifications/templates", None),
+    # The body-bearing read beside the listing. Swept on the same permission, because that is
+    # the claim: it needs no permission of its own, since the listing already buys the subject
+    # line and the variable names.
+    ("get", "/notifications/templates/published?template_key=invoice.issued", None),
     ("get", f"/notifications/preferences?recipient_id={_SUBJECT}", None),
     ("get", "/notifications/channels", None),
     ("get", "/notifications", None),
@@ -361,6 +365,12 @@ WRITE_ROUTES = [
     # behind the same permission as the list it counts.
     ("get", "/finance/collections", None),
     ("get", "/finance/dunning-cases", None),
+    # ADM-PAY-05. The same rows as the listing above and the same permission, which is the
+    # point: it is those cases sorted by what each one wants, not a wider read.
+    ("get", "/finance/recovery", None),
+    # ADM-PAY-10. The module's last writer with no reader: three routes could record,
+    # answer and settle a chargeback and nothing could list one.
+    ("get", "/finance/disputes", None),
     ("get", "/memberships/summary", None),
     ("post", "/member-entitlements/policies",
      {"policy_key": "sweep.classes", "display_name": "Classes",

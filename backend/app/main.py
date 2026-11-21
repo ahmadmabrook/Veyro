@@ -4990,6 +4990,23 @@ def create_app(
         permit(session, "notifications.template.read")
         return notifications.list_templates(tenant_pool, tenant_id, status=status)
 
+    @app.get("/notifications/templates/published")
+    def read_published_template(
+        tenant_id: TenantId, session: Session, template_key: str,
+        locale: str | None = None, channel: str | None = None,
+    ) -> dict[str, Any]:
+        """The published template a key would send, including its body.
+
+        The listing beside this one returns no body, which left the text with no reader at
+        all: a template could be drafted, approved and published and the only way to see what
+        it said was to send a message with it. ADM-PAY-05's "the message they receive" is the
+        first surface to need it.
+        """
+        permit(session, "notifications.template.read")
+        return notifications.published_template_for_key(
+            tenant_pool, tenant_id, template_key=template_key, locale=locale,
+            channel=channel)
+
     @app.post("/notifications/templates", status_code=201)
     def create_template(
         tenant_id: TenantId, session: Session, body: TemplateBody
@@ -6636,6 +6653,19 @@ def create_app(
         return commercial.list_dunning_cases(
             tenant_pool, tenant_id, status=status, limit=limit)
 
+    @app.get("/finance/recovery")
+    def read_recovery_workspace(
+        tenant_id: TenantId, session: Session, limit: int = 50,
+    ) -> dict[str, Any]:
+        """ADM-PAY-05: the failed payments as one decision, sorted by what each one wants.
+
+        `finance.dunning.read`, the same permission as the listing beside it, because this is
+        the same rows with the failure that opened each one and the standing of the membership
+        its invoice cites. Nothing here sends anything and the response says so.
+        """
+        permit(session, "finance.dunning.read")
+        return commercial.recovery_workspace(tenant_pool, tenant_id, limit=limit)
+
     @app.post("/finance/dunning-cases", status_code=201)
     def start_dunning(
         tenant_id: TenantId, session: Session, body: DunningBody
@@ -6660,6 +6690,23 @@ def create_app(
             notification_ref=body.notification_ref,
             actor_id=session["identity_id"], correlation_id=body.correlation_id,
         )
+
+    @app.get("/finance/disputes")
+    def read_disputes(
+        tenant_id: TenantId, session: Session, status: str | None = None,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        """ADM-PAY-10: the chargebacks, with how long is left to answer each one.
+
+        The module's last writer with no reader: three routes could record, answer and
+        settle a dispute and nothing could list one, so a chargeback existed only for
+        whoever had just written it. `finance.dispute.manage` is the permission the writers
+        already use -- a dispute is money being taken back, and the deadline on this read is
+        the thing somebody has to act on.
+        """
+        permit(session, "finance.dispute.manage")
+        return commercial.list_disputes(
+            tenant_pool, tenant_id, status=status, limit=limit)
 
     @app.post("/finance/disputes", status_code=201)
     def record_dispute(

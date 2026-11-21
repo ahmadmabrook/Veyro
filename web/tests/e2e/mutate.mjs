@@ -40,6 +40,35 @@ const web = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
  */
 const MUTATIONS = [
   {
+    id: "recovery-unsorted",
+    why: "the workspace's whole argument is that the set is sorted; a page that called every"
+      + " case one decision would invite one batch action over rows it does the wrong thing to",
+    file: "src/lib/recovery.ts",
+    from: "  if (present.length === 1) {",
+    to: "  if (present.length >= 1) {",
+    grep: "says these are NOT one decision",
+  },
+  {
+    id: "recovery-card-detail",
+    why: "there is no card brand and no last four in this build, and a row implying one"
+      + " would be the fabricated-evidence shape in the place paragraph 1597 is about",
+    file: "src/app/payments/recovery/page.tsx",
+    from: '{failure === null\n                            ? one.failure_code\n'
+      + '                            : text(failure)}',
+    to: '{"Card expired \u00b7 Visa \u00b7\u00b7\u00b74417"}',
+    grep: "the card detail the canvas draws is absent",
+  },
+  {
+    id: "recovery-rendered-preview",
+    why: "the preview is the template as authored; a filled example would read as a message"
+      + " that exists, and the one value this build cannot supply is the payment link",
+    file: "src/app/payments/recovery/page.tsx",
+    from: '        <p className="ds-message" dir="auto">{template.body}</p>',
+    to: '        <p className="ds-message" dir="auto">'
+      + '{template.body.replace(/\\{\\{ link \\}\\}/, "veyro.link/p/8k2m")}</p>',
+    grep: "previews the real template",
+  },
+  {
     id: "form-method",
     why: "the sign-in form must be a POST so credentials cannot reach a query string",
     file: "src/app/login/login-form.tsx",

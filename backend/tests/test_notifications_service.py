@@ -175,6 +175,69 @@ class TemplateServiceTests(NotificationsTestCase):
         self.assertTrue(key)
 
 
+class PublishedTemplateReadTests(NotificationsTestCase):
+    """The body had no reader at all, which ADM-PAY-05's message preview is the first to need.
+
+    `list_templates` returns the subject and the variable names and deliberately no body -- it
+    is a list route. So a template could be drafted, approved and published and the only way
+    to see the text was to send a message with it: this repository's "a writer with no reader"
+    shape, closed for MOD-004's brands, MOD-017's memberships and MOD-018's chart, and open in
+    MOD-013 until now.
+    """
+
+    def test_the_published_body_is_readable_and_the_listing_still_omits_it(self):
+        tenant_id = self.tenant()
+        key = self.template(tenant_id)
+        got = notifications.published_template_for_key(
+            self._tenant_pool, tenant_id, template_key=key)
+        self.assertEqual(got["body"], "Invoice {{ number }} is ready.")
+        self.assertEqual(got["subject"], "Invoice {{ number }}")
+        self.assertEqual(got["category"], "transactional")
+        self.assertEqual(got["variables"], ["number"])
+        # The listing beside it is unchanged: one route carries the text, the other does not.
+        listed = notifications.list_templates(self._tenant_pool, tenant_id)
+        row = next(r for r in listed if r["template_key"] == key)
+        self.assertNotIn("body", row)
+
+    def test_a_placeholder_comes_back_unexpanded(self):
+        """What makes the preview honest rather than a rendered example.
+
+        `templates.render` refuses a variable the template did not declare and requires a
+        value for every one it did, so a surface previewing a message it has no values for
+        cannot render at all. The text as authored is the truthful thing to show, and the
+        placeholders are what say which values the sender does not have.
+        """
+        tenant_id = self.tenant()
+        key = self.template(
+            tenant_id, body="Pay at {{ link }} by {{ due }}.",
+            variables=["link", "due"], subject="Payment failed")
+        got = notifications.published_template_for_key(
+            self._tenant_pool, tenant_id, template_key=key)
+        self.assertIn("{{ link }}", got["body"])
+        self.assertEqual(got["variables"], ["due", "link"])
+
+    def test_an_unpublished_key_is_not_found_rather_than_empty(self):
+        """"No template for this key" and "a template nobody published" are the same refusal
+        here on purpose: either way nothing would be sent, and an empty preview would read as
+        a message with no text."""
+        tenant_id = self.tenant()
+        with self.assertRaises(NotFound):
+            notifications.published_template_for_key(
+                self._tenant_pool, tenant_id, template_key="nobody.authored.this")
+
+    def test_a_locale_with_no_template_refuses_rather_than_falling_back(self):
+        """The module's own rule, now reachable from a read.
+
+        Quietly answering in English for somebody who asked for Arabic is worse than
+        refusing, and a preview is exactly where that substitution would go unnoticed.
+        """
+        tenant_id = self.tenant()
+        key = self.template(tenant_id, locale="en")
+        with self.assertRaises(NotFound):
+            notifications.published_template_for_key(
+                self._tenant_pool, tenant_id, template_key=key, locale="ar")
+
+
 class ConsentSeparationTests(NotificationsTestCase):
     def test_a_marketing_notification_needs_a_live_consent(self):
         """Paragraph 2463's separation, at the one place it is enforceable: not a boolean

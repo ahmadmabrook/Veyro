@@ -96,8 +96,13 @@ test.describe("the Command Center", () => {
     // §38: "The headline is never a metric name — '6 payments failed' not 'Payment failure
     // rate'." And the plural agrees: the page rendered "1 payments are in recovery" before
     // the catalogue grew CLDR forms, which is a defect no label assertion could see.
+    //
+    // **Two, because ADM-PAY-05's fixture needs both halves of its distinction** — a debt
+    // with a membership behind it and one without — so this now exercises the `other` form
+    // where it used to exercise `one`. Both matter and only one can be seeded here; the
+    // singular is proved in `tests/component/command-centre.test.ts`.
     await expect(row(page, "money").locator(".ds-attention-headline"))
-      .toHaveText("1 payment is in recovery");
+      .toHaveText("2 payments are in recovery");
   });
 
   test("severity is an edge-mark and a category and the wording, never the bar alone", async ({

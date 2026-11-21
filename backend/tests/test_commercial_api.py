@@ -297,10 +297,12 @@ class CommercialApiTestCase(GatedApiTestCase):
                 "legal_entity_id": entity_id}
 
     def invoice(self, tenant_id: str, billing: dict, *, amount: int = 4500,
-                rate_bp: int = 1600, due_on: str = "2026-01-15") -> dict:
+                rate_bp: int = 1600, due_on: str = "2026-01-15",
+                membership_id: str | None = None) -> dict:
         issued = self.client.post("/finance/invoices", json={
             "billing_account_id": billing["billing_account_id"],
             "series_id": billing["series_id"],
+            **({"membership_id": membership_id} if membership_id else {}),
             "lines": [{"description": "Monthly membership", "quantity": 1,
                        "unit_net_minor": amount, "tax_rate_bp": rate_bp}],
             "issued_on": "2026-01-01", "due_on": due_on, "jurisdiction": "JO",
@@ -2413,6 +2415,110 @@ class DisputeTests(CommercialApiTestCase):
         return self.client.post(
             "/finance/disputes", json=body, headers=self.manager(tenant_id))
 
+    # ------------------------------------------------- ADM-PAY-10, the dispute listing
+
+    def disputes(self, tenant_id, **query):
+        q = "&".join(f"{k}={v}" for k, v in query.items())
+        read = self.client.get(
+            f"/finance/disputes{'?' + q if q else ''}",
+            headers=self.manager(tenant_id))
+        self.assertEqual(read.status_code, 200, read.text)
+        return read.json()
+
+    def test_a_dispute_can_be_listed_at_all(self):
+        """The module's last writer with no reader.
+
+        Three routes could record, answer and settle a chargeback and nothing could list
+        one, so a dispute existed only for whoever had just written it -- the same shape
+        closed for MOD-004's brands, MOD-017's memberships and MOD-018's chart.
+        """
+        tenant_id = self.tenant()
+        paid = self.paid(tenant_id)
+        opened = self.dispute(tenant_id, paid)
+        self.assertEqual(opened.status_code, 201, opened.text)
+        body = self.disputes(tenant_id)
+        row = next(d for d in body["disputes"]
+                   if d["dispute_id"] == opened.json()["dispute_id"])
+        self.assertEqual(row["status"], "open")
+        self.assertEqual(row["dispute_kind"], "chargeback")
+        self.assertEqual(row["amount_minor"], paid["amount_minor"])
+        # The document the dispute is against, which is what a reader recognises it by.
+        self.assertEqual(
+            row["document_number"], paid["invoice"]["document_number"])
+
+    def test_the_deadline_is_computed_rather_than_left_to_the_reader(self):
+        """The canvas leads with "Evidence due 26 August · 7 days".
+
+        `collections.evidence_window` already decides it -- including letting
+        `days_remaining` go negative rather than clamping, because a dispute whose window
+        closed is the one somebody most needs to see. A surface subtracting two dates would
+        be a second definition of the one figure the screen is about.
+        """
+        tenant_id = self.tenant()
+        paid = self.paid(tenant_id)
+        self.dispute(tenant_id, paid,
+                     opened_on=day(-10), respond_due_on=day(7))
+        row = self.disputes(tenant_id)["disputes"][0]
+        self.assertEqual(row["days_remaining"], 7)
+        self.assertFalse(row["window_has_closed"])
+        self.assertEqual(row["days_given"], 17)
+
+    def test_a_closed_window_reports_a_negative_remainder(self):
+        tenant_id = self.tenant()
+        paid = self.paid(tenant_id)
+        self.dispute(tenant_id, paid,
+                     opened_on=day(-40), respond_due_on=day(-5))
+        row = self.disputes(tenant_id)["disputes"][0]
+        self.assertEqual(row["days_remaining"], -5)
+        self.assertTrue(row["window_has_closed"])
+
+    def test_at_stake_counts_only_the_undecided(self):
+        """A dispute already won or lost is settled money, not exposure.
+
+        Summing every dispute ever recorded would make the figure grow for ever and would
+        say a tenant is at risk of money the scheme has already returned.
+        """
+        tenant_id = self.tenant()
+        live = self.paid(tenant_id)
+        self.dispute(tenant_id, live, amount_minor=2000)
+        decided = self.paid(tenant_id)
+        settled = self.dispute(tenant_id, decided, amount_minor=5000)
+        won = self.client.post(
+            f"/finance/disputes/{settled.json()['dispute_id']}/settle",
+            json={"outcome": "won", **self.correlation()},
+            headers=self.manager(tenant_id))
+        self.assertEqual(won.status_code, 200, won.text)
+        body = self.disputes(tenant_id)
+        at_stake = next(a for a in body["at_stake"] if a["currency"] == "JOD")
+        self.assertEqual(at_stake["amount_minor"], 2000)
+
+    def test_the_listing_returns_no_name_and_no_card(self):
+        """`payments_ledger`'s rule, applied to the same module's other read."""
+        tenant_id = self.tenant()
+        paid = self.paid(tenant_id)
+        self.dispute(tenant_id, paid)
+        raw = self.client.get(
+            "/finance/disputes", headers=self.manager(tenant_id)).text
+        self.assertNotIn("Jane Smith", raw)
+        row = self.disputes(tenant_id)["disputes"][0]
+        self.assertEqual(row["method"], "card")
+        self.assertNotIn("payment_method_ref", row)
+
+    def test_a_status_outside_the_vocabulary_refuses(self):
+        """"status=setled" and "no dispute is in that state" are different answers, and a
+        list rendering both as empty is a list nobody can trust."""
+        tenant_id = self.tenant()
+        answer = self.client.get(
+            "/finance/disputes?status=setled", headers=self.manager(tenant_id))
+        self.assertEqual(answer.status_code, 422, answer.text)
+
+    def test_a_dispute_listing_limit_outside_the_bound_refuses(self):
+        tenant_id = self.tenant()
+        for query in ("limit=0", "limit=9999"):
+            answer = self.client.get(
+                f"/finance/disputes?{query}", headers=self.manager(tenant_id))
+            self.assertEqual(answer.status_code, 422, f"{query}: {answer.text}")
+
     def test_a_dispute_is_recorded_against_a_payment_with_its_window(self):
         tenant_id = self.tenant()
         paid = self.paid(tenant_id)
@@ -2958,6 +3064,182 @@ class CommandCentreReadTests(CommercialApiTestCase):
         self.assertEqual(case["document_number"], issued["document_number"])
         at_risk = next(a for a in body["at_risk"] if a["currency"] == "JOD")
         self.assertEqual(at_risk["amount_minor"], issued["gross_minor"])
+
+    # ------------------------------------------------- ADM-PAY-05, the recovery workspace
+
+    def recovery_case(self, tenant_id, *, failure_code="card_expired",
+                      membership_id=None, charges=1, due_on=None):
+        """One open dunning case with `charges` failed charges behind it.
+
+        A retry in this build is a *new* intent -- a settled one does not settle again -- so
+        presenting a card four times is four intents, which is what this loop does and what
+        the workspace counts.
+        """
+        owner = self.headers(tenant_id)
+        billing = self.billing(tenant_id, self.person(tenant_id))
+        issued = self.invoice(
+            tenant_id, billing, due_on=due_on or day(-30), membership_id=membership_id)
+        for _ in range(charges):
+            intent = self.intent(tenant_id, billing, issued)
+            failed = self.client.post(
+                f"/finance/payment-intents/{intent['intent_id']}/settle",
+                json={"outcome": "failed", "failure_code": failure_code,
+                      "failure_detail": "Visa 4417 expired 08/26",
+                      **self.correlation()}, headers=owner)
+            self.assertEqual(failed.status_code, 200, failed.text)
+        opened = self.client.post("/finance/dunning-cases", json={
+            "invoice_id": issued["invoice_id"],
+            "idempotency_key": f"dc-{uuid.uuid4().hex[:8]}", **self.correlation()},
+            headers=owner)
+        self.assertEqual(opened.status_code, 201, opened.text)
+        return {"billing": billing, "invoice": issued,
+                "case_id": str(opened.json()["case_id"])}
+
+    def recovery(self, tenant_id):
+        read = self.client.get(
+            "/finance/recovery",
+            headers=self.scoped(tenant_id, ["finance.dunning.read"]))
+        self.assertEqual(read.status_code, 200, read.text)
+        return read.json()
+
+    def test_the_workspace_sorts_the_cases_by_what_each_one_wants(self):
+        """"The six are one decision, not six" is only true once the set is sorted.
+
+        A batch mixing a member who needs a new card with a member whose membership is frozen
+        is six decisions wearing one button, so the read is the sort: the same failure code on
+        a live membership and on a frozen one comes back as two different treatments.
+        """
+        tenant_id = self.tenant()
+        live = self.membership(tenant_id)
+        frozen = self.membership(tenant_id, contract={"freeze_days_per_year": 30})
+        held = self.client.post(
+            f"/memberships/{frozen['membership_id']}/freeze", json={
+                "freeze_kind": "freeze", "starts_on": day(-1), "days": 30,
+                "reason": "travelling", "idempotency_key": f"fz-{uuid.uuid4().hex[:8]}",
+                **self.correlation()}, headers=self.headers(tenant_id))
+        self.assertEqual(held.status_code, 201, held.text)
+        ok = self.recovery_case(
+            tenant_id, membership_id=live["membership_id"], charges=1)
+        review = self.recovery_case(
+            tenant_id, membership_id=frozen["membership_id"], charges=1)
+        body = self.recovery(tenant_id)
+        by_case = {c["case_id"]: c for c in body["cases"]}
+        self.assertEqual(by_case[ok["case_id"]]["treatment"], "link")
+        self.assertEqual(
+            by_case[ok["case_id"]]["treatment_reason"], "member_action_needed")
+        self.assertEqual(by_case[review["case_id"]]["treatment"], "review")
+        self.assertEqual(
+            by_case[review["case_id"]]["treatment_reason"], "membership_frozen")
+        self.assertEqual(by_case[review["case_id"]]["membership_status"], "frozen")
+        self.assertEqual(body["by_treatment"]["link"], 1)
+        self.assertEqual(body["by_treatment"]["review"], 1)
+        self.assertEqual(body["by_treatment"]["retry"], 0)
+
+    def test_the_header_sentences_are_read_off_the_set_rather_than_supplied(self):
+        """"All retries exhausted · no access blocked" is derived or it is a claim.
+
+        A caller able to pass either in could head a workspace with a sentence its own rows
+        contradict -- which is MOD-013's `priority: "critical"` shape, and here it would be
+        the difference between "nothing left to try" and "the system is still trying".
+        """
+        tenant_id = self.tenant()
+        live = self.membership(tenant_id)
+        # One failed charge on a retryable code: the system has three attempts left, so this
+        # is nobody's decision yet.
+        self.recovery_case(
+            tenant_id, failure_code="insufficient_funds",
+            membership_id=live["membership_id"], charges=1)
+        waiting = self.recovery(tenant_id)
+        self.assertFalse(waiting["all_retries_exhausted"])
+        self.assertEqual(waiting["by_treatment"]["retry"], 1)
+        # A second tenant, four charges presented: the budget is spent and a link is the
+        # remaining move.
+        other = self.tenant()
+        spent_for = self.membership(other)
+        self.recovery_case(
+            other, failure_code="insufficient_funds",
+            membership_id=spent_for["membership_id"], charges=4)
+        spent = self.recovery(other)
+        self.assertTrue(spent["all_retries_exhausted"])
+        self.assertEqual(spent["by_treatment"]["link"], 1)
+        self.assertEqual(spent["cases"][0]["charges_presented"], 4)
+        self.assertEqual(spent["cases"][0]["treatment_reason"], "retries_exhausted")
+        # And the access sentence: a freshly opened case is at stage 1, whose recommendation
+        # is `none`, which is what "no access blocked" means.
+        self.assertTrue(spent["no_access_blocked"])
+        self.assertEqual(spent["access_recommendations"], ["none"])
+
+    def test_the_membership_is_the_one_the_invoice_cites(self):
+        """Never the payer's latest, which would answer about a different agreement.
+
+        The payer here has a live membership and the invoice cites none -- a retail sale to a
+        member. A read that looked the person up would call this `member_action_needed` and
+        send them the ordinary notice, which is a sentence about a membership this debt has
+        nothing to do with.
+        """
+        tenant_id = self.tenant()
+        owner = self.headers(tenant_id)
+        live = self.membership(tenant_id)
+        billing = self.billing(tenant_id, live["person_id"])
+        issued = self.invoice(tenant_id, billing, due_on=day(-30))
+        intent = self.intent(tenant_id, billing, issued)
+        self.assertEqual(self.client.post(
+            f"/finance/payment-intents/{intent['intent_id']}/settle",
+            json={"outcome": "failed", "failure_code": "card_expired",
+                  **self.correlation()}, headers=owner).status_code, 200)
+        self.assertEqual(self.client.post("/finance/dunning-cases", json={
+            "invoice_id": issued["invoice_id"],
+            "idempotency_key": f"dc-{uuid.uuid4().hex[:8]}", **self.correlation()},
+            headers=owner).status_code, 201)
+        case = self.recovery(tenant_id)["cases"][0]
+        self.assertIsNone(case["membership_id"])
+        self.assertIsNone(case["membership_status"])
+        self.assertEqual(case["treatment"], "review")
+        self.assertEqual(case["treatment_reason"], "no_membership_cited")
+
+    def test_the_workspace_returns_no_name_and_no_card_detail(self):
+        """`payments_ledger`'s rule, applied to the same permission's other read.
+
+        `finance.dunning.read` is tenant-wide money, so a name here would be a lateral read
+        around `people.person.read`. And the provider's own sentence stays out: it is
+        unbounded free text, it adds nothing the code does not already say, and paragraph
+        1597 means the card brand and last four the design draws do not exist here at all.
+        """
+        tenant_id = self.tenant()
+        live = self.membership(tenant_id)
+        self.recovery_case(tenant_id, membership_id=live["membership_id"])
+        raw = self.client.get(
+            "/finance/recovery",
+            headers=self.scoped(tenant_id, ["finance.dunning.read"])).text
+        for leaked in ("Jane Smith", "Visa", "4417", "expired 08/26"):
+            self.assertNotIn(leaked, raw, f"{leaked} reached a money read")
+        case = self.recovery(tenant_id)["cases"][0]
+        self.assertEqual(case["failure_code"], "card_expired")
+        self.assertEqual(case["method"], "card")
+        self.assertNotIn("failure_detail", case)
+        self.assertIn("payment_method_ref", self.recovery(tenant_id)[
+            "no_card_detail_exists"])
+
+    def test_the_stage_picks_the_message_rather_than_whoever_clicks(self):
+        """The mechanism behind the design's "enforced by the system, not the sender".
+
+        A stage carries its notification key, so which message goes out is a property of how
+        far the journey has got. A workspace that let the sender choose would be MOD-013's
+        `bypass_policy_ref` with no permission behind it.
+        """
+        tenant_id = self.tenant()
+        live = self.membership(tenant_id)
+        self.recovery_case(tenant_id, membership_id=live["membership_id"])
+        case = self.recovery(tenant_id)["cases"][0]
+        self.assertEqual(case["stage"], 1)
+        self.assertEqual(case["notification_key"], "payment_failed")
+
+    def test_a_recovery_limit_outside_the_bound_refuses(self):
+        tenant_id = self.tenant()
+        head = self.scoped(tenant_id, ["finance.dunning.read"])
+        for query in ("limit=0", "limit=9999"):
+            answer = self.client.get(f"/finance/recovery?{query}", headers=head)
+            self.assertEqual(answer.status_code, 422, f"{query}: {answer.text}")
 
     def test_seeing_the_queue_does_not_buy_advancing_it(self):
         """A read is a read. Advancing a journey sends a notice and moves the stage."""

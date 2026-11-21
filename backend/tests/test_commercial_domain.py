@@ -897,5 +897,132 @@ class ReportingWindowTests(unittest.TestCase):
             reporting.week_buckets(date(2026, 8, 19), 4, week_start=7)
 
 
+class RecoveryTreatmentTests(unittest.TestCase):
+    """ADM-PAY-05's sort: which failed payments are one decision and which want a person.
+
+    The design's six rows are the cases here, because "the six are one decision, not six" is
+    only true once the set has been sorted -- a batch mixing a member who needs a new card
+    with a member whose membership ended is six decisions wearing one button.
+    """
+
+    def test_a_card_that_expired_on_a_live_membership_wants_a_link(self) -> None:
+        # The design's four `link ready` rows. `card_expired` is `needs_member_action`: there
+        # is nothing for the system to retry until the member does something.
+        got = collections.recovery_treatment(
+            "card_expired", attempts=4, membership_status="active")
+        self.assertEqual(got.treatment, collections.TREATMENT_LINK)
+        self.assertEqual(got.reason, "member_action_needed")
+        self.assertFalse(got.may_retry)
+
+    def test_a_frozen_member_is_reviewed_first(self) -> None:
+        # "Card expired · frozen member" -- the design's third row.
+        got = collections.recovery_treatment(
+            "card_expired", attempts=4, membership_status="frozen")
+        self.assertEqual(got.treatment, collections.TREATMENT_REVIEW)
+        self.assertEqual(got.reason, "membership_frozen")
+
+    def test_an_ended_membership_is_reviewed_first(self) -> None:
+        # "Card expired · membership ended" -- the design's fourth row. Every terminal status
+        # answers the same way, which is why the check reads `lifecycle.TERMINAL` rather than
+        # naming one of them.
+        for status in lifecycle.TERMINAL:
+            with self.subTest(status=status):
+                got = collections.recovery_treatment(
+                    "card_expired", attempts=4, membership_status=status)
+                self.assertEqual(got.treatment, collections.TREATMENT_REVIEW)
+                self.assertEqual(got.reason, "membership_ended")
+
+    def test_the_membership_check_does_not_outrank_a_permanent_failure(self) -> None:
+        """A stolen card on a live membership is reviewed, not messaged.
+
+        This is the ordering the function is mostly about: `may_retry` refuses a permanent
+        failure before it looks at the attempt budget, because four attempts is not permission
+        to present a stolen card four times -- and a "pay here" link is the same act by
+        another route. So permanence is asked before the membership, and a live membership
+        does not turn it into a link.
+        """
+        got = collections.recovery_treatment(
+            "card_stolen", attempts=0, membership_status="active")
+        self.assertEqual(got.treatment, collections.TREATMENT_REVIEW)
+        self.assertEqual(got.reason, "failure_is_permanent")
+
+    def test_a_retryable_failure_with_budget_left_is_the_systems_move(self) -> None:
+        """Nothing for a person to do yet, which is a treatment rather than an absence.
+
+        A case still waiting on an automatic attempt that appeared in a workspace headed "all
+        retries exhausted" is a row somebody chases twice.
+        """
+        got = collections.recovery_treatment(
+            "insufficient_funds", attempts=1, membership_status="active")
+        self.assertEqual(got.treatment, collections.TREATMENT_RETRY)
+        self.assertEqual(got.reason, "retries_remain")
+        self.assertTrue(got.may_retry)
+
+    def test_a_retryable_failure_with_the_budget_spent_wants_a_link(self) -> None:
+        # The design's two `Insufficient funds` rows sit in a batch headed "all retries
+        # exhausted", so they are past their budget.
+        got = collections.recovery_treatment(
+            "insufficient_funds", attempts=4, membership_status="active")
+        self.assertEqual(got.treatment, collections.TREATMENT_LINK)
+        self.assertEqual(got.reason, "retries_exhausted")
+
+    def test_an_unknown_cause_retries_cautiously_and_then_asks_a_person(self) -> None:
+        """`classify_failure`'s own default, carried through to a treatment.
+
+        An unknown cause with budget left is retried, which is the cautious direction; with
+        the budget spent it is reviewed rather than messaged, because nobody can write a
+        member a sentence explaining a failure this build has no code for.
+        """
+        soon = collections.recovery_treatment(
+            "some_code_nobody_declared", attempts=0, membership_status="active")
+        self.assertEqual(soon.treatment, collections.TREATMENT_RETRY)
+        spent = collections.recovery_treatment(
+            "some_code_nobody_declared", attempts=4, membership_status="active")
+        self.assertEqual(spent.treatment, collections.TREATMENT_REVIEW)
+        self.assertEqual(spent.reason, "cause_unknown")
+        # And no code at all is the same answer, which is the `unknown` payment state
+        # paragraph 1609 requires to be representable.
+        none = collections.recovery_treatment(
+            None, attempts=4, membership_status="active")
+        self.assertEqual(none.reason, "cause_unknown")
+
+    def test_an_invoice_citing_no_membership_is_reviewed_rather_than_skipped(self) -> None:
+        """`None` means this build found nothing to collect against.
+
+        Skipping it would drop a real debt off the workspace; treating it as live would send
+        somebody the ordinary notice about a membership nobody can find.
+        """
+        got = collections.recovery_treatment(
+            "card_expired", attempts=4, membership_status=None)
+        self.assertEqual(got.treatment, collections.TREATMENT_REVIEW)
+        self.assertEqual(got.reason, "no_membership_cited")
+
+    def test_every_treatment_and_reason_is_reachable(self) -> None:
+        """The enumeration is a claim about what the software does.
+
+        MOD-020 shipped four declared states nothing wrote, so a declared treatment or reason
+        with no input that produces it is either a gap to disclose or a defect wearing a
+        design decision's clothes. This drives the function over the cross product and
+        requires every declared value to come back from something.
+        """
+        seen_t: set[str] = set()
+        seen_r: set[str] = set()
+        codes = [None, "some_code_nobody_declared", *collections.FAILURE_CLASSES]
+        for code in codes:
+            for attempts in (0, 4):
+                for status in (None, *lifecycle.STATUSES):
+                    got = collections.recovery_treatment(
+                        code, attempts=attempts, membership_status=status)
+                    seen_t.add(got.treatment)
+                    seen_r.add(got.reason)
+        self.assertEqual(seen_t, set(collections.TREATMENTS))
+        self.assertEqual(seen_r, set(collections.RECOVERY_REASONS))
+
+    def test_a_membership_status_this_build_has_no_state_for_is_refused(self) -> None:
+        with self.assertRaises(collections.CollectionsError):
+            collections.recovery_treatment(
+                "card_expired", attempts=1, membership_status="paused")
+
+
 if __name__ == "__main__":
     unittest.main()

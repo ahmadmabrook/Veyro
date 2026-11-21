@@ -871,3 +871,24 @@ stop and all, into the permissions matrix's status cells -- a dense grid whose c
 labels. The same shape this file records for `DataGrid`'s caption and the design system's
 Button touch target. Read what each site's own rendering does before replacing it, and
 expect the shared version to need a second form.
+
+
+**A backend started by hand is not the backend the browser suite is written against.**
+`tests/e2e/serve.mjs` sets `VEYRO_API_REQUEST_BUDGET=20000` because MOD-011's `api.request`
+budget is 600 a minute per identity and three hundred page views spend it — the override
+exists precisely so a limiter that is correct in production does not decide which tests
+pass. A uvicorn started from a shell without it looks identical, answers `/healthz` the
+same, and then fails three consecutive specs in a burst at the limiter's window boundary:
+the signature is a run of adjacent failures all timing out at the same duration, in
+different places on every run. This repository already records the rule for a *test* that
+spends a product budget; this is the same rule for the *harness*, and the tell is that the
+failures move while the count stays about the same. Start the backend the way `serve.mjs`
+does, or read its env block and match it.
+
+
+**A suite that reads source files with `ast` is invalidated by an edit while it runs.**
+`GateCoverageTests` and `test_id_validation` open `main.py` and parse it, so adding a route
+mid-run changes what they assert against — the run is then testing a tree that did not exist
+when it started, and a pass proves nothing about either version. The ordinary Python caching
+intuition is wrong here: the module object is cached, the *file* is re-read. Finish the run,
+or restart it after the edit; do not reason about which test the run has reached.

@@ -659,7 +659,11 @@ function moneyItems(
       : {}),
     title: fill(locale, "cc.moneyTitle", { count: panel.data.count }),
     body: t(locale, "cc.moneyBody"),
-    actions: [{ label: "cc.openIt", href: "/finance" }],
+    // **"Open the recovery workspace"**, which is what the canvas's own button says and
+    // where ADM-PAY-05 is reached from -- `veyro-screen.js` wires this item to that screen
+    // by id. It pointed at `/finance`, MOD-018's trial balance, which is a different
+    // subject: an accountant closes a month there and nobody chases a failed card.
+    actions: [{ label: "cc.openRecovery", href: "/payments/recovery" }],
   }];
 }
 

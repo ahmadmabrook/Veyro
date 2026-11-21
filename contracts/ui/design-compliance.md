@@ -1119,3 +1119,105 @@ for the number and finding a kind would otherwise assume the page lost it.
 Issuing a card and reporting one lost are the canvas's two actions. Both are writes behind a
 stepped-up permission with no form in this build, and the screen says so rather than drawing
 a button that answers "not permitted".
+
+
+## ADM-PAY-05 — the recovery workspace, and the sort that makes it one
+
+The canvas's own argument for this screen is its closing note: *"the six are one decision,
+not six. Reviewing each individually is available but is the slower path, and the batch
+action is the default because the recommended treatment is identical for all six."*
+
+**That sentence is a claim, and nothing in the build could establish it.** The dunning
+listing returns a stage, an attempt count and an access recommendation; whether a case wants
+a payment link or a person depends on *why* the charge failed and *where the member stands*,
+and neither was in any read. A batch mixing a member who needs a new card with a member
+whose membership ended is six decisions wearing one button — so the sort is the screen, and
+it needed backend work rather than a client-side guess.
+
+What was added:
+
+- **`collections.recovery_treatment`** — the decision, pure, beside the retry budget and the
+  failure classes it already uses. Three treatments (`retry`, `link`, `review`), eight
+  reasons, and the ordering is the content: a permanent failure is reviewed before anything
+  else is asked, because `may_retry` refuses a stolen card before it looks at the attempt
+  count and a "pay here" link is the same act by another route. It calls `may_retry` rather
+  than re-deriving it — two retry curves in one repository drift — and reads
+  `lifecycle.TERMINAL` rather than listing the ended statuses again.
+- **`GET /finance/recovery`** — the same cases as the listing beside it, on the same
+  permission, paired with the failure that opened each and the membership its invoice cites.
+- **`GET /notifications/templates/published`** — the body had no reader anywhere. The
+  listing omits it deliberately, so a template could be drafted, approved and published and
+  the only way to see what it said was to send a message with it. This repository's "a
+  writer with no reader" shape, closed for MOD-004's brands, MOD-017's memberships and
+  MOD-018's chart, and open in MOD-013 until now.
+
+Three judgements worth carrying:
+
+- **The membership is the one the invoice cites, never the payer's latest.**
+  `fin_invoices.membership_id` is the debt's own reference; "the newest membership this
+  person has" answers about a different agreement whenever somebody has two, and makes the
+  planner the author when they have two starting on one day. The fixture proves it from the
+  other side: a payer with a live membership whose invoice cites none reads
+  `no_membership_cited`, not `member_action_needed`.
+- **The retry budget counts charges presented, not the case's attempts and not one intent's
+  column.** A retry in this build is a *new* intent — a settled one does not settle again —
+  so an intent's `attempts` sits at one however many times the card has been tried, and
+  reading it would make `may_retry` answer "there is budget left" for ever. The case's own
+  `attempts` counts dunning *steps*, and a notice is not a charge.
+- **The failure's code is returned and its text is not.** MOD-017's own header says a
+  decision branches on the code and never on the prose; the same holds for what a read hands
+  out. `failure_detail` is unbounded free text a provider supplied, on a tenant-wide money
+  permission, and adds nothing a reader can act on.
+
+**Four things the canvas draws that this build does not have**, each disclosed on the screen
+rather than drawn as though it worked:
+
+- `Send all 6 links` has no writer — nothing in this build sends. The row **checkboxes** go
+  with it: a selection control for an action that does not exist is worse than its absence.
+- `veyro.link/p/8k2m` does not exist. No table holds a single-use member-specific URL, which
+  is why the preview shows the template's own `{{ link }}` placeholder instead of an address.
+- `Visa ···4417` does not exist anywhere. Paragraph 1597 keeps card data out of Veyro, so the
+  instrument's *kind* is the whole of what a row can say.
+- "Two of the six have withdrawn marketing consent" is a count this page does not make — it
+  needs a consent read per payer, behind a different permission. **The rule the count
+  illustrates is rendered instead**, from the template's own category: only `coaching` and
+  `marketing` may be muted by a recipient preference, by a CHECK on `ntf_preferences` rather
+  than by convention, so a service message reaches somebody who opted out of marketing. That
+  is the sentence the design is actually making, and it is enforced rather than asserted.
+
+**The preview is the real template, unrendered.** `templates.render` refuses a variable the
+template did not declare and requires a value for every one it did, so a preview with no
+values cannot render at all — and a hand-written example sentence would be the
+fabricated-evidence shape. The authored body with its placeholders visible is the truthful
+thing, and the placeholders are exactly what say which values a sender does not have.
+
+**The banner's verdict moved into the lib**, because no single fixture can render both
+branches. "These are one decision" and "these are not" are different sentences with
+different severities, and a page that computed the comparison inline would have one branch
+proved and the other vacuous — the surface-branch vacuity this repository has now shipped
+four times. `batchVerdict` is tested on both sides; the fixture seeds one case of each half
+so the mixed branch is what the browser suite asserts.
+
+**The second case is on a second member**, which the canvas implies (its six are six
+people) and which the suite forced: putting both halves on one payer also put a second
+invoice on that member's billing tab, where two assertions locate "the settled one" by its
+figure — and the membership price is the same number, so the locator matched both. That spec's
+own comment already records the previous rung of this, where `INV-` matched two documents.
+
+**The Command Center's MONEY row pointed at `/finance`.** That is MOD-018's trial balance —
+an accountant closes a month there and nobody chases a failed card. `veyro-screen.js` wires
+that attention item to ADM-PAY-05 by id and labels the button "Open the recovery workspace";
+both are now what the build does.
+
+**And the payments ledger's failed rows now go somewhere.** The `NEXT` cell read "Retry or
+ask for a new card" and offered no way to do either — the same shape an independent tester
+found on the members list, where every row said "Name withheld" and the remedy was one
+screen away with nothing pointing at it. A failed charge is exactly what ADM-PAY-05 is the
+workspace for, so the cell is a link to it.
+
+**Verified in both themes and both locales**, at 1280 and at 375. The Arabic page translates
+every vocabulary the backend stores — the treatment, its reason, the failure code and the
+instrument — which is the class of defect `MESSAGE_KEYS` is structurally blind to and this
+app shipped four of in one pass. The message preview stays English on the Arabic page, which
+is correct rather than a miss: it is the *published* template, and the note beside it says
+the member's own language is a different published row with no fallback chain.

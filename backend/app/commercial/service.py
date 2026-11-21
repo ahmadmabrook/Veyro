@@ -4373,6 +4373,241 @@ def list_dunning_cases(
     }
 
 
+def recovery_workspace(
+    pool: Pool, tenant_id: str, *, limit: int = 50,
+) -> dict[str, Any]:
+    """ADM-PAY-05: the failed payments as one decision, sorted by what each one wants.
+
+    The design's argument for this being a workspace rather than a list is that "the six are
+    one decision, not six" -- and that is only true once the set has been *sorted*, because a
+    batch mixing a member who needs a new card with a member whose membership ended is six
+    decisions wearing one button. So this read's job is the sort: it pairs each open dunning
+    case with the failure that opened it and the standing of the membership the invoice cites,
+    and runs `collections.recovery_treatment` over the pair.
+
+    **Every figure in the header is read off the set rather than supplied.** "All retries
+    exhausted" is true when no case is still waiting on an automatic attempt, and "no access
+    blocked" when every case's stage recommends `none` -- the two sentences the canvas puts
+    under the count. A caller that passed either in would be able to head a workspace with a
+    claim its own rows contradict.
+
+    **The membership is the one the invoice cites, never the payer's latest.**
+    `fin_invoices.membership_id` is the debt's own reference; picking "the newest membership
+    this person has" would answer about a different agreement whenever somebody has two, and
+    would make the planner the author when they have two starting on one day.
+
+    **The failure's code is returned and its text is not.** This module's own header says a
+    decision branches on the code and never on the prose, and the same reasoning applies to
+    what a read hands out: `failure_detail` is unbounded free text a provider supplied, on a
+    tenant-wide money permission, and it adds nothing a reader can act on that the code does
+    not already say. It is also why the design's "Visa ···4417" has no
+    counterpart here -- paragraph 1597 keeps card data out of Veyro entirely, so the method's
+    *kind* is the whole of what this build knows about the instrument.
+
+    **No name, no address, no card** -- `payments_ledger`'s rule, for its reason.
+    `finance.dunning.read` is tenant-wide, so returning names would make this a lateral read
+    path around `people.person.read`. A surface that wants names composes.
+    """
+    limit = _bounded(limit)
+    with tenant_scope(pool, tenant_id) as conn:
+        rows = conn.execute(
+            "SELECT c.case_id, c.invoice_id, c.stage, c.attempts AS case_attempts,"
+            " c.access_recommendation, c.next_action_on, c.opened_on,"
+            " i.document_number, i.gross_minor, i.currency, i.due_on, i.membership_id,"
+            " b.payer_person_id,"
+            " coalesce((SELECT sum(p.amount_minor) FROM plt01.fin_payments p"
+            "            WHERE p.invoice_id = i.invoice_id), 0) AS paid_minor,"
+            " f.failure_code, f.method, f.created_at,"
+            " (SELECT count(*) FROM plt01.fin_payment_intents pa"
+            "   WHERE pa.invoice_id = i.invoice_id AND pa.status = 'failed')"
+            "   AS charges_presented,"
+            " m.status, m.membership_number"
+            " FROM plt01.fin_dunning_cases c"
+            " JOIN plt01.fin_invoices i ON i.invoice_id = c.invoice_id"
+            " JOIN plt01.fin_billing_accounts b"
+            "   ON b.billing_account_id = c.billing_account_id"
+            # The failure that opened the case: the most recent failed intent against this
+            # invoice. LATERAL rather than a window, because one row per case is what the
+            # decision takes and a join that could multiply the cases would change the count
+            # in the header.
+            " LEFT JOIN LATERAL ("
+            "   SELECT pi.failure_code, pi.method, pi.created_at"
+            "     FROM plt01.fin_payment_intents pi"
+            "    WHERE pi.invoice_id = i.invoice_id AND pi.status = 'failed'"
+            "    ORDER BY pi.created_at DESC, pi.intent_id"
+            "    LIMIT 1) f ON true"
+            " LEFT JOIN plt01.mem_memberships m ON m.membership_id = i.membership_id"
+            " WHERE c.status = 'open'"
+            " ORDER BY c.next_action_on NULLS LAST, c.opened_on, c.case_id"
+            " LIMIT %s",
+            (limit,),
+        ).fetchall()
+    cases: list[dict[str, Any]] = []
+    at_risk: dict[str, int] = {}
+    by_treatment: dict[str, int] = {t: 0 for t in collections.TREATMENTS}
+    for r in rows:
+        membership_status = str(r[18]) if r[18] else None
+        # **The retry budget counts charges presented against this invoice**, which is neither
+        # the case's `attempts` (that counts dunning *steps* taken, and a notice is not a
+        # charge) nor one intent's own counter. A retry in this build is a new intent -- a
+        # settled one does not settle again -- so an intent's column sits at one however many
+        # times the card has been tried, and reading it would make `may_retry` answer "there
+        # is budget left" for ever. `may_retry`'s own docstring is about charges presented:
+        # "a budget of four attempts is not permission to present a stolen card four times".
+        attempts = int(r[17])
+        failure_code = str(r[14]) if r[14] else None
+        verdict = collections.recovery_treatment(
+            failure_code, attempts=attempts, membership_status=membership_status)
+        by_treatment[verdict.treatment] += 1
+        currency = str(r[9])
+        outstanding = int(r[8]) - int(r[13])
+        at_risk[currency] = at_risk.get(currency, 0) + outstanding
+        cases.append({
+            "case_id": str(r[0]), "invoice_id": str(r[1]), "stage": int(r[2]),
+            "dunning_attempts": int(r[3]), "access_recommendation": str(r[4]),
+            "next_action_on": r[5].isoformat() if r[5] else None,
+            "opened_on": r[6].isoformat(),
+            "document_number": str(r[7]), "currency": currency,
+            "outstanding_minor": outstanding, "due_on": r[10].isoformat(),
+            "payer_person_id": str(r[12]),
+            "failure_code": failure_code,
+            "failure_class": collections.classify_failure(failure_code),
+            "method": str(r[15]) if r[15] else None,
+            "charges_presented": attempts,
+            "failed_at": r[16].isoformat() if r[16] else None,
+            "membership_id": str(r[11]) if r[11] else None,
+            "membership_status": membership_status,
+            "membership_number": str(r[19]) if r[19] else None,
+            "treatment": verdict.treatment,
+            "treatment_reason": verdict.reason,
+            "may_retry": verdict.may_retry,
+            # Which message the *system* would send at this stage, which is the mechanism
+            # behind the design's "the distinction is enforced by the system rather than left
+            # to the sender": the stage picks the template key, not whoever clicks.
+            "notification_key": collections.stage(int(r[2])).notification_key,
+        })
+    return {
+        "cases": cases, "count": len(cases), "limit": limit,
+        "truncated": len(cases) == limit,
+        "at_risk": [{"currency": c, "amount_minor": a} for c, a in sorted(at_risk.items())],
+        "by_treatment": by_treatment,
+        # The canvas's two header sentences, derived.
+        "all_retries_exhausted": by_treatment[collections.TREATMENT_RETRY] == 0,
+        "access_recommendations": sorted({str(c["access_recommendation"]) for c in cases}),
+        "no_access_blocked": all(
+            c["access_recommendation"] == "none" for c in cases),
+        "at_risk_is_outstanding":
+            "at_risk sums what is still unpaid on each cited invoice, not the invoice total.",
+        "nothing_here_sends":
+            "This read sorts the cases and sends nothing. MOD-013 authors a notification and"
+            " no provider collects it, and this build has no payment link to put in one, so"
+            " the batch action the design draws has no writer behind it.",
+        "no_card_detail_exists":
+            "A failed charge carries its method's kind and a provider's failure code. There is"
+            " no card brand and no last four anywhere in this build: paragraph 1597 keeps card"
+            " data out of Veyro, so `payment_method_ref` is a token held by the provider.",
+    }
+
+
+def list_disputes(
+    pool: Pool, tenant_id: str, *, status: str | None = None, limit: int = 50,
+    at: date | None = None,
+) -> dict[str, Any]:
+    """ADM-PAY-10: the chargebacks, with how long is left to answer each one.
+
+    **The module's last writer with no reader.** `record_dispute`, `respond_to_dispute` and
+    `settle_dispute` were all reachable and nothing could list what they had written, so a
+    dispute existed only for whoever had just recorded it -- the same shape this repository
+    has closed for MOD-004's brands, MOD-017's memberships, MOD-018's chart and MOD-013's
+    template body.
+
+    **The window is computed here, not left to a reader to subtract two dates.** The canvas
+    leads with "Evidence due 26 August · 7 days" and then "Missing the deadline forfeits
+    the amount automatically", which is the whole urgency of the screen -- and
+    `collections.evidence_window` already decides it, including letting `days_remaining` go
+    negative rather than clamping, because a closed window is the dispute somebody most needs
+    to see. A surface subtracting the dates itself would be a second definition of the one
+    figure the screen is about.
+
+    **No name and no card** -- `payments_ledger`'s rule. The row carries `payer_person_id`
+    and the document the dispute is against; a surface that wants a name composes.
+    """
+    limit = _bounded(limit)
+    _one_of(status, frozenset(collections.DISPUTE_STATUSES), "bad_status")
+    at = at or datetime.now(UTC).date()
+    where = ["true"]
+    params: list[Any] = []
+    if status is not None:
+        where.append("d.status = %s")
+        params.append(status)
+    params.append(limit)
+    with tenant_scope(pool, tenant_id) as conn:
+        rows = conn.execute(
+            "SELECT d.dispute_id, d.payment_id, d.provider_case_ref, d.dispute_kind,"
+            " d.reason_code, d.amount_minor, d.currency, d.opened_on, d.respond_due_on,"
+            " d.status, d.response_ref, d.responded_at, d.outcome, d.closed_at,"
+            " b.payer_person_id, p.received_at, p.method, p.invoice_id,"
+            " i.document_number, i.fiscal_status, i.fiscal_ack_ref,"
+            " i.membership_id, i.issued_on"
+            " FROM plt01.fin_disputes d"
+            " JOIN plt01.fin_billing_accounts b"
+            "   ON b.billing_account_id = d.billing_account_id"
+            " JOIN plt01.fin_payments p ON p.payment_id = d.payment_id"
+            " LEFT JOIN plt01.fin_invoices i ON i.invoice_id = p.invoice_id"
+            f" WHERE {' AND '.join(where)}"
+            " ORDER BY d.respond_due_on, d.opened_on, d.dispute_id"
+            " LIMIT %s",
+            tuple(params),
+        ).fetchall()
+    disputes = []
+    at_stake: dict[str, int] = {}
+    for r in rows:
+        window = collections.evidence_window(
+            opened_on=r[7], respond_due_on=r[8], at=at)
+        currency = str(r[6])
+        if str(r[9]) in ("open", "responded"):
+            at_stake[currency] = at_stake.get(currency, 0) + int(r[5])
+        disputes.append({
+            "dispute_id": str(r[0]), "payment_id": str(r[1]),
+            "provider_case_ref": str(r[2]), "dispute_kind": str(r[3]),
+            "reason_code": str(r[4]), "amount_minor": int(r[5]), "currency": currency,
+            "opened_on": r[7].isoformat(), "respond_due_on": r[8].isoformat(),
+            "status": str(r[9]),
+            "response_ref": str(r[10]) if r[10] else None,
+            "responded_at": r[11].isoformat() if r[11] else None,
+            "outcome": str(r[12]) if r[12] else None,
+            "closed_at": r[13].isoformat() if r[13] else None,
+            "payer_person_id": str(r[14]),
+            "paid_at": r[15].isoformat(), "method": str(r[16]),
+            "invoice_id": str(r[17]) if r[17] else None,
+            "document_number": str(r[18]) if r[18] else None,
+            "fiscal_status": str(r[19]) if r[19] else None,
+            "fiscal_ack_ref": str(r[20]) if r[20] else None,
+            "membership_id": str(r[21]) if r[21] else None,
+            "billed_on": r[22].isoformat() if r[22] else None,
+            **window,
+        })
+    return {
+        "disputes": disputes, "count": len(disputes), "limit": limit,
+        "truncated": len(disputes) == limit, "as_of": at.isoformat(),
+        "at_stake": [{"currency": c, "amount_minor": a}
+                     for c, a in sorted(at_stake.items())],
+        "at_stake_is_undecided_only":
+            "at_stake sums the disputes still open or answered and awaiting a decision. A"
+            " dispute already won or lost is settled money and is not at stake.",
+        "the_amount_is_held_by_the_acquirer":
+            "A chargeback holds the amount at the provider until the scheme decides. Nothing"
+            " in this build moves it: `settle_dispute` records the outcome and a lost"
+            " chargeback is reconciled against the provider statement, not reversed here.",
+        "evidence_is_assembled_by_the_caller":
+            "This read returns the dispute and its deadline. What a gym can prove -- the"
+            " check-ins in the billed month, the signed agreement, the invoice and its fiscal"
+            " acknowledgement -- lives in MOD-022, MOD-017 and the invoice, each behind its own"
+            " permission, so a surface composes them rather than this read joining across"
+            " them.",
+    }
+
+
 def payments_ledger(
     pool: Pool, tenant_id: str, *, since: date | None = None, until: date | None = None,
     needs_action_only: bool = False, limit: int = 100,

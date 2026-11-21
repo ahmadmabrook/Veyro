@@ -27,6 +27,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, timedelta
 
+from app.commercial import lifecycle
+
 #: What a failure means for a retry, by code. **Three classes and an explicit default**, which
 #: is the part that matters: a code this build has not seen is `unknown_cause`, which retries
 #: cautiously rather than either giving up on a recoverable card or hammering a dead one.
@@ -289,3 +291,112 @@ def evidence_window(*, opened_on: date, respond_due_on: date, at: date) -> dict[
         "window_has_closed": at > respond_due_on,
         "days_given": (respond_due_on - opened_on).days,
     }
+
+
+# ---------------------------------------------------------------- the recovery workspace
+#
+# ADM-PAY-05. The design's own argument for the screen is that "the six are one decision, not
+# six", and that is only true if the six have been *sorted* first: a batch whose recommended
+# treatment is identical for every row is one decision, and a batch mixing a member who needs
+# a new card with a member whose membership ended is six. So this is the function that sorts
+# them, and the header line the design writes -- "All retries exhausted · no access blocked"
+# -- is read off the set rather than typed.
+
+#: The system will try again on its own. **Nothing for a person to do yet**, which is why this
+#: is a treatment rather than an absence: a case waiting on an automatic retry that appeared in
+#: a workspace headed "all retries exhausted" would be a row somebody chased twice.
+TREATMENT_RETRY = "retry"
+#: Ask the member. A payment link is exactly this, and in this build it is also the thing that
+#: does not exist -- see `recovery_workspace`'s disclosure.
+TREATMENT_LINK = "link"
+#: A person looks before anything goes out.
+TREATMENT_REVIEW = "review"
+
+TREATMENTS = (TREATMENT_RETRY, TREATMENT_LINK, TREATMENT_REVIEW)
+
+#: Why, from a closed set, because a surface decides what to offer from this value and a
+#: free-text reason is a decision nobody can group by. MOD-020's `DENIAL_REASONS` is the
+#: precedent, and its review's rule -- grep the writers, a declared value with none is a gap
+#: or a defect -- is `test_every_treatment_and_reason_is_reachable`, which drives this
+#: function over every code, budget and membership status and requires each declared value
+#: to come back from something.
+RECOVERY_REASONS = (
+    # review
+    "failure_is_permanent",
+    "membership_ended",
+    "membership_frozen",
+    "no_membership_cited",
+    "cause_unknown",
+    # link
+    "member_action_needed",
+    "retries_exhausted",
+    # retry
+    "retries_remain",
+)
+
+# A membership that has ended is `lifecycle.TERMINAL`, imported rather than restated:
+# collecting against one is a different conversation from collecting against a live
+# membership, and a second list of which statuses those are is a second answer the day either
+# moves. Same for the vocabulary itself -- `lifecycle` owns the states.
+
+
+@dataclass(frozen=True)
+class Treatment:
+    """What a failed payment's recovery wants next, and why."""
+
+    treatment: str
+    reason: str
+    #: Carried so a surface can say "the system will try again" without re-deriving it, and so
+    #: the two can never disagree: this is `may_retry`'s answer, not a second opinion.
+    may_retry: bool
+
+
+def recovery_treatment(
+    failure_code: str | None,
+    *,
+    attempts: int,
+    membership_status: str | None,
+    max_attempts: int = 4,
+) -> Treatment:
+    """What to do about one failed payment, given why it failed and where the member stands.
+
+    The order of the checks is the whole content of the function:
+
+    1. **A permanent failure is reviewed, never messaged.** `may_retry` puts permanence first
+       because a budget of four attempts is not permission to present a stolen card four
+       times; the same holds for a "pay here" link, which a scheme cares about for the same
+       reason. So this check precedes every other one, including the membership ones.
+    2. **A membership that has ended, or is frozen, is reviewed** -- before the member-action
+       check, because asking somebody for a card to pay for a membership they cancelled is a
+       worse message than no message. The design's two `review first` rows are exactly these:
+       "frozen member" and "membership ended".
+    3. **An invoice citing no membership is reviewed**, not skipped. `None` here means the
+       debt has no membership behind it -- a retail sale, say -- so the ordinary dunning
+       notice, which is a sentence about somebody's membership, is the wrong message. Skipping
+       it instead would drop a real debt off the workspace.
+    4. Then, and only then, the failure class decides: the member has to act, the system
+       should try again, or the budget is spent and a link is the remaining move.
+
+    `max_attempts` is `may_retry`'s own default and is passed through rather than re-stated,
+    because two retry budgets in one repository drift and the day they disagree nobody can say
+    which one is the policy.
+    """
+    if membership_status is not None and membership_status not in lifecycle.STATUSES:
+        raise CollectionsError(f"{membership_status!r} is not a membership status")
+    retryable = may_retry(failure_code, attempts=attempts, max_attempts=max_attempts)
+    verdict = classify_failure(failure_code)
+    if verdict == PERMANENT:
+        return Treatment(TREATMENT_REVIEW, "failure_is_permanent", retryable)
+    if membership_status is None:
+        return Treatment(TREATMENT_REVIEW, "no_membership_cited", retryable)
+    if membership_status in lifecycle.TERMINAL:
+        return Treatment(TREATMENT_REVIEW, "membership_ended", retryable)
+    if membership_status == "frozen":
+        return Treatment(TREATMENT_REVIEW, "membership_frozen", retryable)
+    if verdict == NEEDS_MEMBER_ACTION:
+        return Treatment(TREATMENT_LINK, "member_action_needed", retryable)
+    if retryable:
+        return Treatment(TREATMENT_RETRY, "retries_remain", retryable)
+    if verdict == RETRYABLE:
+        return Treatment(TREATMENT_LINK, "retries_exhausted", retryable)
+    return Treatment(TREATMENT_REVIEW, "cause_unknown", retryable)

@@ -66,7 +66,11 @@ test.describe("the payments ledger", () => {
 
   test("counts the exceptions in the header and nothing that is zero", async ({ page }) => {
     const header = page.locator(".ds-page-figures");
-    await expect(header).toContainText("1 failed");
+    // **Two failed, because ADM-PAY-05 needs two.** That workspace's argument is that a set
+    // of failed payments is one decision, which one case cannot demonstrate — so the fixture
+    // carries a debt with a membership behind it and one without. This count follows the
+    // fixture rather than the other way round.
+    await expect(header).toContainText("2 failed");
     await expect(header).toContainText("1 refunded");
     await expect(header).toContainText("1 disputed");
     // "0 failed, 0 refunded, 0 disputed" is three facts nobody needs stated, so a clean
@@ -85,7 +89,7 @@ test.describe("the payments ledger", () => {
     await expect(page.getByRole("row").filter({ hasText: "payment received" }))
       .toHaveCount(0);
     await expect(page.getByRole("row").filter({ hasText: "charge attempt" }))
-      .toHaveCount(1);
+      .toHaveCount(2);
   });
 
   test("masks the member's name rather than leaving the cell blank", async ({ page }) => {

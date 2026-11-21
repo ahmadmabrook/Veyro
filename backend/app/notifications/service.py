@@ -195,6 +195,51 @@ def retire_template(
             "status": "retired"}
 
 
+def published_template_for_key(
+    pool: Pool, tenant_id: str, *, template_key: str, locale: str | None = None,
+    channel: str | None = None,
+) -> dict[str, Any]:
+    """The published template a key would send, **including its body**.
+
+    `list_templates` deliberately returns no body -- it is a list route, and a body per row
+    over every template a tenant has ever authored is a page of prose nobody asked for. That
+    left the body with no reader at all: a template could be drafted, approved and published
+    and the only way to see the text was to send a message with it. This repository has closed
+    that same "a writer with no reader" shape for MOD-004's brands, MOD-017's memberships and
+    MOD-018's chart, and this is the notification half of it.
+
+    **A body carries no subject data.** The text is the tenant's own authored prose and its
+    variables are placeholders rather than values, so this discloses nothing about anybody --
+    which is why it sits on `notifications.template.read`, the permission that already buys
+    the subject line and the variable names, rather than needing one of its own.
+
+    `locale` and `channel` narrow it the way `_published_template` does, and the newest
+    published version wins, because that is the one a request would actually render.
+    """
+    with tenant_scope(pool, tenant_id) as conn:
+        template_id, version = _published_template(
+            conn, template_key, locale, channel)
+    return {
+        "template_id": template_id, "template_key": version.template_key,
+        "version": version.version, "category": version.category,
+        "channel": version.channel, "locale": version.locale,
+        "subject": version.subject, "body": version.body,
+        "variables": sorted(version.variables),
+        # The two facts ADM-PAY-05's preview rests on, said by the module that owns them
+        # rather than asserted by a surface.
+        "category_decides_whether_an_optout_stops_it":
+            "Only `coaching` and `marketing` may be muted by a recipient preference -- a"
+            " CHECK on ntf_preferences, not a convention -- so a template in any other"
+            " category reaches somebody who has opted out of marketing. The category is"
+            " declared on the template and no request field overrides it.",
+        "locale_is_per_template":
+            "A template is one row per key, channel and locale, so the member's chosen"
+            " language is a different published row rather than a translation step. There is"
+            " no fallback chain: a key with no template for a locale is refused rather than"
+            " sent in another language.",
+    }
+
+
 def list_templates(
     pool: Pool, tenant_id: str, *, status: str | None = None,
 ) -> list[dict[str, Any]]:

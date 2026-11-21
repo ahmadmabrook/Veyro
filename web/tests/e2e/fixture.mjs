@@ -1327,11 +1327,99 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
             signature_evidence_ref: `s3://signatures/${expiringAgreement.agreement_id}`,
             signed_by_person_id: secondPerson.person_id, correlation_id: cid() },
   });
-  await call("/memberships", {
+  const flexMembership = await call("/memberships", {
     method: "POST", ...as(token),
     body: { agreement_id: expiringAgreement.agreement_id,
             membership_number: "FLEX-00107",
             idempotency_key: randomUUID(), correlation_id: cid() },
+  });
+
+  // ------------------------------------------------- ADM-PAY-05's two halves
+  //
+  // **The workspace's whole argument is that the set is one decision, and one case cannot
+  // show whether it is.** The debt above is personal training with no membership behind it,
+  // so `recovery_treatment` reads it as `review` -- somebody has to look, because the
+  // ordinary dunning notice is a sentence about a membership this debt has nothing to do
+  // with. This second one cites the member's actual membership and failed on an expired
+  // card, which is the canvas's `link ready`: there is nothing to retry until they act.
+  //
+  // With only one of them seeded the board renders one branch of the banner and the other
+  // passes vacuously -- the surface-branch vacuity this repository has now shipped four
+  // times. Two halves, so both the "these are one decision" and the "these are not"
+  // sentences are reachable and the row-level distinction is visible beside them.
+  //
+  // **A different member, because the canvas's six are six people.** Putting both halves on
+  // one payer would also have put a second invoice on that member's billing tab, where two
+  // existing assertions locate "the settled one" by its figure -- and the membership price
+  // is the same number, so the locator would have matched both. The suite's own comment
+  // already records that trap for `INV-`; this is the next rung of it.
+  const secondAccount = await call("/finance/accounts", {
+    method: "POST", ...as(token),
+    body: { payer_person_id: secondPerson.person_id, account_number: "A-00107",
+            currency: "JOD", legal_entity_id: entity.legal_entity_id,
+            correlation_id: cid() },
+  });
+  const cardExpiredOn = new Date(Date.now() - 20 * 86400000).toISOString().slice(0, 10);
+  const membershipDebt = await call("/finance/invoices", {
+    method: "POST", ...as(token),
+    body: {
+      billing_account_id: secondAccount.billing_account_id, series_id: series.series_id,
+      lines: [{ description: "Flex membership, November", quantity: 1,
+                unit_net_minor: 32000, tax_rate_bp: 1600 }],
+      issued_on: cardExpiredOn,
+      due_on: new Date(Date.parse(cardExpiredOn) + 7 * 86400000)
+        .toISOString().slice(0, 10),
+      // **The membership the debt is for**, which is what makes the treatment derivable:
+      // the read takes the membership the *invoice* cites, never the payer's latest.
+      membership_id: flexMembership.membership_id,
+      jurisdiction: "JO", idempotency_key: randomUUID(), correlation_id: cid(),
+    },
+  });
+  const expiredCard = await call("/finance/payment-intents", {
+    method: "POST", ...as(token),
+    body: { billing_account_id: secondAccount.billing_account_id,
+            invoice_id: membershipDebt.invoice_id,
+            amount_minor: membershipDebt.gross_minor,
+            method: "card", provider_key: "acme.payments",
+            idempotency_key: randomUUID(), correlation_id: cid() },
+  });
+  await call(`/finance/payment-intents/${expiredCard.intent_id}/settle`, {
+    method: "POST", ...as(token),
+    body: { outcome: "failed", failure_code: "card_expired", correlation_id: cid() },
+  });
+  await call("/finance/dunning-cases", {
+    method: "POST", ...as(token),
+    body: { invoice_id: membershipDebt.invoice_id, idempotency_key: randomUUID(),
+            correlation_id: cid() },
+  });
+
+  // **The message the first stage would send**, so the preview block renders a template
+  // rather than its own "nobody authored this" state. The key is `collections.STAGES[0]`'s
+  // own notification key: the stage picks the message, not whoever is looking at the
+  // screen. Approved by the second identity, because an author cannot approve their own
+  // template -- it goes out under the tenant's name to everybody.
+  //
+  // The body keeps its placeholders and one of them is the thing this build does not have.
+  // A seeded example with a working-looking URL in it would be the fabricated-evidence
+  // shape, in a fixture.
+  const notice = await call("/notifications/templates", {
+    method: "POST", ...as(token),
+    body: {
+      template_key: "payment_failed", version: 1, category: "transactional",
+      channel: "email", locale: "en",
+      subject: "Your {{ month }} payment did not go through",
+      body: "Hi {{ name }} \u2014 your {{ month }} payment of {{ amount }} didn't go"
+        + " through because {{ reason }}. You can pay here: {{ link }}. You're still able"
+        + " to train as normal.",
+      variables: ["name", "month", "amount", "reason", "link"],
+      correlation_id: cid(),
+    },
+  });
+  await call(`/notifications/templates/${notice.template_id}/approve`, {
+    method: "POST", ...as(publisherToken), body: { correlation_id: cid() },
+  });
+  await call(`/notifications/templates/${notice.template_id}/publish`, {
+    method: "POST", ...as(token), body: { correlation_id: cid() },
   });
 
   // **A period in `closing`, because otherwise the state nothing writes is the state nothing

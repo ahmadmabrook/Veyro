@@ -41,6 +41,9 @@ const surfaces: [string, string][] = [
   // MOD-018's board is the widest table in the app -- four money columns over a chart of
   // thirteen accounts -- so it is the one most likely to push the page sideways.
   ["the payments ledger", "/payments"],
+  // Five columns, two of which stack a word over a sentence — and the message preview below
+  // is the one block in the app holding a template body with `{{ }}` runs that cannot break.
+  ["the recovery workspace", "/payments/recovery"],
   ["an invoice", `/finance/invoices/${creds.invoiceId}`],
   ["the finance board", "/finance"],
   ["the catalog board", "/catalog"],

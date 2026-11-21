@@ -2184,6 +2184,18 @@ Known gaps, deliberate:
   Selling a membership, freezing one, cancelling one, issuing an invoice and taking a payment
   are all built on the server and none has a form, which is the same gap the hierarchy has and
   for the same reason: every one of those writes is a stepped-up financial permission.
+- **The dunning journey is sorted now, and `recovery_treatment` is where.** ADM-PAY-05's
+  canvas argues that a batch of failed payments is "one decision, not six" -- which is a
+  claim nothing in the module could establish, because whether a case wants a payment link
+  or a person depends on *why* the charge failed and *where the member stands*. The
+  decision is pure and sits in `collections.py` beside the retry budget it calls rather
+  than re-derives; `GET /finance/recovery` runs it over each open case, pairing it with the
+  failure that opened it and the membership **the invoice cites** -- never the payer's
+  latest, which would answer about a different agreement whenever somebody has two. The
+  retry budget there counts **charges presented against the invoice**: a retry in this
+  build is a new intent, so an intent's own `attempts` sits at one however many times the
+  card has been tried, and the case's `attempts` counts dunning steps, which are not
+  charges.
 
 **MOD-018 (COM-04 financial ledger, member wallet and revenue recognition) -- implemented,
 gated and reviewed.** Fifteen `led_` tables in `plt01` under the same forced RLS,
@@ -3794,6 +3806,17 @@ permission; no address, because the tables hold a SHA-256 of `channel:address`; 
 control on a bounce, because only an unsubscribe may be lifted, so the page says which kind a
 row is rather than offering a button that would be refused.
 
+**The template *body* now has a reader, and it did not before.** `list_templates` omits it --
+a body per row over every template a tenant has authored is a page of prose nobody asked for
+-- which left the text unreadable anywhere in the build: a template could be drafted,
+approved and published and the only way to see what it said was to send a message with it.
+`GET /notifications/templates/published` is the single-template read, on the same
+`notifications.template.read`, because a body carries no subject data: the text is the
+tenant's own prose and its variables are placeholders rather than values. ADM-PAY-05's
+message preview is the first surface to need it, and it renders the body **unrendered** --
+`templates.render` requires a value for every declared variable, and the one this build
+cannot supply is the payment link.
+
 **And the decision reason was rendering as its stored enum.** `no_preference_stops_it` tells
 a reader nothing they can act on -- "a rule id is not a reason", which MOD-005's board learned
 about flags, met again one module over. The eight reasons read as sentences now, and an
@@ -4008,7 +4031,8 @@ re-running the fixture invalidates every test already created.
 
 Known gaps: the surface covers the sign-in, the step-up, the account page, MOD-004, MOD-005,
 MOD-007, MOD-008, MOD-009, MOD-010, MOD-011, MOD-012, MOD-013, MOD-014, MOD-016, MOD-017,
-MOD-018, MOD-019, MOD-021 and MOD-022, plus MOD-020's roster on a session, ADM-RPT-01/02/03
+MOD-018, MOD-019, MOD-021 and MOD-022, plus MOD-020's roster on a session, ADM-PAY-05's
+recovery workspace, ADM-RPT-01/02/03
 under `/reports`, ADM-PAY-07's wallet on a member's billing tab and ADM-MEM-07's attendance
 tab. MOD-015 is the one
 implemented module with no screen at all, which is the bulk of the remaining work; MOD-019's
@@ -4037,11 +4061,16 @@ MOD-012, MOD-013, MOD-014, MOD-016, MOD-017, MOD-018, MOD-019, MOD-020's roster,
 MOD-022 -- so **MOD-015 is the only implemented module with no screen at all**;
 `contracts/ui/screen-contracts.yaml` names the rest.
 
-**Of the 59 specified Admin screens with no route, the ones with reads behind them are what to
+**Of the specified Admin screens with no route, the ones with reads behind them are what to
 build next**: ADM-STF-01/02 (staff list and profile) need a staff listing route -- `POST
 /people/{id}/staff-profile` exists with no reader, which is this build's recurring "a writer
 with no reader" shape -- and ADM-RPT-04's attendance chart needs an hourly read over the access
-events, which nothing provides. ADM-RPT-05's export gate, ADM-STF-03's invitation and every
+events, which nothing provides. **ADM-PAY-05 came off that list by writing the reads it
+needed**, which is the shape the rest of them take: `collections.recovery_treatment` sorts the
+failed payments the canvas calls one decision, `GET /finance/recovery` pairs each case with
+the failure that opened it and the membership its invoice cites, and
+`GET /notifications/templates/published` gave MOD-013's template body its first reader -- the
+listing omits it, so the text had been unreadable anywhere in the build. ADM-RPT-05's export gate, ADM-STF-03's invitation and every
 `tenancy.*`/`catalog.*`/`finance.*` form are blocked on the same thing: each is a stepped-up
 financial write with no form in this app, and a button that answered 403 is worse than its
 absence. The rest need modules this repository does not have (CRM, automation, tasks, search).
