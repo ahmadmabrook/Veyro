@@ -1,9 +1,9 @@
 import Link from "next/link";
 
 import { Banner } from "@/components/ds/banner";
-import { Withheld } from "@/components/withheld";
+import { WithheldLink } from "@/components/withheld";
 import { DataGrid } from "@/components/ds/data-grid";
-import { formatInteger, t, type MessageKey } from "@/i18n/locale";
+import { fill, formatInteger, t, type MessageKey } from "@/i18n/locale";
 import { ApiError, gate, gateMessage } from "@/lib/api";
 import {
   LIFECYCLE_STATES,
@@ -186,8 +186,22 @@ export default async function MembersPage({
                         show three asterisks where the member record shows a marked, explained
                         withholding -- the same fact, rendered as a glitch. The remedy differs
                         by reason, so the marker names which one it is. */}
+                    {/* **And it is still a link.** With every name marked, a level-1 session
+                        could not open a single record from this list -- the screen a
+                        receptionist opens all day, a dead end on the credential a
+                        receptionist holds. The name is what the mask withholds; the row's
+                        identity is not secret, and the record behind it is the page that
+                        explains the withholding and offers the step-up. Found by an
+                        independent tester trying to open one. */}
                     {isWithheld(row.preferred_name ?? row.legal_name) ? (
-                      <Withheld locale={locale} reason="member.withheldIdentity" />
+                      <WithheldLink
+                        locale={locale}
+                        reason="member.withheldIdentity"
+                        href={`/people/${row.person_id}`}
+                        label={fill(locale, "members.openWithheld", {
+                          what: row.member_number ?? text("members.noNumber"),
+                        })}
+                      />
                     ) : (
                       <Link href={`/people/${row.person_id}`}>
                         {row.preferred_name ?? row.legal_name}

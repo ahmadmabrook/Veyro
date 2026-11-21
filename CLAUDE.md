@@ -396,6 +396,23 @@ Known gaps, deliberate:
   here next to the one above.
 - **Registration is open.** Anyone holding the tenant UUID can create an identity in it. That is
   the same unauthenticated-header problem above, not a separate one.
+- **`iam.identities.status` was read by four controls and written by nothing**, which is fixed
+  now and is worth carrying as the finding rather than as the fix. The column admits `active`,
+  `suspended` and `deactivated`; `authenticate`, the risk challenge, `recover_with_code` and
+  `_session_by_token` each refuse an identity that is not `active` -- four independent
+  controls, each correct -- and no service function, route or job ever set it, so two of three
+  declared states were unreachable and **this product could not shut anybody out**. That is
+  MOD-012's "a column implying a control nobody implemented" and MOD-020's "a declared state
+  nothing writes", in the module whose subject is who may sign in. **Found by building
+  ADM-STF-01**, which composes employment with access precisely because the design says why
+  that column exists -- so the board could show an owner that a departed employee can still
+  sign in while the product offered no way to act on it. `set_identity_status` is the writer,
+  `migrations/product/0003_identity_status.sql` names the three `auth_events` kinds it needs
+  (an act whose record cannot be named is an act with nobody's name on it), suspending revokes
+  every live session in the same transaction, and **a session cannot suspend the identity it
+  is using** -- there is no platform identity and nothing reinstates one from outside the
+  tenant, so a self-suspension would end a tenant's administration with no remedy anywhere in
+  the product.
 - **The identity plane is a schema, not a separate database.** TSD paragraph 1151 says "Product
   PostgreSQL"; this repository provisions one cluster. The privilege boundary is real and checked
   in both directions; the physical separation is not there.
@@ -513,6 +530,15 @@ Known gaps, deliberate:
   if nobody has. **When the header stops being a claim, this function needs revisiting with it.**
 - **Field masking is computed, not applied.** `Decision.mask` exists and is tested; no read path
   calls it, because no read path is gated yet.
+- **`/authz/simulate` answers about one scope, and a caller who asks about the default one
+  sees none of a person's narrowly scoped grants.** `permissions_of` lets a broad assignment
+  cover a narrow scope and never the reverse, which is correct -- and it means "what may this
+  person do" has no single answer: a location-scoped role contributes nothing at the
+  tenant-wide default. ADM-STF-02 found this by rendering it, with the fixture's own
+  location-scoped refund grant missing from the block that exists to show exactly that kind of
+  grant. The surface asks once per distinct scope among the person's live assignments and
+  labels each permission with where it applies; **a single-scope caller is the trap**, and
+  there is no route that answers "everywhere this identity can do anything" in one request.
 - **No outbox.** IAM-03's five events are written to `iam.audit_events` and published nowhere.
 - **Retention control is not implemented.** IAM-03 asks for write-once, integrity-protected *and*
   retention-controlled; the third is a policy about deleting old records on purpose and has no
@@ -1662,6 +1688,17 @@ Known gaps, deliberate:
   custom values and the survivor gets its own; `reverse_merge` says so in `not_restored.why`
   rather than implying a move. Making it a true move needs DELETE grants this module
   deliberately lacks.
+- **`ppl_staff_profiles` has a reader now, and had none for fourteen modules.**
+  `upsert_staff_profile` and `end_staff_employment` were written and listed by nothing, so a
+  tenant's team was reachable only by already knowing a person id -- the fourth instance of
+  this build's "a writer with no reader" shape. `GET /staff` and `GET /staff/{person_id}`
+  close it, and the response names the two of ADM-STF-01's four columns this module cannot
+  answer: the role is MOD-008's `iam.role_assignments` and the last-seen is MOD-007's
+  `iam.sessions`, both on a plane `veyro_cp_app` holds nothing in, so the surface composes
+  them through their own gates rather than joining. **`location_id` is a filter, not a
+  boundary**: the design says a club manager sees only their own club's staff and `permit`
+  resolves tenant-wide, which is the scope gap two bullets up, said on the screen rather than
+  implied by a filter.
 - **No search.** Paragraph 4218's permission-aware search index with a mandatory query
   pre-filter is ENG-01's, and a `LIKE` scan presented as search would be a read path with no
   freshness contract and no pre-filter. The duplicate detector draws its candidates through the
@@ -3950,6 +3987,63 @@ with a caption saying so. The test that proves no MOD-017 data leaks to a refuse
 initially asserted the *wrong* number and failed for that reason, which is the confusion
 arriving in the evidence before it could arrive in the product.
 
+**The staff list is the first screen that composes three planes, and building it found a
+control nobody could reach.** ADM-STF-01 draws four columns and they live in three schemas
+under three roles: the staff profile is MOD-014's in `plt01`, the role is MOD-008's and the
+login is MOD-007's, both in `iam`, which `veyro_cp_app` holds nothing in. So the page asks
+three gates and composes -- the Member 360's pattern, for the stronger reason that a reader
+may hold any subset, and a refused half says it was refused rather than rendering an empty
+cell. Both new reads are **batched**, because fifty rows asking one at a time is the
+round-trip problem `/authz/checks` exists for.
+
+**The design states the LAST SEEN column's purpose and it is a control, not a timestamp**:
+"last seen exists so a departed employee with a live login is visible rather than discovered."
+Putting the two halves together is what showed that **nothing in this build could offboard
+anybody** -- `iam.identities.status` was read by four controls and written by nothing, so the
+board could name a problem the product could not act on. That is in MOD-007's notes above; the
+surface's half is that the warning box the canvas fills with a certification expiry (there are
+no certifications here) now carries the finding the design's own footnote names, with real
+data behind it.
+
+Three things on these two screens are refusals rather than omissions, and each is in this
+file's recurring shapes. There is **no Invite button and no third chip**: no invitation exists
+in this build at all, and `Invited · 0` would say nobody has been invited rather than that
+nothing can invite anybody. There are **no unticked grant rows**: the canvas draws two
+capabilities its subject lacks, which implies a candidate set, and here a permission exists if
+a role carries it -- so "what somebody could have" is the whole 207-entry catalogue and
+picking two would be inventing the product's idea of a sensitive capability. And **"a club
+manager sees only their own club's staff" is not true here**, said on the screen, because
+`permit` resolves tenant-wide.
+
+**The screenshot pass found a defect in every grid in the app.** `DataGrid` has said from the
+start that "a droppable value is in the DOM twice and visible once -- the stylesheet shows
+exactly one at any width", and below 600px it showed both: `.ds-col-p2 { display: none }` is
+specificity (0,1,0) and the rule that turns the table into a list,
+`.ds-grid-table td { display: block }`, is (0,1,1) and comes after it. Twenty-one duplicated
+values on the members list, twenty-one on the payments ledger, twelve on the staff list -- the
+whole priority-collapse mechanism inoperative at the one width it exists for, for as long as it
+has existed. Nothing in four layers could see it: an assertion about text matches either copy,
+a component test renders without the media query, and the phone sweep measures horizontal
+scroll, which a duplicate does not cause. `phone.spec.ts` asserts the property on three grids
+now. **And `/permissions` overflowed by 125px** once the fixture added a role, because the
+matrix's width is a count rather than a layout -- two causes, a table box pinned to its
+container so its scroll wrapper had nothing to scroll, and a genuine scroll container whose
+overflow still reached the document root until `contain: layout` stopped it.
+
+**Five more defects were found by reading the rendered page and none by a failing test**, which
+is this surface's own standing lesson for the fifth time. The worst was that the grants block
+asked the permission simulator about **one** scope: `permissions_of` lets a broad assignment
+cover a narrow scope and never the reverse, so every narrowly scoped grant -- which is exactly
+what "beyond their role" means -- was invisible in the block built to show it. The others were
+two level-1 headings (a `PageHeader` over a `RecordHeader`, which axe does not flag while a
+screen reader reads two documents), a header figure that disagreed with the table under it by
+two, a `role_key` printed beside its own display name, and an explanation gated on a condition
+that is always true, so it explained a row that was usually absent. **And my first evidence
+for the scope defect was wrong** -- the fixture's narrow grant was missing because it was
+`routine`, a right answer for a different reason -- so the mechanism is now asserted by two
+backend tests instead of reasoned about, which is "a theory that explains a failure is not the
+cause of it" met again.
+
 **The account page is the first screen in this app that writes, and which four writes it is
 was decided by the gate rather than chosen.** Every other surface here is read-only because
 every `tenancy.*`, `config.*`, `catalog.*` and `finance.*` write is a stepped-up financial
@@ -4022,23 +4116,34 @@ the two catalogues against each other and is blind to a string that never became
 
 **TestSprite is the independent layer**, and `qa/testsprite/plans.mjs` generates four journeys
 from the live fixture. Its value is that it has not read this repository: a Playwright spec and
-the page it tests were written by the same hand on the same day. All four pass; one found a
-real defect first -- every name on `/members` reads "Name withheld" at AAL 1 and the step-up
-that lifts it was offered on a member's *record* only, so the tester clicked the marker looking
-for a way through and there was none. Two bounds: a run signs in with the fixture's synthetic
+the page it tests were written by the same hand on the same day. One found a real defect
+first -- every name on `/members` reads "Name withheld" at AAL 1 and the step-up that lifts it
+was offered on a member's *record* only, so the tester clicked the marker looking for a way
+through and there was none. **And then it found the sequel.** Told to open a staff record by
+clicking the row, it could not: a withheld name rendered the marker *instead of* the link, so
+on an ordinary sign-in -- the front desk's own credential -- the members list and the staff
+list were both dead ends and not one row on either could be opened. It went looking for
+another way through, found the step-up, and was blocked by a recovery code it had none of.
+`WithheldLink` puts the marker inside the link with an accessible name built from what is not
+withheld. Twice now, the same reader behaviour against the same cell, and neither time by a
+test written here. Two bounds: a run signs in with the fixture's synthetic
 credentials through a tunnel, and **a created test carries that tenant's id for ever**, so
 re-running the fixture invalidates every test already created.
 
 Known gaps: the surface covers the sign-in, the step-up, the account page, MOD-004, MOD-005,
 MOD-007, MOD-008, MOD-009, MOD-010, MOD-011, MOD-012, MOD-013, MOD-014, MOD-016, MOD-017,
-MOD-018, MOD-019, MOD-021 and MOD-022, plus MOD-020's roster on a session, ADM-PAY-05's
+MOD-018, MOD-019, MOD-021 and MOD-022, plus MOD-020's roster on a session, ADM-STF-01/02's
+staff list and staff record, ADM-PAY-05's
 recovery workspace, ADM-PAY-10's dispute board, ADM-RPT-01/02/03
 under `/reports`, ADM-PAY-07's wallet on a member's billing tab and ADM-MEM-07's attendance
 tab. MOD-015 is the one
 implemented module with no screen at all, which is the bulk of the remaining work; MOD-019's
 own surface is read-only -- publishing a schedule, substituting an instructor and cancelling a
 session are all built on the server and none has a form, which is the same gap the hierarchy
-has and for the same reason: every one of those writes is stepped-up;
+has and for the same reason: every one of those writes is stepped-up; the staff screens are
+read-only too, and `End access` is the one control there whose server half now exists --
+`set_identity_status` is built and tested, and revoking an assignment takes a written reason,
+so a form that collects one is a different piece of work from a button;
 a step-up still spends a recovery code, and the account page's reissue needs a stepped-up
 session, so the batch that runs out pays for the step-up that mints the next one with its own
 last code -- a member who spends all ten without reissuing has no way back from this surface,
@@ -4058,14 +4163,22 @@ the product for every module except MOD-022, and the backlog has two halves.
 The first is the screens the eighteen built modules do not have. `web/` covers the sign-in, the
 step-up, the account page, MOD-004, MOD-005, MOD-007, MOD-008, MOD-009, MOD-010, MOD-011,
 MOD-012, MOD-013, MOD-014, MOD-016, MOD-017, MOD-018, MOD-019, MOD-020's roster, MOD-021 and
-MOD-022 -- so **MOD-015 is the only implemented module with no screen at all**;
+MOD-022, and the staff list and record ADM-STF-01/02 specify -- so **MOD-015 is the only
+implemented module with no screen at all**;
 `contracts/ui/screen-contracts.yaml` names the rest.
 
 **Of the specified Admin screens with no route, the ones with reads behind them are what to
-build next**: ADM-STF-01/02 (staff list and profile) need a staff listing route -- `POST
-/people/{id}/staff-profile` exists with no reader, which is this build's recurring "a writer
-with no reader" shape -- and ADM-RPT-04's attendance chart needs an hourly read over the access
-events, which nothing provides. **ADM-PAY-05 came off that list by writing the reads it
+build next**: ADM-RPT-04's attendance chart needs an hourly read over the access events, which
+nothing provides. **ADM-STF-01/02 came off that list, and found a defect doing it.** The three
+reads it needed are each on the plane that owns the fact -- `GET /staff` for the employment
+half, `GET /authz/assignments` (batched) for the role, `GET /identities/last-seen` for the
+login -- and composing the last two is what the design's own footnote asks for: "last seen
+exists so a departed employee with a live login is visible rather than discovered." Putting
+them together showed that **nothing in this build could offboard anybody**: four controls read
+`iam.identities.status` and no code path wrote it, so the board could name a problem the
+product could not act on. `POST /identities/{id}/status` is the writer and
+`product/0003_identity_status.sql` is the evidence its `auth_events` kind needed. **ADM-PAY-05
+came off that list by writing the reads it
 needed**, which is the shape the rest of them take: `collections.recovery_treatment` sorts the
 failed payments the canvas calls one decision, `GET /finance/recovery` pairs each case with
 the failure that opened it and the membership its invoice cites, and

@@ -34,6 +34,25 @@ export type Assignment = {
   expires_at: string | null;
   revoked_at: string | null;
   revoked_reason: string | null;
+  /**
+   * Who granted it — an identity id, not a name.
+   *
+   * The schema calls this "the whole delegation record" and nothing had ever read it until
+   * ADM-STF-02 needed the canvas's "Granted by Ziad · 4 Mar 2026". It stays an id here on
+   * purpose: resolving it to a person needs `people.person.read` and the identity link, so
+   * the attribution degrades to eight hex characters for a reader who may not see names
+   * rather than leaking one under `authz.role.read`.
+   */
+  granted_by: string;
+  /** The role's own display name, so a surface need not re-key `role_key`. */
+  display_name: string | null;
+  /**
+   * Derived by the server, for MOD-018's reason: an assignment stops working when it expires
+   * with nothing writing a row, so two timestamps left to each reader is a comparison every
+   * reader has to get right — and the open-ended case, no expiry at all, is the one they get
+   * wrong.
+   */
+  live: boolean;
 };
 
 export type AuditEntry = {
@@ -107,11 +126,18 @@ export function verifyAudit(): Promise<ChainVerdict> {
  * than not having one. `resolve_scope` looks a location's brand up; this passes a location and
  * never a brand.
  */
-export function simulate(identityId: string, locationId?: string): Promise<EffectivePermissions> {
+export function simulate(
+  identityId: string, locationId?: string, brandId?: string,
+): Promise<EffectivePermissions> {
   return api<EffectivePermissions>(
     withCorrelation("/authz/simulate", {
       identity_id: identityId,
-      ...(locationId ? { location_id: locationId } : {}),
+      // **A location's brand is derived, never sent beside it.** `resolve_scope` looks it up,
+      // which is MOD-008's own "derive a scope, never accept one" -- a brand-scoped manager
+      // reached another brand's location by sending their own brand id beside it, and the
+      // simulator confirmed the escalation. So at most one of these travels.
+      ...(locationId ? { location_id: locationId }
+        : brandId ? { brand_id: brandId } : {}),
     }),
   );
 }

@@ -389,6 +389,198 @@ def list_people(
     }
 
 
+#: What a staff list may be bounded to. The same ceiling as the members list and for the same
+#: reason: unbounded is a bulk export and a denial of service at once.
+STAFF_PAGE = 200
+
+#: The employment states `ppl_staff_profiles` admits.
+#:
+#: **ADM-STF-01 draws three chips -- Active, Invited, Left -- and only two of them are states
+#: of this table.** `invited` is an invitation, and there is no invitation anywhere in this
+#: build: no table, no token, no expiry, nothing that sends. A chip reading "Invited / 0" would
+#: say that nobody has been invited rather than that nothing can invite anybody, which is the
+#: confident wrong answer this repository keeps finding. `suspended` is the third real state and
+#: the design has no chip for it, so it gets one.
+STAFF_STATES = ("active", "suspended", "ended")
+
+
+def list_staff(
+    pool: Pool, tenant_id: str, *, masked_fields: tuple[str, ...],
+    held_permissions: set[str], employment_state: str | None = None,
+    location_id: str | None = None, limit: int = 50,
+) -> dict[str, Any]:
+    """ADM-STF-01's staff list -- the first reader `ppl_staff_profiles` has ever had.
+
+    The table was written by MOD-014 with `upsert_staff_profile` and `end_staff_employment` and
+    read by nothing: a staff profile could be created, ended and versioned, and the only way to
+    find out what a tenant's team was consisted of knowing a person id already. That is this
+    build's recurring "a writer with no reader" shape, now four times over, and the remedy is
+    the same one `GET /brands` and `GET /memberships` took -- a route on the server rather than
+    inference in the client.
+
+    **The design names four columns and this module owns two of them.** NAME and CLUBS are
+    partly here; ROLE is MOD-008's `iam.role_assignments` and LAST SEEN is MOD-007's
+    `iam.sessions`, both on a plane this role holds nothing in -- `veyro_cp_app` has no
+    privilege in `iam` at all, which is the separation MOD-007 exists to keep. So the surface
+    composes them from each module's own read through each module's own gate, exactly as the
+    Member 360 composes membership and money onto a person. `columns_this_module_cannot_answer`
+    names them, because a column rendered empty reads as a fact about the person.
+
+    **`location_id` is a filter, not a restriction.** The design says "a Club Manager sees only
+    their own club's staff"; `permit` resolves against the tenant-wide default scope, so a
+    narrower assignment covers nothing and nothing here derives a reader's own club. That is
+    MOD-014's standing gap, and the response says so rather than letting a filter read as a
+    boundary.
+
+    Masked like every other read in this module -- the gate's fields and the caller's class
+    permissions both, as required arguments.
+    """
+    if employment_state is not None and employment_state not in STAFF_STATES:
+        raise InvalidRequest(f"unknown_employment_state_{employment_state}")
+    if limit < 1 or limit > STAFF_PAGE:
+        raise InvalidRequest("bad_limit")
+    readable = visibility.readable_classes(frozenset(held_permissions))
+    masks = _masks(masked_fields, readable)
+
+    where = ["p.merge_status = 'active'"]
+    args: list[Any] = []
+    if employment_state is not None:
+        where.append("s.employment_state = %s")
+        args.append(employment_state)
+    if location_id is not None:
+        where.append("s.location_id = %s")
+        args.append(location_id)
+
+    with tenant_scope(pool, tenant_id) as conn:
+        # The chips, over the whole tenant rather than over the page. A surface that counted
+        # the rows it loaded would report the page as the team.
+        by_state = conn.execute(
+            "SELECT s.employment_state, count(*)"
+            " FROM plt01.ppl_staff_profiles s"
+            " JOIN plt01.ppl_persons p ON p.person_id = s.person_id"
+            " WHERE p.merge_status = 'active' GROUP BY 1 ORDER BY 1"
+        ).fetchall()
+        matching = conn.execute(
+            "SELECT count(*) FROM plt01.ppl_staff_profiles s"
+            " JOIN plt01.ppl_persons p ON p.person_id = s.person_id"
+            f" WHERE {' AND '.join(where)}",
+            tuple(args),
+        ).fetchone()
+        rows = conn.execute(
+            "SELECT s.person_id, p.legal_name, p.preferred_name, s.staff_profile_id,"
+            " s.job_title, s.employment_state, s.started_on, s.ended_on, s.location_id,"
+            " l.location_name, s.version, i.identity_id"
+            " FROM plt01.ppl_staff_profiles s"
+            " JOIN plt01.ppl_persons p ON p.person_id = s.person_id"
+            " LEFT JOIN plt01.locations l ON l.location_id = s.location_id"
+            " LEFT JOIN plt01.ppl_identity_links i ON i.person_id = s.person_id"
+            f" WHERE {' AND '.join(where)}"
+            # Ordered, because an unordered list makes the planner the author -- and a team
+            # list a reader scans wants the people who are here first.
+            #
+            # **By what the state means, not by how it spells.** Alphabetically `active` <
+            # `ended` < `suspended`, which would put the people who have left above the ones
+            # who are suspended -- and a suspended employee is still on the team. The three
+            # states have an order and it is not their collation.
+            " ORDER BY CASE s.employment_state"
+            "   WHEN 'active' THEN 0 WHEN 'suspended' THEN 1 ELSE 2 END,"
+            " coalesce(s.started_on, '0001-01-01'::date) DESC, s.person_id"
+            " LIMIT %s",
+            (*args, limit),
+        ).fetchall()
+
+    staff = [
+        visibility.apply_record(
+            {
+                "person_id": str(r[0]),
+                "legal_name": r[1],
+                "preferred_name": r[2],
+                "staff_profile_id": str(r[3]),
+                "job_title": r[4],
+                "employment_state": r[5],
+                "started_on": r[6].isoformat() if r[6] else None,
+                "ended_on": r[7].isoformat() if r[7] else None,
+                "location_id": str(r[8]) if r[8] else None,
+                "location_name": r[9],
+                "version": int(r[10]),
+                # The handle the role and last-seen composition is made with. An opaque id
+                # and nothing else -- and its presence is itself the fact ADM-STF-01 cares
+                # about, because a staff profile with no identity link has no login to lose.
+                "identity_id": str(r[11]) if r[11] else None,
+            },
+            masks,
+        )
+        for r in rows
+    ]
+    return {
+        "staff": staff,
+        "matching": int(matching[0]) if matching else 0,
+        "total": sum(int(r[1]) for r in by_state),
+        #: Per employment state over the whole tenant. Every key sums into `total`.
+        "by_state": {str(r[0]): int(r[1]) for r in by_state},
+        "limit": limit,
+        "states": list(STAFF_STATES),
+        #: Named rather than omitted, and each names the permission that answers it.
+        "columns_this_module_cannot_answer": {
+            "role": "authz.role.read (MOD-008): iam.role_assignments, another plane",
+            "last_seen": "identity.identity.read (MOD-007): iam.sessions, another plane",
+            "clubs_beyond_the_home_location":
+                "authz.role.read (MOD-008): a staff profile carries one location and the "
+                "scopes a person can actually reach are their role assignments'",
+        },
+        #: ADM-STF-01's third chip. There is no invitation in this build at all.
+        "invited_is_not_a_state_here":
+            "a staff invitation has no table, no token and no expiry in this build, and "
+            "nothing sends one; ADM-STF-03 is unbuilt rather than empty",
+        #: The design's warning box. Certifications are not recorded anywhere here.
+        "certifications_are_not_recorded":
+            "no table in this build holds a coach certification or its expiry, so the "
+            "design's 30-day certification warning has nothing to read",
+        #: The filter is a filter. Saying so is cheaper than a reader deriving a boundary.
+        "the_location_filter_is_not_a_boundary":
+            "permit resolves against the tenant-wide default scope, so a brand- or "
+            "location-scoped role covers nothing here and nothing derives a reader's own "
+            "club; this narrows the list and does not restrict who may read it",
+    }
+
+
+def read_staff_profile(pool: Pool, tenant_id: str, person_id: str) -> dict[str, Any]:
+    """One staff profile, for ADM-STF-02's header -- the employment half and nothing else.
+
+    No name and no masking, deliberately: the person is `GET /people/{id}`, which applies the
+    gate's mask and this module's class mask and the guardianship check. A second read that
+    returned a name under its own rules would be a second place the mask has to be right, which
+    is how "computed but not applied" survived five modules.
+    """
+    with tenant_scope(pool, tenant_id) as conn:
+        row = conn.execute(
+            "SELECT s.staff_profile_id, s.person_id, s.job_title, s.employment_state,"
+            " s.started_on, s.ended_on, s.location_id, l.location_name, s.version,"
+            " s.updated_at, i.identity_id"
+            " FROM plt01.ppl_staff_profiles s"
+            " LEFT JOIN plt01.locations l ON l.location_id = s.location_id"
+            " LEFT JOIN plt01.ppl_identity_links i ON i.person_id = s.person_id"
+            " WHERE s.person_id = %s",
+            (person_id,),
+        ).fetchone()
+    if row is None:
+        raise NotFound("staff_profile_not_found")
+    return {
+        "staff_profile_id": str(row[0]), "person_id": str(row[1]), "job_title": row[2],
+        "employment_state": row[3],
+        "started_on": row[4].isoformat() if row[4] else None,
+        "ended_on": row[5].isoformat() if row[5] else None,
+        "location_id": str(row[6]) if row[6] else None, "location_name": row[7],
+        "version": int(row[8]), "updated_at": row[9].isoformat(),
+        "identity_id": str(row[10]) if row[10] else None,
+        #: A staff profile carries one location. What a person can actually reach is their
+        #: role assignments' scopes, which is MOD-008's read and the design's CLUBS row.
+        "the_home_location_is_not_the_scope":
+            "this is where they work; what they may reach is authz.role.read's assignment "
+            "scopes",
+    }
+
+
 def update_person(
     pool: Pool, tenant_id: str, person_id: str, *, expected_version: int, actor_id: str,
     correlation_id: str, legal_name: str | None = None, preferred_name: str | None = None,

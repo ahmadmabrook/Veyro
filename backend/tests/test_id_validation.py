@@ -33,7 +33,14 @@ from tests.support import GatedApiTestCase
 #: * **`owned` is not a shape check and is still enough.** It refuses anything that is not the
 #:   session's own identity id with a 404, so a malformed value -- which can never equal a real
 #:   uuid -- stops there. A second check behind it would be a second spelling of the same rule.
-VALIDATORS = frozenset({"require_uuid", "optional_uuid", "_b64", "consent_subject", "owned"})
+#: * **`require_uuids` is the repeated-query-parameter form.** A batched read takes
+#:   `identity_id` several times over, and a comprehension calling `require_uuid` per element
+#:   passes the loop variable, so this sweep -- which reads names -- would report the
+#:   parameter unwrapped. One call taking the parameter itself is the shape the sweep can see,
+#:   and it bounds the count as well, because an unbounded repeated parameter is a request
+#:   whose cost the caller chooses.
+VALIDATORS = frozenset({
+    "require_uuid", "optional_uuid", "require_uuids", "_b64", "consent_subject", "owned"})
 
 #: Parameter names that are never an entity id. `tenant_id` is the header, validated by its own
 #: dependency; `correlation_id` is a trace handle that every route carries.

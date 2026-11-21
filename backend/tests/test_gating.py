@@ -102,6 +102,16 @@ READ_ROUTES = [
     # ADM-PAY-01's ledger.
     ("get", "/finance/payments", None),
     ("get", "/people", None),
+    # ADM-STF-01's three reads, each on the plane that owns the fact and so each on its own
+    # permission: the staff profiles are MOD-014's, the ROLE column is MOD-008's and LAST SEEN
+    # is MOD-007's. A sweep that drove only the first would leave two new read paths proved by
+    # nothing -- and a wrong permission on a read reads exactly like a right one from outside.
+    ("get", "/staff", None),
+    ("get", f"/staff/{_ID}", None),
+    ("get", f"/authz/assignments?identity_id={_ID}"
+            f"&correlation_id={_CORR['correlation_id']}", None),
+    ("get", f"/identities/last-seen?identity_id={_ID}"
+            f"&correlation_id={_CORR['correlation_id']}", None),
     ("get", "/people/duplicates/all", None),
     ("get", f"/people/merges/plan?source_person_id={_ID}&target_person_id={_SUBJECT}", None),
     ("get", "/scheduling/resources", None),
@@ -141,6 +151,11 @@ READ_ROUTES = [
 ]
 
 WRITE_ROUTES = [
+    # IAM-01's missing status writer, which four controls read and nothing could set until
+    # ADM-STF-01 needed it. `identity.identity.write` is financial class, so the sweep proves
+    # both halves: a session holding nothing is refused, and a read permission does not buy it.
+    ("post", f"/identities/{_ID}/status",
+     {"status": "suspended", "reason": "sweep", **_CORR}),
     ("post", "/organizations", {"legal_name": "X ehf", "country_code": "IS"}),
     ("post", "/config/definitions", {"config_key": "a.b", "value_type": "integer",
                                      "default_value": 1, "owner_module": "MOD-005"}),
@@ -970,6 +985,11 @@ class GateCoverageTests(unittest.TestCase):
                             "/memberships", "/member-entitlements", "/finance",
                             "/notifications", "/people", "/catalog", "/ledger",
                             "/scheduling", "/booking",
+                            # ADM-STF-01's staff list. `/staff` rather than `/people/staff`:
+                            # a literal segment under `/people/{person_id}` would be matched
+                            # as a person id by whichever route FastAPI saw first, which is a
+                            # route whose correctness is a declaration order.
+                            "/staff",
                             # **`/fleet`, not `/devices`.** MOD-007 owns `/devices/{id}` for
                             # a member's own handset, and sweeping the two together would
                             # read as one surface while being two modules' authority.

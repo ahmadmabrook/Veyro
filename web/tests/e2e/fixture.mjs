@@ -1699,6 +1699,180 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
             replay_safety: "safe", correlation_id: cid() },
   });
 
+  // ---------------------------------------------------------------- ADM-STF-01 / ADM-STF-02
+  //
+  // **The team, and the finding the design says the LAST SEEN column exists for.**
+  // `ppl_staff_profiles` had no reader until now, so nothing in this fixture had ever written
+  // one. Four profiles, because the standing a row shows is a *pair* -- employment and access
+  // -- and a fixture with one member of each pair renders a branch and demonstrates nothing,
+  // which is the surface-branch vacuity this repository has shipped four times:
+  //
+  //   1. **Layla**, working, linked to the publisher identity, with a second narrow role, so
+  //      ADM-STF-02's "beyond their role" has something in it and carries an attribution.
+  //   2. **Omar**, employment ended, login still live -> `endedWithAccess`, the finding.
+  //   3. **Yasmin**, employment ended and the identity suspended -> `ended`, the clean exit.
+  //      Unreachable before this change: nothing in the build could set the status.
+  //   4. **Dana**, working with no identity link at all -> `workingNoLogin`, which is not a
+  //      fault: a cleaner on the payroll needs no account.
+  const layla = await call("/people", {
+    method: "POST", ...as(token),
+    body: { legal_name: "Layla Mansour", correlation_id: cid() },
+  });
+  await call(`/people/${layla.person_id}/identity-links`, {
+    method: "POST", ...as(token),
+    body: { identity_id: secondSession.identity_id, correlation_id: cid() },
+  });
+  await call(`/people/${layla.person_id}/staff-profile`, {
+    method: "POST", ...as(token),
+    body: { job_title: "Reception", location_id: location.location_id,
+            started_on: "2025-01-06", correlation_id: cid() },
+  });
+  // **A second, narrower assignment**, which is what "beyond her role" is in this build:
+  // there are no per-identity grants, so an additional role assignment is the thing that
+  // carries `granted_by` and `granted_at` -- the canvas's attribution line exactly. Scoped to
+  // the location so `splitRole` has a real breadth difference to order on, and carrying a
+  // financial-class permission so the sensitive-grants block is not empty.
+  const extraRole = await call("/authz/roles", {
+    method: "POST", ...as(token),
+    body: {
+      role_key: `till_refunds_${Date.now()}`, display_name: "Till refunds",
+      // **Financial, and one the wide role does not hold.** `finance.refund.request` is
+      // `routine`, so the grants block filtered it correctly and the page proved nothing
+      // about scope -- I read that absence as the scope defect and it was not. And a
+      // permission the tenant-wide role already carries would be visible at the default
+      // scope anyway, so it has to be one only this narrow assignment grants.
+      permissions: ["finance.wallet.credit"], correlation_id: cid(),
+    },
+  });
+  await call("/authz/assignments", {
+    method: "POST", ...as(token),
+    body: {
+      identity_id: secondSession.identity_id, role_key: extraRole.role_key,
+      scope_type: "location", location_id: location.location_id, correlation_id: cid(),
+    },
+  });
+
+  // Omar: the finding. A live login after employment ended.
+  const omarEmail = `omar.s+${Date.now()}@veyro.invalid`;
+  const omarPassword = `e2e-${randomUUID()}`;
+  const omarIdentity = await call("/identities", {
+    method: "POST", tenant: tenantId,
+    body: { display_name: "Omar Said", email: omarEmail, password: omarPassword,
+            correlation_id: cid() },
+  });
+  // Signing in is what gives them a live session and a last-seen instant. Without it the row
+  // would still read `endedWithAccess` -- the identity's own status is enough -- but the
+  // timestamp the column renders would be empty, and the two cases look different on screen.
+  await call("/auth/login", {
+    method: "POST", tenant: tenantId,
+    body: { identifier: omarEmail, password: omarPassword, correlation_id: cid() },
+  });
+  const omar = await call("/people", {
+    method: "POST", ...as(token),
+    body: { legal_name: "Omar Said", correlation_id: cid() },
+  });
+  await call(`/people/${omar.person_id}/identity-links`, {
+    method: "POST", ...as(token),
+    body: { identity_id: omarIdentity.identity_id, correlation_id: cid() },
+  });
+  const omarStaff = await call(`/people/${omar.person_id}/staff-profile`, {
+    method: "POST", ...as(token),
+    body: { job_title: "Sales", location_id: location.location_id,
+            started_on: "2024-09-02", correlation_id: cid() },
+  });
+  await call(`/people/${omar.person_id}/staff-profile/end`, {
+    method: "POST", ...as(token),
+    body: { expected_version: omarStaff.version,
+            ended_on: new Date(Date.now() - 20 * 86400000).toISOString().slice(0, 10),
+            correlation_id: cid() },
+  });
+
+  // Yasmin: the clean exit, which this build could not produce until `set_identity_status`
+  // existed. Four controls read `iam.identities.status` and nothing wrote it, so every
+  // departed employee was `endedWithAccess` and the board's good state was unreachable.
+  const yasminEmail = `yasmin+${Date.now()}@veyro.invalid`;
+  const yasminPassword = `e2e-${randomUUID()}`;
+  const yasminIdentity = await call("/identities", {
+    method: "POST", tenant: tenantId,
+    body: { display_name: "Yasmin Haddad", email: yasminEmail, password: yasminPassword,
+            correlation_id: cid() },
+  });
+  await call("/auth/login", {
+    method: "POST", tenant: tenantId,
+    body: { identifier: yasminEmail, password: yasminPassword, correlation_id: cid() },
+  });
+  const yasmin = await call("/people", {
+    method: "POST", ...as(token),
+    body: { legal_name: "Yasmin Haddad", correlation_id: cid() },
+  });
+  await call(`/people/${yasmin.person_id}/identity-links`, {
+    method: "POST", ...as(token),
+    body: { identity_id: yasminIdentity.identity_id, correlation_id: cid() },
+  });
+  const yasminStaff = await call(`/people/${yasmin.person_id}/staff-profile`, {
+    method: "POST", ...as(token),
+    body: { job_title: "Coach", location_id: location.location_id,
+            started_on: "2023-04-17", correlation_id: cid() },
+  });
+  await call(`/people/${yasmin.person_id}/staff-profile/end`, {
+    method: "POST", ...as(token),
+    body: { expected_version: yasminStaff.version,
+            ended_on: new Date(Date.now() - 60 * 86400000).toISOString().slice(0, 10),
+            correlation_id: cid() },
+  });
+  // The offboarding the product can now do. `identity.identity.write` is financial, and
+  // `token` here *is* the stepped-up owner session: `seedAccess` is called with the token
+  // `stepUp` returned, which is why every financial write in this function works.
+  await call(`/identities/${yasminIdentity.identity_id}/status`, {
+    method: "POST", ...as(token),
+    body: { status: "suspended", reason: "left the company, offboarded 60 days ago",
+            correlation_id: cid() },
+  });
+
+  // **Rami: the leaver whose account still works although no session is open.** The
+  // commonest real shape -- somebody left, their session expired or was signed out, and
+  // nobody suspended the identity -- and the one the fixture was missing. Omar has a live
+  // session, so a rule reading only `live_sessions > 0` calls him "can still sign in" too
+  // and a weakening of the `status === "active"` half changes nothing about him. This row is
+  // the one that falls on the other side of that weakening, which is what makes it evidence:
+  // never signed in, so no session, and `active` because nothing in this build suspended it.
+  const ramiEmail = `rami+${Date.now()}@veyro.invalid`;
+  const ramiIdentity = await call("/identities", {
+    method: "POST", tenant: tenantId,
+    body: { display_name: "Rami Odeh", email: ramiEmail,
+            password: `e2e-${randomUUID()}`, correlation_id: cid() },
+  });
+  const rami = await call("/people", {
+    method: "POST", ...as(token),
+    body: { legal_name: "Rami Odeh", correlation_id: cid() },
+  });
+  await call(`/people/${rami.person_id}/identity-links`, {
+    method: "POST", ...as(token),
+    body: { identity_id: ramiIdentity.identity_id, correlation_id: cid() },
+  });
+  const ramiStaff = await call(`/people/${rami.person_id}/staff-profile`, {
+    method: "POST", ...as(token),
+    body: { job_title: "Front desk", location_id: location.location_id,
+            started_on: "2022-06-14", correlation_id: cid() },
+  });
+  await call(`/people/${rami.person_id}/staff-profile/end`, {
+    method: "POST", ...as(token),
+    body: { expected_version: ramiStaff.version,
+            ended_on: new Date(Date.now() - 10 * 86400000).toISOString().slice(0, 10),
+            correlation_id: cid() },
+  });
+
+  // Dana: on the payroll with no login, which the board must not draw as a fault.
+  const dana = await call("/people", {
+    method: "POST", ...as(token),
+    body: { legal_name: "Dana Khalil", correlation_id: cid() },
+  });
+  await call(`/people/${dana.person_id}/staff-profile`, {
+    method: "POST", ...as(token),
+    body: { job_title: "Spin coach", location_id: location.location_id,
+            started_on: "2026-02-10", correlation_id: cid() },
+  });
+
   // Last, so it sees everything above. The timeline, the dispatched outbox and the sweeps on
   // the operations board are all these ticks' work.
   //
@@ -1736,6 +1910,13 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
     easyRecoveryCode: easyCodes.codes[0],
     publisherEmail: secondEmail,
     publisherPassword: secondPassword,
+    // ADM-STF-01's four standings, named so a spec asserts the row it means rather than
+    // whichever row happens to sort first.
+    staffWorkingPersonId: layla.person_id,
+    staffEndedWithAccessPersonId: omar.person_id,
+    staffOffboardedPersonId: yasmin.person_id,
+    staffNoLoginPersonId: dana.person_id,
+    staffNeverSignedInPersonId: rami.person_id,
     locationId: location.location_id,
     zoneId: zone.zone_id,
     pointId: point.point_id,
@@ -1788,6 +1969,11 @@ if (invokedDirectly) {
       `VEYRO_E2E_BOOKED_SESSION_ID=${fixture.bookedSessionId}`,
       `VEYRO_E2E_PRODUCT_ID=${fixture.productId}`,
       `VEYRO_E2E_INVOICE_ID=${fixture.invoiceId}`,
+      `VEYRO_E2E_STAFF_WORKING_PERSON_ID=${fixture.staffWorkingPersonId}`,
+      `VEYRO_E2E_STAFF_ENDED_ACCESS_PERSON_ID=${fixture.staffEndedWithAccessPersonId}`,
+      `VEYRO_E2E_STAFF_OFFBOARDED_PERSON_ID=${fixture.staffOffboardedPersonId}`,
+      `VEYRO_E2E_STAFF_NO_LOGIN_PERSON_ID=${fixture.staffNoLoginPersonId}`,
+      `VEYRO_E2E_STAFF_NEVER_SIGNED_IN_PERSON_ID=${fixture.staffNeverSignedInPersonId}`,
       "# A person can type these. Nothing in the suite uses them; they exist so the product",
       "# can be opened and looked at, which is how four of this surface's defects were found.",
       `VEYRO_E2E_EASY_EMAIL=${fixture.easyEmail}`,

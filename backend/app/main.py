@@ -365,6 +365,18 @@ class CorrelationBody(BaseModel):
     correlation_id: str
 
 
+class IdentityStatusBody(BaseModel):
+    """Suspend, deactivate or reinstate somebody else's identity.
+
+    `reason` is required and bounded here rather than only in the service: the row it lands on
+    is insert-only and it is the only record of why somebody was shut out.
+    """
+
+    status: str
+    reason: str = Field(min_length=1, max_length=500)
+    correlation_id: str
+
+
 class RecoveryCodesBody(BaseModel):
     correlation_id: str
     current_password: str | None = None
@@ -2072,6 +2084,25 @@ def optional_uuid(value: str | None, field: str) -> str | None:
     return None if value is None else require_uuid(value, field)
 
 
+def require_uuids(values: list[str], field: str, *, limit: int) -> list[str]:
+    """Shape-check a repeated query parameter, and bound how many may be sent.
+
+    **A batched read takes a list of ids, and the id sweep reads names.** A comprehension
+    calling `require_uuid` on each element passes the loop variable rather than the parameter,
+    so `test_id_validation`'s structural sweep would report the parameter unwrapped -- which
+    is the sweep working correctly on a shape it has no name for. This is that name: one call
+    taking the parameter itself, so the sweep sees it and the check is real.
+
+    The bound is here rather than only in the service because an unbounded repeated parameter
+    is a request whose cost the caller chooses.
+    """
+    if len(values) > limit:
+        raise InvalidRequest(f"too_many_{field}")
+    for value in values:
+        require_uuid(value, field)
+    return list(values)
+
+
 def tenant_claim(x_veyro_tenant: Annotated[str | None, Header()] = None) -> str:
     """Shape-check the claimed tenant. Rejecting here keeps a malformed value out of the pool."""
     if x_veyro_tenant is None or not _UUID.fullmatch(x_veyro_tenant):
@@ -3513,6 +3544,31 @@ def create_app(
             correlation_id=body.correlation_id,
         )
 
+    @app.post("/identities/{identity_id}/status")
+    def set_identity_status(
+        tenant_id: TenantId, session: Session, identity_id: str, body: IdentityStatusBody
+    ) -> dict[str, Any]:
+        """End or restore somebody's ability to sign in. IAM-01's missing writer.
+
+        **Four controls read `iam.identities.status` and nothing could set it**, so two of its
+        three declared states were unreachable and this product could not shut anybody out.
+        Found by building ADM-STF-01, which shows an owner that a departed employee can still
+        sign in -- a board naming a problem the product cannot act on.
+
+        `identity.identity.write` is `financial` class, so this needs a stepped-up session as
+        well as the permission. That is the right price: it ends somebody's access to
+        everything, and `revoke_assignment` -- which ends what they may *do* -- costs the
+        same.
+        """
+        permit(session, "identity.identity.write", body.correlation_id)
+        return identity.set_identity_status(
+            identity_pool, tenant_id,
+            identity_id=require_uuid(identity_id, "identity_id"),
+            status=body.status, reason=body.reason,
+            actor_identity_id=session["identity_id"],
+            correlation_id=body.correlation_id,
+        )
+
     @app.post("/identities/{identity_id}/recovery-codes", status_code=201)
     def issue_recovery_codes(
         tenant_id: TenantId, session: Session, identity_id: str, body: RecoveryCodesBody
@@ -3550,6 +3606,35 @@ def create_app(
             identity_id=session["identity_id"], correlation_id=body.correlation_id,
             reason=body.reason,
         )
+
+    @app.get("/identities/last-seen")
+    def get_last_seen(
+        tenant_id: TenantId, session: Session, correlation_id: str,
+        identity_id: Annotated[list[str], Query()],
+    ) -> dict[str, Any]:
+        """When each of several identities was last active, and whether a login still works.
+
+        **ADM-STF-01's LAST SEEN column, and the design states its purpose**: "Last seen
+        exists so a departed employee with a live login is visible rather than discovered."
+        So this answers both halves -- the timestamp and whether anything still opens -- and
+        neither is derivable from the other.
+
+        `identity.identity.read`, which is the permission for a fact about an identity, and
+        **not** the session inventory: no device, no factor, no assurance, no address. A
+        column on a list must not buy the page describing every device somebody has signed in
+        from, which is the bound `list_sessions` had to grow once something rendered it.
+        """
+        permit(session, "identity.identity.read", correlation_id)
+        return {
+            "identities": identity.last_seen_for(
+                identity_pool, tenant_id,
+                identity_ids=require_uuids(
+                    identity_id, "identity_id", limit=identity.LAST_SEEN_BATCH)),
+            "a_live_session_after_employment_ended_is_the_finding":
+                "the design's own reason for the column; the staff list and this read are "
+                "on different planes under different permissions, so the surface is the only "
+                "place that can put the two together for one reader",
+        }
 
     @app.get("/identities/{identity_id}/devices")
     def identity_devices(
@@ -3736,6 +3821,34 @@ def create_app(
         return authz.list_assignments(
             identity_pool, tenant_id,
             identity_id=require_uuid(identity_id, "identity_id"))
+
+    @app.get("/authz/assignments")
+    def get_assignments_for(
+        tenant_id: TenantId, session: Session, correlation_id: str,
+        identity_id: Annotated[list[str], Query()],
+    ) -> dict[str, Any]:
+        """The role each of several identities holds, in one request.
+
+        **ADM-STF-01 draws a ROLE column and a staff list has fifty rows.** Asking
+        `/authz/assignments/{identity_id}` per row is fifty round trips against the same
+        600-a-minute `api.request` budget the browser suite already tripped once, which is
+        what `/authz/checks` exists for. Same semantics as the single read, batched.
+
+        Bounded by the ids the caller sends, which are ids a list it already read gave it, so
+        this discloses nothing that read did not. There is still no tenant-wide assignment
+        listing: "who holds what in this tenant" is a different read and deciding whether
+        `authz.role.read` buys it is a decision nobody has made.
+        """
+        permit(session, "authz.role.read", correlation_id)
+        return {
+            "assignments": authz.assignments_for(
+                identity_pool, tenant_id,
+                identity_ids=require_uuids(
+                    identity_id, "identity_id", limit=authz.ASSIGNMENT_BATCH)),
+            "live_is_derived_here":
+                "an assignment stops working when it expires with nothing writing a row, so "
+                "the server compares rather than leaving two timestamps to each reader",
+        }
 
     @app.post("/authz/assignments/{assignment_id}/revoke")
     def revoke_assignment(
@@ -5321,6 +5434,40 @@ def create_app(
             masked_fields=gate.masked_fields, held_permissions=held_permissions(session),
             lifecycle_state=lifecycle_state, tag_key=tag_key, limit=limit,
         )
+
+    @app.get("/staff")
+    def list_staff(
+        tenant_id: TenantId, session: Session, employment_state: str | None = None,
+        location_id: str | None = None, limit: int = 50,
+    ) -> dict[str, Any]:
+        """ADM-STF-01's staff list, **masked**, bounded, and honest about its three gaps.
+
+        `ppl_staff_profiles` has been written since MOD-014 and read by nothing: this is its
+        first reader. Two of the design's four columns are on other planes and the response
+        names them with the permission that answers each, because a column rendered empty
+        reads as a fact about the person.
+        """
+        gate = permit(session, "people.person.read")
+        return people.list_staff(
+            tenant_pool, tenant_id,
+            masked_fields=gate.masked_fields, held_permissions=held_permissions(session),
+            employment_state=employment_state,
+            location_id=optional_uuid(location_id, "location_id"), limit=limit,
+        )
+
+    @app.get("/staff/{person_id}")
+    def read_staff_profile(
+        tenant_id: TenantId, session: Session, person_id: str
+    ) -> dict[str, Any]:
+        """One staff profile -- the employment half, with no name in it.
+
+        The person is `GET /people/{person_id}`, which applies the gate's mask, this module's
+        class mask and the guardianship check. A second read returning a name under its own
+        rules would be a second place the mask has to be right.
+        """
+        permit(session, "people.person.read")
+        return people.read_staff_profile(
+            tenant_pool, tenant_id, require_uuid(person_id, "person_id"))
 
     @app.get("/people/{person_id}")
     def read_person(

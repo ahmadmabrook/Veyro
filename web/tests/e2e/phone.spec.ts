@@ -62,11 +62,53 @@ const surfaces: [string, string][] = [
   ["the messages board", "/notifications"],
   ["the integrations board", "/integrations"],
   ["the members list", "/members"],
+  // Four columns where two of them stack a derived sentence over a timestamp, which is the
+  // shape most likely to force a minimum width on a cell.
+  ["the staff list", "/staff"],
+  ["a staff record", `/staff/${creds.staffWorkingPersonId}`],
   ["your account", "/account"],
 ];
 
 test.describe("at phone width", () => {
   test.use({ viewport: PHONE });
+
+  /**
+   * **A droppable value is in the DOM twice and visible once**, which is the claim
+   * `DataGrid`'s own docstring makes and which was false at the one width the mechanism
+   * exists for. `.ds-col-p2 { display: none }` is specificity (0,1,0) and
+   * `.ds-grid-table td { display: block }` is (0,1,1) and comes after it, so below 600px
+   * every priority-2 and priority-3 cell rendered beside the secondary fragment of the same
+   * value — 21 duplicated values on the members list, 21 on the payments ledger, on every
+   * grid in the app.
+   *
+   * Four layers of tests could not see it: an assertion about text matches either copy, and
+   * the sweep below measures horizontal scroll, which a duplicate does not cause. Found by
+   * taking a screenshot and reading it, which is how this surface's defects keep being found.
+   */
+  for (const [label, path] of [
+    ["the members list", "/members"],
+    ["the payments ledger", "/payments"],
+    ["the staff list", "/staff"],
+  ] as const) {
+    test(`${label} shows each dropped value once, not twice`, async ({ page }) => {
+      await useOwnerSession(page);
+      await page.goto(path);
+      await expect(page.locator(".ds-grid-table").first()).toBeVisible();
+      const counts = await page.evaluate(() => {
+        const cells = [...document.querySelectorAll(
+          ".ds-grid-table td.ds-col-p2, .ds-grid-table td.ds-col-p3")];
+        return {
+          dropped: cells.length,
+          stillVisible: cells.filter((c) => getComputedStyle(c).display !== "none").length,
+        };
+      });
+      expect(counts.dropped, `${path} has no droppable columns to prove this with`)
+        .toBeGreaterThan(0);
+      expect(counts.stillVisible,
+        `${path} renders ${counts.stillVisible} dropped cells beside their own secondary line`)
+        .toBe(0);
+    });
+  }
 
   for (const [name, path] of surfaces) {
     test(`${name} does not scroll sideways`, async ({ page }) => {

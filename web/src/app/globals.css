@@ -288,6 +288,26 @@ a {
     max-width: 100%;
     overflow-x: auto;
   }
+
+  /* **The capability matrix is the one table with its own scroll wrapper, and the rule above
+     breaks it.** `display: block` turns `thead` into a block box whose row sits in an
+     anonymous table wrapper that the scroll box does not constrain, so the sticky,
+     `nowrap` header row escaped to the document root -- `/permissions` overflowed by 125px
+     while the table itself reported as a contained scroll container. Bisected to the `thead`
+     by hiding it and re-measuring; nothing else in the subtree moved the number.
+
+     So this one keeps table layout and grows to its content, and `.ds-matrix-scroll` does the
+     scrolling it was written to do. The grid tables do take the rule, because they have no
+     wrapper and their columns collapse by priority instead -- "horizontal scrolling of a data
+     table on a phone is never the answer". A matrix is the exception the design makes for
+     itself: a column dropped from a matrix is a comparison a reader gets wrong. */
+  .ds-matrix {
+    display: table;
+    max-inline-size: none;
+    inline-size: max-content;
+    min-inline-size: 100%;
+    overflow: visible;
+  }
 }
 
 /* ===========================================================================
@@ -435,6 +455,23 @@ a {
   .ds-grid-table td {
     display: block;
     inline-size: 100%;
+  }
+
+  /* **And the dropped cells stay dropped, which they did not.** `.ds-col-p2 { display: none }`
+     above is specificity (0,1,0) and `.ds-grid-table td { display: block }` is (0,1,1) and
+     comes after it, so the block rule won and *every* priority-2 and priority-3 cell rendered
+     below 600px -- beside the secondary fragment of the same value inside the primary cell.
+     Every grid in the app showed every droppable value twice: 21 of 21 on the members list,
+     21 of 21 on the payments ledger. The component's own docstring says "a droppable value is
+     in the DOM twice and visible once ... the stylesheet shows exactly one at any width",
+     which was false at the one width the mechanism exists for.
+
+     Invisible to four layers of tests: an assertion about text matches either copy, and the
+     phone sweep measured horizontal scroll, which a duplicated value does not cause. Found by
+     taking a screenshot at 375px and reading it. `phone.spec.ts` asserts the property now. */
+  .ds-grid-table td.ds-col-p2,
+  .ds-grid-table td.ds-col-p3 {
+    display: none;
   }
 
   .ds-grid-table thead {
@@ -2251,6 +2288,24 @@ a {
 
 .ds-matrix-scroll {
   overflow-x: auto;
+  /* **`overflow-x: auto` scrolls a box that is narrower than its content, and a flex item is
+     not narrower than its content unless it is told it may be.** `min-width: auto` is the
+     default for a flex item, so this box grew to the matrix's min-content width -- one column
+     per role plus a 190px row header -- and pushed the whole document sideways instead of
+     scrolling inside itself. Latent until a tenant had enough roles: the phone sweep caught
+     it the day a fixture added one, overflowing `/permissions` by 125px. Same rule the grid
+     tables rely on, written down here because the matrix is the one scroller that did not
+     have it. */
+  min-inline-size: 0;
+  max-inline-size: 100%;
+  /* **And the box has to contain its own layout, or the root counts the overflow anyway.**
+     With the table free to grow this box is a real scroll container -- 343 wide over 535 of
+     content -- and `document.documentElement.scrollWidth` was still 535: the overflowing
+     table contributed to the root's scrollable area despite being clipped here. `contain:
+     layout` is the boundary that stops it, and it is the right one of the three: `paint`
+     would clip the focus ring this box draws two rules down, and `inline-size` does not
+     help. Established by measuring each variant rather than by reasoning about the engine. */
+  contain: layout;
   border: 1px solid var(--color-border-default);
   border-radius: var(--radius-card);
   background: var(--color-surface-default);
@@ -2263,7 +2318,15 @@ a {
 
 .ds-matrix {
   border-collapse: collapse;
-  inline-size: 100%;
+  /* **`inline-size: 100%` pinned the table box to the container and let the columns overflow
+     it**, so the scroll container above saw a 341px child with nothing to scroll while the
+     cells escaped to the document root. The table has to be allowed to *grow* -- at least the
+     container's width so a two-role matrix still fills it, and as wide as its content needs
+     beyond that -- which is what makes the container's `overflow-x` do anything at all.
+     Unlike the data grid this table has no column-priority collapse, because a matrix with
+     columns missing is a matrix a reader would compare wrongly. */
+  min-inline-size: 100%;
+  inline-size: max-content;
   font-size: var(--type-caption-size);
 }
 

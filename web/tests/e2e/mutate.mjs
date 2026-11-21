@@ -1022,6 +1022,66 @@ const MUTATIONS = [
     grep: "two member numbers on this page",
   },
   {
+    id: "staff-unknown-is-not-no-access",
+    why: "a reader who may not see logins, and a permitted read that answered nothing, are "
+      + "both 'nobody looked' -- and 'checked and clean' is the one answer that is always "
+      + "wrong about a departed employee's access",
+    file: "src/lib/staff.ts",
+    from: '  if (seen === null) return "unknown";',
+    to: "",
+    grep: "cannot see logins is told so",
+  },
+  {
+    id: "staff-ended-with-access-is-the-finding",
+    why: "an active identity is access whether or not a session is live -- the password "
+      + "still works, so the next sign-in opens the product, and reading only the session "
+      + "count would call a departed employee clean",
+    file: "src/lib/staff.ts",
+    from: '  const live = seen.live_sessions > 0 || seen.status === "active";',
+    to: "  const live = seen.live_sessions > 0;",
+    grep: "four standings apart",
+  },
+  {
+    id: "staff-reach-is-not-the-home-club",
+    why: "a tenant-scoped assignment already covers every named one, so rendering the named "
+      + "scopes beside it understates what somebody can reach",
+    file: "src/lib/staff.ts",
+    from: '  if (live.some((one) => one.scope_type === "tenant")) return { kind: "tenant" };',
+    to: "",
+    grep: "clubs a role reaches",
+  },
+  {
+    id: "staff-primary-role-is-the-broadest",
+    why: "which assignment is the job decides both halves of ADM-STF-02, and an unordered "
+      + "answer makes the planner the author -- the two halves would change between reads",
+    file: "src/lib/staff.ts",
+    from: "    const breadth = (SCOPE_BREADTH[b.scope_type] ?? 0) "
+      + "- (SCOPE_BREADTH[a.scope_type] ?? 0);\n    if (breadth !== 0) return breadth;",
+    to: "",
+    runner: "vitest",
+    grep: "broadest scope",
+  },
+  {
+    id: "staff-lapsed-assignment-carries-nothing",
+    why: "a revoked role must not be credited with the permission it used to carry, which "
+      + "is what the whole sensitive-grants block is read for",
+    file: "src/lib/staff.ts",
+    from: "  const live = assignments.filter((one) => one.live);\n  return catalog",
+    to: "  const live = assignments;\n  return catalog",
+    runner: "vitest",
+    grep: "lapsed assignment",
+  },
+  {
+    id: "staff-unreachable-grant-is-marked",
+    why: "a privileged permission needs assurance level 3, which nobody in this build can "
+      + "reach, so drawing it as held says somebody can do something no session can",
+    file: "src/lib/staff.ts",
+    from: '  if (permission.required_aal > reachableAal) return "unreachable";',
+    to: "",
+    runner: "vitest",
+    grep: "nobody in this build can use",
+  },
+  {
     id: "device-label-parity",
     why: "the fixture's device label must equal the app's, or every sign-in is challenged and "
       + "the suite spends a single-use recovery code per run",

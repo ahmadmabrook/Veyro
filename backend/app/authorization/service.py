@@ -579,23 +579,86 @@ def _load_policies(conn: Connection[Any], action: str) -> list[authz.Policy]:
 
 
 def list_assignments(pool: Pool, tenant_id: str, *, identity_id: str) -> list[dict[str, Any]]:
+    now = _now()
     with tenant_scope(pool, tenant_id) as conn:
         rows = conn.execute(
             "SELECT a.assignment_id, r.role_key, a.scope_type, a.brand_id, a.location_id,"
-            " a.granted_at, a.expires_at, a.revoked_at, a.revoked_reason"
+            " a.granted_at, a.expires_at, a.revoked_at, a.revoked_reason, a.granted_by,"
+            " r.display_name"
             " FROM iam.role_assignments a JOIN iam.roles r ON r.role_id = a.role_id"
             " WHERE a.identity_id = %s ORDER BY a.granted_at",
             (identity_id,),
         ).fetchall()
-    return [
-        {"assignment_id": str(r[0]), "role_key": r[1], "scope_type": r[2],
-         "brand_id": str(r[3]) if r[3] else None,
-         "location_id": str(r[4]) if r[4] else None,
-         "granted_at": r[5].isoformat(),
-         "expires_at": r[6].isoformat() if r[6] else None,
-         "revoked_at": r[7].isoformat() if r[7] else None, "revoked_reason": r[8]}
-        for r in rows
-    ]
+    return [_assignment(r, now) for r in rows]
+
+
+def _assignment(r: Any, now: datetime) -> dict[str, Any]:
+    """One assignment row as a dict, with `live` derived rather than left to the reader.
+
+    **`granted_by` is returned because the schema calls it "the whole delegation record" and
+    nothing had ever read it.** ADM-STF-02's grant line is "Granted by Ziad / 4 Mar 2026", and
+    a grant with nobody's name on it answers nothing -- this build's most-repeated finding.
+    It is an identity id and not a name: resolving it to a person needs `people.person.read`
+    and `ppl_identity_links`, so the attribution degrades to the id for a reader who may not
+    see names rather than leaking one under `authz.role.read`.
+
+    `live` is derived here for the same reason MOD-018 derives `admits_trade`: an assignment
+    stops working when it expires with nothing writing a row, so a surface comparing two
+    timestamps gets the open-ended case wrong, and every reader would have to get it right.
+    """
+    expires = r[6]
+    return {
+        "assignment_id": str(r[0]), "role_key": r[1], "scope_type": r[2],
+        "brand_id": str(r[3]) if r[3] else None,
+        "location_id": str(r[4]) if r[4] else None,
+        "granted_at": r[5].isoformat(),
+        "expires_at": expires.isoformat() if expires else None,
+        "revoked_at": r[7].isoformat() if r[7] else None, "revoked_reason": r[8],
+        "granted_by": str(r[9]), "display_name": r[10],
+        "live": r[7] is None and (expires is None or expires > now),
+    }
+
+
+#: How many identities one batched assignment read may be asked about. A staff list is bounded
+#: to `STAFF_PAGE`, so this is the same number: a batch smaller than the list it serves would
+#: make the surface page the batch, and a larger one would be a bulk export of who holds what.
+ASSIGNMENT_BATCH = 200
+
+
+def assignments_for(
+    pool: Pool, tenant_id: str, *, identity_ids: list[str]
+) -> dict[str, list[dict[str, Any]]]:
+    """The role each of several identities holds, in one request.
+
+    **A page asks this once per row, and a staff list has fifty.** That is the round-trip
+    problem `/authz/checks` was added for, against the same 600-a-minute `api.request` budget
+    whose own comment says a limit that trips during ordinary use is a limit somebody raises
+    to infinity rather than investigates. So the batch exists, and the semantics are the
+    single read's -- `list_assignments` for each id, nothing aggregated and nothing decided.
+
+    Bounded by the ids the caller passes rather than by a page over the tenant, deliberately:
+    a surface asks about the people a list has already shown it, so this read discloses
+    nothing the read before it did not. There is no tenant-wide assignment listing here, and
+    adding one means deciding whether "who holds what" is a read `authz.role.read` should buy.
+    """
+    if not identity_ids:
+        return {}
+    if len(identity_ids) > ASSIGNMENT_BATCH:
+        raise InvalidRequest("too_many_identities")
+    now = _now()
+    with tenant_scope(pool, tenant_id) as conn:
+        rows = conn.execute(
+            "SELECT a.assignment_id, r.role_key, a.scope_type, a.brand_id, a.location_id,"
+            " a.granted_at, a.expires_at, a.revoked_at, a.revoked_reason, a.granted_by,"
+            " r.display_name, a.identity_id"
+            " FROM iam.role_assignments a JOIN iam.roles r ON r.role_id = a.role_id"
+            " WHERE a.identity_id = ANY(%s) ORDER BY a.identity_id, a.granted_at",
+            (list(identity_ids),),
+        ).fetchall()
+    out: dict[str, list[dict[str, Any]]] = {str(i): [] for i in identity_ids}
+    for r in rows:
+        out.setdefault(str(r[11]), []).append(_assignment(r, now))
+    return out
 
 
 # --------------------------------------------------------------------------- policies

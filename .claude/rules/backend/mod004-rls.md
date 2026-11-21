@@ -901,3 +901,95 @@ edited one can fail for reasons no later run reproduces. Three failures chased t
 one session each passed in isolation and in a clean run. This is the `ast`-suite rule one
 layer out: **do not touch the tree while a suite is reading it**, and when a failure will
 not reproduce, suspect the run before the product.
+
+
+**A web server started before the change does not serve the change, and the suite will not
+say so.** `playwright.config.ts` sets `reuseExistingServer: !process.env.CI`, which is the
+right default for a developer's loop and wrong for the run that judges a new screen: a
+`next-server` started two hours earlier answers every request from the build it was started
+with. Nineteen of twenty-five staff tests failed as 30-second timeouts waiting for content
+that was in the tree and not in the process — and the six that *passed* were the ones
+asserting an **absence** (`toHaveCount(0)`), which is the worst possible split, because a
+reader skimming the summary sees a product that renders nothing while correctly refusing to
+draw the buttons it should not. This is the backend half's rule — "a backend started by hand
+is not the backend the browser suite is written against" — one layer over, and the tell is the
+same: adjacent failures all timing out at the same duration. **Judge a new surface with
+`CI=1`**, which builds and starts its own server and reuses nothing.
+
+**A fixture block spliced on an anchor lands in whatever function holds the anchor.** A
+seed-staff block anchored on a comment inside `seedAccess` compiled, typechecked and then
+threw `ReferenceError: ownerToken is not defined` at provision time — the enclosing function
+calls that token `token`, because it *is* the stepped-up owner session. Harmless here because
+it failed loudly and immediately; worth stating because the same splice landing on a name that
+happens to exist in both scopes would have seeded the fixture with the wrong credential and
+proved a permission the fixture could not obtain honestly.
+
+
+**A layout whose width is a count will cross the phone breakpoint at somebody's tenant, and
+the sweep finds it the day a fixture crosses it.** `/permissions` draws one matrix column per
+role; adding a single role to the e2e fixture overflowed it by 125px, and the two causes are
+both worth knowing because each looked already handled. The scroll wrapper had
+`overflow-x: auto` and could not scroll, because `inline-size: 100%` plus the global
+`table { display: block; max-width: 100% }` phone rule pinned the table box to the container
+and let its columns overflow *the box* — so the wrapper saw a child its own width with nothing
+to scroll. And once the table was free to grow, the wrapper was a genuine scroll container
+(343 over 535) whose overflow **still** counted toward
+`document.documentElement.scrollWidth`; `contain: layout` is the boundary that stops that, and
+it is the right one of the three — `paint` clips the focus ring and `inline-size` does nothing.
+
+Both were found by hiding one element at a time and re-measuring, which took three minutes and
+replaced a chain of plausible theories (a sticky `thead`, a fixed rail, a flex item's
+`min-width: auto`) each of which explained the symptom and none of which was the cause. **When
+a layout number is wrong, bisect the DOM before reasoning about the engine** — it is the same
+rule as "reproduce before diagnosing", applied to CSS.
+
+
+**A component's docstring is a claim about the rendered page, and the stylesheet can falsify
+it silently.** `DataGrid` has said from the start that "a droppable value is in the DOM twice
+and visible once -- the stylesheet shows exactly one at any width", and below 600px it showed
+both: `.ds-col-p2 { display: none }` is specificity (0,1,0) and the `.ds-grid-table td
+{ display: block }` rule that turns the table into a list is (0,1,1) and comes after it, so
+every priority-2 and priority-3 cell rendered beside the secondary fragment of the same value.
+Twenty-one duplicated values on the members list, twenty-one on the payments ledger, on every
+grid in the app, for as long as the collapse has existed.
+
+**Nothing in four layers could see it.** An assertion about text matches either copy; a
+component test renders without the media query; the phone sweep measures horizontal scroll,
+and a duplicated value does not cause any. It was found by taking a screenshot at 375px and
+reading it -- the same way the schedule board's wrong timezone was found, and the same lesson:
+the stronger assertion costs the same to write. `phone.spec.ts` now asserts, on three grids,
+that no cell carrying a droppable priority is still `display`-ed, which is the property the
+docstring claims rather than a restatement of the rule that implements it.
+
+
+**A masked value is not a masked row, and rendering the marker *instead of* the control makes
+the screen a dead end.** The members list and the staff list both drew `<Withheld>` in place
+of the link to the record, so on an ordinary sign-in -- where every identity field is masked,
+which is the front desk's own credential -- not one row on either list could be opened. The
+record behind the row is the page that explains the withholding and offers the step-up, so the
+one way out of the mask was behind the mask.
+
+**Found by an independent tester, for the second time against the same cell**: the first run
+clicked the marker looking for a way through and found the members list had no step-up offer;
+this one was told to open a record, found the cell unclickable, went looking for another way
+and was blocked by a step-up it had no recovery code for. No test written here could see
+either, because both assert that the marker is present -- which it was. The question to ask of
+any masked cell is not "is the value hidden" but "what could the reader still do with this
+row, and is it still possible".
+
+
+**The browser sweep earns its place the same way the SQL one does, and it found all three
+shapes in one run.** Six mutations against two new decision modules: four caught, one that
+**never applied** (two spaces of indentation in the anchor rather than four, so a protection
+the list claimed to cover had no evidence and the harness said so instead of counting it), and
+one **uncaught and correct to be** — the guard it removed was subsumed by the line below it,
+because a caller who may not read logins passes no reading either. That one was deleted rather
+than tested harder, and its parameter with it: a parameter a function cannot act on is a claim
+its signature makes and does not keep.
+
+The last gap was **"a weakening is caught only if it admits the row"**, in a fixture rather
+than in a SQL case. Dropping `|| seen.status === "active"` from the access rule changed
+nothing, because the seeded leaver *has* a live session and the surviving half still answers
+for them. The row that catches it is the leaver with **no** session whose account still works
+— which is also the commonest real shape, and the fixture did not have one. Same question as
+for a CHECK: not "does this row violate the rule" but "which weakening would admit this row".

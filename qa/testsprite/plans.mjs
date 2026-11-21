@@ -100,6 +100,81 @@ const signInAsDesk = signInAs(env.VEYRO_E2E_DESK_EMAIL, env.VEYRO_E2E_DESK_PASSW
  */
 const PLANS = [
   {
+    // **ADM-STF-01's whole reason for existing, as a question a person would ask.** The
+    // canvas's own footnote says the LAST SEEN column exists "so a departed employee with a
+    // live login is visible rather than discovered", and the page composes three planes to
+    // answer it. An independent agent reading the screen is the right check: the in-repo
+    // spec and the page were written by the same hand on the same day, and the fixture seeds
+    // one person in each of four standings precisely so the distinction is visible.
+    name: "Somebody who has left the company but can still sign in is visible on the staff list",
+    description:
+      "The staff list exists to make one thing impossible to miss: an employee whose " +
+      "employment has ended and whose login still works. This signs in as the owner and " +
+      "reads the list. Names are deliberately hidden on an ordinary sign-in, so people are " +
+      "identified by their job title and start date.",
+    priority: "p1",
+    planSteps: [
+      ...signIn,
+      { type: "action", description: "Navigate to /staff." },
+      {
+        type: "assertion",
+        description:
+          "Verify the page warns, above or around the table, that one person whose " +
+          "employment has ended can still sign in, and says that ending employment does " +
+          "not revoke anything. Verify the table has a row for a Sales person who started " +
+          "on 2024-09-02 whose access reads that they have left and can still sign in, and " +
+          "a separate row for a Coach who started on 2023-04-17 whose access reads only " +
+          "that they have left. Verify those two rows say different things about access.",
+      },
+      {
+        type: "assertion",
+        description:
+          "Verify the page offers no button to invite anybody, and explains that there is " +
+          "no invitation in this build at all. Verify it also states that a club manager " +
+          "seeing only their own club's staff is not true in this build.",
+      },
+    ],
+  },
+  {
+    // ADM-STF-02, and specifically the half a single-scope read could not answer.
+    name: "One person's record says what they can do that is dangerous, and where",
+    description:
+      "A staff record lists the permissions that are financial or privileged, what each " +
+      "costs to use, which role carries it, and where it applies. Some of this person's " +
+      "access is tenant-wide and one grant applies at a single club only; both must be " +
+      "distinguishable. This signs in as the owner and opens the record of the Reception " +
+      "person who started on 2025-01-06, from the staff list.",
+    priority: "p1",
+    planSteps: [
+      ...signIn,
+      { type: "action", description: "Navigate to /staff." },
+      {
+        type: "action",
+        description:
+          "Open the record of the person whose job title is Reception and whose start date " +
+          "is 2025-01-06, by clicking their row's link in the Name column.",
+      },
+      {
+        type: "assertion",
+        description:
+          "Verify the record shows a section listing what this person can do that is " +
+          "dangerous. Verify at least one entry says it applies everywhere, and that the " +
+          "entry about adding value to a member's wallet says it applies at a named club " +
+          "rather than everywhere. Verify each entry also says it needs a stronger sign-in " +
+          "and names the role it comes from.",
+      },
+      {
+        type: "assertion",
+        description:
+          "Verify the record shows a section for grants beyond this person's role with at " +
+          "least one entry naming who granted it and on what date. Verify the page states " +
+          "that changing any of this needs a stronger sign-in and is recorded, and that " +
+          "you cannot grant a permission you do not hold yourself. Verify there is no " +
+          "button to save changes and no button to end access.",
+      },
+    ],
+  },
+  {
     name: "Signing in reaches the Command Center, not a session diagnostic",
     description:
       "The owner's directive opened with this screen being the wrong screen. It is a queue " +

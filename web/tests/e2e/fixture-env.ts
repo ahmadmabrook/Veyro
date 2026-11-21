@@ -54,6 +54,28 @@ export type Fixture = {
   productId: string;
   /** ADM-PAY-03's subject: paid, fiscally rejected, with a refund and a dispute on it. */
   invoiceId: string;
+  /**
+   * ADM-STF-01's four standings, one person each.
+   *
+   * **Four, because a standing is a pair and a fixture with one member of each pair renders
+   * a branch and demonstrates nothing** -- the vacuity this repository has shipped four
+   * times. `staffWorking` is employed with a live login and a second narrow role, so
+   * ADM-STF-02's "beyond their role" block has something in it; `staffEndedWithAccess` is
+   * the finding the board leads with; `staffOffboarded` is the clean exit, which was
+   * unreachable until `set_identity_status` existed at all; `staffNoLogin` is on the payroll
+   * with no account, which the board must not draw as a fault.
+   */
+  staffWorkingPersonId: string;
+  staffEndedWithAccessPersonId: string;
+  staffOffboardedPersonId: string;
+  staffNoLoginPersonId: string;
+  /**
+   * A leaver whose account still works although no session is open -- never signed in, and
+   * nothing suspended the identity. **The row that makes the access rule's second half
+   * evidence**: a rule reading only `live_sessions > 0` gets the right answer about the
+   * leaver who *has* a session, so only this one falls on the other side of that weakening.
+   */
+  staffNeverSignedInPersonId: string;
   // **The account spec takes no credential from here, deliberately.** Every one of its
   // writes is destructive -- a trust that cannot be asserted twice, a revoke that locks the
   // subject out of the product for good -- so it registers a subject per test through the
@@ -112,6 +134,11 @@ export function fixture(): Fixture {
     "VEYRO_E2E_LOCATION_ID",
     "VEYRO_E2E_SESSION_ID",
     "VEYRO_E2E_BOOKED_SESSION_ID",
+    "VEYRO_E2E_STAFF_WORKING_PERSON_ID",
+    "VEYRO_E2E_STAFF_ENDED_ACCESS_PERSON_ID",
+    "VEYRO_E2E_STAFF_OFFBOARDED_PERSON_ID",
+    "VEYRO_E2E_STAFF_NO_LOGIN_PERSON_ID",
+    "VEYRO_E2E_STAFF_NEVER_SIGNED_IN_PERSON_ID",
   ] as const;
   for (const key of required) {
     if (!env[key]) throw new Error(`${key} missing from ${FILENAME} -- re-run fixture.mjs`);
@@ -136,5 +163,10 @@ export function fixture(): Fixture {
     deskPassword: env.VEYRO_E2E_DESK_PASSWORD!,
     productId: env.VEYRO_E2E_PRODUCT_ID!,
     invoiceId: env.VEYRO_E2E_INVOICE_ID!,
+    staffWorkingPersonId: env.VEYRO_E2E_STAFF_WORKING_PERSON_ID!,
+    staffEndedWithAccessPersonId: env.VEYRO_E2E_STAFF_ENDED_ACCESS_PERSON_ID!,
+    staffOffboardedPersonId: env.VEYRO_E2E_STAFF_OFFBOARDED_PERSON_ID!,
+    staffNoLoginPersonId: env.VEYRO_E2E_STAFF_NO_LOGIN_PERSON_ID!,
+    staffNeverSignedInPersonId: env.VEYRO_E2E_STAFF_NEVER_SIGNED_IN_PERSON_ID!,
   };
 }

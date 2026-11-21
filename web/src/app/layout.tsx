@@ -122,9 +122,8 @@ export default async function RootLayout({
     // **The design's own thirteen do not all exist here**, and the absent ones are absent
     // rather than disabled: §21 says the rail is "generated, never a static tree with
     // disabled rows -- a receptionist and an accountant get different rails, not the same
-    // rail greyed differently". Front desk, Leads, Staff & coaches, Point of sale, Reports,
-    // Coaching, Automations and Help have no screen in this build, and the Command Center's
-    // gaps list names them.
+    // rail greyed differently". Front desk, Leads, Point of sale, Coaching, Automations and
+    // Help have no screen in this build, and the Command Center's gaps list names them.
     items = [
       // **The Command Center needs no permission of its own**, and that is the design's
       // call rather than a convenience: ADM-CC-02 is "not a reduced Command Center -- a
@@ -146,6 +145,12 @@ export default async function RootLayout({
       { href: "/members", label: "nav.members", allowed: people.allowed,
         group: "nav.groupPeople", icon: "members" },
       { href: "/people", label: "nav.people", allowed: people.allowed,
+        group: "nav.groupPeople", icon: "staff" },
+      // **The design's own "Staff & coaches", which this rail listed as absent until now.**
+      // It shares `people.person.read` with the two above because a staff profile is one of
+      // a person's profiles -- the permission's own description says so -- and the role and
+      // login halves the page composes ask their own gates on the page itself.
+      { href: "/staff", label: "nav.staffList", allowed: people.allowed,
         group: "nav.groupPeople", icon: "staff" },
       { href: "/permissions", label: "nav.permissions", allowed: permissions.allowed,
         group: "nav.groupPeople", icon: "permissions" },

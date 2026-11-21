@@ -136,6 +136,18 @@ export type DuplicateCandidate = {
   decision_reason: string | null;
 };
 
+/**
+ * One person, masked — `GET /people/{id}`, which until now nothing in this app called.
+ *
+ * The Member 360 composes a member's whole record and is the right read for that page; a
+ * staff record needs the name and nothing else, and the 360 would pull notes, a timeline and
+ * three other modules' blocks to get it. The mask is applied by the server either way, which
+ * is the property that matters: there is one place it has to be right.
+ */
+export function readPerson(personId: string): Promise<Person> {
+  return api<Person>(`/people/${encodeURIComponent(personId)}`);
+}
+
 export function readMember360(personId: string): Promise<Member360> {
   return api<Member360>(`/people/${encodeURIComponent(personId)}/360`);
 }

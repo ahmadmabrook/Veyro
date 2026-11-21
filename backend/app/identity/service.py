@@ -1098,6 +1098,170 @@ def list_sessions(
     ]
 
 
+#: How many identities one batched last-seen read may be asked about. The same ceiling as the
+#: staff list it serves, for the same reason the assignment batch has it.
+LAST_SEEN_BATCH = 200
+
+
+def last_seen_for(
+    pool: Pool, tenant_id: str, *, identity_ids: list[str]
+) -> dict[str, dict[str, Any]]:
+    """When each of several identities was last active, and whether a login still works.
+
+    **ADM-STF-01's LAST SEEN column, and the design says what it is for**: "Last seen exists so
+    a departed employee with a live login is visible rather than discovered." So the useful
+    answer is two facts rather than one -- when they were last here, and whether anything they
+    hold still opens the door -- and the second is the one that makes the column a control.
+    Neither is derivable from the other: an account nobody has used for a year still works, and
+    a session used this morning may have been revoked since.
+
+    **Strictly less than `list_sessions`, deliberately.** That read returns one row per session
+    with its device, its assurance, its factors and why it was revoked, and its own docstring
+    records why it had to be bounded and filtered once something rendered it: an unbounded read
+    of every session an identity ever opened is a page describing every device that person has
+    signed in from. This returns one timestamp, one count and the identity's status -- no
+    device, no factor, no token, no digest, no address, and nothing a reader could use to tell
+    where somebody was. A staff list does not need any of that and should not be able to see
+    it with the permission that draws a column.
+
+    Bounded by the ids the caller passes rather than by a page over the tenant, like the
+    assignment batch beside it.
+    """
+    if not identity_ids:
+        return {}
+    if len(identity_ids) > LAST_SEEN_BATCH:
+        raise InvalidRequest("too_many_identities")
+    with tenant_scope(pool, tenant_id) as conn:
+        rows = conn.execute(
+            # `last_seen_at` is null on a session that was issued and never used again, so the
+            # issue time is the floor: an account used once is not an account never seen.
+            "SELECT i.identity_id, i.status,"
+            " max(coalesce(s.last_seen_at, s.issued_at)),"
+            " count(s.session_id) FILTER ("
+            "     WHERE s.revoked_at IS NULL AND s.expires_at > now())"
+            " FROM iam.identities i"
+            " LEFT JOIN iam.sessions s ON s.identity_id = i.identity_id"
+            " WHERE i.identity_id = ANY(%s)"
+            " GROUP BY i.identity_id, i.status",
+            (list(identity_ids),),
+        ).fetchall()
+    return {
+        str(r[0]): {
+            "identity_id": str(r[0]),
+            "status": r[1],
+            "last_seen_at": r[2].isoformat() if r[2] else None,
+            "live_sessions": int(r[3]),
+            #: Said once, here, rather than implied by the absence of the fields.
+            "no_device_or_address_is_returned":
+                "this read is a timestamp, a count and a status; where somebody signed in "
+                "from is identity.session.read's and is not bought by a staff list",
+        }
+        for r in rows
+    }
+
+
+#: The states `iam.identities.status` admits, and what each one means for signing in.
+#:
+#: **All three were declared and two were unreachable.** `authenticate`, the risk challenge,
+#: `recover_with_code` and `_session_by_token` each refuse an identity that is not `active` --
+#: four independent controls, each correct -- and nothing in the build could set the column.
+#: So the product could not shut anybody out. That is MOD-012's "a column implying a control
+#: nobody implemented" and MOD-020's "a declared state nothing writes", in the module whose
+#: subject is who may sign in, and it was found by building the staff list that shows an owner
+#: a departed employee still has access.
+#:
+#: `suspended` and `deactivated` behave identically to every control that reads the column;
+#: the difference is what somebody means by it, and the schema has carried both from the start.
+IDENTITY_STATUSES = ("active", "suspended", "deactivated")
+
+#: The status a reinstatement returns an identity to.
+ACTIVE = "active"
+
+
+def set_identity_status(
+    pool: Pool, tenant_id: str, *, identity_id: str, status: str, reason: str,
+    actor_identity_id: str, correlation_id: str,
+) -> dict[str, Any]:
+    """Suspend, deactivate or reinstate an identity -- IAM-01's missing writer.
+
+    **Suspending revokes every live session in the same transaction.** It does not have to:
+    `_session_by_token` reads the status, so an existing bearer token stops working the moment
+    the column moves. It is done anyway, for two reasons -- the revocation rows are the
+    evidence an operator means by "I ended their access", and a session reading `live` beside
+    a suspended identity is a row two readers would disagree about. MOD-010's argument applied
+    to a credential: the control and the state it bounds commit together.
+
+    **A session cannot suspend the identity it is using.** This build has no platform identity
+    and no path that reinstates one from outside the tenant, so an owner who suspended
+    themselves would lock the tenant out with no remedy anywhere in the product. The refusal
+    is recoverable; the act would not be.
+
+    **The evidence is written inside the transaction that moves the column.** `iam.auth_events`
+    is insert-only and its `kind` is a closed set -- which is why this needed a migration
+    before it could be allowed at all: an act whose record cannot be named is an act with
+    nobody's name on it, this build's most-repeated finding.
+    """
+    _require_uuid(correlation_id, "correlation_id")
+    if status not in IDENTITY_STATUSES:
+        raise InvalidRequest("bad_status")
+    if not reason.strip():
+        raise InvalidRequest("reason_required")
+    if len(reason) > 500:
+        raise InvalidRequest("reason_too_long")
+    if identity_id == actor_identity_id:
+        raise InvalidRequest("cannot_change_your_own_status")
+    now = _now()
+    with tenant_scope(pool, tenant_id) as conn:
+        current = conn.execute(
+            "SELECT status FROM iam.identities WHERE identity_id = %s FOR UPDATE",
+            (identity_id,),
+        ).fetchone()
+        if current is None:
+            raise NotFound("identity_not_found")
+        was = str(current[0])
+        if was == status:
+            # Idempotent to the caller, which is the rule MOD-017 paid for three times: a
+            # client whose request timed out after the commit must not be told the work
+            # failed. Nothing is recorded twice and no session is revoked a second time.
+            return {"identity_id": identity_id, "status": status, "was": was,
+                    "sessions_revoked": 0, "repeated": True}
+        conn.execute(
+            "UPDATE iam.identities SET status = %s, version = version + 1"
+            " WHERE identity_id = %s",
+            (status, identity_id),
+        )
+        revoked = 0
+        if status != ACTIVE:
+            rows = conn.execute(
+                "UPDATE iam.sessions SET revoked_at = %s, revoke_reason = %s"
+                " WHERE identity_id = %s AND revoked_at IS NULL AND expires_at > %s"
+                " RETURNING session_id",
+                (now, f"identity_{status}", identity_id, now),
+            ).fetchall()
+            revoked = len(rows)
+        kind = (
+            "identity.reinstated" if status == ACTIVE
+            else f"identity.{status}"
+        )
+        _event(conn, tenant_id, kind=kind, outcome="succeeded", identity_id=identity_id,
+               reason=reason, correlation_id=correlation_id)
+        # The actor, on its own row, because `iam.auth_events` records the identity an event
+        # is *about* and has no column for the identity that caused it. Two rows under one
+        # correlation id is the join, and the log is insert-only so neither can be edited to
+        # disagree with the other.
+        _event(conn, tenant_id, kind=kind, outcome="succeeded",
+               identity_id=actor_identity_id, reason=f"acted_on:{identity_id}",
+               correlation_id=correlation_id)
+    return {"identity_id": identity_id, "status": status, "was": was,
+            "sessions_revoked": revoked, "repeated": False,
+            #: Said rather than implied: a suspension stops the login and leaves every role
+            #: assignment in place, because what somebody may do and whether they may sign in
+            #: are different questions and MOD-008 owns the first.
+            "roles_are_unchanged":
+                "this ends the login and revokes nothing in authorization; a role assignment "
+                "is revoked separately and the two are deliberately different acts"}
+
+
 def revoke_session(
     pool: Pool, tenant_id: str, *, session_id: str, identity_id: str, correlation_id: str,
     reason: str = "revoked_by_user",

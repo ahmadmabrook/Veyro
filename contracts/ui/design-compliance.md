@@ -1277,3 +1277,327 @@ it — `settle_dispute` does, and it is a stepped-up financial write with no for
 states and the canvas draws only the urgent one. One dispute renders one branch and leaves
 the other proved by nothing, which is the surface-branch vacuity this repository has now
 shipped four times.
+
+## ADM-STF-01 · ADM-STF-02 — the team, and who can still open the product
+
+**The canvas.** ADM-STF-01 is three chips (`Active · 14`, `Invited · 2`, `Left · 3`), an
+`[Invite]` button, a four-column table — NAME, ROLE, CLUBS, LAST SEEN — an amber box reading
+*"Dana's spin certification expires in 18 days"*, and a footnote: *"A Club Manager sees only
+their own club's staff. Last seen exists so a departed employee with a live login is visible
+rather than discovered."* ADM-STF-02 is one person's header, a `ROLE ▾` select, three CLUBS
+chips, `INDIVIDUAL GRANTS · BEYOND HER ROLE` with one ticked row carrying *"Granted by Ziad ·
+4 Mar 2026"* and two unticked, a red tier-4 notice, and `[Save changes] [End access]`.
+
+**`ppl_staff_profiles` had no reader at all.** MOD-014 shipped `upsert_staff_profile` and
+`end_staff_employment` fourteen modules ago and nothing that lists them, so a tenant's team was
+reachable only by already knowing a person id. Fourth instance of this build's "a writer with
+no reader" shape, after `GET /brands`, MOD-017's five listings and MOD-018's chart, and closed
+the same way: a route on the server rather than inference in the client.
+
+### Four columns, three planes, and why the page composes
+
+| Column | Owner | Permission |
+| --- | --- | --- |
+| NAME, the home club, since | MOD-014 `plt01.ppl_staff_profiles` under `veyro_cp_app` | `people.person.read` |
+| ROLE, and what is beyond it | MOD-008 `iam.role_assignments` under `veyro_iam_app` | `authz.role.read` |
+| CLUBS they reach | the same assignments' scopes | `authz.role.read` |
+| LAST SEEN | MOD-007 `iam.sessions` under `veyro_iam_app` | `identity.identity.read` |
+
+No query can answer all four: the roles hold nothing in each other's schemas and are members of
+no role, which is the separation MOD-007 exists to keep. So three reads through three gates, the
+Member 360's own pattern — and for the stronger reason that a reader may hold any subset. A
+refused half says it was refused.
+
+**Two of the three reads are new and both are batched.** `GET /authz/assignments` and
+`GET /identities/last-seen` take the identity ids repeated; asking per row is fifty round trips
+against the 600-a-minute `api.request` budget the browser suite has already tripped once, which
+is why `/authz/checks` exists. `require_uuids` is the list-shaped validator the id sweep needs:
+a comprehension calling `require_uuid` per element passes the loop variable, so the structural
+sweep — which reads names — would have reported the parameter unwrapped, correctly.
+
+**`GET /identities/last-seen` is deliberately much less than `list_sessions`.** One timestamp,
+one live-session count and the identity's status. No device, no factor, no assurance, no
+address. A column on a list must not buy the page describing every device somebody has signed
+in from, which is the bound `list_sessions` had to grow the moment something rendered it.
+
+**`granted_by` had never been read.** The schema calls it "the whole delegation record" and
+nothing selected it until ADM-STF-02's attribution line needed it. It stays an identity id:
+resolving it to a name needs `people.person.read` and the identity link, so the attribution
+degrades to eight hex characters for a reader who may not see names rather than leaking one
+under `authz.role.read`.
+
+### The defect the screen found: nothing in this build could offboard anybody
+
+**`iam.identities.status` was read by four controls and written by nothing.** The column admits
+`active`, `suspended` and `deactivated`; `authenticate`, the risk challenge, `recover_with_code`
+and `_session_by_token` each refuse an identity that is not `active` — four independent
+controls, each correct — and no service function, route or job ever set it. Two of three
+declared states were unreachable. That is MOD-012's "a column implying a control nobody
+implemented" and MOD-020's "a declared state nothing writes", in the module whose subject is
+who may sign in.
+
+It surfaced because the board puts the two halves together: an owner could be shown that a
+departed employee can still sign in, and the product offered no way to act on it. Revoking a
+role assignment stops what somebody may *do*, not that they may sign in.
+
+Closed by `POST /identities/{id}/status`, `identity.identity.write` (financial, so stepped up),
+and `migrations/product/0003_identity_status.sql` — because `iam.auth_events.kind` is a closed
+set and the act could not be recorded at all without being named there. Four decisions:
+
+- **Suspending revokes every live session in the same transaction.** It does not have to —
+  `_session_by_token` reads the status, so a bearer token stops working the moment the column
+  moves — but the revocation rows are the evidence an operator means by "I ended their access",
+  and a session reading `live` beside a suspended identity is a row two readers would disagree
+  about.
+- **A session cannot suspend the identity it is using.** There is no platform identity here and
+  nothing reinstates one from outside the tenant, so a self-suspension would end a tenant's
+  administration with no remedy anywhere in the product. The refusal is recoverable; the act
+  would not be.
+- **The actor gets its own `auth_events` row** under the same correlation id, because the table
+  records the identity an event is *about* and has no column for the one that caused it. The log
+  is insert-only, so neither row can be edited to disagree with the other. Seventh module
+  running for "evidence with nobody's name on it answers nothing".
+- **Reinstatement exists**, because an accidental suspension with no way back would be worse
+  than the gap it closed.
+
+### Three deliberate deviations
+
+- **No `[Invite]` button and no third chip.** There is no invitation in this build at all: no
+  table, no token, no expiry, nothing that sends. A chip reading `Invited · 0` would say nobody
+  has been invited rather than that nothing can invite anybody — and a button answering 403 is
+  worse than its absence. ADM-STF-03 is unbuilt rather than empty. The third chip rendered
+  instead is `Suspended`, which is a real state of the table and which the design has none for.
+- **The amber box is a different finding.** No table here holds a coach certification or its
+  expiry, so the design's thirty-day warning has nothing to read. What is drawn in its place is
+  the finding the design's *own footnote* names, with real data behind it: *N people whose
+  employment has ended can still sign in.* Same shape, same urgency, and actionable now that
+  the status writer exists.
+- **No unticked grant rows, and that is a refusal.** The canvas draws two capabilities this
+  person does not hold, which implies a known candidate set somebody is measured against. There
+  is none here: a permission exists if a role carries it, every role is the tenant's own, and
+  "what somebody could have" is the whole 207-entry catalogue. Choosing two of those as the
+  interesting absences would be inventing the product's own idea of a sensitive capability. What
+  is rendered is every `financial`- and `privileged`-class permission the person *does* hold,
+  from `catalog.action_class`, with what each costs — including the ones nobody in this build
+  can exercise at all, which are marked rather than drawn as held.
+
+### What is faithful, and surprisingly so
+
+**The tier-4 notice is true, so it is rendered rather than paraphrased.** All three of its
+claims hold: `authz.assignment.write` is `financial` class and needs a stepped-up session;
+`_refuse_escalation` is MOD-008's one rule applied in all three places a permission can be
+handed out, and it is exactly *"you cannot grant a permission you do not hold yourself"*; and
+`role.assigned` is written to the hash-chained audit log naming both identities. Three sentences
+of design copy, three mechanisms behind them.
+
+**"BEYOND HER ROLE" maps onto something real.** There are no per-identity grants here — a
+permission comes from a role and a role is held through an assignment — so what is beyond
+somebody's role is their *additional* assignments, each carrying `granted_by` and `granted_at`
+by schema. `splitRole` picks the primary as the broadest scope, earliest granted, with the
+assignment id as a final tie-break so the ordering is total: an unordered answer makes the
+planner the author and the screen's two halves would change between reads.
+
+**CLUBS is the reach, not the home club.** The staff profile carries one `location_id` and says
+in its own response that it is where somebody works; what they may *reach* is their assignments'
+scopes, which is the authority every gate decision is made against. The two differ whenever a
+receptionist based at one site holds a tenant-wide role, which is the fixture's own case. The
+home club is on the NAME cell's second line, which is what the canvas's profile header does
+with it.
+
+### Six standings, because the column is a pair
+
+`standingOf` is pure for the reason this repository has now paid for four times: a fixture
+renders a branch and demonstrates nothing. `working`, `workingNeverUsed` (a stalled onboarding,
+which reads identically to a working account on a column showing only a date),
+`workingNoLogin` (ordinary — a cleaner on the payroll needs no account), `endedWithAccess` (the
+finding), `ended` (the only clean exit) and `unknown`.
+
+**`unknown` is the one that matters most.** A reader holding `people.person.read` and not
+`identity.identity.read` must not be told a leaver has no access: nobody looked. The same answer
+is given when a permitted read came back with no row, because `ppl_identity_links` carries no
+foreign key into `iam` and a stale link answers nothing.
+
+**The fixture carries all four of the reachable ones**, one person each, because a board with
+one member of each pair cannot be shown to tell them apart. `ended` was *unreachable* before
+`set_identity_status` existed — every departed employee was `endedWithAccess`, so the good state
+was a surface branch no fixture could reach.
+
+### Five defects found by reading the rendered page, not by a failing test
+
+Every one of these was in a green tree: the component tests passed, the typecheck passed, the
+build passed, and the page was wrong. Four of them are in the shapes this file already records.
+
+- **The simulator was asked about one scope and the block was about several.**
+  `authz.permissions_of` lets a broad assignment cover a narrow scope and never the reverse, so
+  a location-scoped role contributes *nothing* at the tenant-wide default — and a narrow grant
+  is exactly what "beyond their role" means. The page asked `simulate` once, at the default,
+  so every narrowly scoped grant was invisible in the block built to show it. It now asks once
+  per distinct scope among the person's live assignments and each grant says where it applies,
+  so a tenant-wide one reads "everywhere" and a narrow one names the site. MOD-014's standing
+  gap — a narrowly scoped role cannot use that module at all — is this same finding one module
+  over.
+
+  **And my first evidence for it was wrong, which is worth recording.** What I saw on the page
+  was the fixture's location-scoped grant missing from the list, and I wrote that up as the
+  scope defect. It was missing because `finance.refund.request` is `routine`, so the block
+  filtered it correctly — a right answer for a different reason. The mechanism *is* broken as
+  described, and what establishes that is two backend tests
+  (`SimulatorScopeTests`) asserting both directions at the route, plus a fixture whose narrow
+  role now carries a `financial` permission the wide role does not hold. "A theory that
+  explains a failure is not the cause of it" — this file's own rule, met again, and the cheap
+  fix was to assert the mechanism instead of reasoning about it.
+- **Two level-1 headings.** `PageHeader` drew a page title and `RecordHeader` drew the person's
+  name. Axe does not flag a duplicate `h1`, so the accessibility assertion passed while a
+  screen reader read two documents; `/people/{id}` has used `RecordHeader` alone from the start,
+  because on a record the name *is* the title.
+- **The header disagreed with the table under it by two.** The figures line led with the active
+  count under the words "people on the team" while the grid's own footer said four. Both
+  numbers now — the distinction the members list makes, for the same reason: a figure that
+  reports part of the table invites the reader to look for the rest.
+- **A stored value beside its own label.** The role cell printed the display name and then
+  `role_key`, which put `publisher_1795251559775` on screen. "A vocabulary the backend stores
+  is never a label", fifth instance.
+- **An explanation that always rendered.** The level-3 note — "a permission marked unusable
+  needs assurance level 3" — was gated on `reachableAal < 3`, which is always true here, so it
+  explained a row that was usually absent. It renders only where a grant is actually
+  unreachable now. Same vacuity as a surface branch no fixture can reach, inverted.
+
+And one found by a test I had just written: `scopesToSimulate`'s first comparator answered `1`
+for both `compare(brand, location)` and `compare(location, brand)`, which is not a comparator
+and whose result depends on the engine's sort. By rank now.
+
+### Evidence
+
+- 41 backend HTTP tests (`backend/tests/test_staff_api.py`): the list, the profile read, the
+  batched assignments, the last-seen read, eleven for the status writer -- including that
+  another tenant's identity is not answered for at either new batch route -- and two for the
+  simulator's scope behaviour, which the grants block rests on.
+- 28 component tests (`web/tests/component/staff.test.ts`): all six standings, the three
+  severities, `splitRole`'s total ordering, `reachOf`'s three kinds, `scopesToSimulate`'s
+  ordering and deduplication, the grant held only at one site, the sensitive filter, the
+  unreachable mark, and the key-parity check run from the side `MESSAGE_KEYS` cannot see.
+- 28 browser tests (`web/tests/e2e/staff.spec.ts`), including the desk session that holds the
+  person read and neither of the other two — which is the subset that proves `unknown` renders
+  as "Not checked" rather than as a clean exit.
+- Three more in `phone.spec.ts`, asserting on three grids that a dropped column is actually
+  dropped — the property `DataGrid`'s docstring claims and which was false below 600px.
+- Both pages in the 375px sweep; both locales asserted from the rendered page.
+- Six browser mutations, 6/6 caught — and the first run caught four, which is the sweep
+  earning its place twice over. One mutation **did not apply at all** (two spaces of
+  indentation in the anchor, not four), so a protection the list claimed to cover had no
+  evidence behind it and the harness said so rather than counting it. Another was **uncaught
+  and correct to be**: the `mayReadLogins` guard it removed was subsumed by the `seen ===
+  null` line under it, because a caller who may not look passes no `seen` either. Deleted
+  rather than tested harder, which is this repository's own judgement for a subsumed control,
+  and the parameter went with it — a parameter the function cannot act on is a claim its
+  signature makes and does not keep.
+- And the last gap was the **"a weakening is caught only if it admits the row"** trap, in a
+  fixture: dropping `|| seen.status === "active"` from the access rule changed nothing,
+  because the seeded leaver *has* a live session and so is caught by the half that remained.
+  The fixture grew a fifth staff member for it — a leaver who never signed in, so no session,
+  whose identity is still `active` because nothing in this build had suspended it. That is
+  the commonest real shape and the only row that falls on the other side of the weakening.
+- `backend/scripts/verify_db.sh` after the migration: tenant isolation 111/111, audit chain
+  linked, contiguous, anchored, head agrees.
+
+### TestSprite, and the dead end an independent tester walked into
+
+Two journeys, written in English against what a person would do and executed by an agent that
+has not read this repository. The first — *"somebody who has left the company but can still
+sign in is visible on the staff list"* — **passed, 7 of 7 steps**: it read the warning, found
+the two rows that differ in their access, and confirmed there is no Invite button and that the
+club-manager sentence is disclaimed.
+
+The second was **blocked, and that is the finding.** Told to open the Reception person's
+record by clicking their row, it could not: **a row whose name is withheld had no link at
+all.** The cell rendered the marker *instead of* the link, so on an ordinary sign-in — the
+front desk's own credential, where every identity field is masked — the members list and the
+staff list were both dead ends, and not one row on either could be opened. The agent went
+looking for another way through, found the step-up offer, and was stopped by a recovery code
+it had none of.
+
+That is the second time the same reader behaviour against the same cell has found something:
+an earlier run clicked the withheld marker looking for a way through and found the members
+list had no step-up offer at all. `WithheldLink` is the fix — the marker goes inside the link,
+with an accessible name built from what is *not* withheld (a member number, a job title and a
+start date), because a link whose only text is "Withheld" is one a screen-reader user cannot
+tell from the next. **The name is what the mask withholds; the row's identity is not secret,
+and the record behind it is the page that explains the withholding and offers the step-up.**
+
+### And looking at the rendered pages found four more, one of them build-wide
+
+**Every grid in the app rendered every droppable value twice at phone width.** `DataGrid`'s
+own docstring says "a droppable value is in the DOM twice and visible once ... the stylesheet
+shows exactly one at any width", and below 600px that was false:
+`.ds-col-p2 { display: none }` is specificity (0,1,0) and the `.ds-grid-table td
+{ display: block }` rule that turns the table into a list is (0,1,1) and comes after it, so
+the block rule won. 21 duplicated values on the members list, 21 on the payments ledger, 12 on
+the staff list — the whole priority-collapse mechanism, inoperative at the one width it exists
+for. **Four layers of tests could not see it**: an assertion about text matches either copy,
+and the phone sweep measures horizontal scroll, which a duplicate does not cause. Found by
+taking a screenshot at 375px and reading it; `phone.spec.ts` asserts the property on three
+grids now.
+
+Three smaller ones on the staff record, all from the same screenshot pass:
+
+- **The only heading read "Withheld".** Dropping `PageHeader` left `RecordHeader`'s name as
+  the page's one `h1`, and at AAL 1 that name is a marker chip — so a reader arriving from a
+  row had nothing to orient by. The job title leads now, which is what identified the row to
+  them in the first place, with the marker beside it. And the subline stops repeating it,
+  because the sentence said twice is the caption rule one component over.
+- **The tier-4 notice was drawn in the wrong ink.** The canvas uses `#8a5a1f` for
+  ADM-STF-01's warning box and `#8a3b1f` for this one: two inks, two meanings, and the design
+  means the stronger. `critical`, not `attention`.
+- **The permission descriptions are English on an Arabic page.** They come from
+  `GET /authz/catalog`, which is the software's own vocabulary — two hundred strings written
+  where each permission is declared, identical for every tenant. Translating them in the
+  client would be a second copy that drifts from the one the server enforces, so the block
+  says they are published in English only. `/permissions` has the same condition and has never
+  disclosed it.
+
+### And the phone sweep caught a latent defect in the design system
+
+Adding one role to the fixture — the narrow assignment ADM-STF-02's grants block needs — made
+`/permissions` overflow by 125px at phone width. **The matrix's width is a count rather than a
+layout**: one column per role, so it was always going to cross 375px at some tenant's role
+count, and the sweep found it the day a fixture crossed it.
+
+Two causes, both needing a fix, and both established by measuring rather than by reading:
+
+- **The table box was pinned to the container and its columns overflowed it.**
+  `.ds-matrix { inline-size: 100% }` plus the global phone rule's `max-width: 100%` meant the
+  box was 341px with 535px of content, so `.ds-matrix-scroll` saw a 341px child and had
+  nothing to scroll. The table has to be allowed to *grow* — `min-inline-size: 100%` so a
+  two-role matrix still fills the box, `inline-size: max-content` beyond that — and the global
+  `table { display: block }` rule has to be overridden for it, because `display: block` turns
+  `thead` into a block box whose row sits in an anonymous table wrapper the scroll box does not
+  constrain. Bisected to the `thead` by hiding it and re-measuring; nothing else in the subtree
+  moved the number.
+- **A real scroll container still contributed to the root's scrollable area.** With the table
+  free to grow the box was 343 over 535 with `overflow-x: auto`, and
+  `document.documentElement.scrollWidth` was still 535. `contain: layout` is the boundary that
+  stops it — and it is the right one of three: `paint` would clip the focus ring the box draws
+  two rules below, and `inline-size` does not help.
+
+The matrix is the one table in the app that scrolls rather than collapsing its columns, and
+that is the design's own exception: "horizontal scrolling of a data table on a phone is never
+the answer" is about a data grid, where a dropped column moves into the primary cell. A column
+dropped from a matrix is a comparison a reader gets wrong.
+
+### Known gaps
+
+- **"A Club Manager sees only their own club's staff" is not true here**, and the page says so
+  rather than letting its filter read as a boundary. Every `permit` call resolves against the
+  tenant-wide default scope, which MOD-014 already records as its own standing gap; nothing
+  derives a reader's own club.
+- **`[Save changes]` and `[End access]` have no forms**, which is this app's consistent state:
+  every stepped-up financial write is built on the server and none has a form. `End access` is
+  now *possible* — the status writer exists and is tested — and still has no control here,
+  because revoking an assignment takes a written reason and a form that collects one is a
+  different piece of work from a button.
+- **The `ROLE ▾` select is a value, not a control.** Changing it is `authz.assignment.write`.
+- **No certifications anywhere**, so the Command Center item the design's amber box feeds has
+  nothing behind it either.
+- **A brand-scoped reach renders as a count, not a name.** `GET /brands` would resolve it and
+  the page already asks three gates; a fourth read for a case the fixture does not produce
+  would be a branch nothing exercises.
