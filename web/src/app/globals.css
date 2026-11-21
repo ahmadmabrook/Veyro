@@ -2663,3 +2663,100 @@ a {
 .ds-evidence > li[data-state="refused"] .ds-evidence-mark { color: var(--color-text-tertiary); }
 
 .ds-evidence-what { flex: 1; min-inline-size: 0; }
+
+
+/* ------------------------------------------------- ADM-RPT-04's hours
+ *
+ * The canvas is a bar per hour at 52px with the two ends of the axis labelled, which is the
+ * same shape as ADM-MEM-07's weeks -- so the geometry is that chart's, deliberately: two bar
+ * charts in one stylesheet drift, and the day they disagree nobody can say which is the
+ * design's. What is new here is the heat, which the canvas paints in three tones.
+ *
+ * **The three tiers are semantic tokens, not the canvas's primitives.** It draws `#cbc6bc`,
+ * `#a8a29a` and `#8a5a1f`, which are `warm.300`, `warm.400` and `warning.600` -- and the
+ * generated token file says in as many words that components must not reference layer 1,
+ * because "a theme is a remapping of layer 2 rather than a rewrite of layer 1". A light-theme
+ * warm grey hard-coded here is a bar that vanishes into a dark card. So:
+ *
+ *   * `peak` is `--color-semantic-warning`, whose light value *is* the canvas's `#8a5a1f`;
+ *   * `busy` is `--color-text-tertiary`, which is what the weekbar chart already uses;
+ *   * `quiet` is `--color-border-strong`, which composites to about the canvas's `#cbc6bc`
+ *     on a card.
+ *
+ * Both themes then come out monotonic, which is what a heat strip needs: light runs pale to
+ * dark as the hour gets busier and dark runs dim to bright. A reader is never asked to read
+ * the colour alone -- each bar carries its hour and count as text, and the conclusion under
+ * the chart names the busiest window in words, which is the canvas's own requirement.
+ */
+.ds-hourbars {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  /* **52px, which is the canvas's own figure for this chart**, and not the 72px the weeks
+     chart uses: ADM-MEM-07's canvas draws its twelve bars taller, and two charts from two
+     canvases keep two heights rather than one average of them. The 2px gap is the canvas's
+     too. */
+  block-size: 52px;
+  /* The baseline the empty hours sit on. Without it the small hours read as blank space,
+     and "nothing happens before seven" is a reading this chart exists for. */
+  border-block-end: 1px solid var(--color-border-default);
+}
+
+.ds-hourbar {
+  flex: 1;
+  min-inline-size: 0;
+  block-size: 100%;
+  display: flex;
+  align-items: flex-end;
+}
+
+/* An hour at zero is a mark, not nothing -- the weekbar chart's rule, and `barHeightPercent`
+   floors the height at 2% for the same reason. */
+.ds-hourbar-fill {
+  inline-size: 100%;
+  min-block-size: 2px;
+  border-radius: 1px 1px 0 0;
+  background: var(--color-border-strong);
+}
+
+.ds-hourbar-fill[data-tier="busy"] {
+  background: var(--color-text-tertiary);
+}
+
+.ds-hourbar-fill[data-tier="peak"] {
+  background: var(--color-semantic-warning);
+}
+
+.ds-hourbars-axis {
+  display: flex;
+  justify-content: space-between;
+  margin: var(--space-2) 0 0;
+  font-size: var(--type-caption-size);
+  color: var(--color-text-tertiary);
+}
+
+
+/* ------------------------------------------------- ADM-RPT-04's conclusion
+ *
+ * The canvas: `padding:10px 11px;background:#faf8f4;border-radius:4px` with body text and
+ * its first sentence in bold. `#faf8f4` is `warm.50`, which is `color.surface.sunken`.
+ *
+ * **Not a Banner**, which is what this was first built as. A banner carries a 3px semantic
+ * edge and `role="status"` -- a live region -- so a screen reader announces it as though it
+ * had just changed, and the conclusion under a chart is ordinary content that was there when
+ * the page loaded. The design draws no edge mark on this box either.
+ */
+.ds-conclusion {
+  margin: var(--space-3) 0 0;
+  padding: 10px 11px;
+  background: var(--color-surface-sunken);
+  border-radius: 4px;
+  max-inline-size: 78ch;
+  font-size: var(--type-bodySm-size);
+  line-height: var(--type-bodySm-line);
+  color: var(--color-text-primary);
+  text-wrap: pretty;
+}

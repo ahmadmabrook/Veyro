@@ -573,17 +573,55 @@ const MUTATIONS = [
     file: "src/app/globals.css",
     from: "  table {\n    display: block;",
     to: "  table.not-a-table {\n    display: block;",
-    grep: "the operations board does not scroll sideways",
+    // **Re-pointed, because the document-level assertion stopped being able to prove this.**
+    // Breaking the rule used to make seven surfaces overflow; it now makes none of them,
+    // because every table here is either a `DataGrid` whose columns drop by priority until
+    // it fits or a hand-rolled one at `width: 100%`. The rule is still correct and is
+    // redundant on every page that exists, so the mutation came back uncaught -- a protection
+    // nothing could prove. The collapse itself is directly measurable, so that is what is
+    // measured now -- and it has to be measured on a *hand-rolled* table: a grid gets
+    // `display: block` from the 599px collapse rule and the matrix is exempt, so pointing
+    // this at a grid was still uncaught for a second reason.
+    grep: "a hand-rolled table collapses as the design states",
   },
   {
-    id: "phone-facts-can-shrink",
-    why: "a grid track's implicit minimum is min-content, so a value with no break "
-      + "opportunity -- a comma-separated list of dotted permission names -- makes the column "
-      + "wider than the page and nothing about the container can stop it",
+    // **The live document-level protection, replacing one that nothing could prove.** This
+    // slot held `.facts dd { overflow-wrap: anywhere }` against the same assertion, and that
+    // came back uncaught for the reason one rule up plus one more: `contain: layout` on the
+    // matrix's scroll wrapper now stops an overflowing descendant reaching the root at all,
+    // so a value too wide for its track is contained before the document can see it. The
+    // wrapper is what the assertion can still prove -- removing it overflows `/permissions`
+    // by exactly the 125px the rules file records.
+    id: "phone-matrix-overflow-is-contained",
+    why: "the matrix scrolls inside its own wrapper and an overflowing descendant still "
+      + "contributed to the document's scrollable area until `contain: layout` bounded it, "
+      + "which is the one of the three containments that does not clip the focus ring",
     file: "src/app/globals.css",
-    from: ".facts dd {\n  overflow-wrap: anywhere;\n}",
-    to: ".facts dd {\n  overflow-wrap: normal;\n}",
+    from: "  contain: layout;",
+    to: "  /* contain: layout -- removed by the sweep */",
     grep: "the permissions page does not scroll sideways",
+  },
+  {
+    // The matrix is the design's own exception -- "a column dropped from a matrix is a
+    // comparison a reader gets wrong" -- so it keeps table layout where a grid collapses.
+    // `display: block` on it is what let its sticky header escape to the document root.
+    id: "phone-matrix-keeps-table-layout",
+    why: "a matrix that collapsed like a grid would drop columns a reader is comparing, and "
+      + "`display: block` on it is what used to send its sticky header to the document root",
+    file: "src/app/globals.css",
+    from: "  .ds-matrix {\n    display: table;",
+    to: "  .ds-matrix {\n    display: block;",
+    grep: "the capability matrix collapses as the design states",
+  },
+  {
+    id: "phone-grid-cells-leave-table-layout",
+    why: "a cell still in table layout is the collapse not having happened, and the priority "
+      + "columns then render beside their own secondary fragment -- which is what every grid "
+      + "in this app did below 600px for as long as the collapse existed",
+    file: "src/app/globals.css",
+    from: "  .ds-grid-table td {\n    display: block;",
+    to: "  .ds-grid-table td.nope {\n    display: block;",
+    grep: "its cells collapses as the design states",
   },
   {
     id: "config-unset-is-a-sentence",
@@ -1080,6 +1118,47 @@ const MUTATIONS = [
     to: "",
     runner: "vitest",
     grep: "nobody in this build can use",
+  },
+  {
+    id: "attendance-hour-axis-is-a-clock",
+    why: "the axis is the one place a 12-hour form would put \"6 AM\" under a heading whose "
+      + "other end reads 22:00, and ADM-RPT-04's whole output is an hour",
+    file: "src/lib/reports.ts",
+    from: 'return `${String(hour).padStart(2, "0")}:00`;',
+    to: "return `${hour}:00`;",
+    runner: "vitest",
+    grep: "padded 24-hour",
+  },
+  {
+    id: "attendance-empty-hour-is-a-mark",
+    why: "an hour nobody came in must be drawn at the baseline: an absent bar and a bar "
+      + "nobody can see are the same to a reader, and \"nothing before seven\" is a reading "
+      + "this chart exists for",
+    file: "src/lib/reports.ts",
+    from: "  return Math.max(2, Math.round((entries / peak) * 100));",
+    to: "  return Math.round((entries / peak) * 100);",
+    runner: "vitest",
+    grep: "empty hour as a mark",
+  },
+  {
+    id: "attendance-no-peak-is-not-zero-per-cent",
+    why: "nobody came in at all is a club that was shut; rendering 0% would read as "
+      + "\"this hour is quiet\", which is MOD-011's empty-window rule in a report",
+    file: "src/lib/reports.ts",
+    from: "  return bp === null ? null : Math.round(bp / 100);",
+    to: "  return Math.round((bp ?? 0) / 100);",
+    runner: "vitest",
+    grep: "no percentage where there is no peak",
+  },
+  {
+    id: "attendance-sunday-is-six",
+    why: "0 is Monday in MOD-019's rota numbering, so a Sun-Thu range written as 0-4 is "
+      + "Mon-Fri -- a whole day of the chart, silently",
+    file: "src/lib/reports.ts",
+    from: '{ key: "sun-thu", label: "attendanceReport.sunThu", days: [6, 0, 1, 2, 3] }',
+    to: '{ key: "sun-thu", label: "attendanceReport.sunThu", days: [0, 1, 2, 3, 4] }',
+    runner: "vitest",
+    grep: "five days and differ",
   },
   {
     id: "device-label-parity",

@@ -18,8 +18,15 @@ describe("the reports index", () => {
 
   it("gives every report the design lists and this build lacks a reason, in both languages", () => {
     // An absent module is a different absence from a refused permission. If these were
-    // simply missing they would read as four more grants to go and ask for.
-    expect(UNBUILT.length).toBe(4);
+    // simply missing they would read as more grants to go and ask for.
+    //
+    // **The canvas lists six reports**, and the invariant is that every one of them is
+    // either offered or explained -- not that some remembered number of them is missing.
+    // A hard-coded count went stale the moment Attendance was built, which is the
+    // per-item-list hazard this repository keeps finding: the assertion has to be the
+    // property, so that building the next one fails here only if its row is not moved.
+    expect(REPORTS.length + UNBUILT.length).toBe(6);
+    expect(UNBUILT.map((entry) => entry.name)).not.toContain("reports.attendanceName");
     for (const entry of UNBUILT) {
       for (const key of [entry.name, entry.why]) {
         expect(MESSAGES.en[key], `${key} missing from English`).toBeTruthy();

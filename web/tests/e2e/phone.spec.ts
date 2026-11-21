@@ -38,6 +38,15 @@ const surfaces: [string, string][] = [
   // Twelve bars in a flex row: the one chart here whose width is a count rather than a
   // layout, so it is the one most likely to push a phone sideways.
   ["a member's attendance", `/people/${creds.personId}?tab=attendance`],
+  // **The four hand-rolled tables left in this app are on these two tabs**, in
+  // `membership-panels.tsx`, and they are the only thing the generic phone rule
+  // `table { display: block }` still applies to -- every other table in the app is a
+  // `DataGrid` with its own rule and its own scroll wrapper. Neither tab was swept, so
+  // breaking that rule changed nothing on any surface in this list and the mutation that
+  // names it came back uncaught: the rule was live and the page that depends on it was
+  // missing. Found by running the sweep and measuring, not by reading the CSS.
+  ["a member's membership", `/people/${creds.personId}?tab=membership`],
+  ["a member's billing", `/people/${creds.personId}?tab=billing`],
   // MOD-018's board is the widest table in the app -- four money columns over a chart of
   // thirteen accounts -- so it is the one most likely to push the page sideways.
   ["the payments ledger", "/payments"],
@@ -57,6 +66,9 @@ const surfaces: [string, string][] = [
   // priority 3 and drop first, which is what this asserts in practice.
   ["the revenue report", "/reports/revenue"],
   ["the membership report", "/reports/membership"],
+  // **Twenty-four bars in a flex row**, which is twice the widest chart in the app and the
+  // one whose width is purely a count. Below it four metric cells and two rows of chips.
+  ["the attendance report", `/reports/attendance?site=${creds.locationId}`],
   // The widest table in the app: twenty areas against a column of prose.
   ["the privacy board", "/privacy"],
   ["the messages board", "/notifications"],
@@ -107,6 +119,57 @@ test.describe("at phone width", () => {
       expect(counts.stillVisible,
         `${path} renders ${counts.stillVisible} dropped cells beside their own secondary line`)
         .toBe(0);
+    });
+  }
+
+  /**
+   * **The collapse itself, asserted directly, because the document-level sweep below cannot
+   * see it any more.**
+   *
+   * `table { display: block }` at phone width is what makes `overflow-x` apply to a table at
+   * all -- the rule's own comment calls it "the table scrolls inside itself rather than
+   * widening the page". Breaking it used to make seven surfaces overflow the document. It no
+   * longer makes any of them overflow, because every table here is now either a `DataGrid`
+   * whose columns drop by priority until it fits or a hand-rolled one at `width: 100%`: the
+   * protection is still correct and is redundant on every page that exists. So the mutation
+   * naming it came back **uncaught** -- a rule nothing could prove, which is this
+   * repository's own "a mutation that changes nothing is not evidence" from the other side.
+   *
+   * The property is directly measurable, so it is measured: a grid's table collapses to a
+   * block and its cells with it, and the capability matrix is the exception the design makes
+   * for itself and keeps table layout. Established by `getComputedStyle`, not by reading the
+   * stylesheet.
+   */
+  for (const [label, path, selector, allowed] of [
+    ["a grid table", "/members", ".ds-grid-table", ["block"]],
+    // **`none` is expected and is the other half of the collapse**: a droppable cell is in
+    // the DOM twice and visible once, so the set here is block-or-hidden. What must never
+    // appear is `table-cell`, which is a cell still in table layout -- the collapse not
+    // having happened.
+    ["its cells", "/members", ".ds-grid-table td", ["block", "none"]],
+    // "A column dropped from a matrix is a comparison a reader gets wrong", so this one
+    // scrolls inside its wrapper instead -- and `display: block` on it is what used to let
+    // its sticky header escape to the document root.
+    ["the capability matrix", "/permissions", ".ds-matrix", ["table"]],
+    // **The four hand-rolled tables, which are the only thing the *generic* phone rule still
+    // reaches.** A grid gets `display: block` from the 599px collapse rule and the matrix is
+    // exempt, so `table { display: block }` is provable on nothing else -- and these tabs
+    // were not swept at phone width at all. They are `membership-panels.tsx`'s, on a member's
+    // billing tab, and the rule is what makes `overflow-x` apply to them.
+    ["a hand-rolled table", `/people/${creds.personId}?tab=billing`,
+     "table:not(.ds-grid-table):not(.ds-matrix):not(.ds-week)", ["block"]],
+  ] as const) {
+    test(`${label} collapses as the design states at phone width`, async ({ page }) => {
+      await useOwnerSession(page);
+      await page.goto(path);
+      await expect(page.locator(selector).first()).toBeVisible();
+      const displays = await page.evaluate((css) => [...new Set(
+        [...document.querySelectorAll(css)].map((el) => getComputedStyle(el).display))],
+        selector);
+      expect(displays.length, `${selector} on ${path} rendered nothing`).toBeGreaterThan(0);
+      for (const display of displays) {
+        expect(allowed, `${selector} on ${path} computed ${display}`).toContain(display);
+      }
     });
   }
 

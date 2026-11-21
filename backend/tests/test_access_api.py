@@ -1560,5 +1560,367 @@ class MemberRecordReadTests(AccessApiTestCase):
                 self.assertEqual(read.status_code, 422, read.text)
 
 
+class AttendanceReportTests(AccessApiTestCase):
+    """ADM-RPT-04: visits by hour at one club, and the actionable hour in words.
+
+    Every entry is recorded at a chosen instant, so each case knows what the chart must say.
+    The fixture's club is `Asia/Amman`, which is UTC+3 all year -- the zone matters, because
+    the whole of this read is an hour in the club's own wall clock rather than the host's.
+    """
+
+    #: The fixture's own timezone offset, so a local hour can be asked for directly.
+    AMMAN = timedelta(hours=3)
+
+    def entry_at(self, floor: dict[str, Any], local: datetime) -> None:
+        """One entry at a local wall-clock instant at the fixture's club."""
+        recorded = self.client.post("/access/events", json={
+            "point_id": floor["point_id"], "direction": "entry",
+            "credential_value": floor["credential_value"],
+            "occurred_at": (local - self.AMMAN).replace(tzinfo=UTC).isoformat(),
+            "source": "online", "idempotency_key": str(uuid.uuid4()),
+            **self.correlation()},
+            headers=self.headers(floor["tenant_id"]))
+        self.assertEqual(recorded.status_code, 201, recorded.text)
+
+    def last_complete_local_day(self) -> datetime:
+        """Yesterday at the club, which is where the window ends."""
+        return (datetime.now(UTC) + self.AMMAN).replace(tzinfo=None) - timedelta(days=1)
+
+    def report(self, floor: dict[str, Any], *, days: tuple[int, ...] = (0, 1, 2, 3, 4, 5, 6),
+               reader: str | None = None, **query: Any) -> dict[str, Any]:
+        params = "&".join([f"weekday={d}" for d in days]
+                          + [f"{k}={v}" for k, v in query.items()])
+        read = self.client.get(
+            f"/reports/attendance?location_id={floor['location_id']}&{params}",
+            headers=self.headers(floor["tenant_id"],
+                                 reader or self.publisher(floor["tenant_id"])))
+        self.assertEqual(read.status_code, 200, read.text)
+        body: dict[str, Any] = read.json()
+        return body
+
+    def test_the_hour_is_the_clubs_own_wall_clock_and_not_the_hosts(self):
+        """The defect this repository has shipped twice, in the read whose subject is hours.
+
+        The club is UTC+3, so an entry at 18:30 local is recorded at 15:30Z. A histogram
+        bucketed on the instant puts it at 15:00 under a heading naming Amman -- which is
+        verbatim the schedule board's own defect, found by opening the page.
+        """
+        floor = self.floor()
+        day = self.last_complete_local_day()
+        self.entry_at(floor, day.replace(hour=18, minute=30, second=0, microsecond=0))
+        body = self.report(floor)
+        self.assertEqual("Asia/Amman", body["timezone"])
+        by_hour = {h["hour"]: h["entries"] for h in body["by_hour"]}
+        self.assertEqual(1, by_hour[18])
+        self.assertEqual(0, by_hour[15])
+
+    def test_all_twenty_four_hours_are_returned_including_the_empty_ones(self):
+        """Nothing records when a club is open, so an absent hour would be the surface's
+        invention. An hour at zero is a bar at the baseline."""
+        floor = self.floor()
+        body = self.report(floor)
+        self.assertEqual(24, len(body["by_hour"]))
+        self.assertEqual(list(range(24)), [h["hour"] for h in body["by_hour"]])
+
+    def test_the_busiest_window_and_the_quietest_hour_are_derived_not_drawn(self):
+        """The canvas: "A manager should not have to interpret a heat strip"."""
+        floor = self.floor()
+        day = self.last_complete_local_day()
+        # 18:00 at nine and 19:00 at ten are both in the peak tier, so the span is two
+        # hours and reads "18:00 to 20:00" -- which is what the canvas draws. 18:00 at
+        # four of five would be 80% and therefore `busy`, and the span would be one hour.
+        for hour, count in ((7, 4), (18, 9), (19, 10), (20, 5)):
+            for _ in range(count):
+                self.entry_at(floor, day.replace(hour=hour, minute=5, second=0,
+                                                 microsecond=0))
+        body = self.report(floor)
+        self.assertEqual(10, body["peak_entries"])
+        self.assertEqual(28, body["entries"])
+        self.assertEqual(18, body["busiest"]["from_hour"])
+        self.assertEqual(20, body["busiest"]["to_hour"])
+        self.assertEqual(19, body["busiest"]["busiest_hour"])
+        self.assertEqual(7, body["quietest"]["hour"])
+        self.assertEqual(4_000, body["quietest"]["share_of_peak_bp"])
+
+    def test_the_three_tiers_come_back_with_the_bars(self):
+        floor = self.floor()
+        day = self.last_complete_local_day()
+        for hour, count in ((7, 2), (17, 6), (19, 10)):
+            for _ in range(count):
+                self.entry_at(floor, day.replace(hour=hour, minute=5, second=0,
+                                                 microsecond=0))
+        tiers = {h["hour"]: h["tier"] for h in self.report(floor)["by_hour"]}
+        self.assertEqual("peak", tiers[19])
+        self.assertEqual("busy", tiers[17])
+        self.assertEqual("quiet", tiers[7])
+        self.assertEqual("quiet", tiers[3])
+
+    def test_an_empty_window_has_no_busiest_hour_and_no_shares(self):
+        """A club that was shut is not a club that was quiet -- MOD-011's rule in a report."""
+        body = self.report(self.floor())
+        self.assertEqual(0, body["entries"])
+        self.assertIsNone(body["busiest"])
+        self.assertIsNone(body["quietest"])
+        for hour in body["by_hour"]:
+            self.assertIsNone(hour["share_of_peak_bp"])
+
+    def test_only_the_chosen_days_are_counted(self):
+        """A chart about weekdays must not carry Saturday's evening."""
+        floor = self.floor()
+        day = self.last_complete_local_day()
+        # Two entries on the last complete day and two exactly a week earlier, so both fall
+        # on the same weekday and inside a four-week window.
+        for when in (day, day - timedelta(days=7)):
+            self.entry_at(floor, when.replace(hour=19, minute=0, second=0, microsecond=0))
+        # And one the day before, which is a different weekday.
+        self.entry_at(floor, (day - timedelta(days=1)).replace(
+            hour=19, minute=0, second=0, microsecond=0))
+        same_weekday = (day.weekday(),)
+        narrow = self.report(floor, days=same_weekday)
+        self.assertEqual(2, narrow["entries"])
+        self.assertEqual(list(same_weekday), narrow["weekdays"])
+        self.assertEqual(3, self.report(floor)["entries"])
+
+    def test_the_days_counted_say_what_the_bars_are_summed_over(self):
+        floor = self.floor()
+        body = self.report(floor, days=(0,), weeks=4)
+        self.assertEqual(4, body["window"]["days_counted"])
+        self.assertEqual(20, self.report(floor, days=(0, 1, 2, 3, 6))["window"]
+                         ["days_counted"])
+
+    def test_today_is_outside_the_window_because_it_has_not_finished(self):
+        """An evening hour compared against a morning is a cliff made of the clock."""
+        floor = self.floor()
+        now_local = (datetime.now(UTC) + self.AMMAN).replace(tzinfo=None)
+        self.entry_at(floor, now_local - timedelta(minutes=5))
+        body = self.report(floor)
+        self.assertEqual(0, body["entries"])
+        self.assertEqual(self.last_complete_local_day().date().isoformat(),
+                         body["window"]["last_day"])
+
+    def test_a_future_until_is_clamped_and_the_response_says_so(self):
+        """The revenue report's precedent: a period shorter than it was asked for says it."""
+        floor = self.floor()
+        ahead = (datetime.now(UTC).date() + timedelta(days=30)).isoformat()
+        body = self.report(floor, until=ahead)
+        self.assertTrue(body["window"]["clamped"])
+        self.assertEqual(self.last_complete_local_day().date().isoformat(),
+                         body["window"]["last_day"])
+        unclamped = self.report(floor)
+        self.assertFalse(unclamped["window"]["clamped"])
+
+    def test_a_weekday_is_required_rather_than_defaulted(self):
+        """No table in this build says which days are a working week."""
+        floor = self.floor()
+        read = self.client.get(
+            f"/reports/attendance?location_id={floor['location_id']}",
+            headers=self.headers(floor["tenant_id"], self.publisher(floor["tenant_id"])))
+        self.assertEqual(read.status_code, 422, read.text)
+
+    def test_a_weekday_outside_monday_to_sunday_refuses_rather_than_answering(self):
+        floor = self.floor()
+        for bad in ("7", "-1", "monday"):
+            with self.subTest(weekday=bad):
+                read = self.client.get(
+                    f"/reports/attendance?location_id={floor['location_id']}"
+                    f"&weekday={bad}",
+                    headers=self.headers(floor["tenant_id"],
+                                         self.publisher(floor["tenant_id"])))
+                self.assertEqual(read.status_code, 422, read.text)
+
+    def test_an_unbounded_window_is_refused(self):
+        floor = self.floor()
+        for weeks in (0, 27, 100000):
+            with self.subTest(weeks=weeks):
+                read = self.client.get(
+                    f"/reports/attendance?location_id={floor['location_id']}"
+                    f"&weekday=0&weeks={weeks}",
+                    headers=self.headers(floor["tenant_id"],
+                                         self.publisher(floor["tenant_id"])))
+                self.assertEqual(read.status_code, 422, read.text)
+
+    def test_a_malformed_location_is_422_rather_than_500(self):
+        tenant_id = self.tenant()
+        read = self.client.get(
+            "/reports/attendance?location_id=not-a-uuid&weekday=0",
+            headers=self.headers(tenant_id, self.stepped_grant(
+                tenant_id, ["access.zone.read"])))
+        self.assertEqual(read.status_code, 422, read.text)
+
+    def test_a_location_that_is_not_this_tenants_is_404(self):
+        tenant_id = self.tenant()
+        read = self.client.get(
+            f"/reports/attendance?location_id={uuid.uuid4()}&weekday=0",
+            headers=self.headers(tenant_id, self.stepped_grant(
+                tenant_id, ["access.zone.read"])))
+        self.assertEqual(read.status_code, 404, read.text)
+
+    def test_a_zone_at_another_club_is_refused_rather_than_silently_widened(self):
+        """Answering with the whole club would be a wider report than was asked for."""
+        floor = self.floor()
+        other_site = self.location(floor["tenant_id"], timezone="Europe/Amsterdam")
+        elsewhere = self.zone(floor["tenant_id"], other_site)
+        read = self.client.get(
+            f"/reports/attendance?location_id={floor['location_id']}&weekday=0"
+            f"&zone_id={elsewhere}",
+            headers=self.headers(floor["tenant_id"], self.publisher(floor["tenant_id"])))
+        self.assertEqual(read.status_code, 404, read.text)
+
+    def test_a_multi_zone_club_counts_presentations_and_narrowing_is_offered(self):
+        """A member through the front door and then a studio reader is two entries."""
+        floor = self.floor()
+        day = self.last_complete_local_day()
+        studio_device = self.live_device(floor["tenant_id"], floor["location_id"])
+        studio = self.zone(floor["tenant_id"], floor["location_id"])
+        studio_point = self.point(floor["tenant_id"], studio, studio_device)
+        self.entry_at(floor, day.replace(hour=19, minute=0, second=0, microsecond=0))
+        inner = self.client.post("/access/events", json={
+            "point_id": studio_point, "direction": "entry",
+            "credential_value": floor["credential_value"],
+            "occurred_at": (day.replace(hour=19, minute=10, second=0, microsecond=0)
+                            - self.AMMAN).replace(tzinfo=UTC).isoformat(),
+            "source": "online", "idempotency_key": str(uuid.uuid4()), **self.correlation()},
+            headers=self.headers(floor["tenant_id"]))
+        self.assertEqual(inner.status_code, 201, inner.text)
+
+        whole_club = self.report(floor)
+        self.assertEqual(2, whole_club["entries"])
+        self.assertIn("presentations", whole_club["entries_are_presentations"])
+        self.assertEqual(2, len(whole_club["zones"]))
+
+        front_door = self.report(floor, zone_id=floor["zone_id"])
+        # The histogram is narrowed: one entry at the front door.
+        self.assertEqual(1, front_door["entries"])
+        # **And the zone list is not**, because the surface draws its chips from it:
+        # filtering it too left a reader who picked one reader with no way back to the
+        # others. Each zone still reports its own count, so the list sums to the club's
+        # total rather than to the narrowed figure -- said on the response rather than
+        # left for a consumer to discover.
+        self.assertEqual(2, len(front_door["zones"]))
+        self.assertEqual({1}, {z["entries"] for z in front_door["zones"]})
+        self.assertIn("not narrowed", front_door["zone_counts_are_not_narrowed"])
+
+    def test_a_live_zone_that_counted_nothing_is_listed_at_zero(self):
+        """Absent would read as a zone that is not there."""
+        floor = self.floor()
+        quiet_device = self.live_device(floor["tenant_id"], floor["location_id"])
+        quiet_zone = self.zone(floor["tenant_id"], floor["location_id"])
+        self.point(floor["tenant_id"], quiet_zone, quiet_device)
+        zones_seen = {z["zone_id"]: z["entries"] for z in self.report(floor)["zones"]}
+        self.assertEqual(0, zones_seen[quiet_zone])
+
+    def test_a_retired_zone_keeps_its_entries_and_stays_listed_and_marked(self):
+        """`retire_zone` says it: "the decisions and events recorded here stay".
+
+        So a club that closed a studio last month still has that studio's entries in the
+        histogram, and a zone list that dropped it would leave a reader adding the per-zone
+        figures up and finding the total short with nothing on the page to say why.
+        """
+        floor = self.floor()
+        day = self.last_complete_local_day()
+        old_device = self.live_device(floor["tenant_id"], floor["location_id"])
+        old_zone = self.zone(floor["tenant_id"], floor["location_id"])
+        old_point = self.point(floor["tenant_id"], old_zone, old_device)
+        for point, hour in ((floor["point_id"], 19), (old_point, 19)):
+            recorded = self.client.post("/access/events", json={
+                "point_id": point, "direction": "entry",
+                "credential_value": floor["credential_value"],
+                "occurred_at": (day.replace(hour=hour, minute=0, second=0, microsecond=0)
+                                - self.AMMAN).replace(tzinfo=UTC).isoformat(),
+                "source": "online", "idempotency_key": str(uuid.uuid4()),
+                **self.correlation()},
+                headers=self.headers(floor["tenant_id"]))
+            self.assertEqual(recorded.status_code, 201, recorded.text)
+        retired = self.client.post(f"/access/zones/{old_zone}/retire", json={
+            "reason": "the studio was knocked through", **self.correlation()},
+            headers=self.headers(floor["tenant_id"]))
+        self.assertEqual(retired.status_code, 200, retired.text)
+
+        body = self.report(floor)
+        listed = {z["zone_id"]: z for z in body["zones"]}
+        self.assertIn(old_zone, listed)
+        self.assertTrue(listed[old_zone]["retired"])
+        self.assertFalse(listed[floor["zone_id"]]["retired"])
+        # **The identity a reader checks the breakdown against.** The per-zone figures add
+        # up to the total, which is only true while a retired zone's entries are listed.
+        self.assertEqual(body["entries"], sum(z["entries"] for z in body["zones"]))
+        self.assertEqual(2, body["entries"])
+
+    def test_a_retired_zone_with_nothing_in_the_window_is_not_part_of_the_answer(self):
+        floor = self.floor()
+        gone = self.zone(floor["tenant_id"], floor["location_id"])
+        retired = self.client.post(f"/access/zones/{gone}/retire", json={
+            "reason": "never opened", **self.correlation()},
+            headers=self.headers(floor["tenant_id"]))
+        self.assertEqual(retired.status_code, 200, retired.text)
+        self.assertNotIn(gone, [z["zone_id"] for z in self.report(floor)["zones"]])
+
+    def test_an_exit_is_not_a_visit(self):
+        """MOD-022 keeps a decision and an event apart, and a direction apart from both."""
+        floor = self.floor()
+        day = self.last_complete_local_day()
+        exit_device = self.live_device(floor["tenant_id"], floor["location_id"])
+        exit_point = self.point(floor["tenant_id"], floor["zone_id"], exit_device,
+                                direction="exit")
+        self.entry_at(floor, day.replace(hour=19, minute=0, second=0, microsecond=0))
+        left = self.client.post("/access/events", json={
+            "point_id": exit_point, "direction": "exit",
+            "credential_value": floor["credential_value"],
+            "occurred_at": (day.replace(hour=20, minute=0, second=0, microsecond=0)
+                            - self.AMMAN).replace(tzinfo=UTC).isoformat(),
+            "source": "online", "idempotency_key": str(uuid.uuid4()), **self.correlation()},
+            headers=self.headers(floor["tenant_id"]))
+        self.assertEqual(left.status_code, 201, left.text)
+        body = self.report(floor)
+        self.assertEqual(1, body["entries"])
+        self.assertEqual(19, body["busiest"]["busiest_hour"])
+
+    def test_no_share_on_the_response_is_a_share_of_a_capacity(self):
+        """The canvas writes "94% of floor capacity" and this read refuses the denominator."""
+        floor = self.floor(capacity=10)
+        day = self.last_complete_local_day()
+        for _ in range(4):
+            self.entry_at(floor, day.replace(hour=19, minute=0, second=0, microsecond=0))
+        body = self.report(floor)
+        self.assertNotIn("capacity", json.dumps(body["by_hour"]))
+        self.assertIn("never of a zone's capacity", body["shares_are_of_the_peak_hour"])
+        # Four entries against a capacity of ten is 40%; the only share here is of the peak,
+        # which the one busy hour is 100% of.
+        self.assertEqual(10_000,
+                         {h["hour"]: h["share_of_peak_bp"]
+                          for h in body["by_hour"]}[19])
+
+    def test_the_report_needs_the_access_read_and_nothing_else_opens_it(self):
+        floor = self.floor()
+        bare = self.stepped_grant(floor["tenant_id"], ["membership.record.read"])
+        refused = self.client.get(
+            f"/reports/attendance?location_id={floor['location_id']}&weekday=0",
+            headers=self.headers(floor["tenant_id"], bare))
+        self.assertEqual(refused.status_code, 403, refused.text)
+
+    def test_a_routine_session_may_read_it(self):
+        """`access.zone.read` is `data_access` and routine, like the three reads beside it.
+
+        A club manager opens this report on an ordinary sign-in; a step-up here would make it
+        a report nobody runs.
+        """
+        floor = self.floor()
+        reader = self.grant(floor["tenant_id"], ["access.zone.read"])
+        read = self.client.get(
+            f"/reports/attendance?location_id={floor['location_id']}&weekday=0",
+            headers=self.headers(floor["tenant_id"], reader))
+        self.assertEqual(read.status_code, 200, read.text)
+
+    def test_nobody_is_named_anywhere_in_the_response(self):
+        """An hourly histogram is a figure with nobody in it, which is why it sits behind the
+        same permission as a zone's occupancy rather than behind a person read."""
+        floor = self.floor()
+        day = self.last_complete_local_day()
+        self.entry_at(floor, day.replace(hour=19, minute=0, second=0, microsecond=0))
+        body = json.dumps(self.report(floor))
+        for leaked in ("person_id", "credential_id", "credential_digest", "Jane"):
+            self.assertNotIn(leaked, body)
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

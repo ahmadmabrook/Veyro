@@ -631,6 +631,43 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
     });
   }
 
+  // **A day's shape, for ADM-RPT-04.** The entries above are one a day at mid-morning,
+  // which draws a single bar: a chart with one bar demonstrates nothing, which is this
+  // repository's own rule about a fixture carrying one of a kind. The report's whole output
+  // is a busiest window, a quietest attended hour and three heat tiers, and none of those
+  // exists until a day has a shape.
+  //
+  // So: an evening peak at 19:00 with 18:00 just inside the peak tier beside it, which is
+  // what makes the busiest window span two hours and read "18:00-20:00" the way the canvas
+  // draws it; 17:00 in the middle tier; and 07:00 quiet, which is the actionable hour the
+  // canvas's own conclusion names. With the 07:30 UTC entries above landing at 10:30 local,
+  // the finished chart is 19:00 at ten, 18:00 at nine, 10:00 at seven, 17:00 at six and
+  // 07:00 at three -- a peak, a peak-tier neighbour, two busy hours and one quiet one.
+  //
+  // **The hours are local and the fixture writes UTC**, which is the whole point of the
+  // read: Amman is UTC+3, so 19:00 local is 16:00Z. A seed that set local hours directly
+  // would agree with a chart bucketed on the instant, which is the defect.
+  //
+  // **Every entry is two to five days back**, not spread over the window: they then age out
+  // together rather than one hour at a time, so a fixture left sitting for three weeks
+  // reports a smaller chart of the same shape instead of a different peak. That is the
+  // "a test that asserts a freshness has to create it" rule applied to a window.
+  const SHAPE_OF_A_DAY = [[19, 10], [18, 9], [17, 6], [7, 3]];
+  for (const [localHour, howMany] of SHAPE_OF_A_DAY) {
+    for (let i = 0; i < howMany; i += 1) {
+      const when = new Date(Date.now() - (2 + (i % 4)) * 86400000);
+      when.setUTCHours(localHour - 3, 0, 0, 0);
+      await call("/access/events", {
+        method: "POST", ...as(token),
+        body: {
+          point_id: point.point_id, direction: "entry",
+          credential_value: credentialValue, occurred_at: when.toISOString(),
+          source: "online", idempotency_key: randomUUID(), correlation_id: cid(),
+        },
+      });
+    }
+  }
+
   // ---------------------------------------------------------------- MOD-005, configuration
   //
   // **Two definitions and two flags, because the board is about telling answers apart.** One

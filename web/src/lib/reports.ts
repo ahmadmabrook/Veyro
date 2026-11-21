@@ -53,6 +53,19 @@ export const REPORTS: readonly ReportEntry[] = [
     permission: "membership.record.read",
     roles: "OWNER · CM",
   },
+  {
+    screen: "ADM-RPT-04",
+    href: "/reports/attendance",
+    name: "reports.attendanceName",
+    summary: "reports.attendanceSummary",
+    // **The access plane's own read, not a reports permission.** An hourly histogram is the
+    // same events `/access/visits` already counts at a different grain, and a second
+    // permission for it would be a role that may see the day's total and not the hours it
+    // is made of -- which is the revenue report's argument for reusing
+    // `finance.revenue.read` rather than minting one.
+    permission: "access.zone.read",
+    roles: "OWNER · CM",
+  },
 ] as const;
 
 /**
@@ -63,7 +76,6 @@ export const REPORTS: readonly ReportEntry[] = [
  * told about, or they will take the short list for the whole answer.
  */
 export const UNBUILT: readonly { name: MessageKey; why: MessageKey }[] = [
-  { name: "reports.attendanceName", why: "reports.attendanceWhy" },
   { name: "reports.coachingName", why: "reports.coachingWhy" },
   { name: "reports.leadsName", why: "reports.leadsWhy" },
   { name: "reports.taxName", why: "reports.taxWhy" },
@@ -153,4 +165,137 @@ export function change(bp: number | null): { text: string; tone: "up" | "down" }
     text: `${sign}${Math.abs(pct).toFixed(1)}%`,
     tone: pct < 0 ? "down" : "up",
   };
+}
+
+/* ------------------------------------------------- ADM-RPT-04 · ATTENDANCE */
+
+export type AttendanceHour = {
+  hour: number;
+  entries: number;
+  /** `null` where nobody came in at all, which is not the same as 0% — see the server. */
+  share_of_peak_bp: number | null;
+  tier: "quiet" | "busy" | "peak";
+};
+
+export type AttendanceReport = {
+  location_id: string;
+  location_name: string;
+  /** The zone every hour on this chart is an hour of. */
+  timezone: string;
+  zone_id: string | null;
+  weekdays: number[];
+  weeks: number;
+  window: {
+    first_day: string;
+    last_day: string;
+    /** Days of the chosen set inside the window — what the bars are summed over. */
+    days_counted: number;
+    clamped: boolean;
+  };
+  entries: number;
+  peak_entries: number;
+  by_hour: AttendanceHour[];
+  busiest: {
+    from_hour: number;
+    /** The hour the span *ends*, so 18:00 and 19:00 read as "18:00–20:00". */
+    to_hour: number;
+    busiest_hour: number;
+    entries: number;
+    other_peak_hours: number[];
+  } | null;
+  quietest: { hour: number; entries: number; share_of_peak_bp: number | null } | null;
+  zones: {
+    zone_id: string;
+    display_name: string;
+    entries: number;
+    /** Its events stay, so it is listed and marked rather than dropped. */
+    retired: boolean;
+  }[];
+  shares_are_of_the_peak_hour: string;
+  opening_hours_are_not_recorded: string;
+  entries_are_presentations: string;
+  a_weekend_is_not_declared_anywhere: string;
+  complete_days_only: string;
+  zone_counts_are_not_narrowed: string;
+  a_retired_zone_keeps_its_entries: string;
+};
+
+export function readAttendanceReport(
+  locationId: string,
+  weekdays: readonly number[],
+  options: { zoneId?: string | null; weeks?: number } = {},
+): Promise<AttendanceReport> {
+  const query = new URLSearchParams();
+  query.set("location_id", locationId);
+  for (const day of weekdays) query.append("weekday", String(day));
+  if (options.zoneId) query.set("zone_id", options.zoneId);
+  if (options.weeks) query.set("weeks", String(options.weeks));
+  return api<AttendanceReport>(`/reports/attendance?${query.toString()}`);
+}
+
+/**
+ * The day ranges this screen offers, and why none of them is called "weekdays".
+ *
+ * **The canvas scopes its chart to "WEEKDAYS" and nothing in this build knows which days
+ * those are.** A working week is Sunday to Thursday in the market this product is built for
+ * and Monday to Friday in the one its design language comes from, and no table, constant or
+ * MOD-005 configuration key declares either. So a chip labelled "Weekdays" would be the
+ * surface picking a market convention and then presenting it as the product's own — which is
+ * the one thing the delegation does not cover.
+ *
+ * Each chip therefore names *which days*, which is a fact, rather than what they mean to a
+ * business, which is not. The note beside them says the choice is the reader's and why. A
+ * reader who wants a single day asks for it in the URL: the route takes any set.
+ */
+export type DayRange = {
+  key: string;
+  label: MessageKey;
+  /** 0 is Monday, which is MOD-019's rota convention rather than a second one. */
+  days: readonly number[];
+};
+
+/** Every day, which is what the chart shows when nobody has narrowed it. */
+export const DEFAULT_RANGE: DayRange = {
+  key: "all",
+  label: "attendanceReport.allDays",
+  days: [0, 1, 2, 3, 4, 5, 6],
+};
+
+export const DAY_RANGES: readonly DayRange[] = [
+  DEFAULT_RANGE,
+  { key: "sun-thu", label: "attendanceReport.sunThu", days: [6, 0, 1, 2, 3] },
+  { key: "mon-fri", label: "attendanceReport.monFri", days: [0, 1, 2, 3, 4] },
+];
+
+/** The range a `range=` parameter names, falling back to every day. */
+export function dayRange(key: string | undefined): DayRange {
+  return DAY_RANGES.find((range) => range.key === key) ?? DEFAULT_RANGE;
+}
+
+/**
+ * An hour as a wall-clock label: 6 is "06:00".
+ *
+ * Padded and 24-hour because the axis is a clock rather than prose, and `Intl` would give a
+ * locale's own 12-hour form for one of the two locales this app ships — which puts "6 AM"
+ * under a heading whose other end reads "22:00".
+ */
+export function hourLabel(hour: number): string {
+  return `${String(hour).padStart(2, "0")}:00`;
+}
+
+/** A share of the busiest hour as a whole percentage, or `null` where there is no peak. */
+export function sharePercent(bp: number | null): number | null {
+  return bp === null ? null : Math.round(bp / 100);
+}
+
+/**
+ * The bar's height as a percentage of the tallest, with a floor so a quiet hour is a mark.
+ *
+ * **An hour nobody came in is drawn at the baseline rather than omitted**, which is the
+ * weekbar chart's own rule: an absent bar and a bar nobody can see are the same to a reader,
+ * and "nothing happens before seven" is a reading this chart exists for.
+ */
+export function barHeightPercent(entries: number, peak: number): number {
+  if (peak <= 0) return 0;
+  return Math.max(2, Math.round((entries / peak) * 100));
 }

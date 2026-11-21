@@ -3344,7 +3344,28 @@ Known gaps, deliberate:
 - **Occupancy is advisory and a capacity policy cannot be enforced from it.** A count built
   from readers is wrong the moment a door is held, and refusing a member on a number the
   module itself calls approximate is the direction nobody would defend. Enforcing it needs
-  anti-tailgating hardware this build has no access to.
+  anti-tailgating hardware this build has no access to. **That advisory-ness is what
+  ADM-RPT-04's report refuses to divide by**, which is the gap being honoured one surface
+  over rather than closed: `app/access/attendance.py` names the busiest window and the
+  quietest attended hour as shares of the busiest *hour*, never of `acc_policies.capacity`.
+  Two independent reasons, either enough: entries in an hour are arrivals rather than people
+  inside at a moment -- a hundred arrivals is a floor holding a hundred if everybody stays an
+  hour and fifty if everybody stays half of one -- and a concurrency figure summed over four
+  weeks at an entry-only turnstile climbs all month. `NO_CAPACITY_PERCENTAGE` rides on every
+  response, because a reader who took a share for a capacity would be making a staffing
+  decision on the wrong number.
+- **An hourly histogram counts presentations, not people, and `visits_on` has the same
+  shape.** `GET /reports/attendance` sums every zone of a club unless narrowed, so a member
+  who passes the front door and then a studio reader is two entries. Disclosed on both reads
+  rather than changed: "visits" counted per zone is what the event ledger holds, and picking
+  one zone per club would be a read deciding which door is the door. Narrowing to one zone is
+  the figure a manager wants for a building's own arrivals, and the surface offers it.
+- **Nothing in this build records when a club is open.** So the hourly read returns all
+  twenty-four hours and the quietest hour is the quietest one that *saw anybody* -- taken over
+  all twenty-four it is four in the morning in every club in the world. Its share of the peak
+  rides beside it, which is what makes a stray 04:00 entry read as what it is rather than as
+  a gap worth filling. MOD-019's `sch_availability_windows` is a *resource* rota rather than a
+  site's opening hours, so deriving one from the other would be inventing product.
 - **No anti-tailgating, no video, no visitor management and no mobile credential.** A reader
   presents a digest; the NFC, BLE and wallet-credential halves are a client-side problem and
   the vault one.
@@ -3722,7 +3743,13 @@ How it is proved, in four layers that answer different questions:
 - `tests/e2e/` is Playwright against a real uvicorn and a real PostgreSQL. `tests/e2e/serve.mjs`
   starts the backend, `tests/e2e/fixture.mjs` provisions a tenant, an identity, a session
   stepped up to AAL 2 and a complete MOD-022 fixture through the service layer, and writes
-  `web/.env.e2e.local` at mode 600. **It never prints the password.**
+  `web/.env.e2e.local` at mode 600. **It prints no generated credential.** The one password
+  on its summary line is a constant in the file -- a convenience sign-in for whoever is
+  looking at the page -- so a terminal scrollback learns nothing it could not read from the
+  source; every password it *derives* stays in the 600 file. The flat claim that it "never
+  prints the password" was here until somebody ran it and read the output, which is this
+  file's own standard applied to itself: a doc claiming a control it does not have is worse
+  than no claim.
 - `tests/e2e/mutate.mjs` is the sweep: it breaks a surface on purpose and asserts the suite
   goes red. A green browser suite proves nothing about a page nobody asserted, and this is
   what found a test that passed with the recovery-code field deleted.
@@ -3920,6 +3947,61 @@ And a third thing worth stating because it is a units trap rather than a product
 promotion's `percent_bp` is basis points, so rendering the stored number puts `1000` on screen
 for ten percent. That is MOD-015's money discipline one field over, and an assertion about the
 word "worth" passes either way.
+
+**ADM-RPT-04's board is one chart and one sentence, and the sentence is the requirement.**
+The canvas's own note says why it is derived rather than left to the reader: "The conclusion is
+written in words beneath the chart. A manager should not have to interpret a heat strip to find
+the actionable hour." So the busiest window and the quietest attended hour come off the server
+from `app/access/attendance.py`, where they are unit-tested, and the page renders a sentence.
+Five things about it are decisions rather than rendering:
+
+  * **The one claim it refuses is the canvas's own percentage of capacity**, for the two
+    reasons MOD-022's gaps now record -- and the refusal is *on the screen*, naming the claim,
+    because a note saying only "shares are relative" leaves a reader to work out which number
+    is missing. Every share on the page is a share of the busiest hour.
+  * **No chip says "Weekdays."** A working week is Sunday to Thursday in this product's own
+    market and Monday to Friday in the one its design language comes from, and nothing in the
+    build declares either -- so the route refuses to default the set and each chip names
+    *which days*, which is a fact, rather than what they mean to a business, which is not.
+    A component test asserts no label contains "weekday", "weekend" or "working".
+  * **Twenty-four bars, including the empty ones.** Trimming the axis to the hours that saw
+    somebody would be the surface inventing opening hours, and a 03:00 entry is exactly the
+    bar a manager wants to see. The empty hours are drawn at the baseline, which is the
+    weekbar chart's rule: an absent bar and a bar nobody can see are the same to a reader.
+  * **The three heat tiers are semantic tokens, not the canvas's primitives.** It paints
+    `warm.300`, `warm.400` and `warning.600`, and the generated token file says components
+    must not reference layer 1 because "a theme is a remapping of layer 2 rather than a
+    rewrite of layer 1" -- a light-theme warm grey hard-coded here is a bar that vanishes into
+    a dark card. `--color-border-strong`, `--color-text-tertiary` and
+    `--color-semantic-warning` come out monotonic in both themes, which is what a heat strip
+    needs, and the light values match the canvas. The colour is never alone: each bar carries
+    its hour and count as text and the conclusion names the window in words.
+  * **Class fill and capacity planning are named rather than drawn.** The registry line is
+    "peak hours, class fill, capacity planning" and the canvas draws the first of the three.
+    A second chart this design does not have would be as much a deviation as a missing one.
+
+**Two process findings came out of running it, and the first cost a whole suite.**
+`playwright.config.ts` runs `npm run start` under `CI=1`, which serves whatever `.next` is
+already on disk -- so `CI=1` alone does not build the change, and a brand-new *route* answers
+404 while every existing page is fine. All of the new spec file failed at once, which reads as
+a destroyed session or a broken fixture and was neither: the file before it was green, most of
+its tests failed at the `expect` timeout while one failed in 391ms (a `toBe` against
+`undefined` needs no wait), and the data was correct read straight from the database. One
+`curl` of the page with the saved session cookie settled it in a second. The CI workflow runs
+`npm run build` as its own step; a local judgement has to as well. And stopping the browser
+mutation sweep to apply an unrelated change left `composeTree` returning
+`orphanLocations: []` -- the same file and the same mutation the rules file already records,
+because the harness restores on SIGINT, SIGTERM and SIGHUP and `TaskStop` reaches none of
+them. The tell was a modified file this session had never touched.
+
+And the fixture had to grow a day's shape to render it. The access seed was one entry a day at
+mid-morning, which draws a single bar -- a chart with one bar demonstrates nothing, which is
+this repository's own rule about a fixture carrying one of a kind, met here with none. The
+seeded day now has an evening peak with its peak-tier neighbour, a middle tier and a quiet
+morning hour, written as UTC instants at the club's local hours so the e2e assertion is about
+a *rendered value* rather than about the timezone being named: `19:00` carries ten and `16:00`
+carries nothing, in a club that is UTC+3. That is the schedule board's defect asserted against
+rather than reasoned about.
 
 **MOD-018's board is the period lock, made visible for the first time.** A closed period
 refuses a posting and `closing` admits the close's own entries and no trade at all, so an
@@ -4134,7 +4216,7 @@ Known gaps: the surface covers the sign-in, the step-up, the account page, MOD-0
 MOD-007, MOD-008, MOD-009, MOD-010, MOD-011, MOD-012, MOD-013, MOD-014, MOD-016, MOD-017,
 MOD-018, MOD-019, MOD-021 and MOD-022, plus MOD-020's roster on a session, ADM-STF-01/02's
 staff list and staff record, ADM-PAY-05's
-recovery workspace, ADM-PAY-10's dispute board, ADM-RPT-01/02/03
+recovery workspace, ADM-PAY-10's dispute board, ADM-RPT-01/02/03/04
 under `/reports`, ADM-PAY-07's wallet on a member's billing tab and ADM-MEM-07's attendance
 tab. MOD-015 is the one
 implemented module with no screen at all, which is the bulk of the remaining work; MOD-019's
@@ -4168,8 +4250,15 @@ implemented module with no screen at all**;
 `contracts/ui/screen-contracts.yaml` names the rest.
 
 **Of the specified Admin screens with no route, the ones with reads behind them are what to
-build next**: ADM-RPT-04's attendance chart needs an hourly read over the access events, which
-nothing provides. **ADM-STF-01/02 came off that list, and found a defect doing it.** The three
+build next.** **ADM-RPT-04 came off that list by writing the read it needed**, and the
+interesting half was deciding what *not* to answer: `GET /reports/attendance` buckets entries
+into a club's own local hours over complete local days of a caller-chosen day set, and
+`app/access/attendance.py` derives the busiest window and the quietest attended hour, which is
+the canvas's own requirement rather than a styling note. What it refuses is the canvas's
+"94% of floor capacity": a capacity figure exists and is not this chart's denominator, because
+entries in an hour are arrivals rather than people inside at a moment and occupancy here is
+advisory unless a zone reads both directions. **ADM-STF-01/02 came off that list, and found a
+defect doing it.** The three
 reads it needed are each on the plane that owns the fact -- `GET /staff` for the employment
 half, `GET /authz/assignments` (batched) for the role, `GET /identities/last-seen` for the
 login -- and composing the last two is what the design's own footnote asks for: "last seen

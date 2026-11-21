@@ -914,7 +914,18 @@ reader skimming the summary sees a product that renders nothing while correctly 
 draw the buttons it should not. This is the backend half's rule — "a backend started by hand
 is not the backend the browser suite is written against" — one layer over, and the tell is the
 same: adjacent failures all timing out at the same duration. **Judge a new surface with
-`CI=1`**, which builds and starts its own server and reuses nothing.
+`CI=1`** — and build first, because `CI=1` is only half of it.
+
+**`npm run start` serves whatever `.next` is already on disk, so `CI=1` alone does not build
+the change.** The config's `webServer` command is `npm run start` under CI and the CI workflow
+runs `npm run build` as its own step; a local run that skips the build serves the previous
+artefact, and a brand-new *route* then answers 404 while every existing page is fine. The
+whole of a new spec file fails at once, which reads as a destroyed session or a broken
+fixture and is neither. **The tells, and they are worth knowing together**: the file before it
+is green, most of its tests fail at the `expect` timeout while one or two fail in a few
+hundred milliseconds (a `toBe` against `undefined` needs no wait), and the surface's own data
+is correct when read straight from the database. One `curl` of the page with the saved session
+cookie settles it in a second — `http=404`.
 
 **A fixture block spliced on an anchor lands in whatever function holds the anchor.** A
 seed-staff block anchored on a comment inside `seedAccess` compiled, typechecked and then
@@ -993,3 +1004,98 @@ nothing, because the seeded leaver *has* a live session and the surviving half s
 for them. The row that catches it is the leaver with **no** session whose account still works
 — which is also the commonest real shape, and the fixture did not have one. Same question as
 for a CHECK: not "does this row violate the rule" but "which weakening would admit this row".
+
+
+**A plural message's unreachable CLDR form still has to carry every placeholder it is passed,
+and deleting it fights the sweep that exists for it.** ADM-RPT-04's "there is another peak at
+{hours}" sentence is rendered only where there *is* another peak hour, so Arabic's `zero`
+category is unreachable by construction -- which is MOD-020's "a declared state nothing
+writes" arriving in a message catalogue. The first fix deleted the form, and the plural parity
+sweep caught it within the minute: a missing category falls back to `other`, which renders a
+plural where Arabic wants a dual, so all six have to exist. And the honest-reading zero form,
+"no other hour", is the one form `fill` refuses outright, because it cannot carry the `{hours}`
+the call site passes. So the form exists, repeats `other`, and the test that exercises every
+category says in a comment why zero is in the list and what it proves. **The general shape: a
+message with a required non-`count` placeholder has to carry it in every form, including the
+ones the page cannot reach.**
+
+**Mutate the binding, not the SQL, when the control is a value flowing into a statement.**
+Proving that an hourly histogram converts each instant in the *club's* zone means breaking the
+conversion -- and replacing `AT TIME ZONE %s` with `AT TIME ZONE 'UTC'` in the query text
+removes three placeholders, so the statement no longer matches its parameter tuple and the
+mutation fails to run. A harness that reads that as a catch is recording a gap it created, and
+one that reads it as a gap is reporting noise; this file already records both halves for
+generated index and numeric-bound mutations. The clean mutation is one token at the variable
+binding (`str(site[1])` to `"UTC"`), which keeps the statement well-formed and changes exactly
+the fact under test.
+
+**Resolve a report's window once and pass explicit dates.** The first version of
+`visits_by_hour` computed its bounds in SQL twice, once in the hourly query and once in the
+per-zone one -- MOD-018's "one module, two definitions of the same balance" waiting for the day
+somebody edits one of them. The bounds come back from a single read now and the other two
+queries take dates. A window that two queries derive independently is a chart whose total can
+disagree with its own breakdown, which is the figure a reader checks the breakdown against.
+
+**A hard-coded count of what is missing goes stale the hour something is built.** The reports
+index's component test asserted `UNBUILT.length === 4`; building the attendance report made it
+three and the test red for the right reason and the wrong shape. The property is that every one
+of the canvas's six reports is *either* offered *or* explained -- `REPORTS.length +
+UNBUILT.length === 6` -- which cannot go stale in either direction and fails only when a built
+report is left in the "cannot report" list. That is the Member 360's "not built in this
+repository" defect in an assertion rather than on a screen, and the per-item-list hazard this
+file keeps finding one layer further in.
+
+
+**Stopping a sweep through the agent harness does not reach the sweep's signal handlers, so
+the diff check after one is mandatory rather than advisory.** `mutate.mjs` restores on SIGINT,
+SIGTERM and SIGHUP and nothing can catch a SIGKILL -- which this file already records, from the
+hour `composeTree` sat in the tree returning `orphanLocations: []`. It happened again, in the
+same file and with the same mutation, when a sweep was stopped to apply an unrelated change:
+`git status` showed `web/src/lib/organization.ts` modified among seventeen files this session
+had genuinely edited, and one line of it was the mutation. **The tell is a file in the diff
+that this session never touched**, and the mutation whose replacement is the empty string
+leaves nothing to search the tree for. So: after any interrupted sweep, read the diff and
+restore anything you did not write, before believing a result or a failure.
+
+**And a sweep whose runner is `spawnSync` prints nothing until it finishes.** Node buffers
+stdout to a pipe and flushes on an event-loop turn, and a loop of `spawnSync` calls never
+yields one -- so a 116-mutation browser sweep looks hung for an hour and then dumps every line
+at once. That is not a hang and not a reason to kill it; `ps` for the child process it is
+currently running is what tells you it is alive. Worth knowing before stopping one, since
+stopping one is what leaves a mutation behind.
+
+
+**A mutation goes stale when the code around it improves, and the sweep is the only thing that
+notices.** Running the browser sweep's two phone mutations while building an unrelated screen
+returned **0/2 caught**. Nothing was broken: both named CSS rules that are still correct and
+had simply stopped being provable by the assertion they were pointed at, because two earlier
+fixes had made them redundant.
+
+`table { display: block }` at phone width is what makes `overflow-x` apply to a table, and
+breaking it used to overflow seven surfaces. It overflows none of them now -- every table in
+the app is either a `DataGrid` whose columns drop by priority until it fits or a hand-rolled
+one at `width: 100%` -- and a grid gets `display: block` from the 599px collapse rule anyway,
+so the generic rule is reachable only on the four hand-rolled tables, **whose two tabs were
+not in the phone sweep at all**. `.facts dd { overflow-wrap: anywhere }` was unprovable for
+that reason plus one more: `contain: layout` on the matrix's scroll wrapper now stops an
+overflowing descendant reaching the root, so a value too wide for its track is contained
+before the document can see it.
+
+Three things came out of fixing it, and they generalise past CSS:
+
+  * **Measure what the mutation changes, do not reason about it.** Applying each one by hand
+    and running the *whole* sideways-scroll sweep -- 36 surfaces, not the one the mutation
+    named -- is what established that no page depended on either rule. The same probe found
+    that `contain: layout` *is* load-bearing, and by exactly the 125px this file already
+    records.
+  * **Assert the property, not a consequence that has stopped following from it.** The
+    collapse is directly measurable with `getComputedStyle`, so it is measured: a grid's table
+    and cells compute `block` (or `none`, for a dropped column -- that is the other half of
+    the collapse), and the matrix computes `table`, which is the exception the design makes
+    for itself. Four mutations against those assertions are caught where two against the
+    document's scroll width were not.
+  * **A document-level assertion cannot see a contained overflow, and containment is the
+    design's own answer.** "The bar scrolls inside itself rather than widening the page" is
+    the intent, so `scrollWidth - clientWidth` on the root correctly reports zero while a
+    table is far too wide. That assertion is still the right one for the defect it was written
+    for; it is the wrong one for anything a scroll wrapper absorbs.

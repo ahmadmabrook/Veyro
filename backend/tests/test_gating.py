@@ -133,6 +133,12 @@ READ_ROUTES = [
     ("get", f"/access/credentials?person_id={_ID}", None),
     ("get", f"/access/decisions?person_id={_ID}", None),
 
+    # ADM-RPT-02 and ADM-RPT-04. The revenue report had never been swept with a weak
+    # credential at all -- `/reports` was in neither list, so the only thing asserting its
+    # permission was the `permit` call itself, which is what this sweep exists to doubt.
+    ("get", "/reports/revenue", None),
+    ("get", f"/reports/attendance?location_id={_ID}&weekday=0", None),
+
     ("get", f"/scheduling/calendar?location_id={_ID}&from_date=2026-11-01"
             "&to_date=2026-11-30", None),
     ("get", f"/scheduling/sessions/{_ID}", None),

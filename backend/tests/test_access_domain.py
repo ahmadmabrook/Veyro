@@ -11,9 +11,17 @@ from __future__ import annotations
 import pathlib
 import re
 import unittest
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
-from app.access import credentials, occupancy, offline, passback, policy, zones
+from app.access import (
+    attendance,
+    credentials,
+    occupancy,
+    offline,
+    passback,
+    policy,
+    zones,
+)
 from app.access.zones import AccessError
 
 NOW = datetime(2026, 6, 1, 12, 0, tzinfo=UTC)
@@ -616,6 +624,210 @@ class OfflineTests(unittest.TestCase):
         rather than rewriting history. The absence is the control, so the test is the absence."""
         for forbidden in ("rewritten", "deleted", "reversed", "corrected", "removed"):
             self.assertNotIn(forbidden, offline.OUTCOMES)
+
+
+
+class AttendanceHistogramTests(unittest.TestCase):
+    """ADM-RPT-04's conclusion, which is the screen's whole point.
+
+    The canvas says why it is derived rather than drawn: "A manager should not have to
+    interpret a heat strip to find the actionable hour."
+    """
+
+    @staticmethod
+    def histogram(**entries: int) -> tuple[attendance.Bucket, ...]:
+        """All 24 hours, with the named ones carrying counts. `h18=40` is 18:00."""
+        counts = {int(k[1:]): v for k, v in entries.items()}
+        return tuple(attendance.Bucket(hour=h, entries=counts.get(h, 0))
+                     for h in attendance.HOURS)
+
+    # --- the day set, which has no default -----------------------------------
+
+    def test_a_weekday_set_is_required_and_normalised(self):
+        self.assertEqual((0, 1, 4), attendance.check_weekdays([4, 0, 1, 0]))
+        self.assertEqual(attendance.WEEKDAYS,
+                         attendance.check_weekdays(list(range(7))))
+        self.assertEqual((2, 5), attendance.check_weekdays({5, 2}))
+
+    def test_no_days_is_not_a_report(self):
+        with self.assertRaises(AccessError):
+            attendance.check_weekdays([])
+
+    def test_a_weekday_outside_monday_to_sunday_is_refused(self):
+        for bad in (-1, 7, 70):
+            with self.assertRaises(AccessError):
+                attendance.check_weekdays([bad])
+
+    def test_a_weekday_is_an_integer_and_a_bool_is_not_one(self):
+        """`True` is an `int` in Python and `isdigit`-style guards are how that gets through.
+
+        MOD-019 shipped `str.isdigit()` where `isdecimal` was meant and answered 500 on a
+        Unicode superscript; this is the same shape one type over.
+        """
+        for bad in ("1", 1.0, True, None):
+            with self.assertRaises(AccessError):
+                attendance.check_weekdays([bad])
+
+    def test_the_days_are_not_a_scalar(self):
+        with self.assertRaises(AccessError):
+            attendance.check_weekdays(3)
+
+    def test_the_convention_is_mod019s_rota_and_not_a_second_one(self):
+        """0 is Monday, which is `sch_availability_windows.weekday`'s own numbering."""
+        self.assertEqual(0, min(attendance.WEEKDAYS))
+        self.assertEqual(6, max(attendance.WEEKDAYS))
+        self.assertEqual(0, date(2026, 6, 1).weekday())  # a Monday
+
+    # --- the window ----------------------------------------------------------
+
+    def test_the_window_is_bounded_at_both_ends(self):
+        self.assertEqual(1, attendance.check_weeks(1))
+        self.assertEqual(26, attendance.check_weeks(26))
+        for bad in (0, -1, 27, 100_000):
+            with self.assertRaises(AccessError):
+                attendance.check_weeks(bad)
+
+    def test_a_week_count_is_a_whole_number(self):
+        for bad in (1.5, "4", True):
+            with self.assertRaises(AccessError):
+                attendance.check_weeks(bad)
+
+    def test_the_days_counted_are_the_chosen_ones_in_the_window(self):
+        """Four weeks of Sunday-to-Thursday is twenty days, not twenty-eight."""
+        first, last = date(2026, 6, 1), date(2026, 6, 28)
+        self.assertEqual(28, attendance.days_in_window(first, last, (0, 1, 2, 3, 4, 5, 6)))
+        self.assertEqual(20, attendance.days_in_window(first, last, (0, 1, 2, 3, 6)))
+        self.assertEqual(4, attendance.days_in_window(first, last, (0,)))
+
+    def test_a_window_that_ends_before_it_starts_is_refused(self):
+        with self.assertRaises(AccessError):
+            attendance.days_in_window(date(2026, 6, 28), date(2026, 6, 1), (0,))
+
+    # --- the shares and the tiers -------------------------------------------
+
+    def test_a_share_is_of_the_busiest_hour(self):
+        self.assertEqual(10_000, attendance.share_of_peak_bp(40, 40))
+        self.assertEqual(5_000, attendance.share_of_peak_bp(20, 40))
+        self.assertEqual(0, attendance.share_of_peak_bp(0, 40))
+
+    def test_an_empty_window_has_no_share_rather_than_a_zero_one(self):
+        """MOD-011's "an empty window is not a pass", in a report.
+
+        Nobody came in at all, which is a club that was shut or a reader nobody wired up.
+        Reporting 0% would read as "this hour is quiet".
+        """
+        self.assertIsNone(attendance.share_of_peak_bp(0, 0))
+
+    def test_the_three_tiers_reproduce_the_canvas(self):
+        """The canvas paints 41 and 42 quiet, 52 and 74 busy, 88 and 100 in the warning tone.
+
+        The boundaries were read off those six rather than picked, so the six are the test.
+        """
+        peak = 100
+        for share, expected in ((18, "quiet"), (41, "quiet"), (42, "quiet"),
+                                (52, "busy"), (68, "busy"), (74, "busy"),
+                                (88, "peak"), (100, "peak")):
+            self.assertEqual(expected, attendance.tier(share, peak), share)
+
+    def test_an_hour_nobody_came_in_is_quiet_rather_than_a_fourth_tone(self):
+        self.assertEqual("quiet", attendance.tier(0, 40))
+        self.assertEqual("quiet", attendance.tier(0, 0))
+        self.assertEqual(3, len(attendance.TIERS))
+
+    # --- the busiest window -------------------------------------------------
+
+    def test_the_busiest_window_spans_to_the_hour_the_last_bar_ends(self):
+        """The canvas writes "18:00-20:00" for peak bars at 18:00 and 19:00."""
+        window = attendance.busiest_window(
+            self.histogram(h7=41, h17=52, h18=88, h19=100, h20=74))
+        assert window is not None
+        self.assertEqual(18, window["from_hour"])
+        self.assertEqual(20, window["to_hour"])
+        self.assertEqual(19, window["busiest_hour"])
+        self.assertEqual(100, window["entries"])
+        self.assertEqual((), window["other_peak_hours"])
+
+    def test_a_second_peak_is_named_separately_rather_than_spanned(self):
+        """A morning rush and an evening one are two peaks.
+
+        One span covering both would claim the middle of the day is busy, which is the
+        opposite of the advice this chart exists to give.
+        """
+        window = attendance.busiest_window(
+            self.histogram(h7=90, h12=20, h18=95, h19=100))
+        assert window is not None
+        self.assertEqual(18, window["from_hour"])
+        self.assertEqual(20, window["to_hour"])
+        self.assertEqual((7,), window["other_peak_hours"])
+
+    def test_the_busiest_hour_ties_to_the_earliest_so_row_order_cannot_decide(self):
+        """MOD-019's `publishing.assess` keyed a dict on a start time and dropped a session,
+        and which one depended on the query planner. A tie here is two equally busy hours."""
+        forwards = self.histogram(h8=50, h18=50)
+        backwards = tuple(reversed(forwards))
+        for buckets in (forwards, backwards):
+            window = attendance.busiest_window(buckets)
+            assert window is not None
+            self.assertEqual(8, window["busiest_hour"])
+            self.assertEqual((18,), window["other_peak_hours"])
+
+    def test_a_window_nobody_came_in_has_no_busiest_hour(self):
+        self.assertIsNone(attendance.busiest_window(self.histogram()))
+
+    # --- the quietest hour --------------------------------------------------
+
+    def test_the_quietest_hour_is_the_quietest_one_that_saw_anybody(self):
+        """Taken over all 24 it is four in the morning in every club in the world.
+
+        Nothing in this build records opening hours, so an hour at zero is excluded -- and
+        the share is returned beside it so a stray 04:00 entry reads as what it is.
+        """
+        quiet = attendance.quietest_attended_hour(
+            self.histogram(h7=41, h18=88, h19=100))
+        assert quiet is not None
+        self.assertEqual(7, quiet["hour"])
+        self.assertEqual(41, quiet["entries"])
+        self.assertEqual(4_100, quiet["share_of_peak_bp"])
+
+    def test_a_stray_entry_outside_opening_hours_carries_its_own_tell(self):
+        quiet = attendance.quietest_attended_hour(self.histogram(h4=1, h19=100))
+        assert quiet is not None
+        self.assertEqual(4, quiet["hour"])
+        self.assertEqual(100, quiet["share_of_peak_bp"])  # one per cent
+
+    def test_the_quietest_hour_ties_to_the_earliest(self):
+        quiet = attendance.quietest_attended_hour(self.histogram(h6=3, h21=3, h19=100))
+        assert quiet is not None
+        self.assertEqual(6, quiet["hour"])
+
+    def test_a_window_nobody_came_in_has_no_quietest_hour(self):
+        self.assertIsNone(attendance.quietest_attended_hour(self.histogram()))
+
+    # --- the bucket ---------------------------------------------------------
+
+    def test_a_bucket_is_an_hour_of_a_day_and_a_count(self):
+        for bad in (-1, 24):
+            with self.assertRaises(AccessError):
+                attendance.Bucket(hour=bad, entries=0)
+        with self.assertRaises(AccessError):
+            attendance.Bucket(hour=6, entries=-1)
+
+    # --- the refusal --------------------------------------------------------
+
+    def test_nothing_here_divides_by_a_capacity(self):
+        """The canvas writes "94% of floor capacity" and this module will not.
+
+        Entries in an hour are arrivals rather than people inside at a moment, and
+        `occupancy.confidence` is advisory for any zone without an exit reader -- so the
+        honest denominator is the busiest hour. The absence is the control, which means the
+        test is the absence: no function here takes a capacity.
+        """
+        source = pathlib.Path("app/access/attendance.py").read_text()
+        signatures = re.findall(r"^def .*?\) ->", source, re.MULTILINE | re.DOTALL)
+        for signature in signatures:
+            self.assertNotIn("capacity", signature, signature)
+        self.assertIn("never of a zone's capacity", attendance.NO_CAPACITY_PERCENTAGE)
+        self.assertIn("opening", attendance.OPENING_HOURS_ARE_NOT_RECORDED)
 
 
 if __name__ == "__main__":  # pragma: no cover

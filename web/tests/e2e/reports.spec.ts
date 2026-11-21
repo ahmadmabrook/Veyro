@@ -30,6 +30,7 @@ test.describe("the reports index", () => {
     const list = page.locator(".ds-report-list");
     await expect(list.getByRole("link", { name: "Revenue" })).toBeVisible();
     await expect(list.getByRole("link", { name: "Membership" })).toBeVisible();
+    await expect(list.getByRole("link", { name: "Attendance" })).toBeVisible();
     // The canvas puts the roles at the row's end. They are descriptive -- the gate decided
     // whether the row exists -- so they are labelled rather than four bare letters.
     await expect(list.locator(".ds-report-roles").first()).toContainText("OWNER");
@@ -42,10 +43,16 @@ test.describe("the reports index", () => {
     // these four were simply missing they would read as four more grants to go and ask for,
     // which is a false thing to teach somebody.
     const section = page.locator("section").filter({ hasText: "cannot report" });
-    for (const name of ["Attendance", "Coaching", "Leads and conversion", "Tax and e-invoicing"]) {
+    for (const name of ["Coaching", "Leads and conversion", "Tax and e-invoicing"]) {
       await expect(section.getByRole("term").filter({ hasText: name })).toBeVisible();
     }
     await expect(section).toContainText("Coach Workspace is not built");
+    // **Attendance moved out of this list when it was built**, and the assertion has to
+    // move with it or the page would be telling a reader that a report they can open does
+    // not exist -- which is the Member 360's stale "not built in this repository" defect,
+    // the same shape one screen over.
+    await expect(section.getByRole("term").filter({ hasText: "Attendance" }))
+      .toHaveCount(0);
   });
 
   test("offers no export, and says the gate in front of one is the feature", async ({

@@ -210,14 +210,14 @@ const PLANS = [
         description:
           "Verify the Revenue report is NOT listed on this page, and that no report is " +
           "shown greyed out, disabled or marked as locked. Verify the page still names the " +
-          "reports the design lists that this build cannot produce at all — attendance, " +
-          "coaching, leads and tax — each with a stated reason, and that it says the empty " +
+          "reports the design lists that this build cannot produce at all — coaching, " +
+          "leads and tax — each with a stated reason, and that it says the empty " +
           "list is about this session's own access.",
       },
     ],
   },
   {
-    name: "The owner, who holds everything, is listed both reports",
+    name: "The owner, who holds everything, is listed every built report",
     description:
       "The other half of the gate: a session that may open a report sees it as a link with " +
       "a one-line description, not greyed out.",
@@ -228,9 +228,47 @@ const PLANS = [
       {
         type: "assertion",
         description:
-          "Verify the page lists a Revenue report and a Membership report, each as a " +
-          "clickable link with a one-line description, and that neither is greyed out or " +
-          "marked as locked.",
+          "Verify the page lists a Revenue report, a Membership report and an Attendance " +
+          "report, each as a clickable link with a one-line description, and that none is " +
+          "greyed out or marked as locked.",
+      },
+    ],
+  },
+  {
+    name: "The attendance report names the actionable hour in words",
+    description:
+      "ADM-RPT-04's own note is the requirement rather than a styling remark: the " +
+      "conclusion is written in words beneath the chart, because a manager should not have " +
+      "to interpret a heat strip to find the actionable hour. The club is in Amman, which " +
+      "is three hours ahead of UTC, so the hours on this page are also the one place a " +
+      "server that bucketed on the raw instant would be visibly wrong.",
+    priority: "p1",
+    planSteps: [
+      ...signIn,
+      { type: "action", description: 'Navigate to /reports and open the "Attendance" report.' },
+      {
+        type: "assertion",
+        description:
+          "Verify the page shows a bar chart of visits by hour with an axis running from " +
+          "00:00 to 23:00, and that beneath the chart there is a sentence naming the " +
+          "busiest window as 18:00 to 20:00 and the quietest hour that sees anybody as " +
+          "07:00 with the percentage of the peak it runs at. Verify the page names the " +
+          "club's own timezone (Asia/Amman). Verify the page states that every share on it " +
+          "is a share of the busiest hour and never of a zone's capacity, and gives the " +
+          "reason. Verify there is no Export button anywhere on the page.",
+      },
+      {
+        type: "action",
+        description:
+          'Use the day-range controls on the page to switch from "All days" to "Sun–Thu".',
+      },
+      {
+        type: "assertion",
+        description:
+          "Verify the chart and the figures reload for the narrower set of days, that the " +
+          "chosen range is marked as the current one, and that no control on the page is " +
+          "labelled \"Weekdays\" or \"Weekend\" — the page should instead say that nothing " +
+          "in this build declares which days are a working week.",
       },
     ],
   },

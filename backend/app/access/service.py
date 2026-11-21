@@ -31,7 +31,15 @@ from typing import Any
 
 from psycopg import Connection, errors
 
-from app.access import credentials, occupancy, offline, passback, policy, zones
+from app.access import (
+    attendance,
+    credentials,
+    occupancy,
+    offline,
+    passback,
+    policy,
+    zones,
+)
 from app.commercial import entitlements
 from app.commercial import service as commercial
 from app.db import Pool, tenant_scope
@@ -1897,6 +1905,14 @@ def visits_on(
         "entries_are_events_not_decisions":
             "An entry is a recorded acc_event. A granted decision nobody walked through is "
             "not a visit.",
+        # Found while writing ADM-RPT-04's hourly read, which has the same shape and the
+        # same answer: a member who passes the front door and then a studio reader is two
+        # entries, so a multi-zone club's figure is larger than its headcount. Disclosed
+        # rather than changed -- "visits" counted per zone is what the event ledger holds,
+        # and picking one zone per club would be this read inventing which door is the door.
+        "entries_are_presentations":
+            "Every zone of a club contributes, so a member who passes two readers is two "
+            "entries. A multi-zone club's count is presentations rather than people.",
         "no_baseline_is_not_zero":
             "usual_for_this_weekday is null where no prior same-weekday carried entries.",
     }
@@ -2234,10 +2250,194 @@ def entries_by_point(
         "date": on.isoformat(),
         "points": [{"point_id": str(r[0]), "device_id": str(r[1]), "entries": int(r[2])}
                    for r in rows],
-        # A device may stand at more than one reader, so the per-device figure is a sum.
+        # Keyed by device because that is what the fleet board joins on. **Not because
+        # a device can stand at two readers** -- `acc_points` carries
+        # `UNIQUE (tenant_id, device_id)`, so it cannot, and the comment that used to
+        # say otherwise was a claim about the schema the schema refuses. The sum is
+        # still the right shape: it is one row per device either way.
         "by_device": by_device,
         "entries": sum(by_device.values()),
         "a_device_with_no_point_is_absent":
             "Only devices standing at a live access point appear here. A scanner that is "
             "not a door counts nothing, which is not the same as counting zero.",
+    }
+
+
+
+def visits_by_hour(
+    pool: Pool, tenant_id: str, *, location_id: str, weekdays: object,
+    zone_id: str | None = None, weeks: int = 4, until: date | None = None,
+) -> dict[str, Any]:
+    """ADM-RPT-04: entries per local hour at one club, over complete days of one day-set.
+
+    The canvas is a bar per hour with the two ends of the axis labelled and the conclusion
+    written underneath it in words. `app.access.attendance` holds that conclusion's arithmetic
+    and the one claim it refuses -- a percentage of floor capacity -- and the whole of that
+    reasoning is in that module's docstring rather than repeated here.
+
+    **One club, because an hour is local to one timezone.** `visits_on` lists every location
+    and converts each day in its own zone, which is right for a daily total; an *hourly*
+    histogram merged across zones would add a Khalda 18:00 to an Amsterdam 18:00 and label the
+    sum "six in the evening". So `location_id` is required and the response carries the zone
+    the hours were computed in.
+
+    **Complete local days only.** The window ends on the last local day that has finished, so
+    an evening hour is never compared against a today that has not reached it yet -- a report
+    including the current day would show the evening falling off a cliff every morning, and
+    the cliff would be the clock. A caller naming a later `until` is clamped to it rather than
+    refused, and `window.clamped` says so: that is the revenue report's own precedent for a
+    comparison period shorter than it was asked for.
+
+    **The window is computed once.** The first version resolved it twice in SQL, once in each
+    query, which is MOD-018's "one module, two definitions of the same balance" waiting to
+    happen -- so the bounds come back from one read and the other two take explicit dates.
+
+    **A club with several zones counts presentations, not people.** A member who walks into
+    the building and then into the studio is two entries, so a multi-zone club's hourly total
+    is larger than its headcount. `zone_id` narrows to one reader's zone, which is the figure
+    a manager wants for a building's front door, and `entries_are_presentations` says it on
+    every response rather than leaving a reader to find it out.
+    """
+    try:
+        days = attendance.check_weekdays(weekdays)
+        span = attendance.check_weeks(weeks)
+    except ValueError as e:
+        # A `ValueError` is not a `ServiceError`, and MOD-018 shipped the version that
+        # answered 500 on four money routes because one of ten call sites did not wrap it.
+        raise InvalidRequest(str(e)) from None
+    with tenant_scope(pool, tenant_id) as conn:
+        # **"The last complete day" is this club's own.** `occurred_at` is an instant and
+        # `locations.timezone` is the wall clock the chart is labelled in; taking today from
+        # the host's zone is the defect this repository's rules file records twice -- once for
+        # a fixture and once for `visits_on`, where at 23:17 UTC a UTC+3 club's entries had
+        # already rolled into tomorrow and the club dropped out of the response.
+        site = conn.execute(
+            "SELECT l.location_name, l.timezone,"
+            "       (now() AT TIME ZONE l.timezone)::date - 1"
+            " FROM plt01.locations l WHERE l.location_id = %s",
+            (location_id,)).fetchone()
+        if site is None:
+            raise NotFound("location_not_found")
+        name, tz, complete_through = str(site[0]), str(site[1]), site[2]
+        if zone_id is not None:
+            # A zone at another club is not a zone this report can be about, and answering
+            # with the whole club instead would be a silently wider report than was asked for.
+            at_this_club = conn.execute(
+                "SELECT 1 FROM plt01.acc_zones"
+                " WHERE zone_id = %s AND location_id = %s",
+                (zone_id, location_id)).fetchone()
+            if at_this_club is None:
+                raise NotFound("zone_not_at_this_location")
+        clamped = until is not None and until > complete_through
+        last_day = complete_through if until is None or clamped else until
+        first_day = last_day - timedelta(days=7 * span - 1)
+        # `isodow` is 1 (Monday) to 7 (Sunday) and MOD-019's rota is 0 to 6, so the conversion
+        # happens here and only one weekday convention leaves this module.
+        #
+        # Every filter is in the subquery's WHERE rather than the LEFT JOIN's ON, because a
+        # predicate in an ON clause is not a filter -- MOD-018's trial balance carried another
+        # entity's journals for exactly that reason. The join condition is the hour alone, so
+        # an hour nobody came in is a row at zero rather than an absent bar.
+        rows = conn.execute(
+            "SELECT h.hour, count(ev.event_id)"
+            " FROM generate_series(0, 23) AS h(hour)"
+            " LEFT JOIN ("
+            "   SELECT e.event_id,"
+            "          extract(hour from (e.occurred_at AT TIME ZONE %s))::int AS local_hour"
+            "   FROM plt01.acc_events e"
+            "   JOIN plt01.acc_zones z ON z.zone_id = e.zone_id"
+            "   WHERE e.direction = 'entry'"
+            "     AND z.location_id = %s"
+            "     AND (%s::uuid IS NULL OR e.zone_id = %s::uuid)"
+            "     AND (e.occurred_at AT TIME ZONE %s)::date BETWEEN %s AND %s"
+            "     AND (extract(isodow from (e.occurred_at AT TIME ZONE %s))::int - 1)"
+            "         = ANY(%s)"
+            " ) ev ON ev.local_hour = h.hour"
+            " GROUP BY h.hour"
+            " ORDER BY h.hour",
+            (tz, location_id, zone_id, zone_id, tz, first_day, last_day, tz, list(days)),
+        ).fetchall()
+        # Every live zone of the club and what each counted, so a reader can see which
+        # readers the total is made of rather than being asked to trust it.
+        #
+        # **Not filtered by `zone_id`, deliberately.** The first version applied the same
+        # filter the histogram uses, so a narrowed report listed only the zone already
+        # chosen -- and the surface draws its chips from this list, which made picking a
+        # reader remove every way back to the others. A live zone that counted nothing is
+        # listed at zero for the same reason: absent reads as a zone that is not there.
+        contributors = conn.execute(
+            "SELECT z.zone_id, z.display_name, count(e.event_id), z.retired_at"
+            " FROM plt01.acc_zones z"
+            " LEFT JOIN plt01.acc_events e"
+            "   ON e.zone_id = z.zone_id AND e.direction = 'entry'"
+            "  AND (e.occurred_at AT TIME ZONE %s)::date BETWEEN %s AND %s"
+            "  AND (extract(isodow from (e.occurred_at AT TIME ZONE %s))::int - 1) = ANY(%s)"
+            " WHERE z.location_id = %s"
+            " GROUP BY z.zone_id, z.display_name, z.retired_at"
+            " HAVING z.retired_at IS NULL OR count(e.event_id) > 0"
+            " ORDER BY count(e.event_id) DESC, z.display_name, z.zone_id",
+            (tz, first_day, last_day, tz, list(days), location_id),
+        ).fetchall()
+    buckets = tuple(attendance.Bucket(hour=int(r[0]), entries=int(r[1])) for r in rows)
+    peak = attendance.peak_entries(buckets)
+    return {
+        "location_id": location_id,
+        "location_name": name,
+        # The zone every hour on this chart is an hour of.
+        "timezone": tz,
+        "zone_id": zone_id,
+        "weekdays": list(days),
+        "weeks": span,
+        "window": {
+            "first_day": first_day.isoformat(),
+            "last_day": last_day.isoformat(),
+            "days_counted": attendance.days_in_window(first_day, last_day, days),
+            "clamped": clamped,
+        },
+        "entries": sum(b.entries for b in buckets),
+        "peak_entries": peak,
+        "by_hour": [
+            {
+                "hour": b.hour,
+                "entries": b.entries,
+                "share_of_peak_bp": attendance.share_of_peak_bp(b.entries, peak),
+                "tier": attendance.tier(b.entries, peak),
+            }
+            for b in buckets
+        ],
+        "busiest": attendance.busiest_window(buckets),
+        "quietest": attendance.quietest_attended_hour(buckets),
+        "zones": [
+            {"zone_id": str(r[0]), "display_name": str(r[1]), "entries": int(r[2]),
+             "retired": r[3] is not None}
+            for r in contributors
+        ],
+        "shares_are_of_the_peak_hour": attendance.NO_CAPACITY_PERCENTAGE,
+        "opening_hours_are_not_recorded": attendance.OPENING_HOURS_ARE_NOT_RECORDED,
+        "entries_are_presentations":
+            "An entry is a recorded acc_event at one of this club's zones. A member who "
+            "passes the front door and then a studio reader is two entries, so a multi-zone "
+            "club's hourly total counts presentations rather than people; narrow to one zone "
+            "for a building's own arrivals.",
+        "a_weekend_is_not_declared_anywhere":
+            "The days this report covers are the caller's, because no table or configuration "
+            "key in this build says which days are a working week.",
+        "complete_days_only":
+            "The window ends on the last local day that has finished, so an evening hour is "
+            "never compared against a day that has not reached it.",
+        # **The zone counts answer a different question from the histogram.** They are what
+        # each reader saw in this window, whether or not `zone_id` narrowed the chart --
+        # because the surface draws its reader picker from this list, and filtering it to
+        # the zone already chosen removed every way back to the others. So the list sums to
+        # the club's total rather than to a narrowed `entries`, and a consumer is told
+        # rather than left to find the two figures disagreeing.
+        "zone_counts_are_not_narrowed":
+            "Each zone reports what it saw in this window and the list is not narrowed by "
+            "zone_id, so it sums to the club's total rather than to the entries figure "
+            "beside it whenever one zone was asked for.",
+        "a_retired_zone_keeps_its_entries":
+            "Retiring a zone stops new policy and new points and leaves its recorded events "
+            "alone, so a retired zone that carried an entry in this window is listed and "
+            "marked rather than dropped -- the per-zone figures then still add up to the "
+            "total. A retired zone with nothing in the window is not part of this answer.",
     }

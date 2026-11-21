@@ -778,21 +778,30 @@ collections chart, which renders as a list of twelve rows rather than as bars.
 
 ## ADM-RPT-01 … 05 — reports
 
-Built: the index and two reports. The read behind the revenue report was new.
+Built: the index and three reports. The reads behind the revenue and attendance reports were
+both new.
 
 - **ADM-RPT-01 · index** — `/reports`. Gated per entry, which is the canvas's own point: *"A
   Club Manager opening this screen sees four reports, not six. The two financial ones are
   absent — not listed and locked."* **An absent module is a different absence from a refused
-  permission**, so Attendance, Coaching, Leads and Tax are named with the module each needs
-  rather than quietly missing — otherwise they read as four more grants to go and ask for,
-  which is false.
+  permission**, so Coaching, Leads and Tax are named with the module each needs rather than
+  quietly missing — otherwise they read as three more grants to go and ask for, which is
+  false. Attendance was in that list until it was built, and the component test that used to
+  assert a count of four now asserts the property instead: every one of the canvas's six
+  reports is either offered or explained. A hard-coded count went stale the hour the report
+  landed.
 - **ADM-RPT-02 · revenue** — `/reports/revenue`, over a new `GET /reports/revenue`. Four
   figures because the canvas argues for four: *"Collected and invoiced are separate columns
   because they are separate facts. A report showing one number labelled 'revenue' is the
   reason operators cannot reconcile their own books."*
 - **ADM-RPT-03 · membership** — `/reports/membership`. Joins, leaves and net.
+- **ADM-RPT-04 · attendance** — `/reports/attendance`, over a new `GET /reports/attendance`
+  and a new pure module, `app/access/attendance.py`. A bar per local hour at one club, three
+  heat tiers, and the conclusion written underneath in words — which is the canvas's own
+  requirement rather than a styling note: *"The conclusion is written in words beneath the
+  chart. A manager should not have to interpret a heat strip to find the actionable hour."*
 
-Three decisions worth carrying:
+Six decisions worth carrying:
 
 - **BY SOURCE is COM-02-R01's own vocabulary, not a taxonomy invented here.** An invoice line
   carries a `variant_id`, a variant belongs to a product and a product has one of eight
@@ -809,12 +818,82 @@ Three decisions worth carrying:
   health fact whatever column it is in"* — a freeze's reason is masked for exactly that, and
   `membership.record.read` is routine and tenant-wide.
 
+- **ADM-RPT-04 refuses the canvas's percentage of capacity, and says which claim it
+  refuses.** The canvas writes *"18:00–20:00 runs at 94% of floor capacity"*, and a capacity
+  figure does exist — `acc_policies.capacity`, the number a presentation is refused against.
+  It is not this chart's denominator, for two independent reasons either of which would be
+  enough. Entries in an hour are **arrivals, not people inside at a moment**: a hundred
+  arrivals is a floor holding a hundred if everybody stays an hour and fifty if everybody
+  stays half of one. And occupancy derived from access events is **advisory** unless a zone
+  reads both directions — paragraph 4180 and `occupancy.confidence` behind it — so the honest
+  version of the comparison is unavailable at exactly the single-turnstile clubs most tenants
+  have. Nothing is lost from the canvas's reading, because every figure it draws is already
+  relative: the bars are heights against the busiest hour and the three tones are tiers of the
+  same ratio. The screen says so where a reader might otherwise take a share for a capacity.
+  The canvas's second sentence — *"two more classes at 07:00 would move perhaps 30 people"* —
+  is a recommendation with a headcount in it, and nothing here models what a new class would
+  draw; the hour is named, which is the half the data supports.
+- **"WEEKDAYS" is the reader's choice, because nothing in this build knows which days those
+  are.** A working week is Sunday to Thursday in the market this product is built for and
+  Monday to Friday in the one its design language comes from, and no table, constant or
+  MOD-005 key declares either. So the route **refuses to default the set at all** — MOD-009's
+  DSAR deadline and MOD-015's tax rate are the precedent — and the chips name *which days*,
+  which is a fact, rather than what they mean to a business, which is not. A chip reading
+  "Weekdays" would have been the surface inventing a market convention and presenting it as
+  the product's own.
+- **Class fill and capacity planning are named, not drawn.** The registry line for this screen
+  is "peak hours, class fill, capacity planning" and the canvas draws the first of the three.
+  A second chart this design does not have would be as much a deviation as a missing one, so
+  the two absences are stated — with the place average fill already exists, which is the
+  schedule board.
+- **The scope line is the shell's, not the canvas's eyebrow.** The canvas is a card excerpt
+  with no page header, so its single mono line — *"VISITS BY HOUR · KHALDA · WEEKDAYS"* — is
+  both its title and its scope. On a page inside this app the title is "Attendance" and the
+  scope sits in the sub-line beneath it with the filter chips, which is what the schedule
+  board does (`{club} · {dates} · {timezone}`). Consistency with the shell beats transcribing
+  a card, and the timezone is on that line because every hour on the page is that club's
+  clock and no other screen may assume a reader knows which.
+- **The chips are this app's convention, and the canvas has none.** A read-only report of one
+  club on all days would make the canvas's own scope line meaningless, and every other board
+  here filters with links rather than controls so a view survives being sent to somebody.
+  Three rows at most: the clubs (plain links, as the schedule board does), the day range and
+  the readers.
+- **A plain denial names the permission; the other three gate verdicts do not.** Both sibling
+  reports say *"This report needs <permission>"*, which is the sentence a reader can act on,
+  and `gateMessage` cannot say it — its whole job is keeping a transport failure, an
+  unreachable assurance level and a step-up apart from a denial. So the denial gets the
+  report's own sentence and the other three keep theirs. Found by a browser test asserting
+  the permission was named and getting the generic line.
+- **A retired zone stays in the reader list, marked.** `retire_zone` says in as many words
+  that "the decisions and events recorded here stay", so a club that closed a studio still
+  has its entries in the histogram — and a reader list filtered to live zones left those
+  entries in the chart and in no row beneath it, which is a total a reader cannot reconcile
+  against the breakdown. MOD-018's trial balance makes the same choice for a retired account
+  and for the same reason. **The browser fixture has no retired zone**, so the rendering of
+  that marker is covered by a component assertion on the message and by two HTTP tests on
+  the server rather than by a rendered page: seeding one needs a fourth activated turnstile,
+  and the three e2e specs that count this fixture's devices and its attention queue would
+  move for a chip suffix. Stated rather than left to be discovered.
+
 **ADM-RPT-05, the export gate, is not built and the screen says why.** The canvas puts a
 tier-4 gate in front of every export of personal or financial data: a written reason recorded
 and visible to the tenant, an option to leave contact details out, and step-up before the file
 is produced. Nothing here exports anything, so the gate has nothing to stand in front of — and
 a button producing a file without that record would be the control removed rather than the
 feature added.
+
+**And building it found the phone sweep's two CSS mutations had gone stale.** Running them
+returned 0/2 caught, and nothing was broken: both name rules that are still correct and had
+stopped being provable, because two earlier fixes made them redundant on every page that
+exists. `table { display: block }` is now reachable only on the four hand-rolled tables in
+`membership-panels.tsx` — a grid takes `display: block` from the 599px collapse rule and the
+matrix is exempt — and **those two tabs were not swept at phone width at all**, which is the
+coverage gap the stale mutation was hiding. `.facts dd { overflow-wrap: anywhere }` was
+unprovable for that reason plus `contain: layout`, which stops an overflowing descendant
+reaching the root before the document can see it. The collapse is directly measurable, so it
+is measured now: a grid's table and cells compute `block` (or `none` for a dropped column, the
+other half of the collapse) and the matrix computes `table`. Four mutations are caught where
+two were not, and the detail is in the rules file.
 
 ### What building them found elsewhere
 

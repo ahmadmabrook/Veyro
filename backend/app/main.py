@@ -6787,6 +6787,34 @@ def create_app(
         permit(session, "finance.revenue.read")
         return commercial.revenue_report(tenant_pool, tenant_id, as_of=as_of)
 
+    @app.get("/reports/attendance")
+    def read_attendance_report(
+        tenant_id: TenantId, session: Session, location_id: str,
+        weekday: Annotated[list[int], Query()],
+        zone_id: str | None = None, weeks: int = 4, until: date | None = None,
+    ) -> dict[str, Any]:
+        """ADM-RPT-04: entries per local hour at one club, and the actionable hour in words.
+
+        **`weekday` is required and repeated, because a weekend is jurisdictional.** The
+        canvas scopes its chart to "WEEKDAYS", which is Monday to Friday in one market and
+        Sunday to Thursday in the one this product is built for, and nothing in this build
+        declares which. MOD-009's `response_days` and MOD-015's tax rate are the precedent:
+        a defaulted value would be the server picking a market convention and then labelling
+        a chart with it. The values are 0 (Monday) to 6 (Sunday), which is MOD-019's rota
+        convention rather than a second one.
+
+        Behind `access.zone.read`, like `/access/visits`, `/access/entries` and a zone's
+        occupancy: all four are figures derived from the event ledger with nobody named in
+        them, and a reports-only permission beside them would be a role that may see the
+        day's total but not the hours it is made of.
+        """
+        permit(session, "access.zone.read")
+        return access.visits_by_hour(
+            tenant_pool, tenant_id,
+            location_id=require_uuid(location_id, "location_id"),
+            zone_id=None if zone_id is None else require_uuid(zone_id, "zone_id"),
+            weekdays=weekday, weeks=weeks, until=until)
+
     @app.get("/finance/dunning-cases")
     def read_dunning_cases(
         tenant_id: TenantId, session: Session, status: str = "open", limit: int = 50,
