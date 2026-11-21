@@ -839,3 +839,15 @@ whenever the UTC hour is at least 10) and `Etc/GMT+12` (UTC-12, behind it whenev
 under 12). The two windows cover the clock, so at every instant at least one club is on a
 different date from UTC and the old code fails on it. Mutation-proven: restoring
 `(now() AT TIME ZONE 'UTC')::date` fails four of them.
+
+
+**A theory that explains a failure is not the cause of it.** A TestSprite journey failed three
+times saying a report was missing for a session that held every permission. I read the page's
+code, found a branch that *could* produce that symptom -- `gateAll` fails closed, so a dead
+gate and a refusal reach the page identically -- fixed it, and wrote it up as the answer. It
+failed again on the next run. The actual cause was in the test plan: its prose description
+quoted the design's *Club Manager* scenario while its steps signed in as the owner, and the
+agent followed the description. Reproducing it took one command -- sign in the way the failing
+run signed in, and look -- and that was the step skipped. The fix was worth keeping and the
+attribution was not. **Reproduce before diagnosing, and when a fix does not clear the failure,
+the diagnosis is the first thing to doubt.**

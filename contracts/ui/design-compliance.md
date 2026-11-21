@@ -966,9 +966,17 @@ tests. A scheduled run at an hour I had not run at.
 
 ## A refusal and a failure are different facts, and 21 pages tell the first story about both
 
-TestSprite reported the Revenue report absent from `/reports` for an owner holding every
-permission in the catalogue — twice, in both rounds. The product was right and the page was
-wrong about *why*.
+**Correction, and it matters more than the finding.** This section first said TestSprite had
+caught this. It had not. The journey that kept failing was failing for a different reason --
+my own plan was wrong, and that is written up below -- and I diagnosed a plausible cause
+without reproducing it, fixed that, and wrote the fix up as the answer. The journey failed
+again on the next run, which is the only reason the mistake surfaced. **A theory that explains
+a failure is not the cause of it**, and the cheap check was the one I skipped: sign in the way
+the failing run signed in, and look at the page.
+
+The distinction below is real and worth having -- `/finance` already makes it, and this
+codebase's own rule is that a refusal and a failure are different facts -- but it came from
+reading `gateAll` while looking for something else, not from a test.
 
 `gateAll` **fails closed**: an unreachable gate is not permission, which is correct for access
 and must not change. But a transport failure and a refusal then arrive at a page in the same
@@ -987,6 +995,33 @@ balance (`balanceUnreadable` against `noEntity`); the rest do not. That sweep is
 task, and it wants the same shape: a page may fail closed and still say which of the two
 happened.
 
-**Worth noting how it was found.** Four layers of local tests and a visual comparison all pass
-on this page: they run against a backend that is up, so the branch never executes. An
-independent agent driving a real browser through a tunnel hit it twice.
+**Nothing has exercised the unreachable branch.** Four local layers and the visual comparison
+all run against a backend that is up, so it never executes, and the component test asserts the
+distinction in `UNREACHED` rather than the page's behaviour under a dead gate. That is a gap,
+not evidence.
+
+## The plan was wrong, three runs in a row, about a product that was right
+
+`A report this session cannot open is absent, not locked` failed in round 1, in round 2 and on
+a re-run. Each time the tester reported the Revenue report missing for an owner holding every
+permission in the catalogue. Reproducing it settled it in one command: the same tenant, the
+same owner, a fresh form sign-in, and the page lists Revenue.
+
+**The fault was the plan's `description`**, which quoted the canvas --
+
+> A Club Manager opening this screen sees four reports, not six. The two financial ones are
+> absent — not listed and locked.
+
+-- while the steps signed in as the **owner**. The agent did exactly what the description
+said: it checked the financial reports were absent, found Revenue present, and failed. It was
+right to.
+
+**A plan's description is not a comment.** The whole point of writing these in English is that
+the agent reads them as the specification, and a description that describes a different
+session from the one the steps open is a plan contradicting itself. The journey is now the two
+halves it should always have been: the front desk, which holds the person read and nothing of
+the money modules, must not see Revenue listed *or* listed-and-disabled; and the owner must
+see both reports as links.
+
+**And the cost of the misdiagnosis is worth recording**: a commit attributed its fix to this
+failure. The fix stands on its own merits; the attribution was wrong, and is corrected above.

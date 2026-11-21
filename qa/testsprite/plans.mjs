@@ -61,16 +61,36 @@ const env = Object.fromEntries(
     .map((line) => [line.slice(0, line.indexOf("=")), line.slice(line.indexOf("=") + 1)]),
 );
 
-const signIn = [
+/**
+ * Sign in as somebody.
+ *
+ * **Which identity a journey uses is part of the journey**, and getting that wrong is how
+ * the reports-gate plan failed three times against a product that was right. Its
+ * `description` quoted the canvas -- "A Club Manager opening this screen sees four reports,
+ * not six" -- while its steps signed in as the owner, and the tester did exactly what the
+ * description said: it checked the financial reports were absent, for a session holding
+ * every permission in the catalogue, and reported them present.
+ *
+ * The description is not a comment. The agent reads it as the specification, which is the
+ * point of writing plans in English, and a description that describes a different session
+ * from the one the steps open is a plan that contradicts itself.
+ */
+const signInAs = (email, password) => [
   {
     type: "action",
     description:
       `Navigate to /login. Fill the field labelled "Tenant ID" with ` +
       `${env.VEYRO_E2E_TENANT_ID}, the field labelled "Email or phone" with ` +
-      `${env.VEYRO_E2E_EMAIL}, and the field labelled "Password" with ` +
-      `${env.VEYRO_E2E_PASSWORD}. Click the "Sign in" button.`,
+      `${email}, and the field labelled "Password" with ${password}. ` +
+      `Click the "Sign in" button.`,
   },
 ];
+
+/** The owner: every permission in the catalogue. */
+const signIn = signInAs(env.VEYRO_E2E_EMAIL, env.VEYRO_E2E_PASSWORD);
+
+/** The front desk: `people.person.read` and nothing of the money modules. */
+const signInAsDesk = signInAs(env.VEYRO_E2E_DESK_EMAIL, env.VEYRO_E2E_DESK_PASSWORD);
 
 /**
  * The four journeys, chosen for what they prove that the in-repo suites cannot.
@@ -100,10 +120,32 @@ const PLANS = [
     ],
   },
   {
-    name: "A report this session cannot open is absent, not locked",
+    name: "A report a front-desk session cannot open is absent, not locked",
     description:
-      "ADM-RPT-01's gate: 'A Club Manager opening this screen sees four reports, not six. " +
-      "The two financial ones are absent -- not listed and locked.'",
+      "ADM-RPT-01's gate, tested as the canvas states it: a session without the money " +
+      "permissions must not see the financial reports listed, and must not see them listed " +
+      "and disabled either. This signs in as the front desk, which holds the person read " +
+      "and nothing of the money modules.",
+    priority: "p1",
+    planSteps: [
+      ...signInAsDesk,
+      { type: "action", description: "Navigate to /reports." },
+      {
+        type: "assertion",
+        description:
+          "Verify the Revenue report is NOT listed on this page, and that no report is " +
+          "shown greyed out, disabled or marked as locked. Verify the page still names the " +
+          "reports the design lists that this build cannot produce at all — attendance, " +
+          "coaching, leads and tax — each with a stated reason, and that it says the empty " +
+          "list is about this session's own access.",
+      },
+    ],
+  },
+  {
+    name: "The owner, who holds everything, is listed both reports",
+    description:
+      "The other half of the gate: a session that may open a report sees it as a link with " +
+      "a one-line description, not greyed out.",
     priority: "p1",
     planSteps: [
       ...signIn,
@@ -111,10 +153,9 @@ const PLANS = [
       {
         type: "assertion",
         description:
-          "Verify the page lists reports as links with a one-line description each, and " +
-          "that none of them is shown greyed out, disabled or marked as locked. Verify a " +
-          "separate section names reports the design lists that this build cannot produce " +
-          "— attendance, coaching, leads and tax — each with a stated reason.",
+          "Verify the page lists a Revenue report and a Membership report, each as a " +
+          "clickable link with a one-line description, and that neither is greyed out or " +
+          "marked as locked.",
       },
     ],
   },
