@@ -962,3 +962,31 @@ Mutation-proven.
 
 It is worth naming what caught it: not the visual comparison, not TestSprite, not 334 browser
 tests. A scheduled run at an hour I had not run at.
+
+
+## A refusal and a failure are different facts, and 21 pages tell the first story about both
+
+TestSprite reported the Revenue report absent from `/reports` for an owner holding every
+permission in the catalogue — twice, in both rounds. The product was right and the page was
+wrong about *why*.
+
+`gateAll` **fails closed**: an unreachable gate is not permission, which is correct for access
+and must not change. But a transport failure and a refusal then arrive at a page in the same
+shape, and the index's empty state said *"No report here is open to this session. That is
+about your own access."* When the gate simply did not answer, that is a confident wrong
+answer in the one place a reader decides whether to go and ask for a grant.
+
+`UNREACHED` is the distinction — `forbidden` and `step_up_required` are the gate speaking,
+everything else is the request failing before it got an answer — and the index now has a
+message of its own for it, asserted different from the other in both languages.
+
+**This is a cross-board finding and only `/reports` is fixed.** Twenty-one pages call `gate`
+or `gateAll`, and a page that renders "Not permitted" when the backend is down teaches
+somebody they lack access they have. `/finance` already distinguishes the two for its trial
+balance (`balanceUnreadable` against `noEntity`); the rest do not. That sweep is the next
+task, and it wants the same shape: a page may fail closed and still say which of the two
+happened.
+
+**Worth noting how it was found.** Four layers of local tests and a visual comparison all pass
+on this page: they run against a backend that is up, so the branch never executes. An
+independent agent driving a real browser through a tunnel hit it twice.

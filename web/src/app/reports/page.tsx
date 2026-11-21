@@ -7,7 +7,7 @@ import { ProseNote } from "@/components/prose";
 import { t, type MessageKey } from "@/i18n/locale";
 import { currentSession, gateAll } from "@/lib/api";
 import { presentation } from "@/lib/preferences";
-import { REPORTS, UNBUILT } from "@/lib/reports";
+import { REPORTS, UNBUILT, UNREACHED } from "@/lib/reports";
 
 /**
  * ADM-RPT-01 · REPORTS INDEX — "Reports, and the gate in front of an export".
@@ -46,12 +46,27 @@ export default async function ReportsPage() {
   const answers = await gateAll(REPORTS.map((report) => report.permission));
   const open = REPORTS.filter((_, index) => answers[index]?.allowed === true);
 
+  // **A refusal and a failure are different facts, and this page told the first story about
+  // the second.** `gateAll` fails closed, which is right for access: an unreachable gate is
+  // not permission. But the empty state then said "No report here is open to this session --
+  // that is about your own access", which is a confident wrong answer when the gate simply
+  // could not be reached. Found by TestSprite, which reported the Revenue report absent for
+  // an owner holding every permission in the catalogue; the page had been handed six closed
+  // answers by a failed request and had no way to tell them from six refusals.
+  //
+  // Every refusal carrying a transport reason rather than `forbidden` means the gate did not
+  // answer. `/finance` already makes this distinction for its trial balance.
+  const unreachable = open.length === 0
+    && answers.every((answer) => UNREACHED.has(answer.reason));
+
   return (
     <>
       <PageHeader title={text("reports.heading")} />
       <ProseNote>{text("reports.lead")}</ProseNote>
 
-      {open.length === 0 ? (
+      {unreachable ? (
+        <Banner severity="critical">{text("reports.gateUnreachable")}</Banner>
+      ) : open.length === 0 ? (
         // **Not a repeat of the lead.** An empty index has one thing to say that a populated
         // one does not: no report here is open to this session, which is a fact about the
         // reader's own access rather than about the product. The section below still names
