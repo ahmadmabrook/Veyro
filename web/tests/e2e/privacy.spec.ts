@@ -52,7 +52,7 @@ test.describe("the privacy board", () => {
   });
 
   test("groups the residue by area rather than listing every column", async ({ page }) => {
-    // 371 rows of column names is a wall, not a disclosure. The grouping is the fix and the
+    // 375 rows of column names is a wall, not a disclosure. The grouping is the fix and the
     // row count is the only assertion that can see it.
     await expect(page.getByText(/is a wall rather than a disclosure/)).toBeVisible();
     const areas = page

@@ -1043,6 +1043,16 @@ SUBJECT_COLUMNS: tuple[Reachability, ...] = (
                  "the trigger beside the table makes the retirement final"),
     Reachability("plt01", "sch_availability_windows", "created_by", "unreachable",
                  "who set this rota window, which is what a schedule is generated against"),
+    Reachability("plt01", "sch_availability_windows", "withdrawn_by", "write_once",
+                 "**who took a rota window back**, which is the act that puts a coach back "
+                 "on the schedule after an absence was recorded against them; 0017's "
+                 "trigger makes the withdrawal final"),
+    Reachability("plt01", "sch_availability_windows", "withdrawn_at", "write_once",
+                 "when it was taken back, which bounds how long the absence stood"),
+    Reachability("plt01", "sch_availability_windows", "withdraw_correlation_id",
+                 "write_once",
+                 "the request that withdrew it, which names no subject and is declared "
+                 "because the sweep reads column names"),
     Reachability("plt01", "sch_templates", "created_by", "unreachable",
                  "who drafted a schedule"),
     Reachability("plt01", "sch_templates", "published_by", "write_once",
@@ -1173,9 +1183,19 @@ SUBJECT_COLUMNS: tuple[Reachability, ...] = (
     # Free text a subject can appear in. Declared by hand, because the sweep matches column
     # *names* and none of these says 'subject' -- the same group MOD-018 has, for the same
     # reason, and pinned by a named test for the same reason again.
-    Reachability("plt01", "sch_availability_windows", "reason", "write_once",
+    Reachability("plt01", "sch_availability_windows", "reason", "unreachable",
                  "why somebody is absent, in an operator's own words -- which is where a "
-                 "health fact goes in practice, and the reason this is declared"),
+                 "health fact goes in practice, and the reason this is declared. **It was "
+                 "`write_once` until 0017**, which revoked the `UPDATE (starts_at, ends_at, "
+                 "reason)` grant 0013 wrote and no service ever used; the database now "
+                 "refuses the write outright, which is the stronger and truer statement"),
+    Reachability("plt01", "sch_availability_windows", "withdrawn_reason", "unreachable",
+                 "why a rota window was taken back, in an operator's own words -- the same "
+                 "free text one column over, and the same reason it is declared by hand. "
+                 "The column carries an UPDATE grant because the withdrawal is what writes "
+                 "it; what makes it unreachable afterwards is 0017's trigger "
+                 "`sch_availability_windows_one_way`, which refuses any write to a window "
+                 "already withdrawn -- `sec_legal_holds.released_by`'s shape exactly"),
     Reachability("plt01", "sch_templates", "retire_reason", "write_once",
                  "why a recurring class was stopped"),
     Reachability("plt01", "sch_session_changes", "reason", "unreachable",

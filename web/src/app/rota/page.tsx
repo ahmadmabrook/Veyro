@@ -5,6 +5,8 @@ import { Banner } from "@/components/ds/banner";
 import { PageHeader } from "@/components/ds/page-header";
 import { WeekGrid } from "@/components/ds/week-grid";
 import { ProseNote } from "@/components/prose";
+
+import { ExceptionForm, WithdrawForm } from "./exception-form";
 import { fill, t, type MessageKey } from "@/i18n/locale";
 import {
   currentSession,
@@ -146,6 +148,27 @@ export default async function RotaPage({
   // schedule board's own note one screen over.
   const todayAtSite = inZone(new Date().toISOString(), week.timezone).date;
   const first = week.window.first_day;
+  // **Whether this reader may change a rota**, which decides three things on this page: the
+  // form, the withdraw controls and whether a time-off reason is prose or a mark. The server
+  // makes the same call for the third of those -- `may_read_reasons` is
+  // `"scheduling.availability.write" in held_permissions(session)` -- so asking the gate here
+  // and trusting the response's own masking there is one decision read twice rather than two
+  // that can disagree.
+  const mayWrite = (await gate("scheduling.availability.write")).allowed;
+  // **This week's dated absences, which is what the canvas's button adds and the only thing
+  // this screen withdraws.** A weekly working pattern is the rota itself rather than an
+  // exception to it, and writing one is a different screen; `rota.exceptionsScope` says so
+  // rather than leaving a reader to wonder why their Tuesdays are not listed.
+  const exceptions = week.days.flatMap((day) =>
+    day.windows
+      .filter((w) => !w.recurring && w.kind === "time_off" && w.window_id !== null)
+      .map((w) => ({
+        window_id: w.window_id as string,
+        date: day.date,
+        starts_at: w.starts_at,
+        ends_at: w.ends_at,
+        reason: w.reason,
+      })));
   // "This week" is current when today falls inside the window, which is what the reader
   // means -- not when `from` happens to equal today's date.
   const thisWeek = todayAtSite >= first && todayAtSite <= week.window.last_day;
@@ -342,11 +365,57 @@ export default async function RotaPage({
         <ProseNote>{text("rota.reasonMaskedWhy")}</ProseNote>
       ) : null}
 
+      {/* **The first write form in this app that is not a member acting on their own
+          account**, and it took a migration to earn: `sch_availability_windows` carried
+          `GRANT SELECT, INSERT` and nothing else, so a day off entered on the wrong date was
+          permanent. `scheduling.availability.write` is routine and AAL 1 by design, and a
+          routine permission whose every act is uncorrectable is MOD-013's rule from the
+          other side -- so `0017` adds the withdrawal and this adds the button for both.
+
+          Gated on the write, not on the read: a form that answered 403 is worse than its
+          absence, which is why every other write surface in this app is missing. */}
+      {mayWrite ? (
+        <section className="page-section" aria-labelledby="rota-exceptions">
+          <h2 id="rota-exceptions">{text("rota.formTitle")}</h2>
+          <ProseNote>{text("rota.formWhat")}</ProseNote>
+          <ExceptionForm
+            locale={locale}
+            resourceId={chosen}
+            defaultDate={first}
+          />
+
+          <h3>{text("rota.exceptionsTitle")}</h3>
+          <ProseNote>{text("rota.exceptionsScope")}</ProseNote>
+          {exceptions.length === 0 ? (
+            <p className="muted">{text("rota.noExceptions")}</p>
+          ) : (
+            <ul className="ds-rota-exceptions">
+              {exceptions.map((one) => (
+                <li key={one.window_id}>
+                  <span className="data" dir="ltr">
+                    {one.date} {one.starts_at}&ndash;{one.ends_at}
+                  </span>
+                  {one.reason === null ? null : <span>{one.reason}</span>}
+                  <WithdrawForm
+                    locale={locale}
+                    windowId={one.window_id}
+                    label={`${one.date} ${one.starts_at}\u2013${one.ends_at}`}
+                  />
+                </li>
+              ))}
+            </ul>
+          )}
+          <ProseNote>{text("rota.withdrawWhat")}</ProseNote>
+        </section>
+      ) : null}
+
       <section className="page-section" aria-labelledby="rota-gaps">
         <h2 id="rota-gaps">{text("rota.gapsTitle")}</h2>
         <dl className="facts">
           {([
-            ["rota.gapExceptionLabel", "rota.gapException"],
+            // **"Add an exception" has left this list**, which is what the note it used to
+            // carry said would happen: it was the one form here that was never blocked, and
+            // the only thing missing was the remedy a routine, uncorrectable write needs.
             ["rota.gapKindLabel", "rota.gapKind"],
             ["rota.gapHourLabel", "rota.gapHour"],
           ] as [MessageKey, MessageKey][]).map(([label, why]) => (

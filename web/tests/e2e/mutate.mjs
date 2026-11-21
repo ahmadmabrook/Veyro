@@ -862,7 +862,7 @@ const MUTATIONS = [
   },
   {
     id: "privacy-residue-is-grouped",
-    why: "371 rows of column names is a wall rather than a disclosure, and the grouping is "
+    why: "375 rows of column names is a wall rather than a disclosure, and the grouping is "
       + "what makes the shape of what survives legible at all",
     file: "src/lib/privacy.ts",
     from: "    const prefix = entry.table.includes(\"_\")",
@@ -1161,6 +1161,39 @@ const MUTATIONS = [
     to: "  if (edges.length === 0) return { first: 0, last: 23 };",
     runner: "vitest",
     grep: "is null where there is nothing at all to draw",
+  },
+  {
+    id: "rota-the-form-is-gated-on-the-write-not-the-read",
+    why: "every other write surface in this app is absent because a button that answered "
+      + "403 is worse than its absence, so a form rendered for a reader who may not change "
+      + "a rota is the thing that principle exists to prevent",
+    file: "src/app/rota/page.tsx",
+    from: '  const mayWrite = (await gate("scheduling.availability.write")).allowed;',
+    to: "  const mayWrite = true;",
+    runner: "playwright",
+    grep: "a reader who may not change a rota is given no form at all",
+  },
+  {
+    id: "rota-an-empty-field-is-named-by-the-server",
+    why: "the browser refuses an empty required field first, so the server-side check is "
+      + "reached only by a client that is not a browser -- and it is the one that matters, "
+      + "because `window_kind = 'time_off'` carries a schema constraint that a missing "
+      + "reason violates with a 500-shaped message rather than a named field",
+    file: "src/app/rota/actions.ts",
+    from: "  if (Object.keys(missing).length > 0) return { ...IDLE, missing, echo };",
+    to: "",
+    runner: "playwright",
+    grep: "names the field it needs rather than refusing the whole form",
+  },
+  {
+    id: "rota-a-write-the-page-does-not-show-is-a-reader-misled",
+    why: "a write whose own page still shows the old rota tells a reader the product did "
+      + "not work, and the next thing they do is write it again",
+    file: "src/app/rota/actions.ts",
+    from: '    revalidatePath("/rota");\n    return { ...IDLE, message: "rota.added" };',
+    to: '    return { ...IDLE, message: "rota.added" };',
+    runner: "playwright",
+    grep: "writes a day off, shows it on the grid, and takes it back",
   },
   {
     id: "rota-the-week-grid-is-contained-not-pinned",

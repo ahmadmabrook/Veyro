@@ -1101,6 +1101,67 @@ Three things came out of fixing it, and they generalise past CSS:
     for; it is the wrong one for anything a scroll wrapper absorbs.
 
 
+**Revoking a grant can strengthen a privacy declaration, and the registry notices both
+ways.** MOD-009's reachability sweep is usually described as catching a *new* column nobody
+declared, and it did that here for all four of `0017`'s. The other direction is the one worth
+knowing: `sch_availability_windows.reason` was declared `write_once`, which the registry
+requires a grant to stand behind — and revoking the unused `UPDATE (starts_at, ends_at,
+reason)` made that declaration false, because the database now refuses the write outright.
+`test_a_write_once_declaration_really_has_a_grant_behind_it` failed, and the repair was to
+*strengthen* the declaration to `unreachable`. The registry is a statement about what the
+privileges permit, so it moves whenever they do, in either direction. Related: a column that
+is `unreachable` **and** carries a grant is only honest when the reason names the trigger that
+makes it final — `sec_legal_holds.released_by`'s shape, and the test checks for the word.
+
+**A foreign key to a table the role cannot read answers at the worst moment.**
+`iam.auth_events.tenant_id` references the tenant registry, and `veyro_iam_app` holds no
+USAGE on `plt01_platform` -- deliberately, that is the plane separation. So a login against
+a tenant that does not exist hid every identity behind RLS, took the unknown-identifier
+branch, and had its failure event refused by that key: a `ForeignKeyViolation` and a stack
+trace out of an *unauthenticated* route, once per attempt. The service could not have
+checked first; the database is the only thing in reach that knows. A `with
+conn.transaction()` savepoint around the write turns the answer into a refusal without
+poisoning the caller's transaction, and the refusal has to stay byte-identical to every
+other failed login or it becomes an oracle about which tenants exist. **The general shape:
+where a role is deliberately blind to a referenced table, every write that crosses that
+reference is a 500 waiting for input the caller controls.**
+
+**A gap note outlives its gap, and it goes stale in exactly one direction.** The schedule
+board carried "nothing in this build reads a resource's availability" from the day it was
+written; `/rota` is that read, and the sentence survived the change that made it false --
+beside the chip that links to the view it denies. TestSprite, told to add a rota exception,
+read it, concluded the capability was absent and never opened the page. That is the Member
+360's "not built in this repository" defect one screen over, and it is the shape a repository
+that documents its own gaps carefully will keep producing: **a gap list is a claim about the
+product, so closing a gap means deleting its note in the same change**, and the assertion
+worth leaving behind is the *absence* of the old sentence rather than the presence of the new
+one.
+
+**A write form needs its remedy before it needs its button, and "insert-only" is where to
+look.** ADM-SCH-04's canvas draws "Add an exception" and the permission behind it is
+deliberately routine -- `scheduling.availability.write` is `configuration` with no financial
+class, because "a rota is edited by the people who run the floor". The table was
+`GRANT SELECT, INSERT` and nothing else, so the button would have written a **permanent,
+uncorrectable** row: a day off on the wrong date, a shift typed as 06:00 instead of 16:00, an
+absence against the wrong coach, each with no remedy anywhere in the product. That is
+MOD-013's "an irreversible act must not be declarable on a routine permission" arriving from
+the other side -- not a control that permits too much, but a *remedy* that does not exist.
+Insert-only is right for evidence and wrong for an operational statement somebody retypes, and
+the question to ask before building any form is "what undoes this, and does it exist".
+
+The answer is a withdrawal rather than a delete, for the reason the evidence tables already
+give: "was this coach marked off on the fourteenth, and who said so" is asked precisely when
+somebody was turned away, and a deleted row answers nothing.
+
+**And a grant no service writes is the same shape as a column no service reads.** `0013`
+granted `UPDATE (starts_at, ends_at, reason)` on that table to both runtime roles, with a
+comment explaining that a rota is edited -- and nothing in the build ever wrote them. An
+unattributed retime of the three values the table exists to state, with no column anywhere to
+record that they moved, available to any writer for as long as the grant stood. MOD-016 found
+exactly this in `cat_prices.effective_to` and took it out of the grant; this is the second
+instance. **Grep the writers of every column in an UPDATE grant**: one with none is either a
+gap to disclose or an unattributed edit path, and it is usually the second.
+
 **A design-system component is correct in isolation and untested until a page renders it.**
 `WeekGrid` has existed since ADM-SCH-01 and had no live caller, so its scroll wrapper had
 `overflow-x: auto` and no containment boundary -- and the first page to draw a week scrolled

@@ -22,6 +22,13 @@ export type RotaWindow = {
   starts_at: string;
   ends_at: string;
   recurring: boolean;
+  /**
+   * The row, so a caller who may change a rota has something to withdraw.
+   *
+   * Not gated: an identifier discloses nothing the window beside it does not, and the write
+   * it enables is gated at the route.
+   */
+  window_id: string | null;
   /** Only `time_off` carries one, and only a caller who could set a rota reads it. */
   reason: string | null;
   reason_masked: boolean;

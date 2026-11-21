@@ -589,8 +589,27 @@ def _authenticate_in_tx(
 
     if found is None:
         secrets.verify_secret(_DUMMY, password or "x")
-        _event(conn, tenant_id, kind="authentication.failed", outcome="failed",
-               factor=PASSWORD, reason="unknown_identifier", correlation_id=correlation_id)
+        # **An unknown *tenant* arrives here too, and it used to answer 500.**
+        # `X-Veyro-Tenant` is an unauthenticated claim that is shape-checked and nothing
+        # more, so anybody can present a well-formed uuid for a tenant that does not exist.
+        # RLS then hides every identity, this branch is taken, and the event's own foreign
+        # key to the tenant registry refuses the row -- a `ForeignKeyViolation` out of an
+        # unauthenticated route, with a stack trace per attempt.
+        #
+        # **The foreign key is the only thing in reach that knows.** `veyro_iam_app` holds
+        # no USAGE on `plt01_platform`, deliberately, so the service cannot ask whether a
+        # tenant exists; the database answers as it enforces the reference. A savepoint
+        # keeps that answer from poisoning the caller's transaction, and the refusal is
+        # **the same refusal** -- one scrypt already spent above, the same
+        # `authentication_failed`, no new way to tell a real tenant from an invented one.
+        # MOD-007's rule: a refusal must not say why.
+        try:
+            with conn.transaction():
+                _event(conn, tenant_id, kind="authentication.failed", outcome="failed",
+                       factor=PASSWORD, reason="unknown_identifier",
+                       correlation_id=correlation_id)
+        except errors.ForeignKeyViolation:
+            pass
         return failed, refused
 
     identity_id, status, failed_attempts, locked_until = (

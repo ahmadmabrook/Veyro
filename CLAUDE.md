@@ -394,6 +394,18 @@ Known gaps, deliberate:
   passwords at `/auth/step-up`, and lock their recovery budget with five wrong codes. That is the
   usual lockout tradeoff and the right call, but it is a real denial of service and it belongs
   here next to the one above.
+- **A tenant that does not exist used to answer 500 on `/auth/login`**, and that is fixed
+  rather than carried. `X-Veyro-Tenant` is an unauthenticated claim, shape-checked and
+  nothing more, so anybody can present a well-formed uuid for a tenant nobody provisioned:
+  RLS then hides every identity, the unknown-identifier branch is taken, and the failure
+  event's own foreign key to the tenant registry refuses the row -- a `ForeignKeyViolation`
+  and a stack trace out of an unauthenticated route, once per attempt. **The foreign key is
+  the only thing in reach that knows**, because `veyro_iam_app` holds no USAGE on
+  `plt01_platform` by design, so the service cannot ask. A savepoint keeps that answer from
+  poisoning the caller's transaction and the refusal stays identical -- one scrypt, the same
+  `authentication_failed`, no new way to tell a real tenant from an invented one, because
+  answering differently would be an oracle about which tenants exist. **Found by a stale
+  TestSprite test** carrying the id of a tenant a later fixture run had replaced.
 - **Registration is open.** Anyone holding the tenant UUID can create an identity in it. That is
   the same unauthenticated-header problem above, not a separate one.
 - **`iam.identities.status` was read by four controls and written by nothing**, which is fixed
@@ -709,8 +721,10 @@ Known gaps, deliberate:
   existed nowhere before: `plan_dsar` surfaced the same fact per request, so the honest
   answer to "what can you delete" was reachable only after somebody had asked you to delete
   something, and the registry behind it lived in Python and in a test.
-  **The number is worth knowing: 17 of 388 subject-bearing columns are erased or anonymised
-  and 371 survive.**
+  **The number is worth knowing: 17 of 392 subject-bearing columns are erased or anonymised
+  and 375 survive.** (It was 17 of 388 until MOD-019's `0017` added four withdrawal columns,
+  every one of which the registry's own sweep refused to let through undeclared -- which is
+  what MOD-009 built it for.)
 - **No crypto-shred, so erasure is incomplete** -- the disclosure above. Closing it needs a key
   vault and per-subject key material, which is a different module's work.
 - **Only a deletion has an executor.** Access, portability, correction and restriction can be
@@ -2747,6 +2761,24 @@ Known gaps, deliberate:
   conflating them produces; and a `time_off` reason is masked unless the caller holds
   `scheduling.availability.write`, because it is the one free-text column in a rota and the one
   place a health fact goes in practice -- the exception itself is never hidden.
+- **A rota window can be withdrawn now, and until it could the write form was unbuildable.**
+  `sch_availability_windows` carried `GRANT SELECT, INSERT` and nothing else, so a day off
+  entered on the wrong date, a shift typed as 06:00 instead of 16:00 or an absence written
+  against the wrong coach had **no remedy anywhere in the product** -- a rota could only ever
+  grow. Invisible while the only writer was a seed script, and decisive the moment somebody
+  can press a button: `scheduling.availability.write` is routine and AAL 1 by design, and a
+  routine permission whose every act is uncorrectable is MOD-013's "an irreversible act must
+  not be declarable on a routine permission" from the other side. `0017` adds the four
+  withdrawal columns with their attribution constraint and a one-way trigger -- a withdrawal,
+  **not a delete**, because "was this coach marked off on the fourteenth, and who said so"
+  gets asked precisely when somebody was turned away.
+- **And it revoked a grant nobody had ever used.** `0013` granted
+  `UPDATE (starts_at, ends_at, reason)` on that table to both runtime roles with the comment
+  "a rota is edited, so a window's times move", and **no service ever wrote them** -- an
+  unattributed retime of the values the table exists to state, with no column anywhere to
+  record that they moved. That is MOD-016's `cat_prices.effective_to` for the second time in
+  this build. Correcting a window is withdrawing it and adding the corrected one, which is
+  the same edit with a history.
 - **`week_from` starts the week on Sunday, which is the design's call and not this module's.**
   ADM-SCH-04 draws its columns SUN-SAT and dates its sample week to a Sunday, the working week
   in this product's own market. The first version started on Monday because `Window.weekday` is
@@ -3933,7 +3965,7 @@ page. The rule is in `.claude/rules/backend/mod004-rls.md` beside the other evid
 because the blind spot is the check's and not this module's.
 
 **MOD-009's board is the disclosure, finally somewhere a person can look.** 17 subject-bearing
-columns are erased or anonymised and 371 survive, and that ratio is the most important thing
+columns are erased or anonymised and 375 survive, and that ratio is the most important thing
 this build knows about itself. Three decisions carry the block:
 
   * **It groups rather than dumps.** The first version rendered all 371 rows with their
@@ -4038,12 +4070,16 @@ decisions rather than rendering:
   * **A time-off reason is masked unless the caller could have written one**, because it is
     the one free-text column in a rota and the one place a health fact goes in practice. The
     exception itself is never hidden.
-  * **"Add an exception" is the first write form in this app that is not blocked.** Every
-    other absent form here is a stepped-up financial permission and "a button that answered
-    403 is worse than its absence"; `scheduling.availability.write` is routine, and the
-    catalogue says why. MOD-019's own gap note claimed every scheduling write is stepped-up,
-    which was false for the one the design puts a button on. The screen says the form is the
-    next piece of work rather than a refusal.
+  * **"Add an exception" is built, and it is the first write in this app that is not a
+    member acting on their own account.** Every other absent form here is a stepped-up
+    financial permission and "a button that answered 403 is worse than its absence";
+    `scheduling.availability.write` is routine, and the catalogue says why. MOD-019's own
+    gap note claimed every scheduling write is stepped-up, which was false for the one the
+    design puts a button on. **What it needed first was the remedy**: the table was
+    insert-only, so the button would have written a permanent, uncorrectable row on a
+    routine permission -- MOD-013's rule from the other side. `0017` is the withdrawal; the
+    form writes a dated absence and takes one back, and a reader without the write
+    permission is given neither control rather than one that answers 403.
 
 **ADM-RPT-04's board is one chart and one sentence, and the sentence is the requirement.**
 The canvas's own note says why it is derived rather than left to the reader: "The conclusion is

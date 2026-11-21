@@ -1379,6 +1379,87 @@ class RotaWeekApiTests(SchedulingApiTestCase):
         body: dict[str, Any] = read.json()
         return body
 
+    def withdraw(self, gym: dict[str, Any], window_id: str,
+                 reason: str = "entered on the wrong day") -> Any:
+        return self.client.post(
+            f"/scheduling/availability/{window_id}/withdraw",
+            json={"reason": reason, **self.correlation()},
+            headers=self.headers(gym["tenant_id"]))
+
+    def window_id(self, gym: dict[str, Any], resource_id: str, kind: str,
+                  starts: str, ends: str, **extra: Any) -> str:
+        created = self.client.post("/scheduling/availability", json={
+            "resource_id": resource_id, "window_kind": kind,
+            "starts_at": starts, "ends_at": ends, **extra, **self.correlation()},
+            headers=self.headers(gym["tenant_id"]))
+        self.assertEqual(created.status_code, 201, created.text)
+        return str(created.json()["window_id"])
+
+    def test_a_window_can_be_taken_back_and_the_rota_stops_saying_it(self) -> None:
+        """**A rota could only ever grow until this existed.**
+
+        `sch_availability_windows` carried `GRANT SELECT, INSERT` and nothing else, so a day
+        off entered on the wrong date, a shift typed as 06:00 instead of 16:00, or an absence
+        written against the wrong coach had no remedy anywhere in the product. Invisible
+        while the only writer was a seed script; decisive the moment a form exists, because
+        `scheduling.availability.write` is routine and AAL 1 by design.
+        """
+        gym = self.gym()
+        wid = self.window_id(gym, gym["coach"], "working", "09:00", "17:00", weekday=1)
+        tuesday = next(d for d in self.week(gym, gym["coach"])["days"] if d["weekday"] == 1)
+        self.assertEqual(8 * 60, tuesday["open_minutes"])
+
+        taken = self.withdraw(gym, wid)
+        self.assertEqual(taken.status_code, 200, taken.text)
+        self.assertTrue(taken.json()["withdrawn"])
+
+        after = next(d for d in self.week(gym, gym["coach"])["days"] if d["weekday"] == 1)
+        self.assertFalse(after["rota_binds"])
+        self.assertIsNone(after["open_minutes"])
+        self.assertEqual([], after["windows"])
+
+    def test_a_withdrawal_happens_once(self) -> None:
+        """The trigger makes it one-way and the service says so first, because a 409 naming
+        the state is a caller who can act and a trigger's exception is a 500."""
+        gym = self.gym()
+        wid = self.window_id(gym, gym["coach"], "time_off", "12:00", "22:00",
+                             on_date=str(next_weekday(1, after=1)),
+                             reason="a hospital appointment")
+        self.assertEqual(self.withdraw(gym, wid).status_code, 200)
+        again = self.withdraw(gym, wid)
+        self.assertEqual(again.status_code, 409, again.text)
+        self.assertIn("already_withdrawn", again.json()["error"])
+
+    def test_a_withdrawal_states_a_reason_and_an_unknown_window_is_not_found(self) -> None:
+        gym = self.gym()
+        wid = self.window_id(gym, gym["coach"], "working", "09:00", "17:00", weekday=1)
+        blank = self.withdraw(gym, wid, reason="   ")
+        # A reason made only of whitespace is refused, and by the schema rather than by
+        # convention: `~ '[^[:space:]]'`, because `btrim` strips spaces and nothing else.
+        self.assertIn(blank.status_code, (400, 422), blank.text)
+        missing = self.withdraw(gym, "eeeeeeee-1000-4000-8000-0000000000ff")
+        self.assertEqual(missing.status_code, 404, missing.text)
+        malformed = self.withdraw(gym, "not-a-uuid")
+        self.assertEqual(malformed.status_code, 422, malformed.text)
+
+    def test_a_withdrawn_window_no_longer_blocks_a_session(self) -> None:
+        """**The point of the remedy, not just its bookkeeping.** A day off written against
+        the wrong coach makes them unavailable; taking it back has to make them available
+        again, which means every read of the rota has to ignore it -- not only the one the
+        grid uses."""
+        gym = self.gym()
+        day = next_weekday(1, after=1)
+        self.window(gym, gym["coach"], "working", "06:00", "22:00", weekday=1)
+        wid = self.window_id(gym, gym["coach"], "time_off", "12:00", "22:00",
+                             on_date=str(day), reason="booked against the wrong coach")
+        before = next(d for d in self.week(gym, gym["coach"], from_date=str(day))["days"]
+                      if d["date"] == str(day))
+        self.assertEqual(6 * 60, before["open_minutes"])
+        self.assertEqual(200, self.withdraw(gym, wid).status_code)
+        after = next(d for d in self.week(gym, gym["coach"], from_date=str(day))["days"]
+                     if d["date"] == str(day))
+        self.assertEqual(16 * 60, after["open_minutes"])
+
     def test_the_rota_can_be_read_at_last(self) -> None:
         gym = self.gym()
         self.window(gym, gym["coach"], "working", "09:00", "17:00", weekday=1)

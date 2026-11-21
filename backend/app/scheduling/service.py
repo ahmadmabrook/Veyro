@@ -254,11 +254,67 @@ def set_availability(
             "window_kind": window_kind, "timezone": zone}
 
 
+def withdraw_availability_window(
+    pool: Pool, tenant_id: str, *, window_id: str, reason: str, actor_id: str,
+    correlation_id: str,
+) -> dict[str, Any]:
+    """Take back a rota window. OPS-01-R03.
+
+    **A rota could only ever grow until this existed**, which is invisible while the only
+    writer is a seed script and decisive the moment somebody can press a button: a day off
+    entered on the wrong date, a shift typed as 06:00 instead of 16:00, or an absence written
+    against the wrong coach had no remedy anywhere in the product.
+    `scheduling.availability.write` is routine and AAL 1 on purpose -- a rota is edited by the
+    people who run the floor -- and a routine permission whose every act is uncorrectable is
+    MOD-013's rule from the other side.
+
+    **A withdrawal, not a delete.** "Was this coach marked off on the fourteenth, and who said
+    so" has to stay answerable afterwards, and it gets asked precisely when somebody was
+    turned away. The row stays, the four withdrawal columns are written once, and
+    `0017`'s trigger makes that one-way -- the same shape as this module's own session
+    cancellation one table over.
+
+    **Correcting a window is withdrawing it and adding the corrected one**, which is why
+    `0017` also revoked the `UPDATE (starts_at, ends_at, reason)` grant `0013` wrote and no
+    service ever used: an unattributed retime leaves a rota reading as though it had always
+    said so.
+    """
+    with tenant_scope(pool, tenant_id) as conn:
+        row = conn.execute(
+            "SELECT resource_id, window_kind, withdrawn_at"
+            " FROM plt01.sch_availability_windows WHERE window_id = %s",
+            (window_id,),
+        ).fetchone()
+        if row is None:
+            raise NotFound("availability_window_not_found")
+        if row[2] is not None:
+            raise Conflict("this_availability_window_was_already_withdrawn")
+        try:
+            done = conn.execute(
+                """
+                UPDATE plt01.sch_availability_windows
+                   SET withdrawn_at = now(), withdrawn_by = %s, withdrawn_reason = %s,
+                       withdraw_correlation_id = %s
+                 WHERE window_id = %s AND withdrawn_at IS NULL
+                """,
+                (actor_id, (reason or "").strip() or None, correlation_id, window_id),
+            ).rowcount
+        except errors.CheckViolation as e:
+            raise InvalidRequest(_check_name(e)) from None
+        # **The row count is checked**, because the guard is what makes two callers
+        # withdrawing at once settle once rather than both being told they did it.
+        if done != 1:
+            raise Conflict("this_availability_window_was_already_withdrawn")
+    return {"window_id": window_id, "resource_id": str(row[0]),
+            "window_kind": str(row[1]), "withdrawn": True}
+
+
 def _windows(conn: Connection[Any], resource_id: str) -> list[availability.Window]:
     """A resource's availability windows, as the decisions need them."""
     rows = conn.execute(
         "SELECT window_kind, timezone, starts_at, ends_at, weekday, on_date"
-        " FROM plt01.sch_availability_windows WHERE resource_id = %s",
+        " FROM plt01.sch_availability_windows"
+        " WHERE resource_id = %s AND withdrawn_at IS NULL",
         (resource_id,),
     ).fetchall()
     return [availability.Window(
@@ -2280,14 +2336,24 @@ def resource_week(
         windows = _windows(conn, resource_id)
         # The reasons, keyed by the same shape the decision module carries, so a window that
         # states why is matched to its prose without the pure module learning about it.
-        reasons = {
+        windows_by_key = {
             _window_key(availability.Window(
                 kind=str(r[0]), timezone=str(r[1]), starts_at=r[2], ends_at=r[3],
-                weekday=int(r[4]) if r[4] is not None else None, on_date=r[5])): str(r[6])
+                weekday=int(r[4]) if r[4] is not None else None, on_date=r[5])):
+                (str(r[6]), str(r[7]) if r[7] is not None else None)
+            # **Ordered, and the earliest wins a collision.** Nothing stops a tenant writing
+            # the same window twice -- there is no unique index, which is also why
+            # `availability._merge` exists -- and two identical rows share a `_window_key`.
+            # An unordered lookup would make the planner decide which id a withdrawal
+            # control acts on, which is MOD-018's `chart_for` finding; ordering makes it the
+            # one that was written first, and withdrawing it leaves the duplicate visible
+            # rather than silently taking an arbitrary one.
             for r in conn.execute(
-                "SELECT window_kind, timezone, starts_at, ends_at, weekday, on_date, reason"
+                "SELECT window_kind, timezone, starts_at, ends_at, weekday, on_date,"
+                "       window_id, reason"
                 " FROM plt01.sch_availability_windows"
-                " WHERE resource_id = %s AND reason IS NOT NULL",
+                " WHERE resource_id = %s AND withdrawn_at IS NULL"
+                " ORDER BY created_at DESC, window_id DESC",
                 (resource_id,)).fetchall()}
         # **The sessions this resource holds, and only the holds that still apply.** A
         # cancelled class does not occupy anybody and a superseded hold is a coach who was
@@ -2356,9 +2422,15 @@ def resource_week(
                  # Only `time_off` carries one -- the schema requires it there and forbids it
                  # on a rota row -- so this is `None` for a working window and a break
                  # whether or not the caller may read reasons.
-                 "reason": reasons.get(_window_key(w)) if may_read_reasons else None,
+                 # The id, so a caller who may change a rota has something to withdraw.
+                 # Not gated: a window's identifier discloses nothing the row beside it
+                 # does not, and the write it enables is gated at the route.
+                 "window_id": windows_by_key.get(_window_key(w), (None, None))[0],
+                 "reason": (windows_by_key.get(_window_key(w), (None, None))[1]
+                            if may_read_reasons else None),
                  "reason_masked": (
-                     not may_read_reasons and _window_key(w) in reasons)}
+                     not may_read_reasons
+                     and windows_by_key.get(_window_key(w), (None, None))[1] is not None)}
                 for w in availability.windows_on(windows, day)],
             "booked_minutes": booked_by_day.get(key, 0),
         })

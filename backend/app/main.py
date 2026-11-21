@@ -7472,6 +7472,29 @@ def create_app(
             weekday=body.weekday, on_date=body.on_date, reason=body.reason,
             actor_id=session["identity_id"], correlation_id=body.correlation_id)
 
+    @app.post("/scheduling/availability/{window_id}/withdraw")
+    def withdraw_scheduling_availability(
+        tenant_id: TenantId, session: Session, window_id: str, body: ReasonBody
+    ) -> dict[str, Any]:
+        """Take back a rota window. OPS-01-R03.
+
+        **The remedy ADM-SCH-04's write form needs**, and it did not exist: the table carried
+        `GRANT SELECT, INSERT` and nothing else, so a day off entered on the wrong date was
+        permanent. A routine, AAL-1 permission whose every act is uncorrectable is MOD-013's
+        "an irreversible act must not be declarable on a routine permission" from the other
+        side.
+
+        The same permission that writes a window, because correcting your own typo is the
+        same job as making it and a step-up between the two would make the rota wrong rather
+        than safe -- which is the catalogue's own argument for `scheduling.availability.write`
+        being routine at all.
+        """
+        permit(session, "scheduling.availability.write", body.correlation_id)
+        return scheduling.withdraw_availability_window(
+            tenant_pool, tenant_id, window_id=require_uuid(window_id, "window_id"),
+            reason=body.reason, actor_id=session["identity_id"],
+            correlation_id=body.correlation_id)
+
     @app.get("/scheduling/availability")
     def read_resource_availability(
         tenant_id: TenantId, session: Session, resource_id: str,

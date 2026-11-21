@@ -32,7 +32,7 @@ function day(overrides: Partial<RotaDay> = {}): RotaDay {
     open_spans: [{ starts_at: "09:00", ends_at: "17:00" }],
     windows: [{
       kind: "working", timezone: "Asia/Amman", starts_at: "09:00", ends_at: "17:00",
-      recurring: true, reason: null, reason_masked: false,
+      recurring: true, window_id: null, reason: null, reason_masked: false,
     }],
     booked_minutes: 0,
     ...overrides,
@@ -101,7 +101,7 @@ describe("the hours the grid draws", () => {
     expect(hourSpan(week({
       days: [day({ windows: [{
         kind: "working", timezone: "Asia/Amman", starts_at: "09:00", ends_at: "17:00",
-        recurring: true, reason: null, reason_masked: false,
+        recurring: true, window_id: null, reason: null, reason_masked: false,
       }] })],
       sessions: [],
     }))).toEqual({ first: 9, last: 16 });
@@ -133,9 +133,9 @@ describe("what a cell is", () => {
                    { starts_at: "13:00", ends_at: "17:00" }],
       windows: [
         { kind: "working", timezone: "Asia/Amman", starts_at: "09:00", ends_at: "17:00",
-          recurring: true, reason: null, reason_masked: false },
+          recurring: true, window_id: null, reason: null, reason_masked: false },
         { kind: "break", timezone: "Asia/Amman", starts_at: "12:00", ends_at: "13:00",
-          recurring: true, reason: null, reason_masked: false },
+          recurring: true, window_id: null, reason: null, reason_masked: false },
       ],
     });
     expect(state(withBreak, 12)).toBe("exception");
@@ -172,9 +172,9 @@ describe("what a cell is", () => {
       open_spans: [],
       windows: [
         { kind: "working", timezone: "Asia/Amman", starts_at: "09:00", ends_at: "21:00",
-          recurring: true, reason: null, reason_masked: false },
+          recurring: true, window_id: null, reason: null, reason_masked: false },
         { kind: "time_off", timezone: "Asia/Amman", starts_at: "12:00", ends_at: "22:00",
-          recurring: false, reason: null, reason_masked: true },
+          recurring: false, window_id: null, reason: null, reason_masked: true },
       ],
     });
     const clash = [session({

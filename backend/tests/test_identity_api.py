@@ -166,6 +166,40 @@ class AuthenticationTests(IdentityTestCase):
         self.assertEqual(wrong.json(), unknown.json())
         self.assertEqual(wrong.json()["error"], "authentication_failed")
 
+    def test_a_tenant_that_does_not_exist_fails_the_same_way_and_not_with_a_500(self):
+        """**`X-Veyro-Tenant` is an unauthenticated claim**, shape-checked and nothing more,
+        so anybody can present a well-formed uuid for a tenant that was never provisioned.
+
+        RLS then hides every identity, the unknown-identifier branch is taken, and the
+        failure event's own foreign key to the tenant registry refuses the row -- which
+        surfaced as a `ForeignKeyViolation` and a 500 with a stack trace, on an
+        unauthenticated route, once per attempt. Found by a stale TestSprite test carrying
+        the id of a tenant a later fixture run had replaced.
+
+        The refusal has to be **the same refusal**: one scrypt, `authentication_failed`, 401.
+        Answering differently for an unknown tenant would be an oracle about which tenants
+        exist, which is MOD-007's "a refusal must not say why" one level up from the
+        identity.
+        """
+        tenant_id, _, email = self.identity()
+        nowhere = str(uuid.uuid4())
+        known = self.login(tenant_id, email, "not-the-password")
+        unknown = self.login(nowhere, email, "not-the-password")
+        self.assertEqual(unknown.status_code, 401, unknown.text)
+        self.assertEqual(known.status_code, unknown.status_code)
+        self.assertEqual(known.json(), unknown.json())
+
+    def test_an_unknown_tenant_leaves_the_connection_usable(self):
+        """The savepoint is the point: a foreign-key violation aborts the transaction it is
+        raised in, so swallowing one without a savepoint would leave the caller's connection
+        poisoned and the *next* request on it failing for a reason nobody could trace."""
+        tenant_id, _, email = self.identity()
+        nowhere = str(uuid.uuid4())
+        self.assertEqual(self.login(nowhere, email).status_code, 401)
+        # The pool hands the same connection back; a real login has to still work on it.
+        good = self.login(tenant_id, email, self.PASSWORD)
+        self.assertEqual(good.status_code, 200, good.text)
+
     def test_a_malformed_identifier_fails_the_same_way_too(self):
         tenant_id, _, _ = self.identity()
         response = self.login(tenant_id, "not-an-email-at-all")

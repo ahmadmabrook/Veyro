@@ -110,9 +110,13 @@ test.describe("the schedule board", () => {
     await expect(page.locator(".ds-week thead th")).toHaveCount(2);
   });
 
-  test("names the view and the write it does not have", async ({ page }) => {
-    await expect(page.locator("main")).toContainText("The Coaches view");
+  test("names the write it does not have, and no longer the view it does", async ({ page }) => {
     await expect(page.locator("main")).toContainText("Add a class");
+    // **The Coaches view left this list when `/rota` was built**, and its note did not --
+    // it went on saying "nothing in this build reads a resource's availability" for one
+    // change too long, which an independent tester read and believed. A gap list is a claim
+    // about the product and it goes stale in exactly one direction.
+    await expect(page.locator("main")).not.toContainText("The Coaches view");
   });
 
   test("names the site's own timezone, because every occurrence was converted in it", async ({

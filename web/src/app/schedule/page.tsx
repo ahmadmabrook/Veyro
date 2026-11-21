@@ -288,9 +288,15 @@ export default async function SchedulePage({
 
           <section className="page-section">
             <h2>{text("cc.gaps")}</h2>
+            {/* **The Coaches view has left this list**, which is what its own note said
+                would happen: it read "nothing in this build reads a resource's
+                availability", and `/rota` is that read. The note outlived the gap by one
+                change and an independent tester believed it -- told to add a rota
+                exception, it read this sentence on the board, concluded the capability was
+                absent and never opened the view the chip above links to. The Member 360's
+                "not built in this repository" defect, one screen over: a confident wrong
+                answer where a missing one would have been honest. */}
             <dl className="facts">
-              <dt className="muted">{text("schedule.coachesView")}</dt>
-              <dd style={{ margin: 0 }}>{text("schedule.coachesViewWhy")}</dd>
               <dt className="muted">{text("schedule.addClass")}</dt>
               <dd style={{ margin: 0 }}>{text("schedule.addClassWhy")}</dd>
             </dl>

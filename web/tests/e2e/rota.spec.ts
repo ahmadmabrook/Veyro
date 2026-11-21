@@ -1,5 +1,5 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 import { fixture } from "./fixture-env";
 import { useDeskSession, useOwnerSession, useReaderSession } from "./sign-in";
@@ -128,24 +128,30 @@ test.describe("the availability grid", () => {
     expect(await marks.count()).toBeGreaterThan(0);
   });
 
-  test("names what the grid does not do, including the form that is not blocked", async ({
+  test("names what the grid does not do, and no longer counts the form among it", async ({
     page,
   }) => {
     const gaps = page.locator("section").filter({ hasText: "What this grid does not do" });
-    await expect(gaps.getByRole("term").filter({ hasText: "Add an exception" }))
-      .toBeVisible();
     await expect(gaps.getByRole("term").filter({ hasText: "Class or personal training" }))
       .toBeVisible();
     await expect(gaps.getByRole("term").filter({ hasText: "The grid is hourly" }))
       .toBeVisible();
-    // `scheduling.availability.write` is routine rather than stepped-up, so this is the next
-    // piece of work rather than a button that would answer 403.
-    await expect(gaps).toContainText("routine");
-    await expect(gaps).toContainText("not a refusal");
+    // **"Add an exception" has left this list**, which is what the note it used to carry
+    // said would happen. These two tests previously asserted that the form did not exist
+    // and that no button offered it; both were true and both were the gap, not the design.
+    await expect(gaps.getByRole("term").filter({ hasText: "Add an exception" }))
+      .toHaveCount(0);
   });
 
-  test("offers no exception form yet, and no button that would fail", async ({ page }) => {
-    await expect(page.getByRole("button", { name: /exception/i })).toHaveCount(0);
+  test("offers the form the canvas draws, because the permission is routine", async ({
+    page,
+  }) => {
+    // Every other write surface in this app is absent because "a button that answered 403
+    // is worse than its absence" -- each is a stepped-up financial permission.
+    // `scheduling.availability.write` is `configuration` with no financial class, and the
+    // catalogue says why: "a rota is edited by the people who run the floor, and refusing
+    // them a step-up every time somebody books a day off would make the rota wrong instead."
+    await expect(page.getByRole("button", { name: "Add the exception" })).toBeVisible();
   });
 
   test("the whole screen reads in Arabic", async ({ page }) => {
@@ -200,6 +206,123 @@ test.describe("the schedule board's third view", () => {
     await expect(views.getByRole("link", { name: "Coaches" })).toBeVisible();
     await views.getByRole("link", { name: "Coaches" }).click();
     await expect(page.locator("h1")).toContainText("Availability");
+  });
+});
+
+test.describe("adding and withdrawing an exception", () => {
+  /**
+   * **The first write in this app that is not a member acting on their own account**, and it
+   * needed a migration before it could exist: `sch_availability_windows` carried
+   * `GRANT SELECT, INSERT` and nothing else, so a day off entered on the wrong date was
+   * permanent. `scheduling.availability.write` is routine and AAL 1 by design, and a routine
+   * permission whose every act is uncorrectable is MOD-013's rule from the other side.
+   *
+   * **The test puts the rota back where it found it**, which is this repository's own rule
+   * about a suite that spends something the product keeps: a rota has no delete, so a test
+   * that only added would leave one more absence on every run and the second run would
+   * assert against a different week. It writes on a date no other spec looks at, proves the
+   * grid moved, withdraws it, and proves the grid moved back. The only residue is a
+   * withdrawn row, which no read returns.
+   */
+  const far = "2027-03-17";
+
+  /**
+   * **Clear the far week before each test, because a rota has no delete.**
+   * The suite's own rule is that a test which spends something the product keeps provisions
+   * its own — and the first version only withdrew what it had added, which is fine until the
+   * test fails *between* the add and the withdraw. It did, once, for an unrelated reason, and
+   * the next run found two exceptions where it expected one and failed for a reason that had
+   * nothing to do with the product. Cleaning up front is idempotent whatever the last run
+   * left; the only residue is withdrawn rows, which no read returns.
+   */
+  async function clearFarWeek(page: Page): Promise<void> {
+    await page.goto(`/rota?resource=${creds.coachResourceId}&from=${far}`);
+    for (;;) {
+      const rows = page.locator(".ds-rota-exceptions li");
+      if (await rows.count() === 0) return;
+      const first = rows.first();
+      await first.getByLabel("Why take it back").fill("clearing the test week");
+      await first.getByRole("button", { name: /^Withdraw/ }).click();
+      await expect(rows).toHaveCount(0, { timeout: 15_000 });
+    }
+  }
+
+  test("writes a day off, shows it on the grid, and takes it back", async ({ page }) => {
+    await useOwnerSession(page);
+    await clearFarWeek(page);
+
+    const form = page.locator("form.ds-rota-form");
+    await expect(form).toBeVisible();
+    await form.getByLabel("Day").fill(far);
+    await form.getByLabel("From", { exact: true }).fill("13:00");
+    await form.getByLabel("To", { exact: true }).fill("17:00");
+    await form.getByLabel("Why", { exact: true }).fill("a dentist appointment");
+    await form.getByRole("button", { name: "Add the exception" }).click();
+
+    // The grid says so, which is the point: a write that the read does not reflect is a
+    // reader told the product worked when it did not.
+    const listed = page.locator(".ds-rota-exceptions li")
+      .filter({ hasText: "13:00" });
+    await expect(listed).toHaveCount(1);
+    await expect(listed).toContainText("a dentist appointment");
+    const marks = page.locator('.ds-week td .ds-rota-mark[data-state="exception"]');
+    expect(await marks.count()).toBeGreaterThan(0);
+
+    // And take it back, which is the half that had to be built first.
+    await listed.getByLabel("Why take it back").fill("entered on the wrong day");
+    await listed.getByRole("button", { name: /^Withdraw/ }).click();
+    await expect(page.locator(".ds-rota-exceptions li").filter({ hasText: "13:00" }))
+      .toHaveCount(0);
+    await expect(page.locator('.ds-week td .ds-rota-mark[data-state="exception"]'))
+      .toHaveCount(0);
+  });
+
+  test("names the field it needs rather than refusing the whole form", async ({ page }) => {
+    // An empty field and a malformed one are different mistakes, and a form that reported
+    // both as "that was refused" makes the reader try the same thing again.
+    //
+    // **The browser refuses this one first, and that is not the control being tested.**
+    // Every field is `required`, so native validation stops the submit and the server never
+    // hears about it -- which is right for a reader and proves nothing about the server. The
+    // control that matters is the one a client which is not a browser reaches, so the test
+    // turns native validation off and submits, exactly as `curl` would.
+    await useOwnerSession(page);
+    await clearFarWeek(page);
+    const form = page.locator("form.ds-rota-form");
+    await form.evaluate((el) => { (el as HTMLFormElement).noValidate = true; });
+    await form.getByLabel("Day").fill(far);
+    await form.getByLabel("From", { exact: true }).fill("13:00");
+    await form.getByLabel("To", { exact: true }).fill("17:00");
+    await form.getByRole("button", { name: "Add the exception" }).click();
+    await expect(form).toContainText("This is needed");
+    // And nothing was written.
+    await expect(page.locator(".ds-rota-exceptions li").filter({ hasText: "13:00" }))
+      .toHaveCount(0);
+  });
+
+  test("a reader who may not change a rota is given no form at all", async ({ page }) => {
+    // "A button that answered 403 is worse than its absence" -- which is why every other
+    // write surface in this app is missing, and the reason this one is gated on the write
+    // rather than on the read that renders the page.
+    await useReaderSession(page);
+    await page.goto(`/rota?resource=${creds.coachResourceId}&from=${far}`);
+    await expect(page.locator("form.ds-rota-form")).toHaveCount(0);
+    await expect(page.locator("form.ds-rota-withdraw")).toHaveCount(0);
+  });
+});
+
+test.describe("the schedule board's own gap list", () => {
+  test("no longer says this build cannot read a rota", async ({ page }) => {
+    // **The note outlived the gap by one change, and an independent tester believed it.**
+    // Told to add a rota exception, TestSprite read "nothing in this build reads a
+    // resource's availability" on the board, concluded the capability was absent and never
+    // opened the view the chip beside it links to. That is the Member 360's "not built in
+    // this repository" defect one screen over: a confident wrong answer where a missing one
+    // would have been honest, and the kind of staleness only a reader notices.
+    await useOwnerSession(page);
+    await page.goto(`/schedule?site=${creds.locationId}`);
+    await expect(page.locator("main")).not.toContainText("reads a resource's availability");
+    await expect(page.getByRole("link", { name: "Coaches", exact: true })).toBeVisible();
   });
 });
 

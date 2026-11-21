@@ -607,15 +607,46 @@ defect as the one before it with the sign reversed. The canvas draws the grid in
 panel, and the quiet fill is defined against that panel; `.ds-week-scroll` carries the card
 now, which is what `.ds-matrix-scroll` already does for the other wide scrollable table.
 
-**And "Add an exception" is the first write form in this app that is not blocked.** The design
-draws the button, and every other form here is absent because "a button that answered 403 is
-worse than its absence" — every `tenancy.*`, `catalog.*` and `finance.*` write is a stepped-up
-financial permission. `scheduling.availability.write` is **not**: it is `configuration` with no
-financial class, and the catalogue says exactly why — *"A rota is edited by the people who run
-the floor, and refusing them a step-up every time somebody books a day off would make the rota
-wrong instead."* MOD-019's own gap note claims every scheduling write is stepped-up, which is
-false for the one the design puts a button on. The form is the next piece of work on this
-screen and the screen says so, as a gap rather than a refusal.
+**"Add an exception" is built, and it is the first write in this app that is not a member
+acting on their own account.** The design draws the button, and every other form here is
+absent because "a button that answered 403 is worse than its absence" — every `tenancy.*`,
+`catalog.*` and `finance.*` write is a stepped-up financial permission.
+`scheduling.availability.write` is **not**: it is `configuration` with no financial class, and
+the catalogue says exactly why — *"A rota is edited by the people who run the floor, and
+refusing them a step-up every time somebody books a day off would make the rota wrong
+instead."*
+
+**What it needed first was the remedy, and that is the finding.**
+`sch_availability_windows` carried `GRANT SELECT, INSERT` and nothing else, so a day off
+entered on the wrong date, a shift typed as 06:00 instead of 16:00 or an absence written
+against the wrong coach had no remedy anywhere in the product — a rota could only ever grow.
+Invisible while the only writer was a seed script; decisive the moment somebody can press a
+button, because a routine permission whose every act is uncorrectable is MOD-013's "an
+irreversible act must not be declarable on a routine permission" from the other side.
+`0017` adds a withdrawal — **not a delete**, because "was this coach marked off on the
+fourteenth, and who said so" is asked precisely when somebody was turned away — with its
+attribution constraint, a one-way trigger, and ten mutations against the pair.
+
+It also **revoked** `UPDATE (starts_at, ends_at, reason)`, which `0013` granted to both
+runtime roles and no service ever wrote: an unattributed retime of the three values the table
+exists to state, with no column anywhere to record that they moved. MOD-016's
+`cat_prices.effective_to` for the second time in this build.
+
+Three smaller things the form settled:
+
+- **No required marks.** The Field shell's rule is "required is marked, optional is not —
+  whichever is rarer gets the mark", written against exactly this case. Every field here is
+  required, so four asterisks would be four marks carrying no information — and they were in
+  the accessible name, where a screen reader read "Day star".
+- **A browser's native validation is not the server's control.** Every field is `required`,
+  so an empty submit never reaches the server, which is right for a reader and proves
+  nothing. The test that exercises the server's own check turns native validation off and
+  submits as a client which is not a browser would.
+- **A test that writes to a table with no delete puts the rota back.** A rota has no delete,
+  so a spec that only added would leave one more absence on every run and the second run
+  would assert against a different week — this repository's own rule about a suite that
+  spends something the product keeps. It writes on a date no other spec looks at, proves the
+  grid moved, withdraws it, and proves the grid moved back.
 
 **ADM-SCH-06 (Rooms and resources) is not built, and two of its three columns are why.** The
 canvas draws name, capacity and equipment, and says *"Capacity here is the ceiling every class

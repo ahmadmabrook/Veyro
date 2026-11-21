@@ -352,6 +352,59 @@ const PLANS = [
     ],
   },
   {
+    // **The one write in this app that is not a member acting on their own account**, and
+    // the reason it took a migration: the table was insert-only, so the button the design
+    // draws would have written a permanent, uncorrectable row on a routine permission. An
+    // agent that adds one and cannot take it back is reporting exactly that defect.
+    //
+    // It writes on a far-future week no other journey or spec reads, and the journey's own
+    // last act is to withdraw it -- a rota has no delete, so anything left behind is
+    // residue. A withdrawn row is returned by no read.
+    name: "A rota exception can be added and then taken back",
+    description:
+      "Reducing a coach's availability has to be correctable. A day off entered on the " +
+      "wrong date, or a shift typed wrongly, must have a remedy in the product rather " +
+      "than standing for ever.",
+    priority: "p0",
+    planSteps: [
+      ...signIn,
+      {
+        type: "action",
+        description:
+          "Open the Schedule section, switch to the view showing one coach's availability " +
+          "for a week, and move forward to the week beginning 15 March 2027.",
+      },
+      {
+        type: "action",
+        description:
+          "Using the form on that page, add an exception on 17 March 2027 from 13:00 to " +
+          "17:00, giving a short reason such as 'a dentist appointment'.",
+      },
+      {
+        type: "assertion",
+        description:
+          "Verify the exception now appears on the page: it is listed with its date, its " +
+          "hours and its reason, and the week grid itself shows those hours marked as an " +
+          "exception rather than as ordinary available time. A page that accepted the " +
+          "entry but still shows the old week is a failure.",
+      },
+      {
+        type: "action",
+        description:
+          "Now take that same exception back, using whatever control the page offers for " +
+          "removing or withdrawing it, giving a reason such as 'entered on the wrong day'.",
+      },
+      {
+        type: "assertion",
+        description:
+          "Verify it is gone: no longer listed, and the grid shows those hours as " +
+          "available again. **If the page offers no way at all to take back an exception " +
+          "once added, that is a failure** — a rota that can only grow is the defect this " +
+          "journey exists to catch.",
+      },
+    ],
+  },
+  {
     name: "A withheld field on a member's record is marked, never blank",
     description:
       "MOD-014 applies the gate's masked-field list and this surface renders it. An empty " +

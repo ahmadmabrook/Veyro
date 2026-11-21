@@ -2857,6 +2857,49 @@ a {
   color: var(--color-semantic-warning);
 }
 
+/* ADM-SCH-04's write form: the one in this app that is not a member's own account. */
+.ds-rota-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  align-items: flex-start;
+  margin-block: var(--space-3);
+}
+
+/* Three short fields on a line, and one per line on a phone -- the design system's own rule
+   for a field is "full width below bp.sm", so the track collapses rather than squeezing. */
+.ds-rota-form-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: var(--space-3);
+  inline-size: 100%;
+}
+
+.ds-rota-exceptions {
+  list-style: none;
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.ds-rota-exceptions > li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: flex-end;
+  padding-block-end: var(--space-3);
+  border-block-end: 1px solid var(--color-border-subtle);
+}
+
+.ds-rota-withdraw {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: flex-end;
+}
+
 .ds-rota-legend {
   list-style: none;
   margin: var(--space-3) 0 0;

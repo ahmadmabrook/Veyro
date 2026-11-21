@@ -30273,7 +30273,8 @@ BEGIN
         ('plt01.sch_availability_windows',
          'correlation_id,created_at,created_by,ends_at,on_date,reason,'
          'resource_id,starts_at,tenant_id,timezone,weekday,window_id,'
-         'window_kind'),
+         'window_kind,withdraw_correlation_id,withdrawn_at,withdrawn_by,'
+         'withdrawn_reason'),
         ('plt01.sch_capacity_holds',
          'correlation_id,hold_id,idempotency_key,person_id,places,'
          'release_correlation_id,release_reason,released_at,'
@@ -30465,10 +30466,15 @@ DECLARE
     wrong text;
 BEGIN
     WITH expected(tbl, grantee, cols) AS (VALUES
+        -- **A withdrawal and nothing else**, and the worker holds none of it: 0017 revoked
+        -- the `starts_at, ends_at, reason` grant that 0013 wrote and no service ever used,
+        -- because an unattributed rewrite of a shift's times is a rota that reads as though
+        -- it had always said so. Withdrawing the window and adding the corrected one is the
+        -- same edit with a history. Nothing in the worker withdraws anybody's day off.
         ('sch_availability_windows', 'veyro_cp_app',
-         'ends_at,reason,starts_at'),
+         'withdraw_correlation_id,withdrawn_at,withdrawn_by,withdrawn_reason'),
         ('sch_availability_windows', 'veyro_cp_worker',
-         'ends_at,reason,starts_at'),
+         '(none)'),
         ('sch_capacity_holds', 'veyro_cp_app',
          'release_correlation_id,release_reason,released_at,'
          'released_by,status'),
@@ -31047,6 +31053,131 @@ BEGIN
                 1,
                 'working');
         RAISE EXCEPTION 'CHECK 90 FAILED: a window in something that is not a timezone name';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- **The withdrawal attribution, one case per conjunct and one per side.** The constraint
+    -- is three biconditionals, and a weakening of any of them to an implication is admitted
+    -- by exactly one of the two rows -- which is this file's own "a case catches a weakening
+    -- only if the weakened constraint ADMITS the row". Every other column is set so the row
+    -- is otherwise valid and only this rule can refuse it.
+    BEGIN
+        INSERT INTO plt01.sch_availability_windows
+            (correlation_id, created_by, ends_at, on_date, reason, resource_id,
+             starts_at, tenant_id, timezone, weekday, window_kind,
+             withdrawn_at, withdrawn_by, withdrawn_reason, withdraw_correlation_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                TIME '17:00', NULL, NULL,
+                'eeeeeeee-1000-4000-8000-00000000000b',
+                TIME '09:00',
+                '11111111-1111-4111-8111-111111111111',
+                'Asia/Amman', 1, 'working',
+                now(), NULL, 'entered on the wrong day', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a window withdrawn by nobody';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.sch_availability_windows
+            (correlation_id, created_by, ends_at, on_date, reason, resource_id,
+             starts_at, tenant_id, timezone, weekday, window_kind,
+             withdrawn_at, withdrawn_by, withdrawn_reason, withdraw_correlation_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                TIME '17:00', NULL, NULL,
+                'eeeeeeee-1000-4000-8000-00000000000b',
+                TIME '09:00',
+                '11111111-1111-4111-8111-111111111111',
+                'Asia/Amman', 1, 'working',
+                NULL, '33333333-3333-4333-8333-333333333333', NULL, NULL);
+        RAISE EXCEPTION 'CHECK 90 FAILED: a withdrawer with no withdrawal';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.sch_availability_windows
+            (correlation_id, created_by, ends_at, on_date, reason, resource_id,
+             starts_at, tenant_id, timezone, weekday, window_kind,
+             withdrawn_at, withdrawn_by, withdrawn_reason, withdraw_correlation_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                TIME '17:00', NULL, NULL,
+                'eeeeeeee-1000-4000-8000-00000000000b',
+                TIME '09:00',
+                '11111111-1111-4111-8111-111111111111',
+                'Asia/Amman', 1, 'working',
+                now(), '33333333-3333-4333-8333-333333333333', NULL, '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a window withdrawn for no reason';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.sch_availability_windows
+            (correlation_id, created_by, ends_at, on_date, reason, resource_id,
+             starts_at, tenant_id, timezone, weekday, window_kind,
+             withdrawn_at, withdrawn_by, withdrawn_reason, withdraw_correlation_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                TIME '17:00', NULL, NULL,
+                'eeeeeeee-1000-4000-8000-00000000000b',
+                TIME '09:00',
+                '11111111-1111-4111-8111-111111111111',
+                'Asia/Amman', 1, 'working',
+                NULL, NULL, 'entered on the wrong day', NULL);
+        RAISE EXCEPTION 'CHECK 90 FAILED: a withdrawal reason with no withdrawal';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.sch_availability_windows
+            (correlation_id, created_by, ends_at, on_date, reason, resource_id,
+             starts_at, tenant_id, timezone, weekday, window_kind,
+             withdrawn_at, withdrawn_by, withdrawn_reason, withdraw_correlation_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                TIME '17:00', NULL, NULL,
+                'eeeeeeee-1000-4000-8000-00000000000b',
+                TIME '09:00',
+                '11111111-1111-4111-8111-111111111111',
+                'Asia/Amman', 1, 'working',
+                now(), '33333333-3333-4333-8333-333333333333', 'entered on the wrong day', NULL);
+        RAISE EXCEPTION 'CHECK 90 FAILED: a withdrawal with no correlation';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.sch_availability_windows
+            (correlation_id, created_by, ends_at, on_date, reason, resource_id,
+             starts_at, tenant_id, timezone, weekday, window_kind,
+             withdrawn_at, withdrawn_by, withdrawn_reason, withdraw_correlation_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                TIME '17:00', NULL, NULL,
+                'eeeeeeee-1000-4000-8000-00000000000b',
+                TIME '09:00',
+                '11111111-1111-4111-8111-111111111111',
+                'Asia/Amman', 1, 'working',
+                NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a withdrawal correlation with no withdrawal';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.sch_availability_windows
+            (correlation_id, created_by, ends_at, on_date, reason, resource_id,
+             starts_at, tenant_id, timezone, weekday, window_kind,
+             withdrawn_at, withdrawn_by, withdrawn_reason, withdraw_correlation_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                TIME '17:00', NULL, NULL,
+                'eeeeeeee-1000-4000-8000-00000000000b',
+                TIME '09:00',
+                '11111111-1111-4111-8111-111111111111',
+                'Asia/Amman', 1, 'working',
+                now(), '33333333-3333-4333-8333-333333333333', E'\t', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a withdrawal reasoned with a tab';
     EXCEPTION
         WHEN check_violation THEN NULL;
     END;
@@ -34360,6 +34491,87 @@ BEGIN
             'CHECK 90 FAILED: the session-identity branch fired for % of 7 probes', probe;
     END IF;
 END $$;
+
+-- **The three branches of the withdrawal trigger, one probe each.**
+-- A pin says the rule is still written down and only a probe says it still bites, and a
+-- plpgsql branch is invisible to a generated constraint sweep -- which is how MOD-018 shipped
+-- a deleted branch with the suite reporting 84/84. Each probe asserts the *sentence* rather
+-- than the exception class, because two branches of one function refuse the same row and a
+-- probe that counted any `raise_exception` would prove whichever answered.
+DO $$
+DECLARE
+    probe int := 0;
+    wid uuid := 'eeeeeeee-1000-4000-8000-0000000000f1';
+BEGIN
+    INSERT INTO plt01.sch_availability_windows
+        (window_id, correlation_id, created_by, ends_at, on_date, reason, resource_id,
+         starts_at, tenant_id, timezone, weekday, window_kind)
+    VALUES (wid,
+            '33333333-3333-4333-8333-333333333333',
+            '33333333-3333-4333-8333-333333333333',
+            TIME '17:00', NULL, NULL,
+            'eeeeeeee-1000-4000-8000-00000000000b',
+            TIME '09:00',
+            '11111111-1111-4111-8111-111111111111',
+            'Asia/Amman', 1, 'working');
+
+    -- A rota window is withdrawn, never edited.
+    BEGIN
+        UPDATE plt01.sch_availability_windows
+           SET starts_at = TIME '06:00' WHERE window_id = wid;
+        RAISE EXCEPTION 'CHECK 90 FAILED: a rota window was retimed in place';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 90 FAILED%' THEN RAISE; END IF;
+            IF sqlerrm NOT LIKE '%withdrawn, never edited%' THEN
+                RAISE EXCEPTION
+                    'CHECK 90 FAILED: the retiming probe was answered by: %', sqlerrm;
+            END IF;
+            probe := probe + 1;
+    END;
+
+    -- An update that is not a withdrawal is the only other thing the grant permits.
+    BEGIN
+        UPDATE plt01.sch_availability_windows
+           SET withdrawn_reason = NULL WHERE window_id = wid;
+        RAISE EXCEPTION 'CHECK 90 FAILED: a rota window took an update that withdrew nothing';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 90 FAILED%' THEN RAISE; END IF;
+            IF sqlerrm NOT LIKE '%only update an availability window admits%' THEN
+                RAISE EXCEPTION
+                    'CHECK 90 FAILED: the non-withdrawal probe was answered by: %', sqlerrm;
+            END IF;
+            probe := probe + 1;
+    END;
+
+    -- And a withdrawal happens once. Withdraw it properly, then try to rewrite that.
+    UPDATE plt01.sch_availability_windows
+       SET withdrawn_at = now(),
+           withdrawn_by = '33333333-3333-4333-8333-333333333333',
+           withdrawn_reason = 'entered on the wrong day',
+           withdraw_correlation_id = '33333333-3333-4333-8333-333333333333'
+     WHERE window_id = wid;
+    BEGIN
+        UPDATE plt01.sch_availability_windows
+           SET withdrawn_by = '44444444-4444-4444-8444-444444444444'
+         WHERE window_id = wid;
+        RAISE EXCEPTION 'CHECK 90 FAILED: a withdrawal was re-attributed';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 90 FAILED%' THEN RAISE; END IF;
+            IF sqlerrm NOT LIKE '%already withdrawn%' THEN
+                RAISE EXCEPTION
+                    'CHECK 90 FAILED: the re-withdrawal probe was answered by: %', sqlerrm;
+            END IF;
+            probe := probe + 1;
+    END;
+
+    IF probe <> 3 THEN
+        RAISE EXCEPTION
+            'CHECK 90 FAILED: the withdrawal trigger fired for % of 3 probes', probe;
+    END IF;
+END $$;
 ROLLBACK;
 
 
@@ -34393,6 +34605,8 @@ DECLARE
     wrong text;
 BEGIN
     WITH expected(rule) AS (VALUES
+        ('sch_availability_windows_withdrawal_attributed CHECK ((((withdrawn_at IS NULL) = (withdrawn_by IS NULL)) AND ((withdrawn_at IS NULL) = (withdrawn_reason IS NULL)) AND ((withdrawn_at IS NULL) = (withdraw_correlation_id IS NULL))))'),
+        ('sch_availability_windows_withdrawal_reasoned CHECK (((withdrawn_reason IS NULL) OR (withdrawn_reason ~ ''[^[:space:]]''::text)))'),
         ('sch_availability_windows_absence_reasoned CHECK (((window_kind <> ''time_off''::text) OR (COALESCE(reason, ''''::text) ~ ''[^[:space:]]''::text)))'),
         ('sch_availability_windows_kind CHECK ((window_kind = ANY (ARRAY[''working''::text, ''break''::text, ''time_off''::text])))'),
         ('sch_availability_windows_ordered CHECK ((ends_at > starts_at))'),
@@ -34491,6 +34705,7 @@ BEGIN
     WITH expected(rule) AS (VALUES
         ('sch_availability_windows_by_date CREATE INDEX sch_availability_windows_by_date ON plt01.sch_availability_windows USING btree (tenant_id, on_date) WHERE (on_date IS NOT NULL)'),
         ('sch_availability_windows_by_resource CREATE INDEX sch_availability_windows_by_resource ON plt01.sch_availability_windows USING btree (tenant_id, resource_id, window_kind)'),
+        ('sch_availability_windows_live CREATE INDEX sch_availability_windows_live ON plt01.sch_availability_windows USING btree (tenant_id, resource_id, window_kind) WHERE (withdrawn_at IS NULL)'),
         ('sch_availability_windows_pkey CREATE UNIQUE INDEX sch_availability_windows_pkey ON plt01.sch_availability_windows USING btree (tenant_id, window_id)'),
         ('sch_capacity_holds_by_session CREATE INDEX sch_capacity_holds_by_session ON plt01.sch_capacity_holds USING btree (tenant_id, session_id, status)'),
         ('sch_capacity_holds_one_live_per_person CREATE UNIQUE INDEX sch_capacity_holds_one_live_per_person ON plt01.sch_capacity_holds USING btree (tenant_id, session_id, person_id) WHERE (status = ANY (ARRAY[''held''::text, ''attended''::text]))'),
@@ -34544,6 +34759,7 @@ BEGIN
     WITH expected(rule) AS (VALUES
         ('CREATE TRIGGER sch_capacity_holds_fit BEFORE INSERT ON plt01.sch_capacity_holds FOR EACH ROW EXECUTE FUNCTION plt01.sch_hold_fits_the_session()'),
         ('CREATE TRIGGER sch_capacity_holds_one_way BEFORE UPDATE ON plt01.sch_capacity_holds FOR EACH ROW EXECUTE FUNCTION plt01.sch_hold_is_settled_once()'),
+        ('CREATE TRIGGER sch_availability_windows_one_way BEFORE UPDATE ON plt01.sch_availability_windows FOR EACH ROW EXECUTE FUNCTION plt01.sch_availability_window_withdrawal_is_final()'),
         ('CREATE TRIGGER sch_resources_one_way BEFORE UPDATE ON plt01.sch_resources FOR EACH ROW EXECUTE FUNCTION plt01.sch_resource_retirement_is_final()'),
         ('CREATE TRIGGER sch_session_changes_live BEFORE INSERT ON plt01.sch_session_changes FOR EACH ROW EXECUTE FUNCTION plt01.sch_change_needs_a_live_session()'),
         ('CREATE TRIGGER sch_session_resources_fit BEFORE INSERT ON plt01.sch_session_resources FOR EACH ROW EXECUTE FUNCTION plt01.sch_assignment_fits_the_session()'),
@@ -34573,6 +34789,7 @@ BEGIN
         ('sch_change_needs_a_live_session a59bd3d77507b575db2eb409a3eb20c7'),
         ('sch_hold_fits_the_session 789654600bff285bd0ada996f575267c'),
         ('sch_hold_is_settled_once fc1c498c9669d2f160eda858c88c620f'),
+        ('sch_availability_window_withdrawal_is_final 2a1e70c1d6e798b79a38e93c47eaff15'),
         ('sch_resource_retirement_is_final 442e00065517541ccab65802f4710657'),
         ('sch_session_is_one_way 2c88394606e3cdf3cccbbfbf8a962f37'),
         ('sch_template_is_one_way b514dfd290873212fc001084eccc5196'),

@@ -535,6 +535,8 @@ WRITE_ROUTES = [
     ("post", "/scheduling/availability",
      {"resource_id": _ID, "window_kind": "working", "starts_at": "09:00",
       "ends_at": "17:00", "weekday": 0, **_CORR}),
+    ("post", f"/scheduling/availability/{_ID}/withdraw",
+     {"reason": "entered on the wrong day", **_CORR}),
     ("post", "/scheduling/templates",
      {"template_code": "SWEEP-T", "display_name": "Sweep", "service_resource_id": _ID,
       "location_id": _ID,
