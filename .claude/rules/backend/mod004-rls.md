@@ -892,3 +892,12 @@ mid-run changes what they assert against — the run is then testing a tree that
 when it started, and a pass proves nothing about either version. The ordinary Python caching
 intuition is wrong here: the module object is cached, the *file* is re-read. Finish the run,
 or restart it after the edit; do not reason about which test the run has reached.
+
+**Editing a spec file while the browser suite is running invalidates the run**, and the
+failures it produces look like product defects. Playwright loads each spec as the worker
+reaches it, so a file edited at minute two runs in its edited form at minute four while the
+summary still counts the earlier files against the earlier tree — and the specs *after* the
+edited one can fail for reasons no later run reproduces. Three failures chased that way in
+one session each passed in isolation and in a clean run. This is the `ast`-suite rule one
+layer out: **do not touch the tree while a suite is reading it**, and when a failure will
+not reproduce, suspect the run before the product.

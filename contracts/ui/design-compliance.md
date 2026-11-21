@@ -1221,3 +1221,59 @@ instrument — which is the class of defect `MESSAGE_KEYS` is structurally blind
 app shipped four of in one pass. The message preview stays English on the Arabic page, which
 is correct rather than a miss: it is the *published* template, and the note beside it says
 the member's own language is a different published row with no fallback chain.
+
+
+## ADM-PAY-10 — the dispute, and the evidence it is answered with
+
+> The check-in record is the strongest evidence a gym has and Veyro assembles it
+> automatically. Accepting the loss is a real option and is recorded as a decision, not a
+> lapse.
+
+**"Veyro assembles it automatically" is a claim, and nothing was assembling anything.** The
+module had three dispute writers and no reader at all — `record_dispute`,
+`respond_to_dispute` and `settle_dispute` were each reachable and a chargeback existed only
+for whoever had just written it. This build's recurring "a writer with no reader" shape, now
+closed for the fourth time after MOD-004's brands, MOD-017's memberships and MOD-018's chart.
+
+What was added:
+
+- **`GET /finance/disputes`**, which also computes the deadline. `collections.evidence_window`
+  already decides it — including letting `days_remaining` go negative rather than clamping,
+  because a dispute whose window closed is the one somebody most needs to see — so a surface
+  subtracting two dates would be a second definition of the one figure the screen is about.
+- **`GET /access/attendance/window`**, which did not exist. `person_attendance` answers how
+  often somebody *was* coming, measured over the weeks before their last visit; a chargeback
+  is answered with a different question — did they come during the period this invoice
+  billed for. Counted from entries and never from decisions, because a card failing at the
+  door produces refused decisions for exactly the member whose attendance is being proved,
+  and each visit is dated in the timezone of the club whose door it was.
+- **`finance.dispute.read`, routine**, beside the financial `finance.dispute.manage`. This
+  is MOD-018's own rule applied: *"a trial balance is how somebody finds out that something
+  is wrong, and a read behind a step-up is a read nobody does until the month-end panic."* A
+  chargeback is worse than a wrong balance because the response window expires, so putting
+  the board behind the write permission would mean an accountant steps up before they can
+  discover that seven days are left. The writes stay financial — answering a scheme and
+  accepting a loss are money decisions and the second cannot be undone.
+
+**Three evidence states, where the canvas has two.** ☑ and ☐ assume a reader who can see
+everything; this build has gates, so a third is needed. Rendering a refused
+`access.decision.read` as ☐ would tell an accountant the gym cannot prove attendance it can
+prove, which is the worst sentence this screen could say. The classification lives in
+`evidenceFrom` rather than inline in the page precisely so all three are provable — a
+fixture renders one case, and two of the three would otherwise be reachable only by signing
+in as somebody the fixture does not have.
+
+**A rejected fiscal filing is not a reference, and the first version ticked it as one.**
+The canvas's line is "Invoice and JoFotara reference" and the two halves are different
+evidence: the document is the gym's own record, the acknowledgement is a tax authority
+confirming it was filed. The fixture's invoice had been rejected and the row showed a tick.
+**Found by looking at the page**, which is now three screens running.
+
+**Neither button exists**, and the second is the interesting one: the canvas itself calls
+accepting the loss "a decision, not a lapse", which is an argument for recording who made
+it — `settle_dispute` does, and it is a stepped-up financial write with no form here.
+
+**The fixture seeds two disputes**, four days and ten, because the deadline box has two
+states and the canvas draws only the urgent one. One dispute renders one branch and leaves
+the other proved by nothing, which is the surface-branch vacuity this repository has now
+shipped four times.

@@ -1907,6 +1907,70 @@ CHART_WEEKS = 12
 RECENT_VISITS = 10
 
 
+def entries_between(
+    pool: Pool, tenant_id: str, *, person_id: str, since: date, until: date,
+) -> dict[str, Any]:
+    """How many times this member came in between two dates, and on which days.
+
+    ADM-PAY-10's first and strongest piece of evidence: *"11 check-ins in the billed month"*,
+    against a chargeback claiming the service was not received. The canvas's own note says
+    why it is first -- "the check-in record is the strongest evidence a gym has and Veyro
+    assembles it automatically" -- and no read answered it. `person_attendance` answers "how
+    often were they coming", which is a habit over the weeks before their last visit; this
+    answers "did they come during *this* period", which is a different question with a
+    caller-supplied window and is the only one a dispute can be answered with.
+
+    **Entries, not decisions**, which is this module's standing rule and matters most here: a
+    card failing at the door produces refused decisions for exactly the member whose
+    attendance is being proved, so a count read from the decision log would overstate the
+    evidence in the one place it is being used as evidence.
+
+    **Each event's day is local to the door it was walked through**, not to UTC and not to
+    one chosen zone. A member who trains at two clubs in two zones has each visit counted on
+    the date that club would put on it, which is what "the billed month" means to whoever
+    reads the dispute -- and counting against a UTC date is the frame mismatch this
+    repository has already paid for once in `visits_on`.
+
+    The days are returned as well as the count, because a dispute is answered with a record
+    rather than with a number somebody has to trust.
+    """
+    if until < since:
+        raise InvalidRequest("a_window_ends_before_it_starts")
+    if (until - since).days > 400:
+        raise InvalidRequest("an_attendance_window_is_at_most_four_hundred_days")
+    with tenant_scope(pool, tenant_id) as conn:
+        rows = conn.execute(
+            "SELECT (e.occurred_at AT TIME ZONE l.timezone)::date AS local_day,"
+            "       l.location_name, count(*)"
+            " FROM plt01.acc_events e"
+            " JOIN plt01.acc_zones z ON z.zone_id = e.zone_id"
+            " JOIN plt01.locations l ON l.location_id = z.location_id"
+            " WHERE e.person_id = %s AND e.direction = 'entry'"
+            "   AND (e.occurred_at AT TIME ZONE l.timezone)::date >= %s"
+            "   AND (e.occurred_at AT TIME ZONE l.timezone)::date <= %s"
+            " GROUP BY local_day, l.location_name"
+            " ORDER BY local_day, l.location_name",
+            (person_id, since, until),
+        ).fetchall()
+    days = [{"on": r[0].isoformat(), "location_name": str(r[1]), "entries": int(r[2])}
+            for r in rows]
+    return {
+        "person_id": person_id, "since": since.isoformat(), "until": until.isoformat(),
+        "entries": sum(int(d["entries"]) for d in days),
+        "days_attended": len({d["on"] for d in days}),
+        "days": days,
+        "entries_not_decisions":
+            "Counted from acc_events, which is what happened, not from acc_decisions, which"
+            " is what was decided. A card failing at the door produces refused decisions for"
+            " the same person, and counting those would overstate attendance in exactly the"
+            " case somebody is checking it.",
+        "each_day_is_local_to_its_door":
+            "An event's date is computed in the timezone of the location whose zone it"
+            " happened at, so a member training at two clubs has each visit on the date that"
+            " club would put on it.",
+    }
+
+
 def person_attendance(
     pool: Pool, tenant_id: str, *, person_id: str, as_of: date | None = None,
     weeks: int = 8,

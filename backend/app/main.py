@@ -6700,11 +6700,14 @@ def create_app(
 
         The module's last writer with no reader: three routes could record, answer and
         settle a dispute and nothing could list one, so a chargeback existed only for
-        whoever had just written it. `finance.dispute.manage` is the permission the writers
-        already use -- a dispute is money being taken back, and the deadline on this read is
-        the thing somebody has to act on.
+        whoever had just written it.
+
+        **`finance.dispute.read` is routine, and that is MOD-018's rule applied here**: a
+        read behind a step-up is a read nobody does until the month-end panic, and a
+        chargeback is worse than a wrong balance because the response window expires. The
+        writes beside it stay financial.
         """
-        permit(session, "finance.dispute.manage")
+        permit(session, "finance.dispute.read")
         return commercial.list_disputes(
             tenant_pool, tenant_id, status=status, limit=limit)
 
@@ -8616,6 +8619,24 @@ def create_app(
         return access.person_attendance(
             tenant_pool, tenant_id, person_id=require_uuid(person_id, "person_id"),
             weeks=weeks)
+
+    @app.get("/access/attendance/window")
+    def read_entries_between(
+        tenant_id: TenantId, session: Session, person_id: str, since: date,
+        until: date,
+    ) -> dict[str, Any]:
+        """How many times this member came in between two dates, and on which days.
+
+        ADM-PAY-10's strongest evidence against a chargeback. Behind
+        `access.decision.read`, the same permission as the attendance read beside it and for
+        the same reason: an entry record is strictly less disclosing than the decision rows
+        that permission already returns, and it is still a statement about one named person,
+        which is why it is filtered rather than listed.
+        """
+        permit(session, "access.decision.read")
+        return access.entries_between(
+            tenant_pool, tenant_id, person_id=require_uuid(person_id, "person_id"),
+            since=since, until=until)
 
     @app.get("/access/credentials")
     def read_person_credentials(

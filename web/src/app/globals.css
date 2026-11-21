@@ -2565,3 +2565,38 @@ a {
  * "Review first", which is §15's rule that nothing carries meaning by colour.
  */
 .ds-wants-review { color: var(--color-semantic-warning); }
+
+/* ---------------------------------------- ADM-PAY-10's evidence list
+ *
+ * The canvas draws a mark, a line of text and a hairline between rows:
+ * `display:flex;gap:9px;padding:7px 0;border-bottom:1px solid rgba(23,23,26,.05)`, the mark
+ * in `success.600` for what is held and `warning.600` for what is not.
+ *
+ * **The mark is never the whole signal.** §15: nothing carries meaning by colour or by a
+ * glyph alone, so each row also carries its state as visually-hidden text — and there are
+ * three states here rather than the canvas's two, because "we do not have this" and "you
+ * may not see whether we have this" are different facts and only the first is about the
+ * gym's case.
+ */
+.ds-evidence { list-style: none; margin: 0; padding: 0; }
+
+.ds-evidence > li {
+  display: flex;
+  gap: 9px;
+  padding-block: 7px;
+  border-block-end: 1px solid var(--color-border-subtle);
+}
+
+.ds-evidence > li:last-child { border-block-end: 0; }
+
+.ds-evidence-mark {
+  inline-size: 14px;
+  flex-shrink: 0;
+  font-family: var(--font-plex-mono), "IBM Plex Mono", ui-monospace, monospace;
+  color: var(--color-semantic-success);
+}
+
+.ds-evidence > li[data-state="missing"] .ds-evidence-mark { color: var(--color-semantic-warning); }
+.ds-evidence > li[data-state="refused"] .ds-evidence-mark { color: var(--color-text-tertiary); }
+
+.ds-evidence-what { flex: 1; min-inline-size: 0; }

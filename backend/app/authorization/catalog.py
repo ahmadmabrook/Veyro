@@ -475,6 +475,17 @@ PERMISSIONS: dict[str, Permission] = dict([
     _p("finance.dispute.manage",
        "Record a card dispute, send evidence and record the scheme's outcome",
        "configuration", "financial"),
+    # **Seeing a dispute is routine, and that is MOD-018's rule applied here.** "A trial
+    # balance is how somebody finds out that something is wrong, and a read behind a
+    # step-up is a read nobody does until the month-end panic" -- and a chargeback is
+    # worse than a wrong balance, because the response window expires. Putting the board
+    # behind the financial permission above would mean an accountant steps up before they
+    # can discover that seven days are left, which is the one thing this read exists to
+    # make noticeable. The write stays financial: answering the scheme and accepting the
+    # loss are both money decisions and both need the second factor.
+    _p("finance.dispute.read",
+       "See the card disputes, what each is about and how long is left to answer it",
+       "configuration", "routine"),
     # **Fiscalization is its own permission.** It is the act that tells a tax authority an
     # invoice is final, and the person who issues invoices is not necessarily the person who
     # files them.

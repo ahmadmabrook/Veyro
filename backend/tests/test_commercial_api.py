@@ -2418,10 +2418,13 @@ class DisputeTests(CommercialApiTestCase):
     # ------------------------------------------------- ADM-PAY-10, the dispute listing
 
     def disputes(self, tenant_id, **query):
+        """**Read with a routine session on purpose**, which is the permission's whole
+        point: a read behind a step-up is a read nobody does until the deadline has
+        passed."""
         q = "&".join(f"{k}={v}" for k, v in query.items())
         read = self.client.get(
             f"/finance/disputes{'?' + q if q else ''}",
-            headers=self.manager(tenant_id))
+            headers=self.scoped(tenant_id, ["finance.dispute.read"]))
         self.assertEqual(read.status_code, 200, read.text)
         return read.json()
 
@@ -2498,7 +2501,8 @@ class DisputeTests(CommercialApiTestCase):
         paid = self.paid(tenant_id)
         self.dispute(tenant_id, paid)
         raw = self.client.get(
-            "/finance/disputes", headers=self.manager(tenant_id)).text
+            "/finance/disputes",
+            headers=self.scoped(tenant_id, ["finance.dispute.read"])).text
         self.assertNotIn("Jane Smith", raw)
         row = self.disputes(tenant_id)["disputes"][0]
         self.assertEqual(row["method"], "card")
@@ -2509,14 +2513,45 @@ class DisputeTests(CommercialApiTestCase):
         list rendering both as empty is a list nobody can trust."""
         tenant_id = self.tenant()
         answer = self.client.get(
-            "/finance/disputes?status=setled", headers=self.manager(tenant_id))
+            "/finance/disputes?status=setled",
+            headers=self.scoped(tenant_id, ["finance.dispute.read"]))
         self.assertEqual(answer.status_code, 422, answer.text)
+
+    def test_seeing_a_dispute_does_not_buy_answering_it(self):
+        """The read is routine so the deadline gets noticed; the acts stay financial.
+
+        Answering a scheme and accepting a loss are both money decisions, and the second
+        is the one nobody can undo -- so a session that may look at the board may not
+        settle anything on it.
+        """
+        tenant_id = self.tenant()
+        reader = self.scoped(tenant_id, ["finance.dispute.read"])
+        refused = self.client.post("/finance/disputes", json={
+            "payment_id": str(uuid.uuid4()), "provider_case_ref": "X",
+            "dispute_kind": "chargeback", "reason_code": "fraudulent",
+            "amount_minor": 100, "currency": "JOD", "opened_on": "2026-02-01",
+            "respond_due_on": "2026-02-15", "idempotency_key": "x",
+            **self.correlation()}, headers=reader)
+        self.assertEqual(refused.status_code, 403, refused.text)
+
+    def test_the_board_is_readable_without_a_step_up(self):
+        """MOD-018's rule: a read behind a step-up is a read nobody does until the panic.
+
+        A chargeback is worse than a wrong trial balance, because the window expires -- so
+        a password-only session that holds the read permission sees the board.
+        """
+        tenant_id = self.tenant()
+        read = self.client.get(
+            "/finance/disputes",
+            headers=self.scoped(tenant_id, ["finance.dispute.read"]))
+        self.assertEqual(read.status_code, 200, read.text)
 
     def test_a_dispute_listing_limit_outside_the_bound_refuses(self):
         tenant_id = self.tenant()
         for query in ("limit=0", "limit=9999"):
             answer = self.client.get(
-                f"/finance/disputes?{query}", headers=self.manager(tenant_id))
+                f"/finance/disputes?{query}",
+                headers=self.scoped(tenant_id, ["finance.dispute.read"]))
             self.assertEqual(answer.status_code, 422, f"{query}: {answer.text}")
 
     def test_a_dispute_is_recorded_against_a_payment_with_its_window(self):

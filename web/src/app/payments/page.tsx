@@ -291,6 +291,12 @@ export default async function PaymentsPage({
                       <Link href="/payments/recovery">
                         {text("payments.next.attempt")}
                       </Link>
+                    ) : entry.kind === "dispute" ? (
+                      // ADM-PAY-10 is where a chargeback is answered, and the deadline is
+                      // the one thing on this ledger that expires.
+                      <Link href="/payments/disputes">
+                        {text("payments.next.dispute")}
+                      </Link>
                     ) : (
                       text(`payments.next.${entry.kind}` as MessageKey)
                     )

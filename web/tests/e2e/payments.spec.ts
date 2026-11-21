@@ -72,7 +72,9 @@ test.describe("the payments ledger", () => {
     // fixture rather than the other way round.
     await expect(header).toContainText("2 failed");
     await expect(header).toContainText("1 refunded");
-    await expect(header).toContainText("1 disputed");
+    // Two, because ADM-PAY-10's deadline box has an urgent state and a calm one and a
+    // single dispute renders only one of them.
+    await expect(header).toContainText("2 disputed");
     // "0 failed, 0 refunded, 0 disputed" is three facts nobody needs stated, so a clean
     // period says nothing here. With all three seeded this asserts the formatting rather
     // than the suppression; the component test asserts the suppression.

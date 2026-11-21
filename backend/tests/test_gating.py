@@ -117,6 +117,9 @@ READ_ROUTES = [
     # ADM-ACC-01's TODAY column, composed onto the fleet board.
     ("get", "/access/entries", None),
     ("get", f"/access/attendance?person_id={_ID}", None),
+    # ADM-PAY-10's strongest evidence: how many times this member came in during the
+    # period an invoice covers. Same permission as the read above, and for its reason.
+    ("get", f"/access/attendance/window?person_id={_ID}&since=2026-01-01&until=2026-01-31", None),
     ("get", f"/access/credentials?person_id={_ID}", None),
     ("get", f"/access/decisions?person_id={_ID}", None),
 

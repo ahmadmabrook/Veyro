@@ -1105,6 +1105,98 @@ class VisitTests(AccessApiTestCase):
         self.assertEqual(held["uses"], 0)
         self.assertIsNone(held["last_used_at"])
 
+    # ------------------------------------ ADM-PAY-10, the evidence a dispute is answered with
+
+    def window(self, floor, since, until):
+        read = self.client.get(
+            f"/access/attendance/window?person_id={floor['person_id']}"
+            f"&since={since}&until={until}",
+            headers=self.headers(floor["tenant_id"]))
+        self.assertEqual(read.status_code, 200, read.text)
+        return read.json()
+
+    def test_the_entries_inside_a_window_are_counted_and_listed(self):
+        """ADM-PAY-10's first and strongest evidence: "11 check-ins in the billed month".
+
+        `person_attendance` answers how often somebody was coming, measured over the weeks
+        before their last visit -- a habit. A chargeback is answered with a different
+        question: did they come during *this* period. Nothing read answered it, and a
+        dispute is answered with the record rather than with a number somebody has to trust,
+        so the days come back too.
+        """
+        floor = self.floor()
+        now = datetime.now(UTC)
+        today = now.date()
+        inside = [today - timedelta(days=d) for d in (3, 5, 9)]
+        for d in (3, 5, 9):
+            self.entry(floor, when=now - timedelta(days=d))
+        # One outside the window, which is what makes the bounds mean anything.
+        self.entry(floor, when=now - timedelta(days=40))
+        body = self.window(
+            floor, (today - timedelta(days=10)).isoformat(), today.isoformat())
+        self.assertEqual(body["entries"], 3, body)
+        self.assertEqual(body["days_attended"], 3)
+        self.assertEqual([d["on"] for d in body["days"]],
+                         sorted(d.isoformat() for d in inside))
+
+    def test_the_window_includes_both_of_its_ends(self):
+        """A billed month runs from the first to the last, and both are in it.
+
+        An exclusive end silently drops the last day of every period, which on a monthly
+        invoice is the day somebody most often trains before a renewal.
+        """
+        floor = self.floor()
+        now = datetime.now(UTC)
+        today = now.date()
+        # **Never a time of day computed from a date.** `datetime.combine(today, 09:00)` is
+        # in the future for the first nine hours of every UTC day, and the event route
+        # refuses a future instant -- a green that depends on when the suite is run, which
+        # this repository has paid for in three other shapes.
+        for back in (6, 0):
+            self.entry(floor, when=now - timedelta(days=back, minutes=5))
+        body = self.window(
+            floor, (today - timedelta(days=6)).isoformat(), today.isoformat())
+        self.assertEqual(body["entries"], 2, body)
+
+    def test_a_refused_presentation_is_not_evidence_of_attendance(self):
+        """**Entries, not decisions** -- the module's rule, and it matters most here.
+
+        A card failing at the door produces refused decisions for exactly the member whose
+        attendance is being proved, so a count read from the decision log would overstate
+        the evidence in the one place it is used as evidence.
+        """
+        floor = self.floor()
+        today = datetime.now(UTC).date()
+        refused = self.client.post("/access/decisions", json={
+            "point_id": floor["point_id"], "credential_value": "nobody-has-this",
+            "idempotency_key": str(uuid.uuid4()), **self.correlation()},
+            headers=self.headers(floor["tenant_id"]))
+        self.assertIn(refused.status_code, (200, 201), refused.text)
+        body = self.window(
+            floor, (today - timedelta(days=7)).isoformat(), today.isoformat())
+        self.assertEqual(body["entries"], 0, body)
+
+    def test_a_window_that_ends_before_it_starts_refuses(self):
+        floor = self.floor()
+        read = self.client.get(
+            f"/access/attendance/window?person_id={floor['person_id']}"
+            "&since=2026-03-01&until=2026-02-01",
+            headers=self.headers(floor["tenant_id"]))
+        self.assertEqual(read.status_code, 422, read.text)
+
+    def test_an_unbounded_window_refuses(self):
+        """A dispute covers a billing period, not a decade.
+
+        The bound is here rather than in the client for the reason every listing read in
+        this build has one: unbounded is a bulk export of one person's movements.
+        """
+        floor = self.floor()
+        read = self.client.get(
+            f"/access/attendance/window?person_id={floor['person_id']}"
+            "&since=2020-01-01&until=2026-12-31",
+            headers=self.headers(floor["tenant_id"]))
+        self.assertEqual(read.status_code, 422, read.text)
+
     def test_attendance_carries_the_three_figures_the_tab_draws(self):
         """ADM-MEM-07: `19d SINCE LAST · 2.8 WEEKLY AVG · 214 LIFETIME`.
 

@@ -1100,6 +1100,12 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
       issued_on: startedOn,
       due_on: new Date(Date.parse(startedOn) + 14 * 86400000).toISOString().slice(0, 10),
       jurisdiction: "JO",
+      // **The membership this billed for**, which ADM-PAY-10 needs: a chargeback against
+      // this payment is answered with the signed agreement, and the dispute read finds it
+      // through the invoice rather than by looking the payer up. Without it the evidence
+      // list renders "the invoice cites no membership", which is true and is not the case
+      // the canvas specifies.
+      membership_id: membership.membership_id,
       idempotency_key: randomUUID(), correlation_id: cid(),
     },
   });
@@ -1194,8 +1200,25 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
     method: "POST", ...as(token),
     body: { payment_id: settled.payment_id, provider_case_ref: "ACME-CASE-40118",
             dispute_kind: "chargeback", reason_code: "product_not_received",
+            // **Ten days, which is ADM-PAY-10's unhurried branch.** The urgent one is
+            // seeded below: the deadline box has two states and the canvas only draws the
+            // red one, so a fixture with a single dispute renders one branch and leaves
+            // the other proved by nothing -- the surface-branch vacuity this repository
+            // has shipped four times.
             amount_minor: 2000, currency: invoice.currency,
             opened_on: isoDay(-2), respond_due_on: isoDay(10),
+            idempotency_key: randomUUID(), correlation_id: cid() },
+  });
+  // The canvas's own case: "Evidence due 26 August · 7 days", in the error ink, with
+  // "missing the deadline forfeits the amount automatically" under it. A scheme gives
+  // whatever window it gives, so a second dispute against the same payment with a nearer
+  // deadline is the ordinary way two of these sit on one board.
+  await call("/finance/disputes", {
+    method: "POST", ...as(token),
+    body: { payment_id: settled.payment_id, provider_case_ref: "ACME-CASE-40119",
+            dispute_kind: "chargeback", reason_code: "fraudulent",
+            amount_minor: 1500, currency: invoice.currency,
+            opened_on: isoDay(-30), respond_due_on: isoDay(4),
             idempotency_key: randomUUID(), correlation_id: cid() },
   });
 

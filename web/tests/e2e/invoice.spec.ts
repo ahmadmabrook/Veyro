@@ -57,7 +57,10 @@ test.describe("one invoice", () => {
     const timeline = page.locator(".ds-timeline-items");
     await expect(timeline.getByText("Issued")).toBeVisible();
     await expect(timeline.getByText("Payment received")).toBeVisible();
-    await expect(timeline.getByText("Dispute")).toBeVisible();
+    // **Two of them**, because ADM-PAY-10's deadline box has an urgent state and a calm
+    // one and a single dispute renders only one. The assertion here is that a dispute
+    // reaches this timeline at all, so it is the first rather than an exact count.
+    await expect(timeline.getByText("Dispute").first()).toBeVisible();
     await expect(timeline.getByText("Refund")).toBeVisible();
     // And the refund is negative on the same axis as the payment above it.
     const refund = page.locator(".ds-timeline-item").filter({ hasText: "Refund" }).first();

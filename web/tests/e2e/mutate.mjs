@@ -40,6 +40,42 @@ const web = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
  */
 const MUTATIONS = [
   {
+    id: "dispute-rejected-filing",
+    why: "an invoice whose fiscal filing was rejected has only half the evidence the canvas's"
+      + " line names, and ticking both puts an accountant in front of a scheme expecting a"
+      + " reference that does not exist",
+    file: "src/lib/disputes.ts",
+    from: '      note: dispute.fiscal_status === "rejected"\n'
+      + '        ? "dispute.ev.filingRejected"\n'
+      + '        : "dispute.ev.notFiled",',
+    to: '      note: undefined,',
+    grep: "does not tick a rejected fiscal filing",
+    runner: "vitest",
+  },
+  {
+    id: "dispute-refusal-as-absence",
+    why: "a permission refusal rendered as an absence tells an accountant the gym cannot"
+      + " prove attendance it can prove, which is the worst sentence this screen could say",
+    file: "src/lib/disputes.ts",
+    from: '    out.push({ key: "attendance", state: "refused", label: "dispute.ev.attendance",\n'
+      + '               note: "dispute.ev.attendanceRefused" });',
+    to: '    out.push({ key: "attendance", state: "missing", label: "dispute.ev.attendance",\n'
+      + '               note: "dispute.ev.attendanceRefused" });',
+    grep: "tells a refusal from an absence",
+    runner: "vitest",
+  },
+  {
+    id: "dispute-statement-ticked",
+    why: "nothing in this build holds a written statement, and ticking the line would be a"
+      + " piece of evidence claimed that does not exist",
+    file: "src/lib/disputes.ts",
+    from: '  out.push({ key: "statement", state: "missing", label: "dispute.ev.statement",\n'
+      + '             note: "dispute.ev.statementIsYours" });',
+    to: '  out.push({ key: "statement", state: "have", label: "dispute.ev.statement",\n'
+      + '             note: "dispute.ev.statementIsYours" });',
+    grep: "leaves the written statement to the operator",
+  },
+  {
     id: "recovery-unsorted",
     why: "the workspace's whole argument is that the set is sorted; a page that called every"
       + " case one decision would invite one batch action over rows it does the wrong thing to",

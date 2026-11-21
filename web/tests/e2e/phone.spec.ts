@@ -44,6 +44,9 @@ const surfaces: [string, string][] = [
   // Five columns, two of which stack a word over a sentence — and the message preview below
   // is the one block in the app holding a template body with `{{ }}` runs that cannot break.
   ["the recovery workspace", "/payments/recovery"],
+  // A card per dispute, each with a four-line evidence list whose rows pair a mark
+  // with prose — the layout most likely to put a mark on its own line at phone width.
+  ["the dispute board", "/payments/disputes"],
   ["an invoice", `/finance/invoices/${creds.invoiceId}`],
   ["the finance board", "/finance"],
   ["the catalog board", "/catalog"],

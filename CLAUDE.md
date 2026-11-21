@@ -4032,7 +4032,7 @@ re-running the fixture invalidates every test already created.
 Known gaps: the surface covers the sign-in, the step-up, the account page, MOD-004, MOD-005,
 MOD-007, MOD-008, MOD-009, MOD-010, MOD-011, MOD-012, MOD-013, MOD-014, MOD-016, MOD-017,
 MOD-018, MOD-019, MOD-021 and MOD-022, plus MOD-020's roster on a session, ADM-PAY-05's
-recovery workspace, ADM-RPT-01/02/03
+recovery workspace, ADM-PAY-10's dispute board, ADM-RPT-01/02/03
 under `/reports`, ADM-PAY-07's wallet on a member's billing tab and ADM-MEM-07's attendance
 tab. MOD-015 is the one
 implemented module with no screen at all, which is the bulk of the remaining work; MOD-019's
@@ -4070,7 +4070,11 @@ needed**, which is the shape the rest of them take: `collections.recovery_treatm
 failed payments the canvas calls one decision, `GET /finance/recovery` pairs each case with
 the failure that opened it and the membership its invoice cites, and
 `GET /notifications/templates/published` gave MOD-013's template body its first reader -- the
-listing omits it, so the text had been unreadable anywhere in the build. ADM-RPT-05's export gate, ADM-STF-03's invitation and every
+listing omits it, so the text had been unreadable anywhere in the build. **ADM-PAY-10 came
+off it the same way**: `GET /finance/disputes` (the module had three dispute writers and no
+reader at all), `GET /access/attendance/window` for the check-in record a chargeback is
+answered with, and a routine `finance.dispute.read` beside the financial write -- MOD-018's
+rule, because a read behind a step-up is a read nobody does until the window has expired. ADM-RPT-05's export gate, ADM-STF-03's invitation and every
 `tenancy.*`/`catalog.*`/`finance.*` form are blocked on the same thing: each is a stepped-up
 financial write with no form in this app, and a button that answered 403 is worse than its
 absence. The rest need modules this repository does not have (CRM, automation, tasks, search).
