@@ -163,6 +163,14 @@ export default async function PaymentsPage({
         </Link>
       </nav>
 
+      {/* **The drawer is a board of its own, and it had no way in.** ADM-PAY-09 is the
+          shift close; this ledger is what was taken, not what is in the till. A link rather
+          than a tab, because the two answer different questions and a reader arrives at
+          each from a different place in the day. */}
+      <p style={{ margin: 0 }}>
+        <Link href="/payments/cash">{text("cash.heading")}</Link>
+      </p>
+
       <section className="page-section" aria-labelledby="ledger-heading">
         <h2 id="ledger-heading" className="ds-visually-hidden">{text("payments.title")}</h2>
         {ledger.entries.length === 0 ? (

@@ -946,6 +946,101 @@ class SettlementTests(LedgerApiTestCase):
 
 
 class CashTests(LedgerApiTestCase):
+    def test_the_drawers_can_be_listed_at_last(self) -> None:
+        """**`open_cash_session` and `close_cash_session` had no reader**, so a drawer could
+        be opened and the only way to learn what was in it was to close it and read the
+        refusal. The sixth instance of this build's "a writer with no reader" shape, and
+        ADM-PAY-09 cannot be drawn without this."""
+        tenant_id = self.tenant()
+        entity = self.legal_entity(tenant_id)
+        location_id = self.location(tenant_id)
+        owner = self.headers(tenant_id)
+        drawer = self.drawer(tenant_id, entity, location_id, float_minor=5000)
+
+        listed = self.client.get("/ledger/cash-sessions", headers=owner)
+        self.assertEqual(listed.status_code, 200, listed.text)
+        mine = next(one for one in listed.json()["sessions"]
+                    if one["session_id"] == drawer["session_id"])
+        self.assertEqual("open", mine["status"])
+        self.assertEqual(5000, mine["opening_float_minor"])
+        # **The expected figure is returned for an open drawer, deliberately.** The canvas:
+        # "the expected figure is shown before the count is entered. Hiding it would be a
+        # fraud control; showing it is an accuracy control, and accuracy is the more common
+        # problem."
+        self.assertEqual(5000, mine["expected_minor"])
+        self.assertIsNone(mine["counted_minor"])
+        self.assertIsNone(mine["variance_minor"])
+
+    def test_the_breakdown_splits_the_expected_figure_by_sign(self) -> None:
+        """What makes the number checkable by the person holding the notes: the float they
+        put in, what went in after it, and what went out. The float is excluded from
+        `taken_minor` because it is already its own line -- counting it twice is how a
+        surface would print a total that does not add up."""
+        tenant_id = self.tenant()
+        entity = self.legal_entity(tenant_id)
+        chart = self.chart(tenant_id)
+        location_id = self.location(tenant_id)
+        owner = self.headers(tenant_id)
+        drawer = self.drawer(tenant_id, entity, location_id, float_minor=5000)
+
+        # Two sales into the drawer and one refund out of it.
+        for amount in (3000, 1500):
+            self.journal(tenant_id, entity, chart, amount=amount,
+                         lines=[{"account_id": drawer["till"], "amount_minor": amount},
+                                {"account_id": chart["revenue"],
+                                 "amount_minor": -amount}])
+        self.journal(tenant_id, entity, chart,
+                     lines=[{"account_id": drawer["till"], "amount_minor": -800},
+                            {"account_id": chart["revenue"], "amount_minor": 800}],
+                     description="change given back")
+
+        mine = next(one for one in
+                    self.client.get("/ledger/cash-sessions", headers=owner).json()["sessions"]
+                    if one["session_id"] == drawer["session_id"])
+        self.assertEqual(4500, mine["taken_minor"])
+        self.assertEqual(-800, mine["paid_out_minor"])
+        self.assertEqual(2, mine["entries_in"])
+        # And the three add up to the figure the close will be measured against.
+        self.assertEqual(
+            mine["opening_float_minor"] + mine["taken_minor"] + mine["paid_out_minor"],
+            mine["expected_minor"])
+
+    def test_a_closed_drawer_keeps_the_figure_it_was_closed_against(self) -> None:
+        """An open drawer's expected figure is derived now, because the drawer is still
+        moving; a closed one keeps what it was measured against, or a later posting would
+        rewrite history on a session somebody already signed off."""
+        tenant_id = self.tenant()
+        entity = self.legal_entity(tenant_id)
+        chart = self.chart(tenant_id)
+        location_id = self.location(tenant_id)
+        owner = self.headers(tenant_id)
+        drawer = self.drawer(tenant_id, entity, location_id, float_minor=5000)
+        closed = self.client.post(
+            f"/ledger/cash-sessions/{drawer['session_id']}/close", json={
+                "counted_minor": 4800, "legal_entity_id": entity,
+                "suspense_account_id": chart["suspense"],
+                "variance_reason": "a member was given change twice",
+                **self.correlation()}, headers=owner)
+        self.assertEqual(closed.status_code, 200, closed.text)
+
+        mine = next(one for one in self.client.get(
+            "/ledger/cash-sessions?status=closed", headers=owner).json()["sessions"]
+            if one["session_id"] == drawer["session_id"])
+        self.assertEqual("closed", mine["status"])
+        self.assertEqual(5000, mine["expected_minor"])
+        self.assertEqual(4800, mine["counted_minor"])
+        self.assertEqual(-200, mine["variance_minor"])
+        self.assertIn("change twice", mine["variance_reason"])
+        self.assertIsNotNone(mine["variance_journal_id"])
+
+    def test_a_status_outside_the_domain_is_refused_rather_than_empty(self) -> None:
+        """"status=opne" and "no drawer is open" are different answers, and a list that
+        renders both as empty is a list nobody can trust."""
+        tenant_id = self.tenant()
+        refused = self.client.get("/ledger/cash-sessions?status=opne",
+                                  headers=self.headers(tenant_id))
+        self.assertEqual(refused.status_code, 422, refused.text)
+
     def test_a_till_that_does_not_balance_posts_to_suspense_and_opens_a_case(self):
         """**Neither half is optional.** Posting it keeps the ledger's cash balance equal to
         the money that is actually there; the case is the question nobody has answered."""

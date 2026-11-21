@@ -17,6 +17,7 @@ import json
 import unittest
 import uuid
 from datetime import UTC, datetime, timedelta
+from zoneinfo import ZoneInfo
 from typing import Any
 
 from tests.support import GatedApiTestCase
@@ -1059,7 +1060,24 @@ class ReviewRegressionTests(AccessApiTestCase):
 
 
 class VisitTests(AccessApiTestCase):
-    """ADM-CC-01's third metric: "VISITS TODAY · 218 · usual for a Wednesday"."""
+    """ADM-CC-01's third metric: "VISITS TODAY · 218 · usual for a Wednesday".
+
+    **A visit's date is the club's, so these tests compute theirs the same way.**
+    `visits_on` buckets each event in the timezone of the location it happened at -- "so a
+    member training at two clubs has each visit on the date that club would put on it" --
+    and the fixture's club is `Asia/Amman`, three hours ahead of UTC. Two of these tests
+    took `today` from `datetime.now(UTC).date()` and asserted against it, so every expected
+    day was one earlier than the club's own for the three hours after 21:00 UTC, and the
+    suite failed at 21:28 for a reason that had nothing to do with the product.
+
+    This is not the local-clock-versus-UTC flake this repository already records; **CI runs
+    in UTC and would have failed too**, because the frame that matters is neither the
+    runner's nor UTC but the *club's*. A fixture asserting a date takes it from the same
+    zone the service bucketed it in.
+    """
+
+    #: The fixture's own club, which is where every date on these reads is computed.
+    CLUB = ZoneInfo("Asia/Amman")
 
     def entry(self, floor: dict[str, Any], *, when: datetime | None = None) -> None:
         recorded = self.client.post("/access/events", json={
@@ -1126,7 +1144,7 @@ class VisitTests(AccessApiTestCase):
         """
         floor = self.floor()
         now = datetime.now(UTC)
-        today = now.date()
+        today = now.astimezone(self.CLUB).date()
         inside = [today - timedelta(days=d) for d in (3, 5, 9)]
         for d in (3, 5, 9):
             self.entry(floor, when=now - timedelta(days=d))
@@ -1147,7 +1165,7 @@ class VisitTests(AccessApiTestCase):
         """
         floor = self.floor()
         now = datetime.now(UTC)
-        today = now.date()
+        today = now.astimezone(self.CLUB).date()
         # **Never a time of day computed from a date.** `datetime.combine(today, 09:00)` is
         # in the future for the first nine hours of every UTC day, and the event route
         # refuses a future instant -- a green that depends on when the suite is run, which

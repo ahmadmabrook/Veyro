@@ -2857,6 +2857,91 @@ a {
   color: var(--color-semantic-warning);
 }
 
+/* ADM-PAY-09's drawer: the breakdown above the count, as the canvas draws it. */
+.ds-cash-drawer {
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-card);
+  background: var(--color-surface-default);
+  padding: var(--space-4);
+  margin-block-end: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.ds-cash-breakdown {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--space-2) var(--space-4);
+  margin: var(--space-2) 0 0;
+}
+
+.ds-cash-breakdown dt,
+.ds-cash-breakdown dd {
+  margin: 0;
+}
+
+.ds-cash-breakdown dd {
+  text-align: end;
+}
+
+/* **The total is the line the reader checks against the notes in their hand**, so it is
+   separated by a rule and set in the same weight the design gives it. */
+.ds-cash-total {
+  font-weight: 500;
+  border-block-start: 1px solid var(--color-border-default);
+  padding-block-start: var(--space-2);
+}
+
+.ds-cash-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  align-items: flex-start;
+  margin-block-start: var(--space-3);
+}
+
+/* The variance, which appears as the count is typed. **An edge-mark and a tinted surface,
+   never a saturated fill**: this is one panel rather than a cell in a grid, so the fill is
+   the quiet one and the edge and the figure carry the weight. */
+.ds-cash-variance {
+  inline-size: 100%;
+  border: 1px solid var(--color-semantic-warning);
+  border-radius: var(--radius-card);
+  background: var(--color-surface-sunken);
+  padding: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.ds-cash-variance-head {
+  margin: 0;
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  font-weight: 500;
+  color: var(--color-semantic-warning);
+}
+
+.ds-cash-closed {
+  list-style: none;
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.ds-cash-closed > li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: baseline;
+  padding-block-end: var(--space-2);
+  border-block-end: 1px solid var(--color-border-subtle);
+}
+
 /* ADM-SCH-04's write form: the one in this app that is not a member's own account. */
 .ds-rota-form {
   display: flex;

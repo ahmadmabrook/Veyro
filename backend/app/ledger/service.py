@@ -1786,6 +1786,124 @@ def open_cash_session(
             "float_journal_id": float_journal_id, "repeated": False}
 
 
+def list_cash_sessions(
+    pool: Pool, tenant_id: str, *, status: str | None = None,
+    location_id: str | None = None, limit: int = 50, at: date | None = None,
+) -> dict[str, Any]:
+    """The drawers: what is open, what was counted, and what the ledger expects. COM-04-R05.
+
+    **`open_cash_session` and `close_cash_session` had no reader**, which is the sixth
+    instance of this build's "a writer with no reader" shape: a drawer could be opened and
+    the only way to learn what was in it was to close it and read the refusal. ADM-PAY-09 is
+    the screen that needs this, and it cannot be drawn without it.
+
+    **The expected figure comes back for an *open* session, deliberately.** The canvas is
+    explicit about why: "the expected figure is shown *before* the count is entered. Hiding
+    it would be a fraud control; showing it is an accuracy control, and accuracy is the more
+    common problem." So this read derives it the same way the close does -- from the drawer
+    account's own postings, with no number any caller sent -- rather than leaving a surface
+    to add the float to something and call it expected.
+
+    **The breakdown is the same sum split by sign**, which is what makes the figure checkable
+    by the person holding the notes: the float they put in, what went in after it, and what
+    went out. A journal that debits the drawer is one entry; `entries_in` counts them, and
+    one of those is one sale only in the sense that a sale is what put the money there --
+    this module records journals, not sales, and the surface says so rather than printing
+    "14 sales" over a number that is not a count of sales.
+    """
+    today = at or _today()
+    limit = max(1, min(int(limit), 200))
+    with tenant_scope(pool, tenant_id) as conn:
+        rows = conn.execute(
+            """
+            SELECT session_id, location_id, cash_account_id, drawer_label, currency,
+                   opening_float_minor, status, opened_at, opened_by, expected_minor,
+                   counted_minor, variance_reason, closed_at, closed_by,
+                   variance_journal_id
+              FROM plt01.led_cash_sessions
+             WHERE (%s::text IS NULL OR status = %s)
+               AND (%s::uuid IS NULL OR location_id = %s)
+             ORDER BY opened_at DESC, session_id DESC
+             LIMIT %s
+            """,
+            (status, status, location_id, location_id, limit),
+        ).fetchall()
+        out: list[dict[str, Any]] = []
+        for r in rows:
+            is_open = str(r[6]) == "open"
+            # A closed session keeps the figure it was closed against; an open one is
+            # derived now, because the drawer is still moving.
+            expected = (
+                _expected_in_drawer(conn, cash_account_id=str(r[2]), at=today)
+                if is_open else (int(r[9]) if r[9] is not None else None))
+            counted = int(r[10]) if r[10] is not None else None
+            movements = conn.execute(
+                "SELECT coalesce(sum(p.amount_minor) FILTER (WHERE p.amount_minor > 0), 0),"
+                "       coalesce(sum(p.amount_minor) FILTER (WHERE p.amount_minor < 0), 0),"
+                "       count(*) FILTER (WHERE p.amount_minor > 0)"
+                "  FROM plt01.led_postings p"
+                "  JOIN plt01.led_journals j ON j.journal_id = p.journal_id"
+                " WHERE p.account_id = %s AND j.posted_on <= %s",
+                (str(r[2]), today),
+            ).fetchone()
+            positives, gave, entries = (
+                (int(movements[0]), int(movements[1]), int(movements[2]))
+                if movements else (0, 0, 0))
+            # **The float is subtracted rather than excluded by id**, because the table keeps
+            # no `float_journal_id`: `open_cash_session` posts the float across from the safe
+            # and returns that journal's id without storing it. Subtracting the session's own
+            # float is equivalent and needs no column -- and it keeps the three figures
+            # adding up to `expected` by construction, which is the property that makes the
+            # number checkable by the person holding the notes.
+            took = positives - int(r[5])
+            entries = max(0, entries - 1)
+            out.append({
+                "session_id": str(r[0]),
+                "location_id": str(r[1]),
+                "cash_account_id": str(r[2]),
+                "drawer_label": str(r[3]),
+                "currency": str(r[4]),
+                "opening_float_minor": int(r[5]),
+                "status": str(r[6]),
+                "opened_at": r[7].isoformat(),
+                "opened_by": str(r[8]),
+                "expected_minor": expected,
+                "counted_minor": counted,
+                "variance_minor": (
+                    counted - expected
+                    if counted is not None and expected is not None else None),
+                "variance_reason": str(r[11]) if r[11] is not None else None,
+                "closed_at": r[12].isoformat() if r[12] is not None else None,
+                "closed_by": str(r[13]) if r[13] is not None else None,
+                "variance_journal_id": str(r[14]) if r[14] is not None else None,
+                "taken_minor": took,
+                "paid_out_minor": gave,
+                "entries_in": entries,
+            })
+    return {
+        "count": len(out),
+        "sessions": out,
+        # Said on the read rather than left to a surface, because both are the kind of claim
+        # a screen would otherwise make on the module's behalf.
+        "expected_is_derived_from_postings": (
+            "what the ledger says is in the drawer, summed from that account's own postings "
+            "and never from a figure a caller sent -- which is why it is safe to show before "
+            "the count"),
+        # **These span the drawer account, not just this session.** `expected` is that
+        # account's own balance, so a previous shift's takings that were never banked are
+        # inside `taken_minor` -- which is the truth about the money in the drawer rather
+        # than a per-session figure that would disagree with what somebody counts.
+        "the_figures_span_the_drawer_not_the_shift": (
+            "the float, what came in and what went out are this drawer account's own "
+            "postings up to today, and they add up to the expected figure. Takings a "
+            "previous shift never banked are still in the drawer and are still counted here"),
+        "an_entry_is_a_journal_not_a_sale": (
+            "`entries_in` counts the journals that put money in this drawer. One of those is "
+            "one sale only in the sense that a sale is what put it there; this module "
+            "records journals and has no notion of a sale"),
+    }
+
+
 def _expected_in_drawer(
     conn: Connection[Any], *, cash_account_id: str, at: date,
 ) -> int:

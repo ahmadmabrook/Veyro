@@ -503,6 +503,7 @@ WRITE_ROUTES = [
       "idempotency_key": "sweep-s1", **_CORR}),
     ("post", f"/ledger/reconciliation-cases/{_ID}/resolve",
      {"outcome": "resolved", "resolution": "sweep", **_CORR}),
+    ("get", "/ledger/cash-sessions", None),
     ("post", "/ledger/cash-sessions",
      {"location_id": _ID, "cash_account_id": _SUBJECT, "drawer_label": "front",
       "currency": "JOD", "opening_float_minor": 0, "idempotency_key": "sweep-t1",

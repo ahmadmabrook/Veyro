@@ -1153,6 +1153,85 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
     body: { reason: "merged into REV", correlation_id: cid() },
   });
 
+  // **An open drawer and a closed one, because ADM-PAY-09 is about the pair.** A screen
+  // with only an open till cannot show what a closed one reads like, and a screen with only
+  // a closed one has nothing to count -- this repository's own rule that the fixture carries
+  // both members of the distinction the surface is about. The closed one is short on
+  // purpose: the variance posts to suspense, opens a case and carries the sentence the
+  // module requires, which is the whole of COM-04-R05's discrepancy workflow in one row.
+  const tillAccount = await call("/ledger/accounts", {
+    method: "POST", ...as(token),
+    body: { account_code: "TILL-FRONT", account_kind: "cash", display_name: "Front till",
+            currency: "JOD", correlation_id: cid() },
+  });
+  const safeAccount = await call("/ledger/accounts", {
+    method: "POST", ...as(token),
+    body: { account_code: "SAFE", account_kind: "cash", display_name: "Safe",
+            currency: "JOD", correlation_id: cid() },
+  });
+  const openDrawer = await call("/ledger/cash-sessions", {
+    method: "POST", ...as(token),
+    body: { location_id: location.location_id, cash_account_id: tillAccount.account_id,
+            drawer_label: "Front desk", currency: "JOD", opening_float_minor: 50_000,
+            float_source_account_id: safeAccount.account_id,
+            legal_entity_id: entity.legal_entity_id,
+            idempotency_key: `till-open-${cid()}`, correlation_id: cid() },
+  });
+  // Two sales in and one refund out, so the breakdown has all three lines and the expected
+  // figure is a sum a reader can check rather than just the float.
+  for (const [amount, what] of [[60_000, "a day pass"], [36_000, "a protein shake"]]) {
+    await call("/ledger/journals", {
+      method: "POST", ...as(token),
+      body: { legal_entity_id: entity.legal_entity_id, currency: "JOD",
+              posted_on: isoDay(0), source_kind: "manual", source_ref: what,
+              description: what, idempotency_key: `till-in-${cid()}`,
+              lines: [{ account_id: tillAccount.account_id, amount_minor: amount },
+                      { account_id: chart.REV, amount_minor: -amount }],
+              correlation_id: cid() },
+    });
+  }
+  await call("/ledger/journals", {
+    method: "POST", ...as(token),
+    body: { legal_entity_id: entity.legal_entity_id, currency: "JOD",
+            posted_on: isoDay(0), source_kind: "manual", source_ref: "change given back",
+            description: "change given back", idempotency_key: `till-out-${cid()}`,
+            lines: [{ account_id: tillAccount.account_id, amount_minor: -8_000 },
+                    { account_id: chart.REV, amount_minor: 8_000 }],
+            correlation_id: cid() },
+  });
+
+  // **A third till the browser suite closes and re-opens on every run.** Creating a ledger
+  // account is a stepped-up financial write and a browser session is AAL 1, so a spec
+  // cannot make its own -- but opening a session on one is routine, which is the whole
+  // reason ADM-PAY-09 is buildable. The account is seeded here and the spec provisions the
+  // *session*, which is what makes it idempotent across runs: a close is one-way, so a test
+  // that closed the fixture's own drawer would pass once and fail ever after.
+  const e2eTill = await call("/ledger/accounts", {
+    method: "POST", ...as(token),
+    body: { account_code: "TILL-E2E", account_kind: "cash", display_name: "Suite till",
+            currency: "JOD", correlation_id: cid() },
+  });
+
+  const secondTill = await call("/ledger/accounts", {
+    method: "POST", ...as(token),
+    body: { account_code: "TILL-SHOP", account_kind: "cash", display_name: "Shop till",
+            currency: "JOD", correlation_id: cid() },
+  });
+  const closedDrawer = await call("/ledger/cash-sessions", {
+    method: "POST", ...as(token),
+    body: { location_id: location.location_id, cash_account_id: secondTill.account_id,
+            drawer_label: "Shop", currency: "JOD", opening_float_minor: 20_000,
+            float_source_account_id: safeAccount.account_id,
+            legal_entity_id: entity.legal_entity_id,
+            idempotency_key: `till-shop-${cid()}`, correlation_id: cid() },
+  });
+  await call(`/ledger/cash-sessions/${closedDrawer.session_id}/close`, {
+    method: "POST", ...as(token),
+    body: { counted_minor: 17_500, legal_entity_id: entity.legal_entity_id,
+            suspense_account_id: chart.SUSPENSE,
+            variance_reason: "a member was given change twice", correlation_id: cid() },
+  });
+
   const account = await call("/finance/accounts", {
     method: "POST", ...as(token),
     body: { payer_person_id: person.person_id, account_number: "A-00042",
@@ -1970,6 +2049,11 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
     sessionsGenerated: generated.created,
     firstSessionId: substituted,
     standInResourceId: standIn.resource_id,
+    openDrawerId: openDrawer.session_id,
+    safeAccountId: safeAccount.account_id,
+    suiteTillAccountId: e2eTill.account_id,
+    legalEntityId: entity.legal_entity_id,
+    closedDrawerId: closedDrawer.session_id,
     noRotaResourceId: noRota.resource_id,
     bookingId: booking?.booking_id ?? null,
     bookedSessionId: bookable,
@@ -2036,6 +2120,11 @@ if (invokedDirectly) {
       `VEYRO_E2E_ZONE_ID=${fixture.zoneId}`,
       `VEYRO_E2E_COACH_RESOURCE_ID=${fixture.instructorResourceId}`,
       `VEYRO_E2E_STANDIN_RESOURCE_ID=${fixture.standInResourceId}`,
+      `VEYRO_E2E_OPEN_DRAWER_ID=${fixture.openDrawerId}`,
+      `VEYRO_E2E_SAFE_ACCOUNT_ID=${fixture.safeAccountId}`,
+      `VEYRO_E2E_SUITE_TILL_ACCOUNT_ID=${fixture.suiteTillAccountId}`,
+      `VEYRO_E2E_LEGAL_ENTITY_ID=${fixture.legalEntityId}`,
+      `VEYRO_E2E_CLOSED_DRAWER_ID=${fixture.closedDrawerId}`,
       `VEYRO_E2E_NO_ROTA_RESOURCE_ID=${fixture.noRotaResourceId}`,
       `VEYRO_E2E_ROTA_EXCEPTION_DAY=${fixture.rotaExceptionDay}`,
       `VEYRO_E2E_POINT_ID=${fixture.pointId}`,

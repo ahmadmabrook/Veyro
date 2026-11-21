@@ -1163,6 +1163,39 @@ const MUTATIONS = [
     grep: "is null where there is nothing at all to draw",
   },
   {
+    id: "cash-the-count-is-scaled-to-the-stored-minor-units",
+    why: "JOD is stored in fils and shown with two decimals, so reading a 135.50 count as "
+      + "13550 makes it 13.55 and posts a 121.95 shortfall to suspense -- on the one screen "
+      + "whose entire job is the difference between two numbers",
+    file: "src/lib/cash.ts",
+    from: "  return shown * 10 ** (storageDigits - displayDigits);",
+    to: "  return shown;",
+    runner: "vitest",
+    grep: "scales what is shown to what is stored",
+  },
+  {
+    id: "cash-the-expected-figure-is-shown-before-the-count",
+    why: "the canvas is explicit that this is an accuracy control rather than a fraud one, "
+      + "and a screen that revealed the figure after the count would be a different control "
+      + "with the same layout",
+    file: "src/app/payments/cash/page.tsx",
+    from: '          <dt className="ds-cash-total">{text("cash.expected")}</dt>',
+    to: '          <dt className="ds-cash-total">{""}</dt>',
+    runner: "playwright",
+    grep: "shows the expected figure before anything is counted",
+  },
+  {
+    id: "cash-a-difference-asks-for-a-sentence-before-the-submit",
+    why: "the reason is a field somebody fills while looking at the difference, not a "
+      + "refusal they discover by pressing a button -- and this build demands one for any "
+      + "difference at all, which is stricter than the canvas's 2.00 threshold",
+    file: "src/app/payments/cash/close-form.tsx",
+    from: "  const out = gap !== null && gap !== 0;",
+    to: "  const out = false;",
+    runner: "playwright",
+    grep: "the variance appears as the count is typed",
+  },
+  {
     id: "rota-the-form-is-gated-on-the-write-not-the-read",
     why: "every other write surface in this app is absent because a button that answered "
       + "403 is worse than its absence, so a form rendered for a reader who may not change "

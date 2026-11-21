@@ -81,8 +81,32 @@
         "failed": 0
       },
       "found": "The first write in this app that is not a member acting on their own account, and the journey exists to catch the defect it was built around: a rota with no remedy. It failed once first, and not on the form -- the agent never reached it. The *schedule board* still said 'nothing in this build reads a resource's availability', which was its own gap note outliving the gap by one change, so a reader told to add an exception concluded the capability was absent and never opened the view the chip beside that sentence links to. The Member 360's 'not built in this repository' defect one screen over. The note is gone, two specs assert its absence, and the second run passed 17/17."
+    },
+    {
+      "journey": "A till can be counted against a figure the screen showed first",
+      "testId": "2989e8b0-06d0-4e3c-a5eb-9538625d4c2f",
+      "runId": "17eb7e8f-9015-4209-a044-dc8d273223e5",
+      "status": "passed",
+      "steps": {
+        "total": 9,
+        "passed": 9,
+        "failed": 0
+      },
+      "found": "ADM-PAY-09, and it passed first run. The journey is the canvas's own stated control asked as a question -- find the expected figure *before* typing a count, then watch the difference appear and ask for an explanation -- which is the right shape for a reader that has not read this repository: it either finds the figure first or it does not."
+    },
+    {
+      "journey": "A rota exception can be added and then taken back (re-run)",
+      "testId": "20baba38-32cb-43c3-bf6d-10bc839f9463",
+      "runId": "ef7ecb25-f6db-4fd2-bfb3-1a96d2b56adb",
+      "status": "passed",
+      "steps": {
+        "total": 24,
+        "passed": 24,
+        "failed": 0
+      },
+      "found": "Re-created and re-run against the reseeded tenant, because a created test carries its tenant's id for ever. 24 of 24."
     }
   ],
-  "finishedAt": "2026-11-21T19:43:50Z",
+  "finishedAt": "2026-11-21T21:55:00Z",
   "correction": "The journey 'A report this session cannot open is absent, not locked' failed three times against a product that was right, and the fault was the plan. Its description quoted the canvas's Club Manager scenario -- 'the two financial ones are absent' -- while its steps signed in as the owner, so the agent checked the financial reports were absent for a session holding every permission and reported them present. It was right to. A plan's description is read as the specification, which is the point of writing them in English; one that describes a different session from the one the steps open is a plan contradicting itself. It is now the two halves it should always have been. The misdiagnosis in between is written up in contracts/ui/design-compliance.md: a theory that explains a failure is not the cause of it."
 }

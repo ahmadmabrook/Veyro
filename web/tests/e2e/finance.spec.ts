@@ -162,11 +162,23 @@ test.describe("the finance board", () => {
     await expect(page.getByText(/equal by construction/)).toBeVisible();
   });
 
-  test("says nothing is waiting rather than showing an empty case list", async ({ page }) => {
+  test("lists the question a till variance left behind", async ({ page }) => {
+    // **This test asserted the empty state until ADM-PAY-09 gave the fixture a short
+    // drawer**, and the change is the right way round: a reconciliation case opened by a
+    // till that did not balance is precisely what this block is for, and an empty-state
+    // assertion that depended on nothing in the product ever creating one was always going
+    // to break the day something did. The populated state is the better coverage, and the
+    // empty one is asserted in `cash.spec.ts` on a fixture that has not closed a drawer
+    // short yet.
+    //
+    // `close_cash_session` posts the difference to suspense *and* opens the case -- neither
+    // half optional, because "absorbing it into an expense would make the till balance and
+    // the question disappear together".
     const cases = page
       .locator("section")
       .filter({ has: page.getByRole("heading", { name: "Unanswered questions" }) });
-    await expect(cases).toContainText("Nothing is waiting on anybody");
+    await expect(cases).not.toContainText("Nothing is waiting on anybody");
+    await expect(cases).toContainText("till");
   });
 
   test("says revenue recognition is driven by nobody in this build", async ({ page }) => {

@@ -28,6 +28,11 @@ export type Fixture = {
    *  unconstrained case -- a room, a court and a bike have none either. */
   standInResourceId: string;
   noRotaResourceId: string;
+  openDrawerId: string;
+  safeAccountId: string;
+  suiteTillAccountId: string;
+  legalEntityId: string;
+  closedDrawerId: string;
   /** The local date whose evening the coach has off, with a class inside it. */
   rotaExceptionDay: string;
   pointId: string;
@@ -164,6 +169,11 @@ export function fixture(): Fixture {
     coachResourceId: env.VEYRO_E2E_COACH_RESOURCE_ID!,
     standInResourceId: env.VEYRO_E2E_STANDIN_RESOURCE_ID!,
     noRotaResourceId: env.VEYRO_E2E_NO_ROTA_RESOURCE_ID!,
+    openDrawerId: env.VEYRO_E2E_OPEN_DRAWER_ID!,
+    safeAccountId: env.VEYRO_E2E_SAFE_ACCOUNT_ID!,
+    suiteTillAccountId: env.VEYRO_E2E_SUITE_TILL_ACCOUNT_ID!,
+    legalEntityId: env.VEYRO_E2E_LEGAL_ENTITY_ID!,
+    closedDrawerId: env.VEYRO_E2E_CLOSED_DRAWER_ID!,
     rotaExceptionDay: env.VEYRO_E2E_ROTA_EXCEPTION_DAY!,
     pointId: env.VEYRO_E2E_POINT_ID!,
     locationId: env.VEYRO_E2E_LOCATION_ID!,

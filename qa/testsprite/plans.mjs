@@ -405,6 +405,62 @@ const PLANS = [
     ],
   },
   {
+    // **ADM-PAY-09's own stated control, asked as a question.** The canvas: "The expected
+    // figure is shown *before* the count is entered. Hiding it would be a fraud control;
+    // showing it is an accuracy control, and accuracy is the more common problem." An agent
+    // that has not read this repository is the right reader for that: it either finds the
+    // figure before it types, or it does not.
+    name: "A till can be counted against a figure the screen showed first",
+    description:
+      "Closing a cash drawer is comparing what is in it against what the ledger says " +
+      "should be. The expected figure has to be legible before anything is counted, and a " +
+      "difference has to be explainable rather than merely refused.",
+    priority: "p0",
+    planSteps: [
+      ...signIn,
+      {
+        type: "action",
+        description:
+          "Find the screen for cash drawers or the cash till, starting from the Payments " +
+          "section.",
+      },
+      {
+        type: "assertion",
+        description:
+          "Before typing anything, verify the screen already states what should be in the " +
+          "drawer, and that the figure is broken down into the parts that make it up (an " +
+          "opening amount, money taken, money paid out) in a way that visibly adds up to " +
+          "it. A screen that only revealed the expected amount after a count was entered " +
+          "would be a failure.",
+      },
+      {
+        type: "action",
+        description:
+          "Enter a counted amount that is deliberately LESS than the expected figure, by " +
+          "a small amount such as two and a half.",
+      },
+      {
+        type: "assertion",
+        description:
+          "Verify the screen says the drawer is short, states by how much, and that the " +
+          "amount it names is the actual difference between the two figures rather than " +
+          "something wildly larger or smaller. Verify it also asks for an explanation at " +
+          "this point, before anything has been submitted.",
+      },
+      {
+        type: "action",
+        description:
+          "Now change the counted amount to exactly the expected figure.",
+      },
+      {
+        type: "assertion",
+        description:
+          "Verify the screen no longer reports a difference and no longer asks for an " +
+          "explanation.",
+      },
+    ],
+  },
+  {
     name: "A withheld field on a member's record is marked, never blank",
     description:
       "MOD-014 applies the gate's masked-field list and this surface renders it. An empty " +

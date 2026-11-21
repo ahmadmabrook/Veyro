@@ -2540,6 +2540,19 @@ Known gaps, deliberate:
 - **Nineteen free-text columns are residue an erasure cannot reach**, all declared in
   `SUBJECT_COLUMNS` by hand because the sweep matches column *names*, and pinned by a named
   test because a reviewer deleted one declaration and watched every test pass.
+- **The drawers can be listed now, and until they could ADM-PAY-09 was unbuildable.**
+  `open_cash_session` and `close_cash_session` had no reader of any kind -- the sixth
+  instance of this build's "a writer with no reader" shape -- so a till could be opened and
+  the only way to learn what was in it was to close it and read the refusal.
+  `GET /ledger/cash-sessions` returns the expected figure for an **open** drawer, which is
+  the design's own decision rather than a leak: "the expected figure is shown before the
+  count is entered. Hiding it would be a fraud control; showing it is an accuracy control,
+  and accuracy is the more common problem." It is safe to show because it is derived from
+  that account's own postings and from no number any caller sent. The read also splits the
+  same sum by sign -- the float, what came in, what went out -- so the three lines add up to
+  it by construction, which is what makes the figure checkable by the person holding the
+  notes. **`entries_in` counts journals, not sales**, and the surface says so rather than
+  printing "14 sales" over a number that is not one.
 - **The chart and the periods can be listed now; journals deliberately cannot.**
   `GET /ledger/accounts` and `GET /ledger/periods` make the module observable -- and the
   second is COM-04-R06's lock made readable at last: a closed period refuses a posting and

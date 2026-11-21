@@ -61,6 +61,10 @@ const surfaces: [string, string][] = [
   // A card per dispute, each with a four-line evidence list whose rows pair a mark
   // with prose — the layout most likely to put a mark on its own line at phone width.
   ["the dispute board", "/payments/disputes"],
+  // A two-column money breakdown above a form, which is the label/value grid this sweep was
+  // written for -- and the one screen here whose figures a reader checks against notes in
+  // their hand, so a column that scrolled out of sight would be the worst place for it.
+  ["the cash board", "/payments/cash"],
   ["an invoice", `/finance/invoices/${creds.invoiceId}`],
   ["the finance board", "/finance"],
   ["the catalog board", "/catalog"],

@@ -7289,6 +7289,35 @@ def create_app(
             actor_id=session["identity_id"], correlation_id=body.correlation_id,
         )
 
+    @app.get("/ledger/cash-sessions")
+    def list_cash_sessions(
+        tenant_id: TenantId, session: Session, status: str | None = None,
+        location_id: str | None = None, limit: int = 50,
+    ) -> dict[str, Any]:
+        """The drawers. COM-04-R05, and ADM-PAY-09 cannot be drawn without it.
+
+        **`open_cash_session` and `close_cash_session` had no reader at all**, so a drawer
+        could be opened and the only way to learn what was in it was to close it and read the
+        refusal -- the sixth instance of this build's "a writer with no reader" shape.
+
+        **Behind `finance.cash.session`, which is the drawer permission and is routine.**
+        The catalogue leaves it routine because a front desk opens a drawer every shift, and
+        whoever may close one may certainly see it; what bounds that permission is the
+        suspense posting and the case, not the reading. An accountant holding only
+        `finance.ledger.read` does not get this list and does not need it -- the drawer's
+        balance is a line on the trial balance that permission already returns.
+
+        A status outside the domain is refused rather than returning nothing, because
+        "status=opne" and "no drawer is open" are different answers and a list that renders
+        both as empty is a list nobody can trust.
+        """
+        permit(session, "finance.cash.session")
+        if status is not None and status not in ("open", "closed"):
+            raise InvalidRequest("a_cash_session_status_is_open_or_closed")
+        return ledger.list_cash_sessions(
+            tenant_pool, tenant_id, status=status,
+            location_id=optional_uuid(location_id, "location_id"), limit=limit)
+
     @app.post("/ledger/cash-sessions", status_code=201)
     def open_cash_session(
         tenant_id: TenantId, session: Session, body: CashSessionBody

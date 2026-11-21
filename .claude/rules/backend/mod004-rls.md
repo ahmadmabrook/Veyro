@@ -1126,6 +1126,49 @@ other failed login or it becomes an oracle about which tenants exist. **The gene
 where a role is deliberately blind to a referenced table, every write that crosses that
 reference is a 500 waiting for input the caller controls.**
 
+**The frame a date is bucketed in is neither the runner's nor UTC -- it is the subject's,
+and a test asserting a date takes it from there.** This file already records the
+local-clock-versus-UTC flake and notes that CI never saw it "because CI runs in UTC". MOD-022
+has a sharper version: `visits_on` buckets each event in *the club's own* timezone, so a
+member training at two clubs has each visit on the date that club would put on it. Two tests
+took `today` from `datetime.now(UTC).date()` and asserted against it, and every expected day
+was one earlier than the club's for the three hours after 21:00 UTC. **CI would have failed
+too** -- the frame that matters is Asia/Amman whoever runs the suite, so this is a
+*time-of-day* flake rather than a machine-timezone one, and a green CI run proves nothing
+about it. The same file already carries a test that knows this, written when CI found the
+bug in the service; it sweeps several zones, and the two that broke used the default club and
+a different read. Ask of any date assertion: *in whose zone is this figure computed*, and
+take `today` from that zone.
+
+**A currency with two exponents will be conflated by the first screen that takes a typed
+amount.** JOD is *stored* in fils and *shown* with two decimals, and the conventions module
+keeps two tables and says why -- "storage precision is what makes a proration exact and a
+journal balance; display precision is what a receipt and a screen agree on". Every figure
+rendered so far goes out through one formatter, so the distinction stayed in that module; the
+first screen to read a number *in* is a cash count, where reading 135.50 as 13550 minor units
+rather than 135500 posts the difference to suspense as a 121.95 shortfall -- on the one screen
+whose whole subject is the difference between two numbers. The parse splits the string rather
+than multiplying a float, for the ordinary reason, and scales between the two tables. The test
+that matters is not "135.50 parses" but "135.50 minus the server's own expected figure is
+2.50".
+
+**A client component that imports a module reaching `next/headers` breaks the whole app's
+build, and this is the second time.** The account page records the first, where putting its
+decisions beside its fetchers made the *login* page answer 500. The cash screen's parse is
+used in a client component and its read is not, so `cash.ts` holds the decisions and
+`cash-reads.ts` the fetch -- the same `domain`/`service` split the backend makes. **The tell
+is a build error naming a chain of `[Client Component Browser]` imports**, which does not
+mention `next/headers` at all.
+
+**A test that drives a one-way write provisions the thing it will consume, not the thing it
+needs to exist.** Closing a cash drawer has no reopen -- correctly, since a till somebody
+signed off and then re-opened is a till nobody can account for -- so a spec that closed the
+fixture's own drawer passes once and fails ever after. The split that works: the *account* is
+seeded by the fixture, because creating one is a stepped-up financial write and a browser
+session is AAL 1; the *session* is opened by the spec on each run, because opening one is
+routine. And a 409 from the one-open-per-drawer index is treated as a previous run's
+interrupted drawer for this suite to finish, rather than as somebody else's failure.
+
 **A gap note outlives its gap, and it goes stale in exactly one direction.** The schedule
 board carried "nothing in this build reads a resource's availability" from the day it was
 written; `/rota` is that read, and the sentence survived the change that made it false --

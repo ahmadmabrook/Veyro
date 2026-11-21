@@ -301,6 +301,7 @@ corresponds to them. The others map loosely:
 | `/rota` | ADM-SCH-04 Coach availability · week grid | **built from the canvas** — the schedule board's own missing third view, over a read that did not exist |
 | `/schedule/{id}` | ADM-SCH-02 Class detail and roster | **rebuilt** — the band, four MetricCells, the roster; the three actions are stepped-up writes with no form |
 | `/payments` | ADM-PAY-01 Payments ledger | **built from the canvas** — four kinds on one axis, signed; refund and export are named as absent |
+| `/payments/cash` | ADM-PAY-09 Cash reconciliation · shift close | **built from the canvas** — the expected figure before the count, over a read that did not exist; the co-sign and the tolerance are named as absent, the second being stricter here than drawn |
 | `/finance/invoices/{id}` | ADM-PAY-03 Invoice detail | **built from the canvas** — lines, the life, the filing; no edit at any permission, which is the canvas's own rule and this schema's property |
 | `/fleet` | ADM-ACC-01 Access control dashboard | **rebuilt** — the finding as the title, CLUB and TODAY columns |
 | `/access/{id}` | ADM-ACC-02 Access denial log | **rebuilt** — the policy/fault split, counted by MOD-022's own codes |
@@ -515,6 +516,61 @@ and `allocate` splits by largest remainder: 999 fils shows as `JOD 1.00` and one
 `JOD 0.00`. A column of shown line amounts therefore need not sum to the shown total, which
 is the ordinary property of any rounded display. **The minor units are the record; this is
 the rendering.**
+
+## ADM-PAY-09 — cash reconciliation
+
+**`open_cash_session` and `close_cash_session` had no reader, and the sixth instance of that
+shape is the reason this screen did not exist.** A drawer could be opened and the only way to
+learn what was in it was to close it and read the refusal. `GET /ledger/cash-sessions` is the
+read, and it returns the expected figure for an *open* drawer — which is the canvas's own
+decision rather than an oversight:
+
+> The expected figure is shown **before** the count is entered. Hiding it would be a fraud
+> control; showing it is an accuracy control, and accuracy is the more common problem.
+
+So the breakdown sits above the input: the float, what came in, what went out, and what should
+therefore be in the drawer. The figure is that account's own balance, derived from its
+postings with no number any caller sent — which is what makes it safe to show — and the three
+lines add up to it by construction, which is what makes it checkable by the person holding the
+notes rather than one they have to trust.
+
+**The variance appears as the count is typed**, so the reason is a field somebody fills while
+looking at the difference rather than a refusal they discover by pressing a button. The server
+computes the difference itself; the arithmetic here only says what is about to be submitted.
+
+Four things the canvas draws that this build does not have, each stated on the screen:
+
+- **A co-sign.** The design has a second person counter-sign a short drawer. MOD-008 has
+  approvals with thresholds and separation of duties, and which permission approves a till,
+  above what figure, and who may not approve their own are product decisions nobody has made.
+  A button that recorded no second person would be worse than its absence.
+- **A tolerance**, and this is the unusual direction: the canvas gates the note on a JOD 2.00
+  threshold and MOD-018 states in as many words that a tenant's tolerance is a commercial
+  decision the sources do not name. So the floor applies and *every* difference needs a
+  sentence — **stricter than the design, not looser**.
+- **The person's name in the heading.** The canvas reads "Closing Layla's shift"; a legal name
+  is an identity-class field, so a routine AAL-1 session — the level a front desk actually
+  holds — reads it as withheld. "Closing ✱✱✱'s shift" is worse than the drawer's own label,
+  which is the tenant's name for that till and is always true. The name appears for a reader
+  who may see it, composed from `/staff` the way the staff list composes identity and person.
+- **A shift, not a drawer.** The figures are the drawer account's own postings, so takings a
+  previous shift never banked are still in the drawer and still counted.
+
+Three things the build settled:
+
+- **Two exponents, and conflating them is a 121.95 error.** JOD is *stored* in fils and
+  *shown* with two decimals; a count typed as 135.50 is 135500 minor units, and reading it as
+  13550 would post the difference to suspense as a shortfall of 121.95 — on the one screen
+  whose entire job is the difference between two numbers. `parseAmount` scales between the two
+  tables and never multiplies a float, and nine component tests pin it.
+- **The decisions live apart from the read**, because `@/lib/api` reaches `next/headers` and a
+  client component importing it fails the whole app's build. The account page records the same
+  lesson from the first time, when its own version made the *login* page answer 500.
+- **The close test provisions its own session.** A close is one-way — correctly, since a till
+  somebody signed off and then re-opened is a till nobody can account for — so a test that
+  closed the fixture's drawer would pass once and fail ever after. The fixture seeds a till the
+  suite opens a session on; a 409 from an interrupted run is treated as that run's drawer to
+  finish rather than as a failure.
 
 ## ADM-SCH-04 — coach availability
 
