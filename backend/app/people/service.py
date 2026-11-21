@@ -1544,8 +1544,17 @@ def member_360(
                           "it; a cross-domain read is what paragraph 1300 bars",
             "entitlements": "unavailable: MOD-017 (COM-01) owns this and nothing here "
                             "reads it",
-            "attendance": "unavailable: MOD-020 (OPS-02) owns this and nothing here reads "
-                          "it",
+            # **Two different things are called attendance, and only one is unavailable.**
+            # MOD-020 owns class attendance -- who was marked present at a session -- and
+            # nothing here reads it. Door entries are MOD-022's, and the member record's own
+            # Attendance tab reads them directly. Saying "attendance: nothing here reads it"
+            # without that distinction puts a flat contradiction under a tab that is showing
+            # somebody their visits, which is this screen's own stale-claim defect in a new
+            # place.
+            "attendance": "unavailable: class attendance -- who was marked present at a "
+                          "session -- is MOD-020's (OPS-02) and nothing here reads it. Door "
+                          "entries are MOD-022's and the surface reads them directly; they "
+                          "are not in this projection",
             "bookings": "unavailable: MOD-019 (OPS-01) owns this and nothing here reads it",
             "nutrition": "unavailable: CCH-02 is not built in this repository",
             "progress": "unavailable: CCH-03 is not built in this repository",

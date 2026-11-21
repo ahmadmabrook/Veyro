@@ -4,7 +4,7 @@ import { Banner } from "@/components/ds/banner";
 import { Withheld } from "@/components/withheld";
 import { DataGrid } from "@/components/ds/data-grid";
 import { formatInteger, t, type MessageKey } from "@/i18n/locale";
-import { ApiError, gate } from "@/lib/api";
+import { ApiError, gate, gateMessage } from "@/lib/api";
 import {
   LIFECYCLE_STATES,
   UNANSWERABLE,
@@ -68,7 +68,7 @@ export default async function MembersPage({
     return (
       <Shell locale={locale}>
         <Banner severity="info">
-          {mayPeople.reachable ? text("gate.denied") : text("gate.unreachable")}
+          {text(gateMessage(mayPeople))}
         </Banner>
       </Shell>
     );

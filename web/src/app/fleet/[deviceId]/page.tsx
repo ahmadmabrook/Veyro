@@ -4,7 +4,7 @@ import { Banner } from "@/components/ds/banner";
 import { PageHeader } from "@/components/ds/page-header";
 import { RecordHeader } from "@/components/ds/record-header";
 import { formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
-import { ApiError, currentSession, gate, failureMessage } from "@/lib/api";
+import { ApiError, currentSession, gate, failureMessage, gateMessage } from "@/lib/api";
 import {
   commissioning,
   readCommandQueue,
@@ -45,7 +45,7 @@ export default async function DevicePage({
     return (
       <Shell locale={locale}>
         <Banner severity="info">
-          {may.reachable ? text("gate.denied") : text("gate.unreachable")}
+          {text(gateMessage(may))}
         </Banner>
       </Shell>
     );

@@ -717,6 +717,25 @@ class Member360Tests(PeopleTestCase):
                 self.assertIn(
                     "not built in this repository", view["sections"][section])
 
+    def test_attendance_says_which_attendance_it_cannot_answer(self):
+        """**Two different things are called attendance and only one is unavailable.**
+
+        MOD-020 owns class attendance -- who was marked present at a session -- and nothing
+        here reads it. Door entries are MOD-022's, and the member record now has an
+        Attendance tab that reads them directly. A section saying "attendance: nothing here
+        reads it" with no distinction puts a flat contradiction under a tab that is showing
+        somebody their visits, which is this screen's own stale-claim defect in a new place.
+        """
+        tenant_id = self.tenant()
+        person_id = self.person(tenant_id)
+        view = people.member_360(
+            self._tenant_pool, tenant_id, person_id, masked_fields=(),
+            held_permissions=STAFF_FULL)
+        reason = view["sections"]["attendance"]
+        self.assertIn("class attendance", reason)
+        self.assertIn("MOD-022", reason)
+        self.assertIn("the surface reads them directly", reason)
+
     def test_the_360_composes_the_parts_that_exist(self):
         tenant_id = self.tenant()
         person_id = self.person(tenant_id)

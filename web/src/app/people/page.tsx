@@ -5,7 +5,7 @@ import { Banner } from "@/components/ds/banner";
 import { DataGrid } from "@/components/ds/data-grid";
 import { fill, formatInteger, t, type MessageKey } from "@/i18n/locale";
 import { PageHeader } from "@/components/ds/page-header";
-import { currentSession, gate, failureMessage } from "@/lib/api";
+import { currentSession, gate, failureMessage, gateMessage } from "@/lib/api";
 import { listDuplicateCandidates, type DuplicateCandidate } from "@/lib/people";
 import { presentation } from "@/lib/preferences";
 import { utcStamp } from "@/lib/time";
@@ -64,7 +64,7 @@ export default async function PeoplePage() {
         {failed ? <Banner severity="critical">{text(failed)}</Banner> : null}
         {!may.allowed ? (
           <Banner severity="info">
-            {may.reachable ? text("gate.denied") : text("gate.unreachable")}
+            {text(gateMessage(may))}
           </Banner>
         ) : candidates.length === 0 ? (
           <Banner severity="info">{text("people.noDuplicates")}</Banner>

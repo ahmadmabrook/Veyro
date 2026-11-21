@@ -5,9 +5,9 @@ import { Banner } from "@/components/ds/banner";
 import { PageHeader } from "@/components/ds/page-header";
 import { ProseNote } from "@/components/prose";
 import { t, type MessageKey } from "@/i18n/locale";
-import { currentSession, gateAll } from "@/lib/api";
+import { currentSession, gateAll, gateVerdict } from "@/lib/api";
 import { presentation } from "@/lib/preferences";
-import { REPORTS, UNBUILT, UNREACHED } from "@/lib/reports";
+import { REPORTS, UNBUILT } from "@/lib/reports";
 
 /**
  * ADM-RPT-01 · REPORTS INDEX — "Reports, and the gate in front of an export".
@@ -57,7 +57,7 @@ export default async function ReportsPage() {
   // Every refusal carrying a transport reason rather than `forbidden` means the gate did not
   // answer. `/finance` already makes this distinction for its trial balance.
   const unreachable = open.length === 0
-    && answers.every((answer) => UNREACHED.has(answer.reason));
+    && answers.every((answer) => gateVerdict(answer) === "gate_failed");
 
   return (
     <>

@@ -5,7 +5,7 @@ import { Banner } from "@/components/ds/banner";
 import { DataGrid } from "@/components/ds/data-grid";
 import { fill, formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
 import { PageHeader } from "@/components/ds/page-header";
-import { currentSession, gate, failureMessage } from "@/lib/api";
+import { currentSession, gate, failureMessage, gateMessage } from "@/lib/api";
 import { readEntries } from "@/lib/access";
 import { readFleet, type FleetView } from "@/lib/fleet";
 import { presentation } from "@/lib/preferences";
@@ -37,7 +37,7 @@ export default async function FleetPage() {
     return (
       <Shell locale={locale}>
         <Banner severity="info">
-          {may.reachable ? text("gate.denied") : text("gate.unreachable")}
+          {text(gateMessage(may))}
         </Banner>
       </Shell>
     );

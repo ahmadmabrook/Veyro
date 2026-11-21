@@ -5,7 +5,7 @@ import { PageHeader } from "@/components/ds/page-header";
 import { DataGrid } from "@/components/ds/data-grid";
 import { Prose } from "@/components/prose";
 import { fill, formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
-import { ApiError, currentSession, gateAll } from "@/lib/api";
+import { ApiError, currentSession, gateAll, gateMessage } from "@/lib/api";
 import {
   erasesOf,
   holdIsLive,
@@ -77,7 +77,7 @@ export default async function PrivacyPage() {
     return (
       <Shell locale={locale}>
         <Banner severity="info">
-          {mayDsar.reachable ? text("gate.denied") : text("gate.unreachable")}
+          {text(gateMessage(mayDsar))}
         </Banner>
       </Shell>
     );
@@ -129,7 +129,7 @@ export default async function PrivacyPage() {
       <section className="page-section">
         <h2 id="erasure-heading" style={{ margin: 0 }}>{text("privacy.erasure")}</h2>
         {!mayDsar.allowed ? (
-          <Banner severity="info">{text("gate.denied")}</Banner>
+          <Banner severity="info">{text(gateMessage(mayDsar))}</Banner>
         ) : reach === null ? (
           <Banner severity="critical">{text("error.unexpected")}</Banner>
         ) : (
@@ -216,7 +216,7 @@ export default async function PrivacyPage() {
           {text("privacy.requestsLead")}
         </p>
         {!mayDsar.allowed ? (
-          <Banner severity="info">{text("gate.denied")}</Banner>
+          <Banner severity="info">{text(gateMessage(mayDsar))}</Banner>
         ) : queue.length === 0 ? (
           <Banner severity="info">{text("privacy.noRequests")}</Banner>
         ) : (
@@ -282,7 +282,7 @@ export default async function PrivacyPage() {
           {text("privacy.holdsLead")}
         </p>
         {!mayRetention.allowed ? (
-          <Banner severity="info">{text("gate.denied")}</Banner>
+          <Banner severity="info">{text(gateMessage(mayRetention))}</Banner>
         ) : holds.length === 0 ? (
           <Banner severity="info">{text("privacy.noHolds")}</Banner>
         ) : (
@@ -312,7 +312,7 @@ export default async function PrivacyPage() {
       <section className="page-section">
         <h2 id="retention-heading" style={{ margin: 0 }}>{text("privacy.retention")}</h2>
         {!mayRetention.allowed ? (
-          <Banner severity="info">{text("gate.denied")}</Banner>
+          <Banner severity="info">{text(gateMessage(mayRetention))}</Banner>
         ) : policies.length === 0 ? (
           <Banner severity="info">{text("privacy.noRetention")}</Banner>
         ) : (
@@ -368,7 +368,7 @@ export default async function PrivacyPage() {
       <section className="page-section">
         <h2 id="purposes-heading" style={{ margin: 0 }}>{text("privacy.purposes")}</h2>
         {!mayPurposes.allowed ? (
-          <Banner severity="info">{text("gate.denied")}</Banner>
+          <Banner severity="info">{text(gateMessage(mayPurposes))}</Banner>
         ) : purposes.length === 0 ? (
           <Banner severity="info">{text("privacy.noPurposes")}</Banner>
         ) : (
@@ -414,7 +414,7 @@ export default async function PrivacyPage() {
       <section className="page-section">
         <h2 style={{ margin: 0 }}>{text("privacy.incidents")}</h2>
         {!mayIncidents.allowed ? (
-          <Banner severity="info">{text("gate.denied")}</Banner>
+          <Banner severity="info">{text(gateMessage(mayIncidents))}</Banner>
         ) : incidents.length === 0 ? (
           <Banner severity="info">{text("privacy.noIncidents")}</Banner>
         ) : (

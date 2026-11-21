@@ -2483,3 +2483,52 @@ a {
   color: var(--color-text-secondary);
   text-wrap: pretty;
 }
+
+/* ------------------------------------------------- ADM-MEM-07's weeks
+ *
+ * Twelve vertical bars with the two ends of the axis labelled, which is what the canvas
+ * draws. A row per week carried the same data at three times the height on a tab that is one
+ * of six, and this chart's job is to be scanned.
+ *
+ * Each bar carries its week and count as visually-hidden text, because a bar is a
+ * colour-and-length signal and §15's rule is that nothing carries meaning alone.
+ */
+.ds-weekbars {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  block-size: 72px;
+  /* The baseline the zero weeks sit on. Without it twelve empty columns read as blank
+     space, and "three weeks at zero" is the reading this chart exists for. */
+  border-block-end: 1px solid var(--color-border-default);
+}
+
+.ds-weekbar {
+  flex: 1;
+  min-inline-size: 0;
+  block-size: 100%;
+  display: flex;
+  align-items: flex-end;
+}
+
+/* **A zero week is a mark, not nothing.** `min-block-size` gives it the thin line the canvas
+ * draws at the baseline -- an absent bar and a bar nobody can see are the same to a reader,
+ * and the second is what a pure percentage height produces. */
+.ds-weekbar-fill {
+  inline-size: 100%;
+  min-block-size: 2px;
+  background: var(--color-text-tertiary);
+  border-radius: 1px 1px 0 0;
+}
+
+.ds-weekbars-axis {
+  display: flex;
+  justify-content: space-between;
+  margin: var(--space-2) 0 0;
+  font-size: var(--type-caption-size);
+  color: var(--color-text-tertiary);
+}
+

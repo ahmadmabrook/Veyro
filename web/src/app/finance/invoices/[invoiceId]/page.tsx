@@ -10,7 +10,7 @@ import { Prose } from "@/components/prose";
 import { RecordHeader } from "@/components/ds/record-header";
 import { Timeline, TimelineItem } from "@/components/ds/timeline";
 import { fill, formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
-import { currentSession, failureMessage, gateAll } from "@/lib/api";
+import { currentSession, failureMessage, gateAll, gateMessage } from "@/lib/api";
 import {
   band,
   fiscal,
@@ -82,7 +82,7 @@ export default async function InvoicePage({
     return (
       <Shell locale={locale}>
         <Banner severity="info">
-          {mayInvoice.reachable ? text("gate.denied") : text("gate.unreachable")}
+          {text(gateMessage(mayInvoice))}
         </Banner>
       </Shell>
     );

@@ -1,3 +1,4 @@
+import type { MessageKey } from "@/i18n/locale";
 import { api } from "@/lib/api";
 
 /**
@@ -24,6 +25,34 @@ export type Attendance = {
   weeks: number;
   /** Null where nothing has ever been recorded — which is not a rate of zero. */
   entries_per_week: number | null;
+  /**
+   * Every entry ever, which is a different question from the window beside it.
+   *
+   * ADM-MEM-07 draws `19d SINCE LAST · 2.8 WEEKLY AVG · 214 LIFETIME`, and the third is what
+   * makes the first two mean something: a gap of nineteen days reads differently against two
+   * hundred visits than against six.
+   */
+  lifetime_entries: number;
+  chart_weeks: number;
+  /**
+   * One bucket per week, **including the empty ones**.
+   *
+   * The canvas's own reading of this chart is "three weeks at zero", which only means
+   * anything if the zeros are drawn. A series that omitted them -- which is what a `GROUP BY`
+   * returns if nobody fills the gaps -- draws a member who trained steadily.
+   */
+  by_week: { starts_on: string; ends_on: string; entries: number }[];
+  recent: {
+    on: string;
+    /** Local to the club whose door they used, as `HH:MM`. */
+    at: string;
+    location_name: string;
+    /** How they got in. Never the credential itself: the stored value is a SHA-256. */
+    credential_kind: string | null;
+    source: string;
+  }[];
+  recent_limit: number;
+  no_reading_of_the_chart_is_offered?: string;
 };
 
 export type Credential = {
@@ -41,6 +70,30 @@ export type CredentialSet = {
   credentials: Credential[];
   live: number;
 };
+
+/**
+ * The message key naming a credential kind.
+ *
+ * **The third stored value rendered as a label in one pass.** The canvas's recent-visits
+ * list reads "Khalda · 18:40 · card"; this rendered `nfc_card`, which is the column's value
+ * and not a word anybody says -- and in the Arabic build it is Latin letters in the middle
+ * of an Arabic line, which the catalogue parity check is structurally blind to.
+ *
+ * Unknown kinds fall through to the stored value, as everywhere else: MOD-022's vocabulary
+ * may grow, and "other" on a line that is telling somebody how a member got through a door
+ * hides the part they would act on.
+ */
+export function credentialKindName(kind: string): MessageKey | null {
+  const known: Record<string, MessageKey> = {
+    qr_rotating: "credential.qrRotating",
+    nfc_card: "credential.nfcCard",
+    wallet_pass: "credential.walletPass",
+    physical_card: "credential.physicalCard",
+    pin: "credential.pin",
+    staff_assisted: "credential.staffAssisted",
+  };
+  return known[kind] ?? null;
+}
 
 export function readAttendance(personId: string, weeks = 8): Promise<Attendance> {
   return api(

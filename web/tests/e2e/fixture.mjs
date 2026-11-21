@@ -599,6 +599,32 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
     },
   });
 
+  // **Door entries across the chart's own window**, which ADM-MEM-07 is made of.
+  //
+  // A member with no entries renders the tab as four empty states and twelve blank rows,
+  // which demonstrates nothing: this repository's own rule is that a fixture carrying one of
+  // a kind renders and shows nothing, and here it carries none. So the entries are spread --
+  // a run of weeks with visits, then a gap, then one recent -- because **the gap is what the
+  // chart is for**. The canvas's own reading of its chart is "three weeks at zero", which
+  // only means something if some weeks are not.
+  //
+  // An entry is a recorded event rather than a decision. MOD-022 keeps the two apart on
+  // purpose: a granted decision nobody walked through is not a visit.
+  for (const daysBack of [1, 9, 12, 16, 19, 23, 26, 33, 37, 44, 51, 58, 65, 72]) {
+    const when = new Date(Date.now() - daysBack * 86400000);
+    // Mid-morning local, so an entry never lands on a neighbouring day by accident of the
+    // hour the fixture runs -- the trap the visits read itself was caught by.
+    when.setUTCHours(7, 30, 0, 0);
+    await call("/access/events", {
+      method: "POST", ...as(token),
+      body: {
+        point_id: point.point_id, direction: "entry",
+        credential_value: credentialValue, occurred_at: when.toISOString(),
+        source: "online", idempotency_key: randomUUID(), correlation_id: cid(),
+      },
+    });
+  }
+
   // ---------------------------------------------------------------- MOD-005, configuration
   //
   // **Two definitions and two flags, because the board is about telling answers apart.** One

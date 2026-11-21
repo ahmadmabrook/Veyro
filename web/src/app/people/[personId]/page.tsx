@@ -12,11 +12,14 @@ import { memberFacts } from "@/components/member-metrics";
 import { MembershipPanels } from "@/components/membership-panels";
 import { Withheld } from "@/components/withheld";
 import { fill, formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
-import { ApiError, currentSession, gate, failureMessage } from "@/lib/api";
+import { ApiError, currentSession, gate, failureMessage, gateMessage } from "@/lib/api";
 import { listMembers } from "@/lib/members-reads";
+import { MetricCell, MetricRow } from "@/components/ds/metric-cell";
 import {
   classifyEvent,
+  credentialKindName,
   isTimelineFilter,
+  readAttendance,
   readCredentials,
   TIMELINE_FILTERS,
   type TimelineFilterKey,
@@ -46,10 +49,17 @@ import { dayLabel, timeOfDay, utcStamp } from "@/lib/time";
  *
  * Three things the rebuild had to decide rather than copy, each recorded where it is made:
  *
- * - **Five of the nine tabs are not drawn**, because attendance per person, coaching,
- *   bookings per person, purchases and documents each need a module or a read this build does
- *   not have. They are named at the foot with the reason, which is ADM-MEM-05's rule applied
- *   to a tab: a control that opens an empty panel says the member has no bookings.
+ * - **Four of the nine tabs are not drawn**, because coaching, bookings per person,
+ *   purchases and documents each need a module or a read this build does not have. They are
+ *   named at the foot with the reason, which is ADM-MEM-05's rule applied to a tab: a control
+ *   that opens an empty panel says the member has no bookings.
+ *
+ *   **Attendance was on that list and should not have been.** `GET /access/attendance` was
+ *   built for the LAST VISIT metric cell above and the note still said attendance per person
+ *   needed a read this build does not have -- a claim about what the product cannot do goes
+ *   stale the moment somebody builds it. MOD-014's own 360 record carries the same defect:
+ *   five sections said "not built in this repository" and four of those modules had been
+ *   built since. ADM-MEM-07 is a tab now.
  * - **Three of the five timeline filters are not drawn**, for the same reason: MOD-014
  *   projects nine event types and none of MOD-019's, MOD-020's or MOD-013's is among them.
  * - **No action button is drawn at all.** "Take payment · JOD 55.00" is the canvas's primary
@@ -66,13 +76,15 @@ import { dayLabel, timeOfDay, utcStamp } from "@/lib/time";
  * level 3, which needs a hardware authenticator MOD-007 cannot verify.
  */
 
-const TABS = ["overview", "membership", "billing", "access", "notes"] as const;
+const TABS =
+  ["overview", "membership", "billing", "attendance", "access", "notes"] as const;
 type TabKey = (typeof TABS)[number];
 
 const TAB_LABEL: Record<TabKey, MessageKey> = {
   overview: "member.tabOverview",
   membership: "member.tabMembership",
   billing: "member.tabBilling",
+  attendance: "member.tabAttendance",
   access: "member.tabAccess",
   notes: "member.tabNotes",
 };
@@ -103,7 +115,7 @@ export default async function Member360Page({
   if (!may.allowed) {
     return (
       <Banner severity="info">
-        {may.reachable ? text("gate.denied") : text("gate.unreachable")}
+        {text(gateMessage(may))}
       </Banner>
     );
   }
@@ -227,6 +239,9 @@ export default async function Member360Page({
         {tab === "membership" || tab === "billing" ? (
           <MembershipPanels personId={personId} locale={locale} only={tab} />
         ) : null}
+        {tab === "attendance"
+          ? <AttendanceTab personId={personId} locale={locale} />
+          : null}
         {tab === "access" ? <AccessTab personId={personId} locale={locale} /> : null}
         {tab === "notes" ? <Notes record={record} locale={locale} /> : null}
 
@@ -380,13 +395,161 @@ function Entry({ entry, locale }: { entry: TimelineEntry; locale: Locale }) {
 }
 
 /** MOD-022 on a member's page: what they hold, and the decisions taken on it. */
+/**
+ * ADM-MEM-07 · ATTENDANCE — when they come in, how often, and what the chart cannot say.
+ *
+ * **The read existed and the tab said it did not.** This page's own notes listed attendance
+ * among five tabs "not drawn, because attendance per person, coaching, bookings per person,
+ * purchases and documents each need a module or a read this build does not have" --
+ * and `GET /access/attendance` had already been built for the LAST VISIT metric cell above.
+ * A claim about what the product cannot do goes stale the moment somebody builds it, which
+ * is the defect MOD-014's own 360 record carries: five of its sections said "not built in
+ * this repository" and four of those modules had been built since.
+ *
+ * Three decisions:
+ *
+ * - **The empty weeks are drawn.** The canvas's own reading is "three weeks at zero", which
+ *   means nothing unless the zeros are there -- and a series that omitted them, which is what
+ *   a `GROUP BY` returns if nobody fills the gaps, draws a member who trained steadily.
+ * - **No reading of the chart is offered.** The canvas prints a sentence under it: "the drop
+ *   starts the week after his last PT session, not the week his payment failed". Relating a
+ *   gap to a cause needs a module that reasons about it, and a plausible sentence written
+ *   here would be the Command Center's withheld interpretation panel in a worse place.
+ * - **Lifetime is beside the gap on purpose.** Nineteen days reads differently against two
+ *   hundred visits than against six, which is why the canvas draws all three figures.
+ */
+async function AttendanceTab({ personId, locale }: { personId: string; locale: Locale }) {
+  const text = (key: MessageKey) => t(locale, key);
+  const numbering = "latn" as const;
+  const may = await gate("access.zone.read");
+  if (!may.allowed) {
+    return <Banner severity="info">{text(gateMessage(may))}</Banner>;
+  }
+  let seen: Awaited<ReturnType<typeof readAttendance>>;
+  try {
+    seen = await readAttendance(personId);
+  } catch {
+    return <Banner severity="attention">{text("error.unexpected")}</Banner>;
+  }
+
+  const peak = Math.max(1, ...seen.by_week.map((week) => week.entries));
+  const count = (value: number) => (
+    <span className="data" dir="ltr">{formatInteger(value, numbering)}</span>
+  );
+
+  return (
+    <section className="ds-panel">
+      <div className="ds-panel-head">
+        <h2 className="ds-panel-title">{text("member.tabAttendance")}</h2>
+      </div>
+      <div className="ds-panel-body">
+        <MetricRow label={text("member.tabAttendance")} columns={3}>
+          <MetricCell
+            label={text("attendance.sinceLast")}
+            {...(seen.days_since === null
+              ? {
+                  freshness: "unavailable" as const,
+                  unavailableBecause: text("member.neverVisited"),
+                }
+              : {
+                  value: (
+                    <span className="data" dir="ltr">
+                      {fill(locale, "attendance.days", { count: seen.days_since })}
+                    </span>
+                  ),
+                  comparison: seen.last_location ?? undefined,
+                })}
+          />
+          <MetricCell
+            label={text("attendance.weeklyAvg")}
+            {...(seen.entries_per_week === null
+              ? {
+                  freshness: "unavailable" as const,
+                  unavailableBecause: text("member.neverVisited"),
+                }
+              : {
+                  value: <span className="data" dir="ltr">{seen.entries_per_week}</span>,
+                  comparison: fill(locale, "attendance.overWeeks", { count: seen.weeks }),
+                })}
+          />
+          <MetricCell label={text("attendance.lifetime")} value={count(seen.lifetime_entries)} />
+        </MetricRow>
+
+        <h3 id="attendance-chart">
+          {fill(locale, "attendance.perWeek", { count: seen.chart_weeks })}
+        </h3>
+        {/* **The canvas's shape, with the figures still reachable.** It draws twelve vertical
+            bars about a hundred pixels tall with the two ends of the axis labelled; a row per
+            week was the same data at three times the height, on a tab that is one of six.
+            Each bar carries its week and its count as text for a screen reader, because a bar
+            is a colour-and-length signal and §15's rule -- nothing carries meaning alone --
+            is what the figures are for. The zero weeks are drawn, because "three weeks at
+            zero" is the canvas's own reading of this chart. */}
+        <ol className="ds-weekbars" aria-labelledby="attendance-chart">
+          {seen.by_week.map((week) => (
+            <li key={week.starts_on} className="ds-weekbar">
+              <span
+                className="ds-weekbar-fill"
+                style={{ blockSize: `${Math.round((week.entries / peak) * 100)}%` }}
+                aria-hidden="true"
+              />
+              <span className="ds-visually-hidden">
+                {week.starts_on}: {formatInteger(week.entries, numbering)}
+              </span>
+            </li>
+          ))}
+        </ol>
+        <p className="ds-weekbars-axis">
+          <span className="data" dir="ltr">{seen.by_week[0]?.starts_on}</span>
+          <span className="data" dir="ltr">
+            {seen.by_week[seen.by_week.length - 1]?.ends_on}
+          </span>
+        </p>
+        <p className="ds-note">{text("attendance.noReading")}</p>
+
+        <h3 id="attendance-recent">{text("attendance.recent")}</h3>
+        {seen.recent.length === 0 ? (
+          <Banner severity="info">{text("member.neverVisited")}</Banner>
+        ) : (
+          <dl className="facts" aria-labelledby="attendance-recent">
+            {seen.recent.map((visit, index) => (
+              <div key={`${visit.on}-${index}`} style={{ display: "contents" }}>
+                <dt className="muted data" dir="ltr">{visit.on}</dt>
+                <dd style={{ margin: 0 }}>
+                  {visit.location_name}
+                  {" \u00b7 "}
+                  <span className="data" dir="ltr">{visit.at}</span>
+                  {visit.credential_kind === null ? null : (
+                    <>
+                      {" \u00b7 "}
+                      {/* The word, not the column's value: the canvas reads "card", not
+                          `nfc_card`, and a stored value rendered as a label is Latin letters
+                          in the middle of an Arabic line. */}
+                      {credentialKindName(visit.credential_kind) === null ? (
+                        <span className="data" dir="ltr">{visit.credential_kind}</span>
+                      ) : (
+                        text(credentialKindName(visit.credential_kind) as MessageKey)
+                      )}
+                    </>
+                  )}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        )}
+        <p className="ds-note">{text("attendance.credentialNote")}</p>
+      </div>
+    </section>
+  );
+}
+
 async function AccessTab({ personId, locale }: { personId: string; locale: Locale }) {
   const text = (key: MessageKey) => t(locale, key);
   const may = await gate("access.credential.read");
   if (!may.allowed) {
     return (
       <Banner severity="info">
-        {text(may.reachable ? "gate.denied" : "gate.unreachable")}
+        {text(gateMessage(may))}
       </Banner>
     );
   }
@@ -407,7 +570,14 @@ async function AccessTab({ personId, locale }: { personId: string; locale: Local
         ) : (
           <dl className="facts">
             {held.credentials.map((credential) => (
-              <Fact key={credential.credential_id} label={credential.kind}>
+              <Fact
+                key={credential.credential_id}
+                label={
+                  credentialKindName(credential.kind) === null
+                    ? credential.kind
+                    : text(credentialKindName(credential.kind) as MessageKey)
+                }
+              >
                 {credential.state}
                 {credential.expires_at
                   ? <> {"· "}<span className="data" dir="ltr">

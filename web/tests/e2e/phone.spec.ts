@@ -35,6 +35,9 @@ const surfaces: [string, string][] = [
   ["the permissions page", "/permissions"],
   ["the people list", "/people"],
   ["a member", `/people/${creds.personId}`],
+  // Twelve bars in a flex row: the one chart here whose width is a count rather than a
+  // layout, so it is the one most likely to push a phone sideways.
+  ["a member's attendance", `/people/${creds.personId}?tab=attendance`],
   // MOD-018's board is the widest table in the app -- four money columns over a chart of
   // thirteen accounts -- so it is the one most likely to push the page sideways.
   ["the payments ledger", "/payments"],

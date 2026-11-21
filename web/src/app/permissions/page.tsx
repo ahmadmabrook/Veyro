@@ -6,7 +6,14 @@ import { CapabilityMatrix, MATRIX_GLYPH } from "@/components/ds/capability-matri
 import { PageHeader } from "@/components/ds/page-header";
 import { DataGrid } from "@/components/ds/data-grid";
 import { fill, formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
-import { currentSession, gate, type GateAnswer, failureMessage } from "@/lib/api";
+import {
+  currentSession,
+  failureMessage,
+  gate,
+  gateMessage,
+  gateVerdict,
+  type GateAnswer,
+} from "@/lib/api";
 import {
   byDomain,
   listRoles,
@@ -137,7 +144,7 @@ export default async function PermissionsPage({
         </p>
         {!mayRoles.allowed ? (
           <Banner severity="info">
-            {mayRoles.reachable ? text("gate.denied") : text("gate.unreachable")}
+            {text(gateMessage(mayRoles))}
           </Banner>
         ) : rolesFailed ? (
           <Banner severity="critical">{text(rolesFailed)}</Banner>
@@ -185,7 +192,7 @@ export default async function PermissionsPage({
         </h2>
         {!mayRoles.allowed ? (
           <Banner severity="info">
-            {mayRoles.reachable ? text("gate.denied") : text("gate.unreachable")}
+            {text(gateMessage(mayRoles))}
           </Banner>
         ) : rolesFailed ? null : roles.length === 0 ? (
           <Banner severity="info">{text("perms.noRoles")}</Banner>
@@ -203,7 +210,7 @@ export default async function PermissionsPage({
         </p>
         {!mayAudit.allowed ? (
           <Banner severity="info">
-            {mayAudit.reachable ? text("gate.denied") : text("gate.unreachable")}
+            {text(gateMessage(mayAudit))}
           </Banner>
         ) : auditFailed ? (
           <Banner severity="critical">{text(auditFailed)}</Banner>
@@ -429,6 +436,15 @@ function failure(error: unknown): MessageKey {
  */
 function describeGate(answer: GateAnswer): MessageKey {
   if (answer.allowed) return "gate.allowed";
+  // **A request that got no answer is not a refusal**, and this matrix is the one screen
+  // whose whole job is saying what a session may do: reporting a dead gate as "Not
+  // permitted" here tells somebody they lack every permission in the catalogue.
+  //
+  // **Its own short words, not `gateMessage`'s sentences.** A status cell in a dense grid is
+  // a label -- "Needs a stronger sign-in" -- and the page-level banners are sentences with
+  // somewhere to go. Swapping one for the other put a full stop in a table cell, which the
+  // gate spec caught immediately.
+  if (gateVerdict(answer) === "gate_failed") return "gate.noAnswer";
   if (!answer.reachable) return "gate.unreachable";
   if (answer.step_up_required) return "gate.stepUp";
   return "gate.denied";

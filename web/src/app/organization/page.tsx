@@ -4,7 +4,7 @@ import { Banner } from "@/components/ds/banner";
 import { PageHeader } from "@/components/ds/page-header";
 import { DataGrid } from "@/components/ds/data-grid";
 import { fill, t, type Locale, type MessageKey } from "@/i18n/locale";
-import { currentSession, gate, failureMessage } from "@/lib/api";
+import { currentSession, gate, failureMessage, gateMessage } from "@/lib/api";
 import {
   composeTree,
   listBrands,
@@ -44,7 +44,7 @@ export default async function OrganizationPage() {
     return (
       <Shell locale={locale}>
         <Banner severity="info">
-          {may.reachable ? text("gate.denied") : text("gate.unreachable")}
+          {text(gateMessage(may))}
         </Banner>
       </Shell>
     );

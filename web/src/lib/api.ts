@@ -239,6 +239,78 @@ export async function gateAll<A extends readonly string[]>(
   }
 }
 
+/**
+ * Gate reasons that mean the request never got an answer.
+ *
+ * `gate` and `gateAll` fail closed -- an unreachable gate is not permission -- which is right
+ * for access and does not change. But a transport failure and a refusal then reach a page in
+ * the same shape, and every page in this app said "Not permitted" for both. That teaches
+ * somebody they lack access they have, in the one place they decide whether to go and ask
+ * for a grant.
+ *
+ * `forbidden` and `step_up_required` are the gate speaking. Everything here is the request
+ * failing before it got that far.
+ */
+export const UNREACHED: ReadonlySet<string> = new Set([
+  "unreachable",
+  "gate_unreachable",
+  "gate",
+  "no_session",
+  "no_tenant_selected",
+]);
+
+/**
+ * What a closed gate answer actually means, for a page deciding what to say.
+ *
+ * Four states, and the app had words for three of them:
+ *
+ * - `gate_failed` — the request did not get an answer. **This is the one that was missing**,
+ *   and it is not about the reader's access at all.
+ * - `unreachable_level` — the action needs an assurance nobody can reach in this build.
+ *   `member.health.read` is `biometric_sensitive`, which maps to AAL 3, which needs a
+ *   hardware factor MOD-007 cannot verify. Offering a step-up would send somebody looking
+ *   for a key that changes nothing.
+ * - `needs_step_up` — a stronger sign-in would open it, and the page can offer one.
+ * - `denied` — the gate said no. Only this one is about what the reader holds.
+ */
+export type GateVerdict = "gate_failed" | "unreachable_level" | "needs_step_up" | "denied";
+
+export function gateVerdict(answer: GateAnswer): GateVerdict {
+  if (UNREACHED.has(answer.reason)) return "gate_failed";
+  if (!answer.reachable) return "unreachable_level";
+  if (answer.step_up_required) return "needs_step_up";
+  return "denied";
+}
+
+/**
+ * The message a closed gate answer deserves, as a key.
+ *
+ * **Every page in this app said "Not permitted" for four different things**, because the two
+ * it could tell apart were the two it had words for. A transport failure and a refusal reach
+ * a page in the same shape -- that is what failing closed means -- so the page reported a
+ * fault as a statement about the reader's access, and a reader who believes it goes and asks
+ * somebody for a grant they already hold.
+ *
+ * The verdicts and what each one is for are on `gateVerdict`. The one worth repeating here:
+ * `unreachable_level` offers no step-up on purpose, because the assurance it wants cannot be
+ * reached in this build at all and a link would send somebody looking for a hardware key
+ * that changes nothing.
+ */
+export function gateMessage(
+  answer: GateAnswer,
+): "gate.failed" | "gate.unreachable" | "gate.needsStepUp" | "gate.denied" {
+  switch (gateVerdict(answer)) {
+    case "gate_failed":
+      return "gate.failed";
+    case "unreachable_level":
+      return "gate.unreachable";
+    case "needs_step_up":
+      return "gate.needsStepUp";
+    default:
+      return "gate.denied";
+  }
+}
+
 export async function gate(action: string): Promise<GateAnswer> {
   const closed: GateAnswer = {
     action,

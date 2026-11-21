@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import { MESSAGES } from "@/i18n/locale";
-import { REPORTS, UNBUILT, UNREACHED, change, sourceName } from "@/lib/reports";
+import { UNREACHED } from "@/lib/api";
+import { REPORTS, UNBUILT, change, sourceName } from "@/lib/reports";
 
 describe("the reports index", () => {
   it("names a permission and a canvas for every report it offers", () => {

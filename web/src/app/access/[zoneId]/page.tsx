@@ -6,7 +6,7 @@ import { MetricCell, MetricRow } from "@/components/ds/metric-cell";
 import { PageHeader } from "@/components/ds/page-header";
 import { RecordHeader } from "@/components/ds/record-header";
 import { fill, formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
-import { ApiError, currentSession, gate } from "@/lib/api";
+import { ApiError, currentSession, gate, gateMessage } from "@/lib/api";
 import {
   DISCREET,
   isRestricted,
@@ -47,10 +47,13 @@ export default async function ZonePage({
   const text = (key: MessageKey) => t(locale, key);
 
   if (!(await currentSession())) redirect("/login");
-  if (!(await gate("access.zone.read")).allowed) {
+  // **The answer, not just its `allowed`.** A refusal has four meanings and only the whole
+  // answer tells them apart; discarding it here reported a failed request as "Not permitted".
+  const may = await gate("access.zone.read");
+  if (!may.allowed) {
     return (
       <Shell title={text("access.title")}>
-        <Banner severity="info">{text("gate.denied")}</Banner>
+        <Banner severity="info">{text(gateMessage(may))}</Banner>
       </Shell>
     );
   }

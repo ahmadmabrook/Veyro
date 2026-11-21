@@ -17,25 +17,6 @@ import type { MessageKey } from "@/i18n/locale";
  * the page names out loud, rather than four more rows quietly missing from the six.
  */
 
-/**
- * Gate reasons that mean the gate did not answer, rather than that it said no.
- *
- * `gateAll` fails closed -- an unreachable gate is not permission -- so a transport failure
- * and a refusal arrive at a page in the same shape. For *access* that is right and must not
- * change. For what a page then **says**, they are different facts: "you may not open this"
- * and "we could not ask" send a reader to different places, and only the first is about them.
- *
- * `forbidden` and `step_up_required` are the gate speaking. Everything here is the request
- * failing before it got an answer.
- */
-export const UNREACHED: ReadonlySet<string> = new Set([
-  "unreachable",
-  "gate_unreachable",
-  "gate",
-  "no_session",
-  "no_tenant_selected",
-]);
-
 export type ReportEntry = {
   /** The canvas id, so the screen and the design can be matched by somebody checking. */
   screen: "ADM-RPT-02" | "ADM-RPT-03" | "ADM-RPT-04";

@@ -13,6 +13,7 @@ conditioned on software authorization -- so the exit tests assert an absence of 
 
 from __future__ import annotations
 
+import json
 import unittest
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -1068,6 +1069,77 @@ class VisitTests(AccessApiTestCase):
             "idempotency_key": str(uuid.uuid4()), **self.correlation()},
             headers=self.headers(floor["tenant_id"]))
         self.assertEqual(recorded.status_code, 201, recorded.text)
+
+    def test_attendance_carries_the_three_figures_the_tab_draws(self):
+        """ADM-MEM-07: `19d SINCE LAST · 2.8 WEEKLY AVG · 214 LIFETIME`.
+
+        The third is what makes the first two mean something -- a gap of nineteen days reads
+        differently against two hundred visits than against six -- and it is a different
+        question from the window count beside it.
+        """
+        floor = self.floor()
+        for back in (0, 3, 40):
+            self.entry(floor, when=datetime.now(UTC) - timedelta(days=back))
+        read = self.client.get(
+            f"/access/attendance?person_id={floor['person_id']}&weeks=4",
+            headers=self.headers(floor["tenant_id"]))
+        self.assertEqual(read.status_code, 200, read.text)
+        body = read.json()
+        # Lifetime counts every entry; the window counts the four weeks before the last one.
+        self.assertEqual(body["lifetime_entries"], 3, body)
+        self.assertEqual(body["entries_in_window"], 2, body)
+
+    def test_the_chart_draws_its_zeros_rather_than_skipping_them(self):
+        """A gap is the thing the chart is for.
+
+        The canvas's own reading is "three weeks at zero". A series that omitted the empty
+        weeks would draw a member who trained steadily, which is the opposite of what
+        happened -- and it is the shape a `GROUP BY` returns if nobody fills the gaps.
+        """
+        floor = self.floor()
+        self.entry(floor, when=datetime.now(UTC) - timedelta(days=21))
+        read = self.client.get(
+            f"/access/attendance?person_id={floor['person_id']}",
+            headers=self.headers(floor["tenant_id"]))
+        body = read.json()
+        self.assertEqual(len(body["by_week"]), body["chart_weeks"])
+        self.assertEqual(sum(w["entries"] for w in body["by_week"]), 1)
+        # The last bucket is the week the member is in now, and it is empty.
+        self.assertEqual(body["by_week"][-1]["entries"], 0, body["by_week"][-1])
+        self.assertEqual(body["by_week"][-1]["ends_on"], body["as_of"])
+
+    def test_recent_visits_name_the_club_and_how_they_got_in_but_never_the_credential(self):
+        """The stored credential value is a SHA-256 and is pseudonymous.
+
+        A listing carrying it would let anybody holding a candidate card confirm whose it is,
+        which is the absence `person_credentials` is built around one function down.
+        """
+        floor = self.floor()
+        self.entry(floor)
+        read = self.client.get(
+            f"/access/attendance?person_id={floor['person_id']}",
+            headers=self.headers(floor["tenant_id"]))
+        body = read.json()
+        self.assertEqual(len(body["recent"]), 1, body)
+        visit = body["recent"][0]
+        self.assertEqual(visit["location_name"], "Downtown")
+        self.assertRegex(visit["at"], r"^\d\d:\d\d$")
+        self.assertIsNotNone(visit["credential_kind"])
+        self.assertNotIn("credential_value", visit)
+        self.assertNotIn("digest", json.dumps(visit))
+
+    def test_a_member_who_has_never_been_in_gets_the_same_shape(self):
+        """So a screen reads one shape rather than branching on a key's presence."""
+        floor = self.floor()
+        read = self.client.get(
+            f"/access/attendance?person_id={floor['person_id']}",
+            headers=self.headers(floor["tenant_id"]))
+        body = read.json()
+        self.assertIsNone(body["days_since"])
+        for key in ("lifetime_entries", "chart_weeks", "by_week", "recent", "recent_limit"):
+            self.assertIn(key, body)
+        self.assertEqual(body["lifetime_entries"], 0)
+        self.assertEqual(body["recent"], [])
 
     def test_todays_entry_is_counted_whatever_hour_in_utc_the_suite_runs(self):
         """**The regression, and it is deterministic at every hour.**

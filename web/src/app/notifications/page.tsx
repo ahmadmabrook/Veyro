@@ -4,7 +4,7 @@ import { Banner } from "@/components/ds/banner";
 import { PageHeader } from "@/components/ds/page-header";
 import { DataGrid } from "@/components/ds/data-grid";
 import { fill, formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
-import { ApiError, currentSession, gateAll } from "@/lib/api";
+import { ApiError, currentSession, gateAll, gateMessage } from "@/lib/api";
 import { money } from "@/lib/membership";
 import {
   listChannels,
@@ -69,7 +69,7 @@ export default async function NotificationsPage() {
     return (
       <Shell locale={locale}>
         <Banner severity="info">
-          {mayNotifications.reachable ? text("gate.denied") : text("gate.unreachable")}
+          {text(gateMessage(mayNotifications))}
         </Banner>
       </Shell>
     );
@@ -122,7 +122,7 @@ export default async function NotificationsPage() {
           {text("notify.authoredLead")}
         </p>
         {!mayNotifications.allowed ? (
-          <Banner severity="info">{text("gate.denied")}</Banner>
+          <Banner severity="info">{text(gateMessage(mayNotifications))}</Banner>
         ) : rows.length === 0 ? (
           <Banner severity="info">{text("notify.noneAuthored")}</Banner>
         ) : (
@@ -216,7 +216,7 @@ export default async function NotificationsPage() {
           {text("notify.suppressionsLead")}
         </p>
         {!maySuppressions.allowed ? (
-          <Banner severity="info">{text("gate.denied")}</Banner>
+          <Banner severity="info">{text(gateMessage(maySuppressions))}</Banner>
         ) : suppressions.length === 0 ? (
           <Banner severity="info">{text("notify.noSuppressions")}</Banner>
         ) : (
@@ -256,7 +256,7 @@ export default async function NotificationsPage() {
           {text("notify.channelsLead")}
         </p>
         {!mayPolicies.allowed ? (
-          <Banner severity="info">{text("gate.denied")}</Banner>
+          <Banner severity="info">{text(gateMessage(mayPolicies))}</Banner>
         ) : channels.length === 0 ? (
           <Banner severity="info">{text("notify.noChannels")}</Banner>
         ) : (
@@ -313,7 +313,7 @@ export default async function NotificationsPage() {
       <section className="page-section">
         <h2 id="templates-heading" style={{ margin: 0 }}>{text("notify.templates")}</h2>
         {!mayTemplates.allowed ? (
-          <Banner severity="info">{text("gate.denied")}</Banner>
+          <Banner severity="info">{text(gateMessage(mayTemplates))}</Banner>
         ) : templates.length === 0 ? (
           <Banner severity="info">{text("notify.noTemplates")}</Banner>
         ) : (
@@ -389,7 +389,7 @@ export default async function NotificationsPage() {
           {text("notify.digestsLead")}
         </p>
         {!mayNotifications.allowed ? (
-          <Banner severity="info">{text("gate.denied")}</Banner>
+          <Banner severity="info">{text(gateMessage(mayNotifications))}</Banner>
         ) : digests.length === 0 ? (
           <Banner severity="info">{text("notify.noDigests")}</Banner>
         ) : (

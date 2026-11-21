@@ -851,3 +851,23 @@ agent followed the description. Reproducing it took one command -- sign in the w
 run signed in, and look -- and that was the step skipped. The fix was worth keeping and the
 attribution was not. **Reproduce before diagnosing, and when a fix does not clear the failure,
 the diagnosis is the first thing to doubt.**
+
+
+**A vocabulary the backend stores is never a label, and the check that would catch it
+cannot.** Four instances in one pass: `lifecycle_state` rendered `lead` on the members list's
+filter chips and in every row; the membership plan rendered `recurring`, `monthly` and
+`active`; the wallet rendered its four value kinds; a door visit rendered `nfc_card`. Each is
+a column's value shown where a word belongs, and in the Arabic build each is Latin letters in
+the middle of an Arabic line. **`MESSAGE_KEYS` is structurally blind to all of them**: it
+compares the two catalogues against each other and cannot see a string that never became a
+key. The durable answer is the one this file already records for the catalogue's own parity
+-- a test per module asserting that every key *that module maps to* exists in both catalogues
+-- plus the judgement that an unknown value falls through to its stored form rather than to
+"other", because the screens that show these are the screens somebody filters and acts on.
+
+**A shared helper inherits a contract from each call site it replaces.** Sweeping
+twenty-five gate refusals onto one `gateMessage` put a page-level banner's sentence, full
+stop and all, into the permissions matrix's status cells -- a dense grid whose cells are
+labels. The same shape this file records for `DataGrid`'s caption and the design system's
+Button touch target. Read what each site's own rendering does before replacing it, and
+expect the shared version to need a second form.

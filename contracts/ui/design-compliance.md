@@ -1025,3 +1025,74 @@ see both reports as links.
 
 **And the cost of the misdiagnosis is worth recording**: a commit attributed its fix to this
 failure. The fix stands on its own merits; the attribution was wrong, and is corrected above.
+
+
+## The refusal sweep: 25 sites, four states, one word between them
+
+`/reports` was fixed alone; this is the rest. Twenty-five places rendered a gate refusal and
+the app had words for two of the four things one can mean:
+
+| verdict | what happened | what the reader can do |
+| --- | --- | --- |
+| `gate_failed` | the request got no answer | try again; this is a fault here |
+| `unreachable_level` | the action needs an assurance nobody can reach in this build | nothing |
+| `needs_step_up` | a stronger sign-in would open it | sign in more strongly |
+| `denied` | the gate said no | ask for the permission |
+
+`gateVerdict` and `gateMessage` are the distinction, mutation-proven: collapsing the failure
+case fails four of the six tests.
+
+Three shapes had to be fixed by hand rather than swept. `/access/[zoneId]` discarded the
+answer inline (`if (!(await gate(…)).allowed)`), and `operations` and `membership-panels`
+both took `{ allowed, reachable }` instead of the answer — **a narrowed shape cannot tell
+four states apart**, which is how each of them reported a failed request as "Not permitted".
+
+**And the sweep itself introduced one, immediately caught.** The permissions matrix is a
+dense grid whose status cells are labels — "Needs a stronger sign-in" — and `gateMessage`
+returns the page-level banners' sentences. Swapping one for the other put a full stop in a
+table cell. The matrix keeps its own short words and gets `gate.noAnswer` for the new state.
+A shared helper inherits a contract from each call site it replaces, which this ledger
+already records for `DataGrid` and the design system's Button.
+
+## ADM-MEM-07 — the attendance tab, whose read was built a session before it
+
+This page's own notes listed attendance among five tabs that "need a module or a read this
+build does not have", while `GET /access/attendance` was already feeding the LAST VISIT
+metric cell above them. **A claim about what a product cannot do goes stale the moment
+somebody builds it** — the defect MOD-014's 360 record already carries, where five sections
+said "not built in this repository" and four of those modules had been built since.
+
+The read gained what the canvas needs: a lifetime count (which is what makes the other two
+figures mean anything — a fortnight's gap reads differently against two hundred visits than
+six), twelve weekly buckets, and the recent visits. Each row is converted in **its own club's
+zone**, because a member who trains in two cities experienced each visit on that city's day.
+
+Three things the screen decides:
+
+- **The empty weeks are drawn, and a zero is a mark.** The canvas's own reading is "three
+  weeks at zero", which means nothing unless the zeros are there; a series that omitted them
+  — what a `GROUP BY` returns if nobody fills the gaps — draws a member who trained steadily.
+  The first version rendered a zero as a 0%-height bar, which is the same as no bar at all to
+  a reader. Found by opening the tab for a member with no visits.
+- **The canvas's sparkline, not a list.** A row per week was the same data at three times the
+  height on a tab that is one of six. Each bar carries its week and count as text, because a
+  bar is a colour-and-length signal.
+- **No reading of the chart is offered.** The canvas prints "the drop starts the week after
+  his last PT session, not the week his payment failed". Relating a gap to a cause needs a
+  module that reasons about it, and a plausible sentence written by the page would be the
+  Command Center's withheld interpretation panel in a worse place.
+
+**Two kinds of attendance, and only one is unavailable.** The 360's `attendance` section said
+"MOD-020 owns this and nothing here reads it" — true of *class* attendance, who was marked
+present at a session. Door entries are MOD-022's and this tab reads them directly. Left
+undistinguished, that sentence is a flat contradiction under a tab showing somebody their
+visits, so it now names which attendance it cannot answer.
+
+**And the third stored-value-as-label in one pass**: a visit read `nfc_card`, which is the
+column's value and not a word anybody says — Latin letters in the middle of an Arabic line,
+invisible to the catalogue parity check. After `lifecycle_state`, the membership plan words
+and the wallet's value kinds, this is now a pattern worth stating: **a vocabulary the backend
+stores is never a label, and the check that would catch it cannot.**
+
+The fixture seeds fourteen door entries across the chart's own window with a gap in the
+middle, because a member with none renders four empty states and twelve blank columns.

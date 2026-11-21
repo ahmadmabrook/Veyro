@@ -5,7 +5,7 @@ import { Banner } from "@/components/ds/banner";
 import { PageHeader } from "@/components/ds/page-header";
 import { DataGrid } from "@/components/ds/data-grid";
 import { fill, formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
-import { ApiError, currentSession, gateAll } from "@/lib/api";
+import { ApiError, currentSession, gateAll, gateMessage } from "@/lib/api";
 import {
   listPriceBooks,
   listPrices,
@@ -69,7 +69,7 @@ export default async function CatalogPage({
     return (
       <Shell locale={locale}>
         <Banner severity="info">
-          {mayProducts.reachable ? text("gate.denied") : text("gate.unreachable")}
+          {text(gateMessage(mayProducts))}
         </Banner>
       </Shell>
     );
@@ -123,7 +123,7 @@ export default async function CatalogPage({
       <section className="page-section">
         <h2 id="products-heading" style={{ margin: 0 }}>{text("catalog.products")}</h2>
         {!mayProducts.allowed ? (
-          <Banner severity="info">{text("gate.denied")}</Banner>
+          <Banner severity="info">{text(gateMessage(mayProducts))}</Banner>
         ) : products.length === 0 ? (
           <Banner severity="info">{text("catalog.noProducts")}</Banner>
         ) : (
@@ -276,7 +276,7 @@ export default async function CatalogPage({
           {text("catalog.booksLead")}
         </p>
         {!mayPrices.allowed ? (
-          <Banner severity="info">{text("gate.denied")}</Banner>
+          <Banner severity="info">{text(gateMessage(mayPrices))}</Banner>
         ) : books.length === 0 ? (
           <Banner severity="info">{text("catalog.noBooks")}</Banner>
         ) : (
@@ -335,7 +335,7 @@ export default async function CatalogPage({
           {text("catalog.promotionsLead")}
         </p>
         {!mayPromotions.allowed ? (
-          <Banner severity="info">{text("gate.denied")}</Banner>
+          <Banner severity="info">{text(gateMessage(mayPromotions))}</Banner>
         ) : promotions.length === 0 ? (
           <Banner severity="info">{text("catalog.noPromotions")}</Banner>
         ) : (

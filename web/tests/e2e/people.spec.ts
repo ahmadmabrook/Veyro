@@ -148,6 +148,54 @@ test.describe("the member record", () => {
     await expect(timeline).toContainText("member.lifecycle.changed");
   });
 
+  test("the attendance tab draws the gap as well as the visits", async ({ page }) => {
+    // **ADM-MEM-07, and the read was built a session before the tab was.** This page's own
+    // notes listed attendance among five tabs that "need a module or a read this build does
+    // not have" while `GET /access/attendance` was already feeding the LAST VISIT cell -- a
+    // claim about what a product cannot do goes stale the moment somebody builds it.
+    await page.goto(`/people/${fixture().personId}?tab=attendance`);
+    const panel = page.locator("section").filter({ hasText: "Attendance" }).first();
+
+    // The three figures the canvas leads with. Lifetime is what makes the other two mean
+    // something: a gap of a fortnight reads differently against two hundred visits than six.
+    for (const label of ["SINCE LAST", "WEEKLY AVG", "LIFETIME"]) {
+      await expect(panel.locator(".ds-metric").filter({ hasText: label })).toHaveCount(1);
+    }
+
+    // **Twelve bars, including the empty ones.** The canvas's own reading is "three weeks at
+    // zero", which means nothing unless the zeros are drawn -- and a series that omitted
+    // them, which is what a GROUP BY returns if nobody fills the gaps, shows a member who
+    // trained steadily.
+    const bars = panel.locator(".ds-weekbar");
+    await expect(bars).toHaveCount(12);
+    const zero = await bars.filter({ hasText: ": 0" }).count();
+    expect(zero, "the fixture seeds a gap, so some week is empty").toBeGreaterThan(0);
+
+    // A zero week is a mark on the baseline, not an absence: a bar nobody can see and no bar
+    // at all are the same thing to a reader.
+    const height = await bars.filter({ hasText: ": 0" }).first()
+      .locator(".ds-weekbar-fill").evaluate((el) => el.getBoundingClientRect().height);
+    expect(height).toBeGreaterThan(0);
+  });
+
+  test("a visit names the club and how they got in, in words", async ({ page }) => {
+    await page.goto(`/people/${fixture().personId}?tab=attendance`);
+    const recent = page.locator("dl").filter({ hasText: "Downtown" }).first();
+    await expect(recent).toBeVisible();
+    // **The word, not the column's value.** The canvas reads "card"; this rendered
+    // `nfc_card`, which is Latin letters in the middle of an Arabic line and the third
+    // stored-value-as-label in one pass.
+    await expect(recent).toContainText("Card");
+    await expect(recent).not.toContainText("nfc_card");
+    // And never the credential itself: the stored value is a one-way digest.
+    await expect(page.locator("main")).not.toContainText("CARD-");
+  });
+
+  test("offers no reading of the chart, and says why", async ({ page }) => {
+    await page.goto(`/people/${fixture().personId}?tab=attendance`);
+    await expect(page.locator("main")).toContainText("confident answer with nothing behind it");
+  });
+
   test("an unknown person is a 404 message, not a 500", async ({ page }) => {
     await page.goto("/people/11111111-1111-4111-8111-111111111111");
     await expect(page.locator("main").getByRole("status")).toContainText(/No such person/);

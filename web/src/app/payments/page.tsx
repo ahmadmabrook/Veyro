@@ -8,7 +8,7 @@ import { PageHeader } from "@/components/ds/page-header";
 import { Prose } from "@/components/prose";
 import { Withheld } from "@/components/withheld";
 import { fill, formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
-import { currentSession, gateAll, failureMessage } from "@/lib/api";
+import { currentSession, gateAll, failureMessage, gateMessage } from "@/lib/api";
 import { readCollections, type Collections } from "@/lib/command-centre-reads";
 import { listMembers } from "@/lib/members-reads";
 import { exceptions, moneyKind, readPayments, type PaymentsLedger } from "@/lib/payments";
@@ -79,7 +79,7 @@ export default async function PaymentsPage({
     return (
       <Shell locale={locale}>
         <Banner severity="info">
-          {mayPayments.reachable ? text("gate.denied") : text("gate.unreachable")}
+          {text(gateMessage(mayPayments))}
         </Banner>
       </Shell>
     );

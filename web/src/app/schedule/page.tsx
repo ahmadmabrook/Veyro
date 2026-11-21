@@ -5,7 +5,7 @@ import { AttentionQueue, AttentionRow } from "@/components/ds/attention-row";
 import { Banner } from "@/components/ds/banner";
 import { ClassCell, WeekGrid } from "@/components/ds/week-grid";
 import { fill, formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
-import { ApiError, currentSession, gate } from "@/lib/api";
+import { ApiError, currentSession, gate, gateMessage } from "@/lib/api";
 import { listLocations, type Location } from "@/lib/organization";
 import { presentation } from "@/lib/preferences";
 import {
@@ -69,7 +69,7 @@ export default async function SchedulePage({
     return (
       <Shell locale={locale}>
         <Banner severity="info">
-          {may.reachable ? text("gate.denied") : text("gate.unreachable")}
+          {text(gateMessage(may))}
         </Banner>
       </Shell>
     );

@@ -4,7 +4,7 @@ import { Banner } from "@/components/ds/banner";
 import { PageHeader } from "@/components/ds/page-header";
 import { DataGrid } from "@/components/ds/data-grid";
 import { fill, formatInteger, t, type MessageKey } from "@/i18n/locale";
-import { ApiError, currentSession, gate } from "@/lib/api";
+import { ApiError, currentSession, gate, gateMessage } from "@/lib/api";
 import {
   evaluateFlags,
   flagReason,
@@ -90,7 +90,7 @@ export default async function ConfigurationPage({
         </h2>
         {!mayConfig.allowed ? (
           <Banner severity="info">
-            {mayConfig.reachable ? text("gate.denied") : text("gate.unreachable")}
+            {text(gateMessage(mayConfig))}
           </Banner>
         ) : definitions === null || resolved === null ? (
           <Banner severity="critical">{text("error.unexpected")}</Banner>
@@ -192,7 +192,7 @@ export default async function ConfigurationPage({
         </p>
         {!mayFlags.allowed ? (
           <Banner severity="info">
-            {mayFlags.reachable ? text("gate.denied") : text("gate.unreachable")}
+            {text(gateMessage(mayFlags))}
           </Banner>
         ) : flags === null ? (
           <Banner severity="critical">{text("error.unexpected")}</Banner>

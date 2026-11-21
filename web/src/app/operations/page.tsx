@@ -4,7 +4,13 @@ import { Banner } from "@/components/ds/banner";
 import { PageHeader } from "@/components/ds/page-header";
 import { DataGrid } from "@/components/ds/data-grid";
 import { fill, formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
-import { ApiError, currentSession, gateAll } from "@/lib/api";
+import {
+  ApiError,
+  currentSession,
+  gateAll,
+  gateMessage,
+  type GateAnswer,
+} from "@/lib/api";
 import {
   backlogIsExpected,
   failingJobs,
@@ -372,7 +378,10 @@ function Gated<T>({
   locale,
   children,
 }: {
-  gate: { allowed: boolean; reachable: boolean };
+  // **The whole answer, not two booleans of it.** A refusal has four meanings and only the
+  // full answer can tell them apart: a narrowed shape here reported a failed request as
+  // "Not permitted", which is the defect `gateMessage` exists for.
+  gate: GateAnswer;
   value: T | null;
   locale: Locale;
   children: (value: T) => React.ReactNode;
@@ -381,7 +390,7 @@ function Gated<T>({
   if (!gate.allowed) {
     return (
       <Banner severity="info">
-        {gate.reachable ? text("gate.denied") : text("gate.unreachable")}
+        {text(gateMessage(gate))}
       </Banner>
     );
   }

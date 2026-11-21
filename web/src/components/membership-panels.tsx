@@ -3,7 +3,7 @@ import Link from "next/link";
 import { Banner } from "@/components/ds/banner";
 import { MoneyValue } from "@/components/ds/money-value";
 import { fill, formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
-import { gateAll, failureMessage } from "@/lib/api";
+import { gateAll, gateMessage, failureMessage, type GateAnswer } from "@/lib/api";
 import {
   kindName,
   kindWord,
@@ -89,7 +89,7 @@ export async function MembershipPanels({
         <p className="muted" style={{ margin: 0 }}>
           {text("membership.lead")}
         </p>
-        <Block allowed={records.allowed} reachable={records.reachable} locale={locale}>
+        <Block answer={records} locale={locale}>
           <Memberships personId={personId} locale={locale} />
         </Block>
       </section>
@@ -98,11 +98,7 @@ export async function MembershipPanels({
       {show("membership") ? (
       <section className="page-section">
         <h2 style={{ margin: 0 }}>{text("membership.entitlements")}</h2>
-        <Block
-          allowed={entitlements.allowed}
-          reachable={entitlements.reachable}
-          locale={locale}
-        >
+        <Block answer={entitlements} locale={locale}>
           <Grants personId={personId} locale={locale} />
         </Block>
       </section>
@@ -111,7 +107,7 @@ export async function MembershipPanels({
       {show("billing") ? (
       <section className="page-section">
         <h2 style={{ margin: 0 }}>{text("wallet.title")}</h2>
-        <Block allowed={wallet.allowed} reachable={wallet.reachable} locale={locale}>
+        <Block answer={wallet} locale={locale}>
           <Wallet personId={personId} locale={locale} />
         </Block>
       </section>
@@ -120,7 +116,7 @@ export async function MembershipPanels({
       {show("billing") ? (
       <section className="page-section">
         <h2 style={{ margin: 0 }}>{text("membership.finance")}</h2>
-        <Block allowed={finance.allowed} reachable={finance.reachable} locale={locale}>
+        <Block answer={finance} locale={locale}>
           <Finance personId={personId} locale={locale} />
         </Block>
       </section>
@@ -138,22 +134,19 @@ export async function MembershipPanels({
  * from "sign in more strongly".
  */
 function Block({
-  allowed,
-  reachable,
+  answer,
   locale,
   children,
 }: {
-  allowed: boolean;
-  reachable: boolean;
+  // **The whole answer, not two booleans of it.** A refusal has four meanings -- the gate
+  // said no, the level is unreachable in this build, a step-up would open it, or the request
+  // never got an answer -- and a narrowed shape here reported the last as the first.
+  answer: GateAnswer;
   locale: Locale;
   children: React.ReactNode;
 }) {
-  if (allowed) return <>{children}</>;
-  return (
-    <Banner severity="info">
-      {t(locale, reachable ? "gate.denied" : "gate.unreachable")}
-    </Banner>
-  );
+  if (answer.allowed) return <>{children}</>;
+  return <Banner severity="info">{t(locale, gateMessage(answer))}</Banner>;
 }
 
 async function Memberships({ personId, locale }: { personId: string; locale: Locale }) {

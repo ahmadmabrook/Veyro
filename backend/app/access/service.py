@@ -1902,6 +1902,11 @@ def visits_on(
     }
 
 
+#: The weeks ADM-MEM-07 draws on its chart, and the visits it lists under it.
+CHART_WEEKS = 12
+RECENT_VISITS = 10
+
+
 def person_attendance(
     pool: Pool, tenant_id: str, *, person_id: str, as_of: date | None = None,
     weeks: int = 8,
@@ -1958,6 +1963,11 @@ def person_attendance(
                 "last_entry_on": None, "last_entry_at": None, "last_location": None,
                 "days_since": None, "entries_in_window": 0, "weeks": weeks,
                 "entries_per_week": None,
+                # **The same keys, so a screen reads one shape.** A response that dropped
+                # these for a member with no visits would make every caller branch on their
+                # presence, and the first caller to forget renders `undefined`.
+                "lifetime_entries": 0, "chart_weeks": CHART_WEEKS, "by_week": [],
+                "recent": [], "recent_limit": RECENT_VISITS,
                 "nothing_recorded_is_not_a_zero_rate":
                     "No entry has ever been recorded for this person, so there is no rate. "
                     "That is not the same as a member who stopped coming.",
@@ -1975,8 +1985,60 @@ def person_attendance(
             "   AND (e.occurred_at AT TIME ZONE l.timezone)::date <= %s",
             (person_id, window_start, last_on)).fetchone()
         entries = int(counted[0]) if counted else 0
+
+        # **Lifetime, which is a different question from the window.** ADM-MEM-07 draws
+        # `19d SINCE LAST · 2.8 WEEKLY AVG · 214 LIFETIME`, and the third is what makes the
+        # first two mean something: a gap of nineteen days reads differently against two
+        # hundred visits than against six.
+        lifetime = conn.execute(
+            "SELECT count(*) FROM plt01.acc_events"
+            " WHERE person_id = %s AND direction = 'entry'",
+            (person_id,)).fetchone()
+
+        # The weeks behind the chart, and the recent visits under it. Both come from the same
+        # rows, each converted in **its own club's** zone -- a member who trains in two cities
+        # experienced each visit on that city's day, and bucketing both in one zone would put
+        # a visit in the wrong week for one of them.
+        recent_window = as_of - timedelta(days=7 * CHART_WEEKS)
+        visits = conn.execute(
+            "SELECT (e.occurred_at AT TIME ZONE l.timezone)::date,"
+            "       to_char(e.occurred_at AT TIME ZONE l.timezone, 'HH24:MI'),"
+            "       l.location_name, c.kind, e.source"
+            " FROM plt01.acc_events e"
+            " JOIN plt01.acc_zones z ON z.zone_id = e.zone_id"
+            " JOIN plt01.locations l ON l.location_id = z.location_id"
+            " LEFT JOIN plt01.acc_credentials c ON c.credential_id = e.credential_id"
+            " WHERE e.person_id = %s AND e.direction = 'entry'"
+            "   AND (e.occurred_at AT TIME ZONE l.timezone)::date > %s"
+            " ORDER BY e.occurred_at DESC",
+            (person_id, recent_window)).fetchall()
+
+    # Weeks are counted back from `as_of`, so the last bucket is the one the member is in
+    # now and an empty tail is a gap rather than a missing bar. The canvas's own reading of
+    # this chart is "three weeks at zero", which only means something if the zeros are drawn.
+    buckets: list[dict[str, Any]] = []
+    for back in range(CHART_WEEKS - 1, -1, -1):
+        ends = as_of - timedelta(days=7 * back)
+        starts = ends - timedelta(days=6)
+        buckets.append({
+            "starts_on": starts.isoformat(), "ends_on": ends.isoformat(),
+            "entries": sum(1 for v in visits if starts <= v[0] <= ends),
+        })
     return {
         "person_id": person_id, "as_of": as_of.isoformat(),
+        "lifetime_entries": int(lifetime[0]) if lifetime else 0,
+        "chart_weeks": CHART_WEEKS,
+        "by_week": buckets,
+        "recent": [
+            {"on": v[0].isoformat(), "at": str(v[1]), "location_name": str(v[2]),
+             # The credential kind is how they got in -- a card, a rotating code -- and it is
+             # null where the entry was recorded without one, which an offline reconciliation
+             # can produce. Never the credential itself: the stored value is a SHA-256 and a
+             # listing carrying it would let anybody with a candidate card confirm whose.
+             "credential_kind": None if v[3] is None else str(v[3]),
+             "source": str(v[4])}
+            for v in visits[:RECENT_VISITS]],
+        "recent_limit": RECENT_VISITS,
         "last_entry_on": last_on.isoformat(), "last_entry_at": last_at.isoformat(),
         "last_location": str(last_location),
         "days_since": (as_of - last_on).days,
@@ -1987,6 +2049,12 @@ def person_attendance(
         "the_rate_ends_at_the_last_visit":
             "entries_per_week counts the weeks before last_entry_on, not before as_of, so a "
             "gap does not shrink the habit it interrupted.",
+        "no_reading_of_the_chart_is_offered":
+            "The design prints a sentence under this chart -- 'three weeks at zero, and the "
+            "drop starts the week after his last PT session'. Nothing here produces one: "
+            "relating a gap in attendance to a cause needs a module that reasons about it, "
+            "and a plausible sentence written by the read would be a confident answer with "
+            "nothing behind it.",
         "the_day_is_local_to_the_door_they_used":
             "days_since counts local days at the club whose door recorded the last entry, "
             "and as_of is today in that same zone unless a caller named a date.",

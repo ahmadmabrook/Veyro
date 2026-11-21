@@ -3983,6 +3983,20 @@ the attention queue has two row heights and this had one, staffing escalated to 
 where the canvas draws `info`, and the collections breakdown printed a legal entity's UUID
 where a name belonged.
 
+**A refusal and a failure are different facts.** `gate` and `gateAll` fail closed -- an
+unreachable gate is not permission, which is right for access -- so a transport failure
+reaches a page in exactly the shape of a refusal, and twenty-five places said "Not permitted"
+for both. `gateVerdict` separates four states: the request got no answer, the assurance is
+unreachable in this build, a step-up would open it, or the gate said no. Only the last is
+about what the reader holds, and a page that confuses them sends somebody to ask for a grant
+they already have.
+
+**A vocabulary the backend stores is never a label.** Four instances in one pass --
+`lifecycle_state`, the membership plan words, the wallet's value kinds, a door visit's
+credential kind -- each a column's value rendered where a word belongs, and each Latin
+letters in the middle of an Arabic line. `MESSAGE_KEYS` cannot see any of them: it compares
+the two catalogues against each other and is blind to a string that never became a key.
+
 **TestSprite is the independent layer**, and `qa/testsprite/plans.mjs` generates four journeys
 from the live fixture. Its value is that it has not read this repository: a Playwright spec and
 the page it tests were written by the same hand on the same day. All four pass; one found a
@@ -3995,7 +4009,8 @@ re-running the fixture invalidates every test already created.
 Known gaps: the surface covers the sign-in, the step-up, the account page, MOD-004, MOD-005,
 MOD-007, MOD-008, MOD-009, MOD-010, MOD-011, MOD-012, MOD-013, MOD-014, MOD-016, MOD-017,
 MOD-018, MOD-019, MOD-021 and MOD-022, plus MOD-020's roster on a session, ADM-RPT-01/02/03
-under `/reports` and ADM-PAY-07's wallet on a member's billing tab. MOD-015 is the one
+under `/reports`, ADM-PAY-07's wallet on a member's billing tab and ADM-MEM-07's attendance
+tab. MOD-015 is the one
 implemented module with no screen at all, which is the bulk of the remaining work; MOD-019's
 own surface is read-only -- publishing a schedule, substituting an instructor and cancelling a
 session are all built on the server and none has a form, which is the same gap the hierarchy

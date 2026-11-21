@@ -7,7 +7,7 @@ import { MetricCell, MetricRow } from "@/components/ds/metric-cell";
 import { PageHeader } from "@/components/ds/page-header";
 import { RecordHeader } from "@/components/ds/record-header";
 import { fill, formatInteger, t, type MessageKey } from "@/i18n/locale";
-import { ApiError, currentSession, gateAll } from "@/lib/api";
+import { ApiError, currentSession, gateAll, gateMessage } from "@/lib/api";
 import { presentation } from "@/lib/preferences";
 import { heldBeyondRoster, readRoster } from "@/lib/booking";
 import { readSession, type SessionResource } from "@/lib/scheduling";
@@ -49,7 +49,7 @@ export default async function SessionPage({
     return (
       <Shell title={text("schedule.session")}>
         <Banner severity="info">
-          {may.reachable ? text("gate.denied") : text("gate.unreachable")}
+          {text(gateMessage(may))}
         </Banner>
       </Shell>
     );
@@ -265,7 +265,7 @@ export default async function SessionPage({
         <div className="ds-panel-body">
         {!mayRoster.allowed ? (
           <Banner severity="info">
-            {mayRoster.reachable ? text("gate.denied") : text("gate.unreachable")}
+            {text(gateMessage(mayRoster))}
           </Banner>
         ) : roster === null ? (
           <Banner severity="critical">{text("error.unexpected")}</Banner>

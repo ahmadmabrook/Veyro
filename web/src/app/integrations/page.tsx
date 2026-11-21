@@ -4,7 +4,7 @@ import { Banner } from "@/components/ds/banner";
 import { PageHeader } from "@/components/ds/page-header";
 import { DataGrid } from "@/components/ds/data-grid";
 import { fill, formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
-import { ApiError, currentSession, gateAll } from "@/lib/api";
+import { ApiError, currentSession, gateAll, gateMessage } from "@/lib/api";
 import {
   credentialIsCurrent,
   listConnections,
@@ -74,7 +74,7 @@ export default async function IntegrationsPage() {
     return (
       <Shell locale={locale}>
         <Banner severity="info">
-          {mayInstalls.reachable ? text("gate.denied") : text("gate.unreachable")}
+          {text(gateMessage(mayInstalls))}
         </Banner>
       </Shell>
     );
@@ -127,7 +127,7 @@ export default async function IntegrationsPage() {
           {text("integrations.installsLead")}
         </p>
         {!mayInstalls.allowed ? (
-          <Banner severity="info">{text("gate.denied")}</Banner>
+          <Banner severity="info">{text(gateMessage(mayInstalls))}</Banner>
         ) : installs.length === 0 ? (
           <Banner severity="info">{text("integrations.noInstalls")}</Banner>
         ) : (
@@ -214,7 +214,7 @@ export default async function IntegrationsPage() {
           {text("integrations.connectionsLead")}
         </p>
         {!mayConnections.allowed ? (
-          <Banner severity="info">{text("gate.denied")}</Banner>
+          <Banner severity="info">{text(gateMessage(mayConnections))}</Banner>
         ) : connections.length === 0 ? (
           <Banner severity="info">{text("integrations.noConnections")}</Banner>
         ) : (
@@ -292,7 +292,7 @@ export default async function IntegrationsPage() {
           {text("integrations.credentialsLead")}
         </p>
         {!mayCredentials.allowed ? (
-          <Banner severity="info">{text("gate.denied")}</Banner>
+          <Banner severity="info">{text(gateMessage(mayCredentials))}</Banner>
         ) : credentials.length === 0 ? (
           <Banner severity="info">{text("integrations.noCredentials")}</Banner>
         ) : (
@@ -335,7 +335,7 @@ export default async function IntegrationsPage() {
           {text("integrations.runsLead")}
         </p>
         {!maySync.allowed ? (
-          <Banner severity="info">{text("gate.denied")}</Banner>
+          <Banner severity="info">{text(gateMessage(maySync))}</Banner>
         ) : runs.length === 0 ? (
           <Banner severity="info">{text("integrations.noRuns")}</Banner>
         ) : (
@@ -431,7 +431,7 @@ export default async function IntegrationsPage() {
           {text("integrations.cursorsLead")}
         </p>
         {!maySync.allowed ? (
-          <Banner severity="info">{text("gate.denied")}</Banner>
+          <Banner severity="info">{text(gateMessage(maySync))}</Banner>
         ) : cursors.length === 0 ? (
           <Banner severity="info">{text("integrations.noCursors")}</Banner>
         ) : (
