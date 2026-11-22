@@ -1268,7 +1268,7 @@ Known gaps, deliberate:
   **`evaluate_budget` is still undriven**, and for the reason this bullet gave: which period
   is due is an accountant's judgement rather than a sweep's predicate.
   Proven: 5 worker integration tests, 5 domain tests over the window with no database, and 5
-  mutations in `tests/mutate_worker_objectives.py`, all caught. Two protections there are
+  mutations in `tests/mutate_worker_sweeps.py`, all caught. Two protections there are
   deliberately **not** mutated and the harness says why -- the savepoint around the append
   changes no behaviour today, because PostgreSQL's `COMMIT` after an error rolls back and
   reports success and nothing follows the append in that transaction; and the sweep's
@@ -1643,10 +1643,19 @@ Known gaps, deliberate:
   codebase has been bitten by four times.
 - **No provider failover.** Paragraph 2459 asks for it; failing over needs two providers and
   there are none. Channel fallback, which is the half that does not, is built.
-- **Digests are batched and never sent.** `ntf_digests` fills and closes; rendering a batch into
-  one message needs a digest template format the sources do not state, and nothing sweeps the
-  open windows. A worker runtime now exists; closing a digest window needs that format first,
-  so this stays a job nobody has written rather than a job nothing drives.
+- **Digests are closed on a schedule and still never sent**, which is this gap split in two
+  because the note used to conflate them. `notifications.close_digests` is a worker job at
+  five minutes: a window whose `window_end` has passed moves to `closed`, so
+  `list_digests(state="closed")` is "what is waiting" and is no longer permanently empty.
+  **The blocker this bullet named was the wrong one.** The digest template format renders a
+  batch into one message, which is the `sent` state; closing needs no format at all. The state
+  had admitted three values since the module was built, the filter had always been there, and
+  the grant already carried `UPDATE (state, closed_at)` -- a declared state nothing writes and
+  a granted column no service writes, in one row, hidden behind a true sentence about a
+  different half. **Never closed early**, because the index that keeps a batch in one row is
+  partial on `state = 'open'` and an early close lets the next notification in that window
+  open a second row, which is the split that index exists to prevent. `sent` is still a state
+  nothing writes, and that half does need the format and a dispatcher.
 - **`status_update.published` is declared and unproduced.** A status page is a surface this
   build does not have, and an event announcing a publication that never happened would be worse
   than the gap.
@@ -3675,9 +3684,9 @@ Known gaps, deliberate:
 `backend/app/worker/` is the thing this file asked for in fourteen places. Every one of those
 bullets named a decision function that was written, tested and reachable from a route, waiting
 for something to call it without a person asking -- and until now the honest answer was that no
-such thing existed. Seven jobs are wired: MOD-010's relay, MOD-011's objective evaluation,
-MOD-014's timeline projection, MOD-021's offline sweep and command expiry, MOD-020's
-waitlist-offer expiry and MOD-022's replay-cache sweep. `python -m app.worker --once` runs one tick and prints what it did;
+such thing existed. Eight jobs are wired: MOD-010's relay, MOD-011's objective evaluation,
+MOD-013's digest close, MOD-014's timeline projection, MOD-021's offline sweep and command
+expiry, MOD-020's waitlist-offer expiry and MOD-022's replay-cache sweep. `python -m app.worker --once` runs one tick and prints what it did;
 without `--once` it loops until a signal.
 
 Five decisions carry it, and three of them are refusals:
@@ -3755,18 +3764,23 @@ What is deliberately **not** a job, each for a stated reason:
 - **MOD-012's credential rotation announcement.** `credentials_due` is not idempotent across
   calls by design, so scheduling it needs a record of what has already been announced -- the
   durable state the bullet above says comes first.
-- **MOD-009's retention sweep, MOD-013's digest close, MOD-017's renewals and dunning,
-  MOD-018's recognition and period close.** Each needs a judgement this registry would have to
-  invent -- which deadline, which period -- and inventing product is the one thing the
-  delegation does not cover. They are the next jobs, and each wants its own decision written
-  down first. **MOD-011's objective evaluation came off this list by making its decision**,
+- **MOD-009's retention sweep, MOD-017's renewals and dunning, MOD-018's recognition and
+  period close.** Each needs a judgement this registry would have to invent -- which deadline,
+  which period -- and inventing product is the one thing the delegation does not cover. They are the next jobs, and each wants its own decision written
+  down first. **MOD-011's objective evaluation and MOD-013's digest close both came off this
+  list, and neither by making the decision it was said to need**,
   and the shape of that is the lesson: the judgement it looked like it needed, *which*
   objective is due, turned out not to exist -- every objective carries its own window -- and
   the one it really needed was *how often a breach is announced*, which is a different
   question and a smaller one. `objectives.announcement_window` answers it from the objective,
   so the job's cadence does not decide how many events get written, which is what made it safe
-  to wire at all. **Ask of each remaining one which judgement it actually needs**, because the
-  obvious reading of "this needs a decision" named the wrong decision here.
+  to wire at all. MOD-013's was starker: its note said closing a digest window needed the
+  digest template format, and that format renders a batch into a *message* -- it has nothing
+  to do with whether an elapsed window is marked closed, which needed no decision at all.
+  **Ask of each remaining one which judgement it actually needs**, because twice now the
+  obvious reading of "this needs a decision" named a decision that was not in the way -- and
+  the second time the blocker named was a true sentence about a different half of the feature,
+  which is the harder kind to see past.
 
 Known gaps, deliberate:
 
@@ -5125,12 +5139,12 @@ the user's authenticator, so verifying an assertion needs no secret of ours at a
 exactly why that gap could be closed while this one cannot. A device certificate is the
 opposite shape -- it is a secret this build would have to hold.
 
-**The worker runtime is no longer on that list, and seven of the fourteen schedules are
+**The worker runtime is no longer on that list, and eight of the fourteen schedules are
 driven.**
 `backend/app/worker/` has its own section above. What closing it took is worth the same note
 `Decision.mask` gets below: no new table, because every wired job is idempotent and a durable
 schedule's real cost is a second place where "has this run" is recorded that can disagree with
-the effect the job had. The seven schedules still undriven are undriven for a reason each --
+the effect the job had. The six schedules still undriven are undriven for a reason each --
 `iam.challenges` has no DELETE grant for anybody, `deliver_pending` has no handler to drive,
 and the rest need a judgement the registry would have to invent. **MOD-011's objective
 evaluation came off that list by making one**, and the shape is worth knowing before the next:

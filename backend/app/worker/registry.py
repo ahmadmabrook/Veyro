@@ -49,6 +49,7 @@ from app.booking import service as booking
 from app.db import Pool
 from app.devices import service as devices
 from app.events import service as events
+from app.notifications import service as notifications
 from app.observability import service as observability
 from app.people import service as people
 from app.worker.names import JOB_NAMES
@@ -104,6 +105,10 @@ def _people_project_timeline(ctx: JobContext) -> dict[str, Any]:
     return people.project_timeline(ctx.pool, ctx.tenant_id, limit=500)
 
 
+def _notifications_close_digests(ctx: JobContext) -> dict[str, Any]:
+    return notifications.close_elapsed_digests(ctx.pool, ctx.tenant_id, at=ctx.at)
+
+
 def _observability_evaluate_objectives(ctx: JobContext) -> dict[str, Any]:
     return observability.evaluate_live_objectives(
         ctx.pool, ctx.tenant_id, actor_id=ctx.actor_id,
@@ -152,6 +157,18 @@ JOBS: tuple[Job, ...] = (
         units="evaluated",
         summary="Evaluate every live objective and announce the breaches once per window",
         run=_observability_evaluate_objectives),
+    # MOD-013, and the second off that list. Its gap note named the digest template format as
+    # the blocker, which is the format needed to *render* a batch into one message -- the
+    # `sent` state, still unreachable because nothing sends. `closed` needs no format: it
+    # means the window is over, and `list_digests(state="closed")` answered nothing for ever
+    # because nothing ever left `open`. **Five minutes against an hourly window** is latency
+    # nobody can act on anyway, since the batch is waiting for a dispatcher this build does
+    # not have; a tighter cadence would scan the table for nothing.
+    Job(name="notifications.close_digests", every=timedelta(minutes=5), role="app",
+        units="closed",
+        summary="Close digest windows that have ended, so a complete batch stops reading "
+                "as one still filling",
+        run=_notifications_close_digests),
     # MOD-014. The absence changed the product: a timeline nobody projects stays empty, and the
     # Member 360 shows a member with no history.
     Job(name="people.project_timeline", every=timedelta(seconds=60), role="app",

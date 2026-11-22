@@ -26,6 +26,7 @@ from datetime import UTC, datetime, timedelta
 
 from app.db import make_worker_pool, tenant_scope
 from app.events import service as events
+from app.notifications import service as notifications
 from app.observability import catalog as metric_catalog
 from app.observability import metrics
 from app.observability import service as observability
@@ -242,6 +243,113 @@ class TimelineJobTests(WorkerTestCase):
                 "SELECT count(*) FROM plt01.ppl_timeline_entries WHERE person_id = %s",
                 (person_id,)).fetchone()[0])
         self.assertGreater(entries, 0)
+
+
+class DigestCloseTests(WorkerTestCase):
+    """MOD-013's digest window, the second schedule off the "needs a judgement" list.
+
+    Its gap note named the digest template format as the blocker. That format is what renders
+    a batch into one message -- the `sent` state, still unreachable because nothing sends --
+    and `closed` needs none of it: `ntf_digests.state` has admitted three values since the
+    module was built, `list_digests` takes a `state` filter, the grant already carried
+    `UPDATE (state, closed_at)`, and nothing ever left `open`. So "which batches are complete
+    and waiting" answered nothing for ever, indistinguishable from "none are".
+    """
+
+    def _digest(self, tenant_id: str, *, ends_in: timedelta) -> str:
+        """One open digest whose window ends when we say.
+
+        Written directly rather than through `request_notification`, because folding into a
+        digest needs a preference, a template, a channel policy and a binding -- four things
+        that have nothing to do with whether an elapsed window closes. The row is the input.
+        """
+        now = datetime.now(UTC)
+        with tenant_scope(self._tenant_pool, tenant_id) as conn:
+            row = conn.execute(
+                """
+                INSERT INTO plt01.ntf_digests
+                    (tenant_id, recipient_id, category, channel, window_start, window_end,
+                     notification_count)
+                VALUES (%s, %s, 'marketing', 'email', %s, %s, 3)
+                RETURNING digest_id
+                """,
+                # The window's start is relative to its end, not to now: the constraint is
+                # `window_end > window_start`, and a digest whose window ended two hours ago
+                # started three.
+                (tenant_id, str(uuid.uuid4()),
+                 now + ends_in - timedelta(hours=1), now + ends_in),
+            ).fetchone()
+        assert row is not None
+        return str(row[0])
+
+    def _state(self, tenant_id: str, digest_id: str) -> tuple[str, bool]:
+        with tenant_scope(self._tenant_pool, tenant_id) as conn:
+            row = conn.execute(
+                "SELECT state, closed_at IS NOT NULL FROM plt01.ntf_digests"
+                " WHERE digest_id = %s", (digest_id,)).fetchone()
+        assert row is not None
+        return str(row[0]), bool(row[1])
+
+    def test_a_window_that_has_ended_is_closed_and_one_still_open_is_not(self):
+        """**Never early**, which is the one thing this sweep could get wrong: the unique
+        index that keeps a batch in one row is partial on `state = 'open'`, so closing a
+        window before it ends lets the next notification in it open a second row and split
+        the batch."""
+        tenant_id = self.tenant()
+        elapsed = self._digest(tenant_id, ends_in=-timedelta(minutes=1))
+        still_filling = self._digest(tenant_id, ends_in=timedelta(hours=1))
+        report = self.tick(tenant_id, "notifications.close_digests")
+        self.assertEqual(report.failures, ())
+        self.assertEqual(report.units, 1)
+        self.assertEqual(self._state(tenant_id, elapsed), ("closed", True))
+        self.assertEqual(self._state(tenant_id, still_filling), ("open", False))
+
+    def test_a_second_pass_closes_nothing_because_the_predicate_no_longer_matches(self):
+        """Idempotent by the predicate rather than by a key, which is what keeps the
+        worker's disposable schedule honest with no new state."""
+        tenant_id = self.tenant()
+        self._digest(tenant_id, ends_in=-timedelta(minutes=1))
+        first = self.tick(tenant_id, "notifications.close_digests")
+        second = self.tick(tenant_id, "notifications.close_digests")
+        self.assertEqual(first.units, 1)
+        self.assertEqual(second.units, 0)
+        self.assertEqual(second.failures, ())
+
+    def test_the_closed_state_is_now_a_filter_that_can_return_something(self):
+        """The reason this was worth building: `list_digests(state="closed")` is "what is
+        waiting", and it was permanently empty."""
+        tenant_id = self.tenant()
+        self._digest(tenant_id, ends_in=-timedelta(minutes=1))
+        self.assertEqual(
+            notifications.list_digests(self._tenant_pool, tenant_id, state="closed"), [])
+        self.tick(tenant_id, "notifications.close_digests")
+        closed = notifications.list_digests(self._tenant_pool, tenant_id, state="closed")
+        self.assertEqual(len(closed), 1)
+        self.assertEqual(closed[0]["notification_count"], 3)
+
+    def test_the_batch_total_is_reported_so_a_tick_says_what_it_closed(self):
+        """A count of digests says how many windows ended; the notifications inside them is
+        what somebody would be told about, and a sweep reporting only the first leaves the
+        board unable to say whether anything was in them."""
+        tenant_id = self.tenant()
+        self._digest(tenant_id, ends_in=-timedelta(minutes=1))
+        self._digest(tenant_id, ends_in=-timedelta(hours=2))
+        report = self.tick(tenant_id, "notifications.close_digests")
+        self.assertEqual(report.units, 2)
+        detail = report.outcomes[0].detail
+        self.assertIsNotNone(detail)
+        assert detail is not None
+        self.assertEqual(detail["notifications_batched"], 6)
+
+    def test_sent_is_still_a_state_nothing_writes_and_that_is_the_gap(self):
+        """Half of this is built and half cannot be: rendering a batch into one message needs
+        the digest template format the sources do not state, and nothing sends anyway. Saying
+        so in a test is what stops the next reader assuming the whole state machine runs."""
+        tenant_id = self.tenant()
+        self._digest(tenant_id, ends_in=-timedelta(minutes=1))
+        self.tick(tenant_id, "notifications.close_digests")
+        self.assertEqual(
+            notifications.list_digests(self._tenant_pool, tenant_id, state="sent"), [])
 
 
 class UnitsKeyTests(WorkerTestCase):

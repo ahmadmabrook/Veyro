@@ -1426,6 +1426,19 @@ rather than a wrong test, because CI starts the backend from the commit. When a 
 between CI and local in the direction of the change you just made, restart the process before
 touching the assertion.
 
+**A gap note can be a true sentence about one half of a feature, standing in front of the
+other half.** MOD-013's digest bullet said closing a window needed the digest template format
+the sources do not state -- which is true of *rendering a batch into a message*, the `sent`
+state, and has nothing to do with marking an elapsed window `closed`. Behind it sat a declared
+state nothing wrote, a `state` filter whose value could never be returned, and an
+`UPDATE (state, closed_at)` grant no service used: three of this build's own recurring findings
+in one row, invisible because the sentence covering them was accurate. MOD-011's objective
+evaluation was the same shape with a weaker disguise -- "a judgement the registry would have to
+invent: which objective is due", when every objective carries its own window. **So when a gap
+note names a blocker, check that the blocker is in the way of the thing the note is about**: a
+note that is right about *why something else* is missing reads exactly like a note that is
+right about this.
+
 
 **A class name that styles nothing is invisible to every layer that is not a screenshot.**
 `ds-card` appeared in `globals.css` exactly once, inside a `prefers-reduced-motion` block,

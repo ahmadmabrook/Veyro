@@ -1,4 +1,4 @@
-"""Break the objective sweep's own protections and require its cases to fail.
+"""Break each wired sweep's own protections and require its cases to fail.
 
 **The protection here is an absence of writes**, which is the hardest kind to test by looking
 at a green suite: the wiring works either way, and the difference between "announced once"
@@ -24,7 +24,7 @@ either. Both are stated in `evaluate_live_objectives`' own docstring instead.
 
 Run it with the database up, from `backend/`:
 
-    VEYRO_DATABASE_URL=... python tests/mutate_worker_objectives.py
+    VEYRO_DATABASE_URL=... python tests/mutate_worker_sweeps.py
 """
 import pathlib
 import subprocess
@@ -33,6 +33,7 @@ import sys
 SERVICE = pathlib.Path("app/observability/service.py")
 DECIDE = pathlib.Path("app/observability/objectives.py")
 REGISTRY = pathlib.Path("app/worker/registry.py")
+NOTIFY = pathlib.Path("app/notifications/service.py")
 
 MUTATIONS = [
     # The dedupe itself. Without the key every evaluation announces, which is 288 rows a day
@@ -64,6 +65,19 @@ MUTATIONS = [
     (REGISTRY, "the units key names something the job does not return",
      '        units="evaluated",',
      '        units="objectives_evaluated",'),
+
+    # MOD-013's digest close. The one thing this sweep could get wrong is closing a window
+    # early, because the index that keeps a batch in one row is partial on `state = 'open'`:
+    # an early close lets the next notification in that window open a second row and split
+    # the batch the index exists to prevent.
+    (NOTIFY, "a digest window is closed before it has ended",
+     "                WHERE state = 'open' AND window_end <= %s",
+     "                WHERE state = 'open' AND window_start <= %s"),
+    # And closing something that is not open would re-stamp a closed digest's `closed_at`,
+    # losing when the window actually ended.
+    (NOTIFY, "a digest already closed is closed again",
+     "                WHERE state = 'open' AND window_end <= %s",
+     "                WHERE window_end <= %s"),
 ]
 
 #: The suite each mutation is judged by. Most are the worker's integration tests; the window

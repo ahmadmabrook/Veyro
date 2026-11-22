@@ -1196,6 +1196,69 @@ def get_notification(pool: Pool, tenant_id: str, notification_id: str) -> dict[s
                 "delivered_at": row[18].isoformat() if row[18] else None}}
 
 
+def close_elapsed_digests(
+    pool: Pool, tenant_id: str, *, at: datetime | None = None, limit: int = 500,
+) -> dict[str, Any]:
+    """Close every digest whose window has ended, so "complete" stops reading as "filling".
+
+    **It does not send anything, and that is the point of separating the two states.** A
+    `closed` digest is a batch nobody will render until this build has a dispatcher and a
+    digest template format -- neither of which exists -- so closing is the half that can be
+    honest now: `list_digests(state="closed")` is "what is waiting", and it answered nothing
+    for ever because nothing ever left `open`. `sent` is still a state nothing writes, which is
+    the remaining gap and is named rather than papered over.
+
+    **The predicate is `window_end <= at` and never a moment earlier.** The unique index that
+    keeps a batch in one row is partial on `state = 'open'`, and its own comment says two rows
+    "would split a batch" -- so closing a window before it ends lets the next notification in
+    that same window open a second row for it, which is exactly the split the index exists to
+    prevent. No grace period, no lease, no "idle for a while" heuristic. It is safe at
+    `window_end` because a notification arriving after it computes a later `window_start` and
+    therefore a different window: an hourly batch's successor is the next hour and a daily
+    one's is tomorrow.
+
+    **There is no decision function behind this**, deliberately. "The window has ended" is the
+    definition of elapsed rather than a judgement, so a `digest_is_closable` in the domain
+    module would be one line with no caller once the UPDATE does the selecting -- a decision
+    function nothing reads, which is the shape this build keeps finding. The reasoning that
+    *is* worth having is the paragraph above, and it belongs next to the SQL it constrains.
+
+    Idempotent by that predicate rather than by a key: a second pass finds nothing still open
+    with an elapsed window, so the worker's "every job is idempotent, so the schedule is
+    disposable" property holds with no new state.
+
+    **No event, no actor and no correlation id**, and the last two are an absence worth
+    stating because every other command in this module takes them. This build's standing rule
+    is that evidence with nobody's name on it answers nothing -- and the rule is about *acts
+    with a decision in them*. This one has none: its only input is the clock, it can fire once
+    per window and never otherwise, and `ntf_digests` has no actor column. Taking the two
+    parameters to look like its siblings and writing them nowhere would be MOD-012's
+    `release_run` -- a field required of the caller, validated, and thrown away -- so the
+    signature says what the function does. ENG-02's event list has no
+    `notification.digest_closed` either, and inventing one would be inventing product.
+    """
+    if limit < 1 or limit > 1000:
+        raise InvalidRequest("limit_out_of_range")
+    now = at or _now()
+    with tenant_scope(pool, tenant_id) as conn:
+        rows = conn.execute(
+            """
+            UPDATE plt01.ntf_digests SET state = 'closed', closed_at = %s
+            WHERE digest_id IN (
+                SELECT digest_id FROM plt01.ntf_digests
+                WHERE state = 'open' AND window_end <= %s
+                ORDER BY window_end
+                LIMIT %s
+            )
+            RETURNING digest_id, notification_count
+            """,
+            (now, now, limit),
+        ).fetchall()
+    return {"closed": len(rows),
+            "notifications_batched": sum(int(r[1]) for r in rows),
+            "digest_ids": [str(r[0]) for r in rows]}
+
+
 def list_digests(
     pool: Pool, tenant_id: str, *, recipient_id: str | None = None,
     state: str | None = None, limit: int = 50,
