@@ -153,8 +153,20 @@
     "failed": 0
    },
    "note": "FD-08's device strip. The journey asks the question the canvas asks -- does the strip say what to do instead, or only that something failed -- and an outside reader is the right judge of whether the sentence is actionable, because the fallback was written here and could have pointed at a capability this product lacks. It also checks the strip does not claim all is well above an out-of-service reader, which is the defect the first version shipped."
+  },
+  {
+   "journey": "A receptionist is told what to say when a member's card is refused, and what they may not say",
+   "testId": "bd98f411-e9f6-4105-a823-0aad64226298",
+   "runId": "d22f3a2c-30cb-4960-9e21-8c66dc368d78",
+   "status": "passed",
+   "steps": {
+    "total": 8,
+    "passed": 8,
+    "failed": 0
+   },
+   "bound": "FD-03's own thesis is that the real reason needs a stronger sign-in, and this layer cannot be given one: the only verifiable second factor in this build is a single-use recovery code, so handing one to a stored test spends it on the first run. The journey therefore verifies the ordinary-sign-in half and that the screen offers the way through -- which is exactly where a receptionist without a code would stop. ADM-MSH-03 established that bound by hitting it."
   }
  ],
- "finishedAt": "2026-11-22T00:20:00Z",
+ "finishedAt": "2026-11-22T05:22:14Z",
  "correction": "The journey 'A report this session cannot open is absent, not locked' failed three times against a product that was right, and the fault was the plan. Its description quoted the canvas's Club Manager scenario -- 'the two financial ones are absent' -- while its steps signed in as the owner, so the agent checked the financial reports were absent for a session holding every permission and reported them present. It was right to. A plan's description is read as the specification, which is the point of writing them in English; one that describes a different session from the one the steps open is a plan contradicting itself. It is now the two halves it should always have been. The misdiagnosis in between is written up in contracts/ui/design-compliance.md: a theory that explains a failure is not the cause of it."
 }

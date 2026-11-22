@@ -20,6 +20,15 @@ import { SEVERITY, VOCABULARY } from "@/design/contracts.generated";
  * density. At Compact the label may abbreviate but never disappear, and the full text stays in
  * the accessible name regardless.
  *
+ * **The enum is the state; `label` is the word.** The status is a closed English vocabulary
+ * from the design source and that is what makes it type-safe -- and rendering it is what put
+ * a Latin word in the middle of an Arabic line the first time a screen used this component.
+ * That is this repository's own recurring finding ("a vocabulary the backend stores is never
+ * a label"), and the catalogue's parity check is structurally blind to it: a string that
+ * never became a message key cannot be compared between two catalogues. So a caller passes
+ * the localized word and `tests/unit/ds-usage.test.mjs` requires it, because an English badge
+ * on an Arabic page is invisible to every assertion about structure.
+ *
  * The edge-mark is the same scale expressed at row granularity: it carries the roll-up while
  * the badge names the specific state, which is what stopped them reading as two independent
  * signals. In RTL the edge-mark moves to the logical start edge, which `border-inline-start`
@@ -72,10 +81,16 @@ const TONE: Record<Severity, { fg: string; edge: string; bg: string }> = {
 
 export function StatusBadge({
   status,
+  label,
   abbreviated,
   style,
 }: {
   status: Status;
+  /**
+   * The status in the reader's own language. Required by the usage sweep: the enum is the
+   * state and this is the word for it, and the two must mean the same thing.
+   */
+  label?: string;
   /** Compact only. The label shortens; the accessible name does not. */
   abbreviated?: string;
   style?: CSSProperties;
@@ -87,8 +102,10 @@ export function StatusBadge({
       // Not a button: the source says a badge is "not a button unless it opens something",
       // and nothing here opens anything.
       className={`ds-badge ds-badge-${severity}`}
-      // The full text stays in the accessible name whatever the visible label does.
-      aria-label={abbreviated ? status : undefined}
+      // The full text stays in the accessible name whatever the visible label does -- and
+      // it is the localized one where there is one, because an abbreviation whose accessible
+      // name is in another language is worse than no abbreviation.
+      aria-label={abbreviated ? (label ?? status) : undefined}
       style={{
         display: "inline-flex",
         alignItems: "center",
@@ -107,7 +124,7 @@ export function StatusBadge({
         ...style,
       }}
     >
-      {abbreviated ?? status}
+      {abbreviated ?? label ?? status}
     </span>
   );
 }

@@ -3326,3 +3326,47 @@ a {
   font-size: var(--type-caption-size);
   line-height: var(--type-caption-line);
 }
+
+/* FD-03 · ACCESS DENIED · WHAT TO SAY AND DO. At Touch density like the rest of the Front
+   Desk surface. The sentence a receptionist reads out is set larger than the page's body,
+   because it is the one thing on the screen they say aloud while looking at somebody. */
+.ds-denial-say {
+  margin: 0;
+  font-size: var(--type-bodyLg-size);
+  line-height: var(--type-bodyLg-line);
+}
+.ds-denial-override,
+.ds-denial-gaps {
+  margin-block-start: var(--space-4);
+}
+.ds-override-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  align-items: flex-start;
+}
+/* A fieldset, because three radios are one question and a screen reader should hear the
+   question before the options. No border: the legend carries it. */
+.ds-override-reasons {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.ds-override-reasons > legend {
+  padding: 0;
+  margin-block-end: var(--space-2);
+  font-size: var(--type-label-size);
+  font-weight: var(--type-label-weight);
+}
+/* The whole row is the target, which is what makes a radio tappable at a desk: the label is
+   the control's own, so the 44px comes from the row rather than from the dot. */
+.ds-override-reason {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-block-size: 44px;
+  cursor: pointer;
+}

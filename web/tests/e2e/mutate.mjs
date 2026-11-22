@@ -1610,6 +1610,107 @@ const MUTATIONS = [
     runner: "playwright",
     grep: "no Add member button at all",
   },
+  {
+    id: "denial-real-code-reaches-a-routine-reader",
+    why: "the whole screen: a restricted refusal's real code is the fact paragraph 1944 "
+      + "withholds, and `sayFor` is what turns it into a sentence -- falling back to the "
+      + "public prose for every code would put the real reason on a password-only desk",
+    file: "src/lib/denial.ts",
+    from: "  return SAY[code] ?? null;",
+    to: '  return SAY[code] ?? SAY["see_front_desk"]!;',
+    runner: "vitest",
+    grep: "says nothing rather than guessing at a code it does not know",
+  },
+  {
+    id: "denial-override-offered-after-somebody-already-did",
+    why: "offering the button again admits the same person twice in an insert-only log, and "
+      + "the already-answered check has to come before the permission one or a step-up is "
+      + "offered for work that is finished",
+    file: "src/lib/denial.ts",
+    from: "  if (alreadyOverridden) return \"already\";",
+    to: "",
+    runner: "playwright",
+    grep: "says so rather than offering the button again",
+  },
+  {
+    id: "denial-step-up-offered-where-it-would-not-help",
+    why: "a step-up cannot grant a permission nobody holds, so offering one sends somebody "
+      + "looking for a second factor that changes nothing",
+    file: "src/lib/denial.ts",
+    from: '  return gate.verdict === "needs_step_up" ? "step_up" : "denied";',
+    to: '  return "step_up";',
+    runner: "vitest",
+    grep: "offers neither where the gate said no",
+  },
+  {
+    id: "denial-override-key-is-not-the-refusal",
+    why: "`override_access` answers a repeated key from the row it already wrote, so a key "
+      + "that is the same tomorrow records no second admission: the desk is told it worked "
+      + "and the access log shows one override for two",
+    file: "src/lib/denial.ts",
+    from: "  return `override-${decisionId}`;",
+    to: "  return `override-by-hand`;",
+    runner: "vitest",
+    grep: "is a different key for a later refusal",
+  },
+  {
+    id: "denial-badge-renders-the-english-enum",
+    why: "`StatusBadge` takes a closed English vocabulary so an engineer cannot invent a "
+      + "state, and rendering that enum puts a Latin word in the middle of an Arabic line -- "
+      + "which the catalogue parity check is structurally blind to",
+    file: "src/components/ds/status-badge.tsx",
+    from: "      {abbreviated ?? label ?? status}",
+    to: "      {abbreviated ?? status}",
+    runner: "playwright",
+    grep: "reads in Arabic, including the badge",
+  },
+  {
+    id: "denial-badge-label-unswept",
+    why: "the sweep is what stops the next screen shipping an English badge into an Arabic "
+      + "page, and a usage check that passes vacuously is the thing it exists to prevent",
+    file: "src/app/desk/denials/[personId]/page.tsx",
+    from: '<StatusBadge status="Denied" label={text("denial.badge")} />',
+    to: '<StatusBadge status="Denied" />',
+    runner: "node",
+    grep: "carries the word in the reader.s language",
+  },
+  {
+    id: "denial-placeholder-renamed-across-the-catalogue",
+    why: "this is the defect that found the check: renaming a placeholder to suit one new "
+      + "message took six others with it, and the Command Center answered an error boundary "
+      + "for every reader while four test layers stayed green",
+    file: "src/i18n/locale.ts",
+    from: '"cc.retentionTitle": { one: "{count} membership expires within {days} days",',
+    to: '"cc.retentionTitle": { one: "{count} membership expires within {count} days",',
+    // **The grep is the call-site half, and pointing it at the other half is what the sweep
+    // found.** A rename in one plural form is invisible to a check that unions the forms --
+    // which is how the first version of this test was written and how the real defect would
+    // have survived it. `fill` picks one form, so the per-form call-site comparison is the
+    // only thing that sees this.
+    runner: "vitest",
+    grep: "is honoured by every call site that passes a literal key",
+  },
+  {
+    id: "denial-placeholder-only-in-one-language",
+    why: "a form naming a value the other language's forms do not is a throw only that "
+      + "language's readers get, and the catalogue parity check compares key sets rather "
+      + "than text",
+    file: "src/i18n/locale.ts",
+    from: '"denial.beforeYouLead": "Worth asking whether something changed before you lead',
+    to: '"denial.beforeYouLead": "Worth asking whether {who} changed before you lead',
+    runner: "vitest",
+    grep: "names the same values in both languages",
+  },
+  {
+    id: "denial-fill-site-contract-unchecked",
+    why: "the call-site half of the same check: a value with no placeholder throws at the "
+      + "first render, and nothing static compared the two before this",
+    file: "src/app/desk/denials/[personId]/page.tsx",
+    from: "                ? text(\"denial.lastVisitToday\")",
+    to: "                ? fill(locale, \"denial.lastVisit\", { days: 0 })",
+    runner: "vitest",
+    grep: "is honoured by every call site that passes a literal key",
+  },
 ];
 
 const only = process.argv[2];

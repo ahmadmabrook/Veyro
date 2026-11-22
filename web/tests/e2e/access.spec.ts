@@ -95,7 +95,12 @@ test.describe("a zone", () => {
   });
 
   test("shows the discreet line the member saw, marked as withheld", async ({ page }) => {
-    const row = page.getByRole("row").filter({ hasText: "see_front_desk" });
+    // **`.first()`, because the log holds more than one of these now.** FD-03 needed a
+    // refusal nobody had answered *and* one somebody had, so the fixture seeds two -- and a
+    // locator that resolved to exactly one row was a test coupled to how many rows the
+    // fixture happened to have. The subject is any refusal's two halves, not a particular
+    // member's.
+    const row = page.getByRole("row").filter({ hasText: "see_front_desk" }).first();
     await expect(row).toBeVisible();
     await expect(row).toContainText("Refused");
     // **One cell, not the row.** Paragraph 1944: the member standing in the lobby is told one
@@ -130,7 +135,7 @@ test.describe("a zone", () => {
     await page.goto("/");
     const aal = await assuranceLevel(page);
     await page.goto(`/access/${creds.zoneId}`);
-    const row = page.getByRole("row").filter({ hasText: "see_front_desk" });
+    const row = page.getByRole("row").filter({ hasText: "see_front_desk" }).first();
     if (aal >= 2) {
       await expect(row).toContainText("this member holds nothing that admits them here");
     } else {

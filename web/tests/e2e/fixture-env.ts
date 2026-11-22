@@ -45,6 +45,14 @@ export type Fixture = {
   deskSessionId: string;
   /** The seeded member: a tag, a contact point, two notes and a health custom field. */
   personId: string;
+  /**
+   * The near-duplicate, who also carries a refusal **somebody has already overridden**.
+   *
+   * FD-03's second state, and the fixture seeds it rather than a spec pressing the button:
+   * an admission is one-way, so a browser test that made one per run would consume a state
+   * nothing restores. A refusal nobody has answered is Jane's, above.
+   */
+  overriddenPersonId: string;
   /** The commissioned, activated turnstile the access point stands on. */
   deviceId: string;
   /** A turnstile with four of paragraph 4175's seven tests, so it cannot go live. */
@@ -140,6 +148,7 @@ export function fixture(): Fixture {
     "VEYRO_E2E_ROTA_EXCEPTION_DAY",
     "VEYRO_E2E_POINT_ID",
     "VEYRO_E2E_PERSON_ID",
+    "VEYRO_E2E_OVERRIDDEN_PERSON_ID",
     "VEYRO_E2E_DEVICE_ID",
     "VEYRO_E2E_PENDING_DEVICE_ID",
     "VEYRO_E2E_READER_EMAIL",
@@ -182,6 +191,7 @@ export function fixture(): Fixture {
     bookedSessionId: env.VEYRO_E2E_BOOKED_SESSION_ID!,
     deskSessionId: env.VEYRO_E2E_DESK_SESSION_ID!,
     personId: env.VEYRO_E2E_PERSON_ID!,
+    overriddenPersonId: env.VEYRO_E2E_OVERRIDDEN_PERSON_ID!,
     deviceId: env.VEYRO_E2E_DEVICE_ID!,
     pendingDeviceId: env.VEYRO_E2E_PENDING_DEVICE_ID!,
     readerEmail: env.VEYRO_E2E_READER_EMAIL!,

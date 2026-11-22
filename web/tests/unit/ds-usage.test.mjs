@@ -107,6 +107,32 @@ test("no new screen groups with a bare panel where Card exists", () => {
   );
 });
 
+test("a status badge carries the word in the reader's language", () => {
+  // **The enum is the state; the word is a message key.** `VOCABULARY` is twenty English
+  // words from the design source, and that closed set is what stops an engineer inventing
+  // "Semi-active" -- it says nothing about which language the page is in. Rendering the enum
+  // put "Denied" in Latin letters in the middle of an Arabic line on the first screen that
+  // used this component.
+  //
+  // **No other check can see it.** `MESSAGE_KEYS` compares the two catalogues against each
+  // other and is blind to a string that never became a key; an assertion about structure
+  // matches either word. So the guard is structural and here, counted per badge rather than
+  // per file for the reason the grid sweep above is.
+  const offenders = files
+    .filter((f) => {
+      const badges = (f.text.match(/<StatusBadge\b/g) ?? []).length;
+      const labelled = (f.text.match(/label=\{/g) ?? []).length;
+      return badges > labelled;
+    })
+    .map((f) => f.path);
+  assert.deepEqual(
+    offenders,
+    [],
+    "these render a StatusBadge with no label; pass the localized word, because the status "
+      + "enum is English and a page may not be",
+  );
+});
+
 test("nothing imports the deleted ad-hoc control module", () => {
   const offenders = files
     .filter((f) => f.text.includes("@/components/controls"))

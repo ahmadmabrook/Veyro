@@ -709,6 +709,72 @@ const PLANS = [
       },
     ],
   },
+  {
+    // **FD-03, and the bound of this layer is part of the journey.** The screen's whole
+    // thesis is that what a receptionist may say is governed by a permission: a restricted
+    // refusal reads as "see the front desk" on an ordinary sign-in and as the real reason
+    // once stepped up. **TestSprite cannot be given a second factor** -- this build's only
+    // verifiable one is a single-use recovery code, so handing one to a stored test spends
+    // it on the first run -- so this journey verifies the ordinary-sign-in half and that
+    // the screen *offers* the way through, which is precisely where a real receptionist
+    // without a code would stop. ADM-MSH-03's journey established that bound by hitting it.
+    name: "A receptionist is told what to say when a member's card is refused, and what they may not say",
+    description:
+      "When a card is refused at a turnstile, the front desk needs a sentence they can say " +
+      "to the person standing in front of them. Some refusals are about the member's " +
+      "account -- their membership, their arrears, their age -- and the product deliberately " +
+      "does not display those to whoever is next in the queue, so an ordinary sign-in is " +
+      "given the same discreet line the door gave and told how to see more. This signs in " +
+      "as the owner, who holds every permission in the catalogue, and still gets the " +
+      "discreet line because reading the real reason needs a stronger sign-in rather than a " +
+      "bigger role.",
+    priority: "p1",
+    planSteps: [
+      ...signIn,
+      {
+        type: "action",
+        description:
+          `Navigate to /desk/denials/${env.VEYRO_E2E_PERSON_ID}.`,
+      },
+      {
+        type: "assertion",
+        description:
+          "Verify the page says this person was denied, when it happened, and which door " +
+          "it happened at -- a zone and a reader by name, not an identifier. Verify the " +
+          "member's own name is not shown, because a name needs a stronger sign-in, and " +
+          "that a membership number identifies them instead.",
+      },
+      {
+        type: "assertion",
+        description:
+          "Verify the section headed with what to say tells the reader that the reason is " +
+          "not one a door may display and that this session may not read it either, and " +
+          "offers a link to raise the session to see it. Verify the page does not anywhere " +
+          "state the actual reason -- it must not say the member has nothing that admits " +
+          "them, nor mention a pass or a class credit.",
+      },
+      {
+        type: "assertion",
+        description:
+          "Verify the page reads this person's attendance pattern: when they were last in, " +
+          "roughly how often they were coming, and a sentence suggesting the reader ask " +
+          "what changed before leading with a renewal.",
+      },
+      {
+        type: "assertion",
+        description:
+          "Verify the section about overriding the refusal offers a link to sign in more " +
+          "strongly rather than a button that would be refused, and that no reason-picker " +
+          "or confirm button for letting the member in is present on this session.",
+      },
+      {
+        type: "assertion",
+        description:
+          "Verify the page lists what it cannot do, and that renewing the membership and " +
+          "selling a day pass are among them with a reason given for each.",
+      },
+    ],
+  },
 
 ];
 

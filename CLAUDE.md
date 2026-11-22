@@ -4284,6 +4284,89 @@ unreachable, so FD-08's degraded row and the fleet board's own "needs somebody" 
 never rendered -- the fourth instance of this build's "a branch no fixture can reach". One
 scanner, provisioned and activated and never reporting, is what makes both legible.
 
+**FD-03 is the screen where what a receptionist may say is governed by a permission**, and
+that is MOD-022 working rather than a gap. The canvas: "**His membership ended on 7 August**
+and the 14-day grace ran out five days ago. He was here three times a week for two years --
+worth asking whether something changed before you lead with the renewal." A refusal carries a
+public line a door may display and the real reason behind `access.decision.read_reason`, which
+is financial class and whose split covers the *code* as well as the prose -- so the same
+refusal reads as two different sentences depending on how the reader signed in, and **the
+fixture's owner, holding all 207 permissions, gets the discreet one.** The screen says so and
+offers the step-up, which is the member record's own pattern applied to a refusal.
+
+Four modules on one screen, composed through four gates rather than joined, plus a fifth for
+the door. Five things in it are decisions:
+
+  * **The sentence comes from the code, never from the prose.** `sayFor` maps all nineteen
+    reason codes to a sentence a desk can say, and `see_front_desk` -- the one a restricted
+    refusal becomes outward -- gets a sentence saying so rather than one that pretends to
+    explain. A surface that parsed a reason string to decide what to show is the shape MOD-016
+    shipped, where four English words were the whole enforcement of a usage limit.
+  * **A door's fault is not a member's.** `reader_clock_unreliable` and `device_untrusted` are
+    both "denied" and nothing else about them is alike: one is a conversation with the member,
+    the other with whoever maintains the hardware, so the screen says which.
+  * **Nothing in the app admits anybody.** The override is one-way -- the decision log is
+    insert-only and nothing withdraws an admission -- so the browser suite never presses the
+    button and the fixture seeds an *already-answered* refusal on the twin instead, which is
+    `freeze.spec.ts`'s own call for the same reason. The already-answered branch therefore
+    renders from a real row rather than only in a component test.
+  * **"Never a locked control with no route."** The button is absent where the gate says no,
+    and the panel says that naming who to call is the half this build cannot do -- MOD-008's
+    `/authz/simulate` answers what one person may do and not who may do one thing.
+  * **Three of the canvas's four actions are absent and each says why**: renewing and a day
+    pass are sales and taking money is owner-reserved; the photo needs an object store. So is
+    half of the canvas's own header line -- the club is one more read that tells a receptionist
+    standing in it nothing, and the plan is what the renewal button was for.
+
+**And it broke four things of its own, three of them mine and one of them everybody's.**
+
+- **A placeholder renamed across the catalogue took six messages with it.** Fixing the new
+  plural message's placeholder to `{count}` -- which `fill` requires of a plural -- renamed
+  `{days}` and `{rate}` in `cc.retentionTitle`, `freeze.lasts`, `freeze.leaves`,
+  `dispute.due`, `dispute.windowClosed`, `invoice.taxedAt` and `member.wasPerWeek`. `fill` is
+  strict in both directions, so each is a 500 on a rendered page, and the Command Center
+  answered an error boundary for every reader. **Four test layers stayed green**: the key is
+  in both catalogues, the plural forms match, the parity test compares key *sets*, and a
+  renamed placeholder is an ordinary string. It was found by signing in.
+  The durable half is two new checks -- both catalogues must name the same values, and every
+  `fill(locale, "key", {…})` site must match the message's placeholders **per plural form**,
+  because `fill` picks one form and the first version unioned them, which is how a rename in
+  the `one` form only would have survived the very test written for it. **The sweep said so**:
+  the mutation reproducing the real defect came back uncaught. The per-form version then found
+  two live defects nobody had reported -- `access.pointsCounted` and `perms.showingModules`
+  each have an Arabic `zero` form that drops a value its call site passes, so an Arabic reader
+  at a zone with no readers, or a filtered permissions page with no module, got a 500.
+- **A field I declared and the server has never sent.** `AccessDecision.masked` is
+  `reason_withheld` on the wire, so the offer to read why a member was refused never rendered
+  at all -- the control was dead on arrival. A hand-written type over an untyped JSON response
+  is invisible to every typecheck, and the server's name is the better one anyway: it already
+  means "withheld *from this caller*". Read the response; do not name the field.
+- **An idempotency key that deduped two different admissions.** It was
+  `(point, person, reason)`, and `override_access` answers a repeated key from the row it
+  already wrote -- so a member refused today and admitted by hand, then refused again
+  tomorrow and admitted for the same reason, produced **no second row**: the desk was told it
+  had worked and the log showed one override for two. `overrideKey` is the refusal's own id
+  now, and the reason is deliberately out of it, because two presses with two reasons would
+  write two rows saying somebody was let in once. **Found by working out how a browser test
+  would re-run**, not by reading it.
+- **The design system's own badge rendered an English enum.** `StatusBadge` takes a closed
+  twenty-word vocabulary so an engineer cannot invent "Semi-active", and FD-03 is the first
+  screen in the app to use it -- so "Denied" went out in Latin letters in the middle of an
+  Arabic line. The enum is the state and `label` is the word now, and a usage sweep requires
+  it, because `MESSAGE_KEYS` is structurally blind to a string that never became a key. Fifth
+  instance of "a vocabulary the backend stores is never a label", and the first where the
+  vocabulary is the design's own.
+
+Two harness findings came with it, both already written in the rules file and both paid again.
+**Importing the sweep module runs it**, because the mutation loop is top-level code -- and the
+stop left `httpOnly: false` on the session cookie in `login/actions.ts`, a file this session
+had never touched, which is why the check is the *hunks* rather than the file names. And **a
+test asserting a freshness has to create it**: FD-06's countdown is green for half an hour
+after provisioning and red afterwards, which CI never sees because it provisions immediately
+before the suite. The freshness cannot be made here -- moving a session is a stepped-up
+scheduling write -- so the screen's own answer picks which sentence to expect and both are
+asserted, a class in progress with six people missing being urgency too.
+
 **ADM-RPT-04's board is one chart and one sentence, and the sentence is the requirement.**
 The canvas's own note says why it is derived rather than left to the reader: "The conclusion is
 written in words beneath the chart. A manager should not have to interpret a heat strip to find
@@ -4561,8 +4644,9 @@ Known gaps: the surface covers the sign-in, the step-up, the account page, MOD-0
 MOD-007, MOD-008, MOD-009, MOD-010, MOD-011, MOD-012, MOD-013, MOD-014, MOD-016, MOD-017,
 MOD-018, MOD-019, MOD-021 and MOD-022, plus MOD-020's roster on a session, ADM-SCH-04's
 availability grid at `/rota`, ADM-MEM-10's walk-in form at
-`/members/new`, FD-06's class check-in at `/desk/classes/{id}` with FD-08's device strip
-above it -- the first Front Desk screens -- ADM-STF-01/02's
+`/members/new`, FD-06's class check-in at `/desk/classes/{id}` and FD-03's denial
+resolution at `/desk/denials/{id}`, with FD-08's device strip above both -- the first Front
+Desk screens -- ADM-STF-01/02's
 staff list and staff record, ADM-PAY-05's
 recovery workspace, ADM-PAY-10's dispute board, ADM-RPT-01/02/03/04
 under `/reports`, ADM-PAY-07's wallet on a member's billing tab and ADM-MEM-07's attendance
@@ -4615,10 +4699,16 @@ missing capability behind AAL 3 everywhere, break-glass support access, AI actin
 member, and MOD-021's unverifiable device identity that MOD-022 opens doors on.
 
 **The unblocked surface work is the Front desk**, nine screens whose modules are all built
-and all on the authenticated tenant plane: FD-01 live check-in and FD-03 denial resolution
-are MOD-022's, FD-02 member lookup is MOD-014's (and now its contact-match read), FD-06 class
-check-in is MOD-020's, FD-07 shift open and close is MOD-018's cash sessions, FD-08 the
-device strip is MOD-021's. Two of them want something the backend does not hold -- FD-02
+and all on the authenticated tenant plane. Three are built: FD-03 denial resolution and
+FD-08's device strip are MOD-022's and MOD-021's, FD-06 class check-in is MOD-020's. Six
+are not: FD-01 live check-in is MOD-022's, FD-02 member lookup is MOD-014's (and now its
+contact-match read), FD-04 day pass and FD-05 walk-in trial are sales, FD-07 shift open and
+close is MOD-018's cash sessions, which `/payments/cash` already answers from the Admin
+side. **And `design:coverage` does not hold this surface to the Admin one's standard**: it
+filters on `surface === "Admin"`, so no Front Desk screen needs a row or a reason, which is
+the one place in this repository where a gap list is not a claim about the product. Closing
+that is the next piece of work on the surface, because it is what makes the remaining six
+honest rather than merely absent. Two of them want something the backend does not hold -- FD-02
 draws a 44px photo ("a receptionist confirming identity at a busy desk needs a face they can
 actually recognise") and there is no object store, and FD-07's handover note has no column --
 so each needs the same judgement every Admin screen got: build what the product can answer

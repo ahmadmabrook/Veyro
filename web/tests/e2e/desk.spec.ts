@@ -179,13 +179,27 @@ test.describe("a class that is about to start", () => {
       (a === "expected" ? 0 : 1) - (b === "expected" ? 0 : 1))).toEqual(states);
   });
 
-  test("counts the minutes, because the class is inside the window", async ({ page }) => {
+  test("counts the minutes, or says it has begun, because both are urgency", async ({
+    page,
+  }) => {
     // The canvas's lead sentence, and it is only true close to the start: the first version
     // printed "2,266 minutes to go" for a class the next evening. **Two members are booked
     // on this class** so that the test above checking one of them in leaves somebody still
     // expected -- the block's own booking, so this never depends on what ran before it.
-    await expect(page.locator(".ds-banner")).toContainText("minutes to go");
-    await expect(page.locator(".ds-banner")).toContainText("not here yet");
+    //
+    // **Both branches, because the fixture's class is thirty minutes out when it is seeded
+    // and the clock does not stop.** A test asserting only the countdown is green for half
+    // an hour after provisioning and red afterwards -- the shape this repository records for
+    // a device's freshness, a recovery code and a login budget, and the worst version of it,
+    // because CI provisions immediately before the suite and never sees the other side. The
+    // freshness cannot be *made* here: moving a session is a stepped-up scheduling write and
+    // a browser session is AAL 1. So the screen's own answer decides which sentence to
+    // expect, the way `assuranceLevel` does one spec over, and both are asserted -- a class
+    // in progress with six people missing is urgency too, which is why the banner has that
+    // branch at all.
+    const banner = page.locator(".ds-banner");
+    await expect(banner).toContainText(/minutes to go|has started/);
+    await expect(banner).toContainText("not here yet");
   });
 
   test("says nothing of the sort about a class tomorrow", async ({ page }) => {
@@ -245,6 +259,13 @@ test.describe("the device strip above the desk", () => {
    */
   test.beforeEach(async ({ page }) => {
     await useOwnerSession(page);
+    // **A test that asserts a freshness has to create it.** `Working` means the device
+    // reported within ten minutes, and the fixture's own report is what made that true --
+    // so an assertion about a working row expires ten minutes after seeding and then reads
+    // "Not responding", which looks exactly like a product regression. The fleet spec
+    // learned this first and the strip inherits it: the device is reported healthy here, so
+    // the freshness asserted is the freshness this test made.
+    await reportHealthy(page);
     await page.goto(SOON);
   });
 
@@ -304,3 +325,31 @@ test.describe("the device strip above the desk", () => {
       await expect(page.locator(".ds-strip-row")).toHaveCount(0);
     });
 });
+
+/**
+ * Report the fixture's turnstile as healthy, now, so the strip has a working row.
+ *
+ * The bearer token is the session cookie's value: `context.cookies()` can read an httpOnly
+ * cookie where page JavaScript cannot, so no credential is typed and none is in this file.
+ */
+async function reportHealthy(page: Page) {
+  const cookies = await page.context().cookies();
+  const token = cookies.find((cookie) => cookie.name === "veyro_session")?.value;
+  expect(token, "the browser session carries the bearer token").toBeTruthy();
+  const response = await page.request.post(
+    `${process.env.VEYRO_API_ORIGIN ?? "http://127.0.0.1:8000"}/fleet/${creds.deviceId}/health`,
+    {
+      headers: {
+        "X-Veyro-Tenant": creds.tenantId,
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      data: {
+        latency_ms: 42, error_count: 0, storage_free_bytes: 8 * 1024 * 1024 * 1024,
+        agent_version: "1.0.0", peripherals: {},
+        correlation_id: crypto.randomUUID(),
+      },
+    },
+  );
+  expect(response.status(), await response.text()).toBe(201);
+}

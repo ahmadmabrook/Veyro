@@ -664,6 +664,45 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
     },
   });
 
+  // **A second refusal that somebody has already answered by hand**, for FD-03.
+  //
+  // The denial screen has two states a reader acts on differently -- a refusal nobody has
+  // answered, where the override is offered, and one where somebody already let them in, so
+  // offering it again would admit the same person twice in the log. **A fixture with one of
+  // them renders a branch and demonstrates nothing**, which is the vacuity this repository
+  // has now shipped five times, so the twin carries the answered one and Jane's stays
+  // unanswered.
+  //
+  // **The override is seeded rather than pressed in a browser.** It is one-way: the decision
+  // log is insert-only and nothing withdraws an admission, so a spec that overrode once a run
+  // would consume a state nobody can restore -- the budget shape this repository records four
+  // times. `freeze.spec.ts` made the same call for the same reason: the write is the backend's
+  // to prove, and what a browser proves is that a reader can reach the form.
+  const twinCredentialValue = `CARD-${randomUUID().slice(0, 12).toUpperCase()}`;
+  await call("/access/credentials", {
+    method: "POST", ...as(token),
+    body: {
+      person_id: twin.person_id, kind: "nfc_card", credential_value: twinCredentialValue,
+      correlation_id: cid(),
+    },
+  });
+  const twinRefusal = await call("/access/decisions", {
+    method: "POST", ...as(token),
+    body: {
+      point_id: point.point_id, credential_value: twinCredentialValue,
+      idempotency_key: randomUUID(), correlation_id: cid(),
+    },
+  });
+  await call("/access/decisions/override", {
+    method: "POST", ...as(token),
+    body: {
+      point_id: point.point_id, person_id: twin.person_id, reason: "manager_approved",
+      // The key the screen itself composes, so a fixture re-run against the same database
+      // answers from the row rather than recording a second admission.
+      idempotency_key: `override-${twinRefusal.decision_id}`, correlation_id: cid(),
+    },
+  });
+
   // **Door entries across the chart's own window**, which ADM-MEM-07 is made of.
   //
   // A member with no entries renders the tab as four empty states and twelve blank rows,
@@ -2224,6 +2263,7 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
     pendingDeviceId: pending.device_id,
     duplicateCandidates: candidates.length,
     twinPersonId: twin.person_id,
+    overriddenPersonId: twin.person_id,
     deskEmail,
     deskPassword,
     easyEmail: EASY_EMAIL,
@@ -2288,6 +2328,7 @@ if (invokedDirectly) {
       `VEYRO_E2E_ROTA_EXCEPTION_DAY=${fixture.rotaExceptionDay}`,
       `VEYRO_E2E_POINT_ID=${fixture.pointId}`,
       `VEYRO_E2E_PERSON_ID=${fixture.personId}`,
+      `VEYRO_E2E_OVERRIDDEN_PERSON_ID=${fixture.overriddenPersonId}`,
       `VEYRO_E2E_DEVICE_ID=${fixture.deviceId}`,
       `VEYRO_E2E_PENDING_DEVICE_ID=${fixture.pendingDeviceId}`,
       `VEYRO_E2E_READER_EMAIL=${fixture.publisherEmail}`,

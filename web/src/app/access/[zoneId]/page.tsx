@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { notFound, redirect } from "next/navigation";
 
 import { Banner } from "@/components/ds/banner";
@@ -359,7 +361,18 @@ function DecisionLog({ page, locale }: { page: DecisionPage; locale: Locale }) {
               priority: 1,
               render: (decision) => (
                 <>
-                  {decision.granted ? text("access.granted") : text("access.refused")}
+                  {/* **A refusal against a named person leads to FD-03**, which is the
+                      screen that says what to do about it. A log that only reports is a log
+                      somebody reads and then goes looking for the next step; the route
+                      exists, so the row carries it. A grant needs no such screen, and a
+                      refusal with nobody named has nobody to say anything to. */}
+                  {!decision.granted && decision.person_id !== null ? (
+                    <Link href={`/desk/denials/${decision.person_id}`}>
+                      {text("access.refused")}
+                    </Link>
+                  ) : (
+                    decision.granted ? text("access.granted") : text("access.refused")
+                  )}
                   <div
                     className="muted data"
                     dir="ltr"

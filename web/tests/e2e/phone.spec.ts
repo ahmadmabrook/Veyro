@@ -46,6 +46,10 @@ const surfaces: [string, string][] = [
   // FD-06 is the one screen in this app at Touch density: 48px rows and a 44px button on
   // every row, which is the shape most likely to push a narrow screen sideways.
   ["the class check-in", `/desk/classes/${creds.deskSessionId}`],
+  // FD-03 is at Touch density too, and its one `dl.facts` is the grid whose items are the
+  // `dt` and `dd` themselves -- wrapping a pair in a div puts both labels on one row, which
+  // the ledger paid for once.
+  ["the denial screen", `/desk/denials/${creds.personId}`],
   ["a member", `/people/${creds.personId}`],
   // Twelve bars in a flex row: the one chart here whose width is a count rather than a
   // layout, so it is the one most likely to push a phone sideways.
