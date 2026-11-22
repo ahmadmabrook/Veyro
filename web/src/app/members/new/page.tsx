@@ -107,7 +107,7 @@ export default async function AddMemberPage() {
       {/* Named rather than drawn, with the product's reason for each. A control that does
           nothing is worse than one that is not there, and a field whose value this build
           would drop on the floor is worse still. */}
-      <section className="ds-card ds-walk-in-gaps">
+      <section className="page-section ds-walk-in-gaps">
         <h2>{t(locale, "walkIn.notYet")}</h2>
         <dl className="facts">
           <dt>{t(locale, "walkIn.gapSale")}</dt>

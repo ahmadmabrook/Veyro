@@ -934,6 +934,94 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
               correlation_id: cid() } },
   );
 
+  // ------------------------------------------------- a class a desk can actually check into
+  //
+  // **FD-06's whole control needs a session whose check-in window is open now**, and the
+  // booking above is on tomorrow's class deliberately. `may_check_in` opens the window an
+  // hour before the session and closes it after the policy's grace, so a desk opening a
+  // class twenty-two hours out is correctly refused -- which the screen now says rather than
+  // offering a button that answers 409, and which means the button itself is never exercised
+  // against that session. Without this seed the one write on the Front Desk surface is
+  // unreachable from a browser.
+  //
+  // **Half an hour out, in the location's own zone**, which is why the local time is
+  // computed rather than typed: MOD-019 takes a local time and the site's zone and converts
+  // each occurrence separately, so a UTC time here would be the wrong hour at the site and
+  // the generated occurrence would land outside the window again.
+  const soon = new Date(Date.now() + 30 * 60_000);
+  const localSoon = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Amman", hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+  }).format(soon);
+  const localSoonDay = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Amman", year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(soon);
+  const imminent = await call("/scheduling/templates", {
+    method: "POST", ...as(token),
+    body: {
+      template_code: `DESK-${Date.now()}`, display_name: "Spin",
+      service_resource_id: serviceResource.resource_id,
+      location_id: location.location_id,
+      rule: { frequency: "daily", local_time: localSoon, duration_minutes: 45,
+              starts_on: localSoonDay, until: localSoonDay },
+      // **Room for repeated runs.** Checking somebody in is one-way, so every browser run
+      // books a member of its own rather than spending the fixture's -- which is the only
+      // way that test is re-runnable, and it means the class fills a little each time. The
+      // canvas's own 18 is on the other class, where nothing is checked in.
+      policy: { capacity: 60, setup_minutes: 0, cleanup_minutes: 0, waitlist_capacity: 3 },
+      // **A room and no coach, deliberately.** The instructor's rota is 06:00-22:00 and this
+      // occurrence is half an hour from whenever the fixture runs, so a staffed template is
+      // refused outright in the small hours -- MOD-019 doing exactly what it should, and not
+      // something a fixture should argue with. A room has no rota in any meaningful sense
+      // ("a resource with no working hours is unconstrained"), so it binds at any hour. A
+      // template needs at least one requirement, which is why this is a room rather than
+      // nothing. A class with no coach is a state the schedule board already shows ("1
+      // without a coach"); the coach, the studio name and the timezone are proved on the
+      // other session, which has all three.
+      requirements: [{ kind: "room", quantity: 1, resource_id: studio.resource_id }],
+      correlation_id: cid(),
+    },
+  });
+  await call(`/scheduling/templates/${imminent.template_id}/publish`, {
+    method: "POST", ...as(token),
+    body: { effective_from: localSoonDay, correlation_id: cid() },
+  });
+  const imminentSessions = await call(
+    `/scheduling/templates/${imminent.template_id}/sessions`,
+    { method: "POST", ...as(token), body: { correlation_id: cid() } });
+  const deskSessionId = imminentSessions.sessions?.[0]?.session_id ?? null;
+  if (deskSessionId !== null) {
+    // **Ten members on this class, and the number is the point.** Checking somebody in is
+    // one-way -- there is no un-check-in, correctly -- so every browser run spends one, and
+    // a roster seeded with a single booking is green on a fresh fixture and red on the
+    // second run. That is the budget-consuming shape this repository records three times
+    // over, and the only way to see it is to run the suite twice.
+    //
+    // **The test cannot provision its own**, which is why this is seeded rather than left to
+    // the spec: `people.person.write` is financial class, so a browser session at AAL 1 is
+    // refused -- the same permission boundary that makes ADM-MEM-10's form offer a step-up.
+    // Ten is eight runs of margin over the one the suite spends, and the class carries 60
+    // places so they fit.
+    for (let n = 0; n < 10; n += 1) {
+      const member = await call("/people", {
+        method: "POST", ...as(token),
+        body: { legal_name: `Spin Member ${n + 1}`, profile_kinds: ["member"],
+                date_of_birth: "1991-07-14", correlation_id: cid() },
+      });
+      await call(`/people/${member.person_id}/member-profile`, {
+        method: "POST", ...as(token),
+        body: { correlation_id: cid(), lifecycle_state: "active",
+                member_number: `M-SPIN${String(n + 1).padStart(2, "0")}`,
+                joined_on: "2025-06-03" },
+      });
+      await call(`/booking/sessions/${deskSessionId}/bookings`, {
+        method: "POST", ...as(token),
+        body: { person_id: member.person_id, policy_key: "CLASSES",
+                source_kind: "front_desk", idempotency_key: randomUUID(),
+                correlation_id: cid() },
+      });
+    }
+  }
+
   // ------------------------------------------------------------- a third identity: the desk
   //
   // **Three identities, because two negative proofs need contradictory permission sets.** The
@@ -2092,6 +2180,7 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
     noRotaResourceId: noRota.resource_id,
     bookingId: booking?.booking_id ?? null,
     bookedSessionId: bookable,
+    deskSessionId,
     instructorResourceId: instructor.resource_id,
     rotaExceptionDay,
     workerRuns: tick.runs,
@@ -2173,6 +2262,7 @@ if (invokedDirectly) {
       `VEYRO_E2E_LOCATION_ID=${fixture.locationId}`,
       `VEYRO_E2E_SESSION_ID=${fixture.firstSessionId}`,
       `VEYRO_E2E_BOOKED_SESSION_ID=${fixture.bookedSessionId}`,
+      `VEYRO_E2E_DESK_SESSION_ID=${fixture.deskSessionId}`,
       `VEYRO_E2E_PRODUCT_ID=${fixture.productId}`,
       `VEYRO_E2E_INVOICE_ID=${fixture.invoiceId}`,
       `VEYRO_E2E_STAFF_WORKING_PERSON_ID=${fixture.staffWorkingPersonId}`,

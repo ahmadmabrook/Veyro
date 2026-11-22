@@ -304,6 +304,7 @@ corresponds to them. The others map loosely:
 | `/integrations` | ADM-SET-05 Integrations index | **built** — the install, its criticality and its written obligations; nothing syncs and the board says so |
 | `/schedule` | ADM-SCH-01 Class schedule · week grid | **built from the canvas** |
 | `/rota` | ADM-SCH-04 Coach availability · week grid | **built from the canvas** — the schedule board's own missing third view, over a read that did not exist |
+| `/desk/classes/{id}` | FD-06 Class check-in | **built from the canvas, and the first Front Desk screen** — Touch density, the roster composed with MOD-014's batched names, the only working write form here that is not behind a step-up; the automatic release and the waitlist notification the canvas promises are named as absent |
 | `/schedule/{id}` | ADM-SCH-02 Class detail and roster | **rebuilt** — the band, four MetricCells, the roster; the three actions are stepped-up writes with no form |
 | `/payments` | ADM-PAY-01 Payments ledger | **built from the canvas** — four kinds on one axis, signed; refund and export are named as absent |
 | `/payments/cash` | ADM-PAY-09 Cash reconciliation · shift close | **built from the canvas** — the expected figure before the count, over a read that did not exist; the co-sign and the tolerance are named as absent, the second being stricter here than drawn |

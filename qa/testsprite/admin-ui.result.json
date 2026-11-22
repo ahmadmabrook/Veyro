@@ -129,6 +129,18 @@
     "failed": 0
    },
    "note": "ADM-MEM-10. The journey types a seeded number, reads the interruption, checks the create is held while it is on screen, then types a number nobody holds and checks the interruption is gone and the step-up is offered instead of a button that would be refused. It stops at the step-up, as ADM-MSH-03's journey does and for the same reason: the only second factor this build can verify is a single-use recovery code, and handing one to a stored plan spends it on the first run."
+  },
+  {
+   "journey": "A receptionist can mark somebody present without a stronger sign-in",
+   "testId": "4d07ede1-d1b3-4582-8d30-a408ccfb3655",
+   "runId": "6256af82-2377-4f41-a851-03c5561ffcbf",
+   "status": "passed",
+   "steps": {
+    "total": 8,
+    "passed": 8,
+    "failed": 0
+   },
+   "note": "FD-06, the first Front Desk screen. The journey checks somebody in at an ordinary password sign-in -- the claim this screen rests on, since every other write form in this app is a step-up or an absence -- and then opens a class a day away to verify no row offers the control there. **This one does not stop at a step-up**, unlike ADM-MSH-03's and ADM-MEM-10's: `booking.attendance.write` is routine, which is exactly the fact being tested, so an outside reader can reach the whole journey."
   }
  ],
  "finishedAt": "2026-11-22T00:20:00Z",

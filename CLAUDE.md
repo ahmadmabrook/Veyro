@@ -3079,10 +3079,18 @@ Known gaps, deliberate:
 - **The timeline does not know about any of this.** MOD-014 projects nine event types and none
   of MOD-020's seven is among them, so a member's timeline shows no class they booked.
 - **Nine free-text columns are residue an erasure cannot reach**, all declared by hand.
-- **The only surface is the roster**, which sits on MOD-019's session page -- see "The web
-  app". Booking, cancelling, joining a waitlist, checking in and appealing are all built on the
-  server and none has a form, so a member cannot book a class in this build and a front desk
-  cannot do it for them.
+- **A front desk can check somebody in now, and that is the one write this module has a
+  form for.** FD-06 is the screen -- see "The web app" -- and what made it buildable is the
+  permission's own class: `booking.attendance.write` is `data_access` with no financial
+  class, so a receptionist at an ordinary password sign-in marks a member present. Every
+  other write here still has no form: booking, cancelling, joining a waitlist and appealing
+  are built on the server and nothing on any surface calls them, so **a member still cannot
+  book a class in this build and a front desk still cannot do it for them.** The roster read
+  also carries two things it did not: each booking's prior no-show count, which FD-06 draws
+  as context for the coach and which is the same figure `consequence` is given when it
+  decides a sanction; and each booking's **check-in window**, from `attendance.checkin_window`
+  rather than a second computation, because a screen that offered the button outside it
+  handed a desk a control the module answers 409 to.
 
 **MOD-021 (HW-01 hardware, edge bridge and device fleet) -- implemented, gated and
 reviewed.** Twelve `dev_` tables in `plt01` under the same forced RLS, fourteen trigger
@@ -4185,6 +4193,60 @@ product with no record anywhere. It is the only way to reach ADM-MEM-10, and it 
 `gateVerdict` rather than by `allowed`: a reader who could step up gets the button, and one
 the gate denies outright does not.
 
+**FD-06 is the first Front Desk screen, and the first working write form in this app that is
+not behind a step-up.** Every other absent form here is a stepped-up financial permission;
+`booking.attendance.write` is `data_access` with no financial class, so a receptionist at an
+ordinary password sign-in marks a member present -- which closes the half of MOD-020's own gap
+note ("a front desk cannot do it for them") that needed no new permission. The canvas: "Spin ·
+19:00 · Dana · Studio 2 · 12 of 18 here · Waitlist · 3 … Four minutes to go, six not here …
+Rows are 48px because this is tapped while looking at a person, not at the screen. Hala's two
+prior no-shows are shown without judgement -- it is context for the coach, not a flag on her."
+
+Five things in it are decisions, and four were found by opening the page:
+
+  * **A button the module will refuse is worse than no button.** `may_check_in` opens the
+    check-in window an hour before the session and closes it after that booking's own
+    snapshotted grace, and the first version offered the control whatever the clock said --
+    so a desk opening tomorrow's class got a 409 rendered as prose under a row. The roster
+    read now carries the window, computed by `attendance.checkin_window` rather than a second
+    time here, because a screen and a refusal that disagree is worse than either; the row says
+    when it opens instead.
+  * **"2,266 minutes to go."** The canvas's lead sentence is an urgency four minutes out, and
+    an urgency about something tomorrow is not one. `COUNTDOWN_WINDOW_MINUTES` is ninety and
+    the figure is a judgement rather than a source. Arithmetic that is correct and a sentence
+    that is absurd: no assertion about text could see it.
+  * **Which class this is.** The roster is MOD-020's and carries a session id, an instant and
+    a count; the title, the coach, the studio and the timezone are MOD-019's, composed through
+    its own gate. A desk that cannot see which class it is looking at is a desk checking people
+    into the wrong one -- and the instant is read in the site's zone, which is the schedule
+    board's own hard-won rule.
+  * **Three counts over the same rows, each from one place.** "0 of 12 here" counts attendance
+    against the *session's* places rather than the roster's length, because a class with free
+    seats is twelve of eighteen; "six not here" is the bookings still open and unarrived; the
+    waitlist is a different list. All three live in `@/lib/desk` so the screen cannot compute
+    one differently from another.
+  * **A gym cancellation never reads as an absence.** MOD-020's worst shipped defect was
+    exactly that collapse -- every member of a cancelled class recorded absent, with a fee and
+    a strike -- so `released` and `session_cancelled` are their own row state, marked on the
+    edge rather than filled.
+
+**And the canvas's own promise is the one sentence the screen refuses to repeat**: "At 19:00
+their places release to the waitlist automatically and the three waiting are notified -- you do
+not have to remember." Nothing in this build does either. Settling a class decides whether
+somebody was absent, which is a judgement rather than a sweep, so it is deliberately not a
+worker job; and MOD-013 sends nothing. A screen that printed that sentence would be telling a
+receptionist to forget something nobody is holding.
+
+**Two reads came out of it, and one sweep.** `GET /people/names` is the batch a composed
+roster needs -- eighteen rows asking one at a time is the round-trip problem the staff list
+paid for once -- masked through MOD-014's own gate so it is a list of single reads rather than
+a weaker one. And `tests/unit/shell-tokens.test.mjs` grew a sweep for `ds-` classes the
+stylesheet does not define, which found **four**: `ds-card`, which two screens asked for and
+which has no rule at all, so a card rendered as a loose stack of text; a spinner with no
+animation; the field shell's contextual-action slot; and the data grid's own wrapper. A class
+that styles nothing is invisible to every other layer -- the text and the structure are
+identical either way.
+
 **ADM-RPT-04's board is one chart and one sentence, and the sentence is the requirement.**
 The canvas's own note says why it is derived rather than left to the reader: "The conclusion is
 written in words beneath the chart. A manager should not have to interpret a heat strip to find
@@ -4462,7 +4524,8 @@ Known gaps: the surface covers the sign-in, the step-up, the account page, MOD-0
 MOD-007, MOD-008, MOD-009, MOD-010, MOD-011, MOD-012, MOD-013, MOD-014, MOD-016, MOD-017,
 MOD-018, MOD-019, MOD-021 and MOD-022, plus MOD-020's roster on a session, ADM-SCH-04's
 availability grid at `/rota`, ADM-MEM-10's walk-in form at
-`/members/new`, ADM-STF-01/02's
+`/members/new`, FD-06's class check-in at `/desk/classes/{id}` -- the first Front Desk
+screen -- ADM-STF-01/02's
 staff list and staff record, ADM-PAY-05's
 recovery workspace, ADM-PAY-10's dispute board, ADM-RPT-01/02/03/04
 under `/reports`, ADM-PAY-07's wallet on a member's billing tab and ADM-MEM-07's attendance
@@ -4496,6 +4559,33 @@ MOD-012, MOD-013, MOD-014, MOD-016, MOD-017, MOD-018, MOD-019, MOD-020's roster,
 MOD-022, and the staff list and record ADM-STF-01/02 specify -- so **MOD-015 is the only
 implemented module with no screen at all**;
 `contracts/ui/screen-contracts.yaml` names the rest.
+
+**And MOD-015's screens are not Admin screens, which changes what "next" means.** This
+sentence used to call them the bulk of the remaining work; they are the *Console* surface --
+CON-06 subscription and entitlements, CON-07 usage and metering, CON-13 tenant billing and
+dunning -- and the Console is the platform operator's, on the plane that has no
+authentication at all. A UI there is a UI over a surface where anybody who can reach it can
+**suspend or archive a live customer's tenant**, so the screens are behind CON-16 rather than
+beside it. **And CON-16 is specified in a way this build cannot satisfy**: "No password
+field. SSO with hardware-key MFA, and it is not optional. This is the account that can reach
+every customer's data -- it gets the strongest door in the product." Both halves are unbuilt
+-- IAM-01-R04's OIDC/SAML federation, and the hardware factor AAL 3 needs, which needs the
+WebAuthn verification MOD-007 refuses to hand-roll. A console sign-in with a password would
+be substituting a weaker screen for the one the design draws, on the one account the design
+says must have the strongest door. So MOD-015's surface is blocked on WebAuthn, and that
+makes WebAuthn verification the piece whose absence now costs the most: it is the same
+missing capability behind AAL 3 everywhere, break-glass support access, AI acting for a
+member, and MOD-021's unverifiable device identity that MOD-022 opens doors on.
+
+**The unblocked surface work is the Front desk**, nine screens whose modules are all built
+and all on the authenticated tenant plane: FD-01 live check-in and FD-03 denial resolution
+are MOD-022's, FD-02 member lookup is MOD-014's (and now its contact-match read), FD-06 class
+check-in is MOD-020's, FD-07 shift open and close is MOD-018's cash sessions, FD-08 the
+device strip is MOD-021's. Two of them want something the backend does not hold -- FD-02
+draws a 44px photo ("a receptionist confirming identity at a busy desk needs a face they can
+actually recognise") and there is no object store, and FD-07's handover note has no column --
+so each needs the same judgement every Admin screen got: build what the product can answer
+and name the rest on the screen.
 
 **Of the specified Admin screens with no route, the ones with reads behind them are what to
 build next.** That audit is a **check** now rather than a count somebody re-derives, because

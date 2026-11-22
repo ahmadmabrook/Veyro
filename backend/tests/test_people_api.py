@@ -24,6 +24,7 @@ from __future__ import annotations
 import unittest
 import uuid
 
+from app.errors import InvalidRequest
 from app.people import visibility
 from tests.support import GatedApiTestCase
 
@@ -742,4 +743,122 @@ class ContactMatchTests(PeopleApiTestCase):
         nothing = self.scoped(tenant_id, ["people.timeline.read"])
         read = self.client.get(
             "/people/contact-match?kind=phone&value=%2B962790005555", headers=nothing)
+        self.assertEqual(read.status_code, 403, read.text)
+
+
+class BatchedNamesTests(PeopleApiTestCase):
+    """`GET /people/names`: who these people are, for a surface holding a list of ids.
+
+    **FD-06's roster is MOD-020's and the names are MOD-014's.** Paragraph 1300 bars the join
+    and a surface asking twice is not a join -- but eighteen rows asking one at a time is the
+    round-trip problem the staff list already paid for once.
+
+    The property that makes a batch safe is that it is a list of single reads: the same
+    masking, the same permission, and no field `GET /people/{id}` would withhold.
+    """
+
+    def names(self, tenant_id: str, ids: list[str],
+              head: dict[str, str] | None = None) -> dict:
+        query = "&".join(f"person_id={one}" for one in ids)
+        read = self.client.get(
+            f"/people/names?{query}",
+            headers=head if head is not None else self.headers(tenant_id))
+        self.assertEqual(read.status_code, 200, read.text)
+        return read.json()
+
+    def test_it_answers_about_several_people_in_one_request(self):
+        tenant_id = self.tenant()
+        a = self.plain_subject(tenant_id, "Dana Qasem")
+        b = self.plain_subject(tenant_id, "Hala Barakat")
+
+        found = self.names(tenant_id, [a, b])
+        self.assertEqual({p["person_id"] for p in found["people"]}, {a, b})
+        self.assertEqual(found["unknown"], [])
+
+    def test_an_id_it_cannot_resolve_comes_back_named(self):
+        """A caller that diffed two lists to find them would be re-deriving what this read
+        already knows -- and a roster holding a stale id wants to say so, not drop a row."""
+        tenant_id = self.tenant()
+        a = self.plain_subject(tenant_id, "Dana Qasem")
+        missing = str(uuid.uuid4())
+        found = self.names(tenant_id, [a, missing])
+        self.assertEqual(found["unknown"], [missing], found)
+        self.assertEqual(len(found["people"]), 1, found)
+
+    def test_the_name_is_masked_exactly_as_the_record_read_masks_it(self):
+        """**The property that makes a batch safe.** If this answered more than
+        `GET /people/{id}` would for the same session, it would be a lateral read around the
+        mask rather than a convenience -- which is MOD-010's `events.event.read` finding."""
+        tenant_id = self.tenant()
+        a = self.plain_subject(tenant_id, "Dana Qasem")
+        desk = self.scoped(tenant_id, ["people.person.read"])
+
+        batched = self.names(tenant_id, [a], desk)
+        single = self.client.get(f"/people/{a}/360", headers=desk)
+        self.assertEqual(single.status_code, 200, single.text)
+        self.assertEqual(batched["people"][0]["legal_name"], visibility.MASK)
+        self.assertEqual(batched["people"][0]["legal_name"],
+                         single.json()["person"]["legal_name"])
+
+    def test_a_merged_away_record_resolves_to_nothing(self):
+        """Its readers are told to follow a pointer, so a roster that rendered the dead record
+        would be naming a record nobody should open -- `match_contact`'s own reason."""
+        tenant_id = self.tenant()
+        owner = self.headers(tenant_id)
+        survivor = self.plain_subject(tenant_id, "Hala Barakat")
+        loser = self.plain_subject(tenant_id, "Hala B")
+        merged = self.client.post("/people/merges", json={
+            "source_person_id": loser, "target_person_id": survivor,
+            "reason": "same person", **self.correlation()}, headers=owner)
+        self.assertEqual(merged.status_code, 201, merged.text)
+
+        found = self.names(tenant_id, [survivor, loser])
+        self.assertEqual([p["person_id"] for p in found["people"]], [survivor])
+        self.assertEqual(found["unknown"], [loser], found)
+
+    def test_it_returns_no_field_the_record_read_would_withhold(self):
+        """No contact value, no birth date. A roster needs a name and a standing; a column on
+        a list must not buy what a record read charges for."""
+        tenant_id = self.tenant()
+        a = self.plain_subject(tenant_id, "Dana Qasem")
+        found = self.names(tenant_id, [a])
+        self.assertEqual(
+            set(found["people"][0]),
+            {"person_id", "legal_name", "preferred_name", "lifecycle_state",
+             "member_number"}, found)
+
+    def test_it_is_bounded_and_refuses_above_the_ceiling(self):
+        tenant_id = self.tenant()
+        head = self.headers(tenant_id)
+        ids = [str(uuid.uuid4()) for _ in range(201)]
+        query = "&".join(f"person_id={one}" for one in ids)
+        over = self.client.get(f"/people/names?{query}", headers=head)
+        self.assertEqual(over.status_code, 422, over.text)
+
+    def test_the_service_bounds_it_as_well_as_the_route(self):
+        """**Two layers check this and only one of them was tested.** `require_uuids` bounds
+        the repeated query parameter at the boundary, so the service's own ceiling never
+        fires over HTTP -- the mutation sweep reported it uncaught, which is the "subsumed by
+        a sibling" shape one layer up from the schema. It is not actually subsumed: a service
+        is callable without a request, and an unbounded `ANY(%s)` there is a read whose cost
+        the caller chooses. So it is proved where it lives.
+        """
+        from app.people import service as people_service
+        with self.assertRaises(InvalidRequest):
+            people_service.names_of(
+                self._tenant_pool, self.tenant(),
+                [str(uuid.uuid4()) for _ in range(people_service.NAMES_BATCH + 1)],
+                masked_fields=(), held_permissions=set())
+
+    def test_a_malformed_id_is_refused_at_the_boundary(self):
+        tenant_id = self.tenant()
+        read = self.client.get(
+            "/people/names?person_id=not-a-uuid", headers=self.headers(tenant_id))
+        self.assertEqual(read.status_code, 422, read.text)
+
+    def test_a_session_without_the_read_permission_is_refused(self):
+        tenant_id = self.tenant()
+        a = self.plain_subject(tenant_id, "Dana Qasem")
+        nothing = self.scoped(tenant_id, ["people.timeline.read"])
+        read = self.client.get(f"/people/names?person_id={a}", headers=nothing)
         self.assertEqual(read.status_code, 403, read.text)

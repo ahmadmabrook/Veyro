@@ -1875,6 +1875,22 @@ def booking_detail(
     }
 
 
+def _grace_only(minutes: int) -> policy.Policy:
+    """A `Policy` carrying one real figure, for `checkin_window`.
+
+    **It reads `checkin_grace_minutes` and nothing else**, and takes a `Policy` because
+    `check_policy` validates the whole thing before it answers. Building one with the rest at
+    their smallest legal values is the honest way to ask it a question about the grace --
+    cheaper than widening its signature, and it keeps the window in one function rather than
+    inlining the arithmetic at a second call site.
+    """
+    return policy.Policy(
+        cancellation_hours=0, max_concurrent=1, quota=None,
+        quota_period="rolling_7_days", checkin_grace_minutes=minutes,
+        warn_after_no_shows=1, strike_after_no_shows=1,
+        priority_rule="first_come", offer_minutes=1)
+
+
 def session_roster(
     pool: Pool, tenant_id: str, session_id: str, *, include_settled: bool = False,
 ) -> dict[str, Any]:
@@ -1882,14 +1898,23 @@ def session_roster(
 
     **The counts are sums over the rows**, and the places come from MOD-019's session: there is
     no roster table and no cached total, for the reason this module has no capacity of its own.
+
+    **No name, because this module holds none.** Every row is a `person_id` and MOD-014 owns
+    who that is, masked through its own gate -- so a surface composes the two, which is what
+    the Member 360 and the staff list already do. A join here would be the cross-domain read
+    paragraph 1300 bars, and it would hand a `booking.booking.read` holder a lateral path
+    around `people.person.read`.
     """
     with tenant_scope(pool, tenant_id) as conn:
         session = _session(conn, session_id)
         bookings = conn.execute(
-            "SELECT booking_id, person_id, state, source_kind, checked_in_at, booked_at"
-            " FROM plt01.bkg_bookings WHERE session_id = %s"
-            "   AND (%s OR state IN ('booked', 'attended'))"
-            " ORDER BY booked_at",
+            "SELECT b.booking_id, b.person_id, b.state, b.source_kind, b.checked_in_at,"
+            "       b.booked_at, p.checkin_grace_minutes"
+            "  FROM plt01.bkg_bookings b"
+            "  JOIN plt01.bkg_policies p ON p.policy_id = b.policy_id"
+            " WHERE b.session_id = %s"
+            "   AND (%s OR b.state IN ('booked', 'attended'))"
+            " ORDER BY b.booked_at",
             (session_id, include_settled),
         ).fetchall()
         entries = conn.execute(
@@ -1904,6 +1929,27 @@ def session_roster(
             " WHERE session_id = %s AND status IN ('held', 'attended')",
             (session_id,),
         ).fetchone()
+        # **One query for everybody on the roster, not one per person.** FD-06 draws it --
+        # "Hala's two prior no-shows are shown without judgement, it is context for the coach,
+        # not a flag on her" -- and a front desk reading eighteen rows is eighteen round
+        # trips if each one asks separately, which is the problem `/authz/checks` exists for
+        # one module over. The count is `_no_show_count`'s own predicate rather than a second
+        # one: a sum over the rows, excluding what an appeal overturned.
+        people = sorted({str(b[1]) for b in bookings})
+        prior = dict(conn.execute(
+            "SELECT person_id, count(*) FROM plt01.bkg_no_shows"
+            " WHERE person_id = ANY(%s) AND overturned_at IS NULL"
+            " GROUP BY person_id",
+            (people,),
+        ).fetchall()) if people else {}
+    # The window per booking, from each one's own snapshotted grace: two members on one
+    # class can hold different policy versions, because a booking snapshots the terms it was
+    # made under and retiring a policy changes nothing about the last sale.
+    windows = {
+        str(b[0]): attendance.checkin_window(
+            session["starts_at"], policy=_grace_only(int(b[6])))
+        for b in bookings
+    }
     places = session["capacity"] + session["overbook_places"]
     taken = int(held[0]) if held else 0
     return {
@@ -1916,7 +1962,17 @@ def session_roster(
             {"booking_id": str(b[0]), "person_id": str(b[1]), "state": str(b[2]),
              "source_kind": str(b[3]),
              "checked_in_at": b[4].isoformat() if b[4] else None,
-             "booked_at": b[5].isoformat()} for b in bookings],
+             "booked_at": b[5].isoformat(),
+             #: **When this booking may be checked in**, from the window the write itself
+             #: reads. FD-06 offers a Check in button and `may_check_in` refuses outside it
+             #: -- it opens an hour before the session and closes after that booking's own
+             #: snapshotted grace -- so without this a desk is offered a control the module
+             #: will refuse, which is this build's own "a button that answered 403 is worse
+             #: than its absence". One computation, shared with the refusal, because a
+             #: screen and a refusal that disagree is worse than either.
+             "checkin_opens_at": windows[str(b[0])][0].isoformat(),
+             "checkin_closes_at": windows[str(b[0])][1].isoformat(),
+             "prior_no_shows": int(prior.get(b[1], 0))} for b in bookings],
         "waitlist": [
             {"entry_id": str(e[0]), "person_id": str(e[1]), "state": str(e[2]),
              "tier": int(e[3]), "joined_at": e[4].isoformat(),

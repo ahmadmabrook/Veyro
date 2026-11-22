@@ -43,6 +43,9 @@ const surfaces: [string, string][] = [
   // safe at 1440 and clips at 375, and the interruption panel under the phone field
   // carries two controls on one row.
   ["the walk-in form", "/members/new"],
+  // FD-06 is the one screen in this app at Touch density: 48px rows and a 44px button on
+  // every row, which is the shape most likely to push a narrow screen sideways.
+  ["the class check-in", `/desk/classes/${creds.deskSessionId}`],
   ["a member", `/people/${creds.personId}`],
   // Twelve bars in a flex row: the one chart here whose width is a count rather than a
   // layout, so it is the one most likely to push a phone sideways.

@@ -390,6 +390,78 @@ def get_person(
 PEOPLE_PAGE = 200
 
 
+#: How many people one batched read may name.
+#:
+#: **A roster, not a page of them.** FD-06 draws eighteen rows and a waitlist of three; the
+#: ceiling is well past the largest class a `sch_sessions` capacity admits, and it is a
+#: ceiling rather than no bound because a repeated query parameter with none is a request
+#: whose cost the caller chooses.
+NAMES_BATCH = 200
+
+
+def names_of(
+    pool: Pool, tenant_id: str, person_ids: list[str], *,
+    masked_fields: tuple[str, ...], held_permissions: set[str],
+) -> dict[str, Any]:
+    """Who these people are, for a surface that already holds a list of ids.
+
+    **One request for a roster, not one per row.** Every screen in this build that shows
+    another module's rows beside a person composes the two -- paragraph 1300 bars the join and
+    a surface asking twice is not a join -- and the staff list already paid for the other half
+    of that lesson: fifty rows asking one at a time is the round-trip problem `/authz/checks`
+    exists for. FD-06's roster is MOD-020's and the names are MOD-014's, so this is the shape
+    that composition needs.
+
+    **Masked like every other read here**, both halves as required arguments, so a routine
+    front-desk session gets the withheld marker and a stepped-up one gets the name -- the same
+    answer `GET /people/{id}` would give for each of them, which is the property that makes a
+    batch safe: it is a list of single reads and not a weaker one.
+
+    **It answers about the ids it was given and says which it did not find.** A caller holding
+    a stale id gets it back under `unknown` rather than a shorter list it has to diff, and a
+    merged-away person resolves to nothing here for `match_contact`'s reason -- the record is
+    dead and its readers are told to follow a pointer.
+    """
+    if len(person_ids) > NAMES_BATCH:
+        raise InvalidRequest("too_many_person_ids")
+    wanted = sorted(set(person_ids))
+    if not wanted:
+        return {"people": [], "unknown": [], "masked_fields": []}
+    readable = visibility.readable_classes(frozenset(held_permissions))
+    masks = _masks(masked_fields, readable)
+    with tenant_scope(pool, tenant_id) as conn:
+        rows = conn.execute(
+            "SELECT p.person_id, p.legal_name, p.preferred_name,"
+            "       m.lifecycle_state, m.member_number"
+            "  FROM plt01.ppl_persons p"
+            "  LEFT JOIN plt01.ppl_member_profiles m ON m.person_id = p.person_id"
+            " WHERE p.person_id = ANY(%s) AND p.merge_status = 'active'"
+            " ORDER BY p.person_id",
+            (wanted,),
+        ).fetchall()
+    people = [
+        visibility.apply_record(
+            {
+                "person_id": str(r[0]),
+                "legal_name": r[1],
+                "preferred_name": r[2],
+                "lifecycle_state": r[3],
+                "member_number": r[4],
+            },
+            masks,
+        )
+        for r in rows
+    ]
+    found = {person["person_id"] for person in people}
+    return {
+        "people": people,
+        #: Named rather than dropped: a caller that diffed two lists to find them would be
+        #: re-deriving what this read already knows.
+        "unknown": [one for one in wanted if one not in found],
+        "masked_fields": list(masks),
+    }
+
+
 def list_people(
     pool: Pool, tenant_id: str, *, masked_fields: tuple[str, ...],
     held_permissions: set[str], lifecycle_state: str | None = None,

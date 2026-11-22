@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
@@ -22,6 +23,17 @@ const read = (name) => readFileSync(fileURLToPath(new URL(name, import.meta.url)
 const contracts = JSON.parse(read("../../src/design/contracts.json"));
 const css = read("../../src/design/tokens.generated.css");
 const globals = read("../../src/app/globals.css");
+
+/** Every `.tsx` under `src/`, which is every file that can name a class. */
+function tsxFiles(dir) {
+  const out = [];
+  for (const entry of readdirSync(dir)) {
+    const path = join(dir, entry);
+    if (statSync(path).isDirectory()) out.push(...tsxFiles(path));
+    else if (entry.endsWith(".tsx")) out.push(path);
+  }
+  return out;
+}
 
 const token = (name) => {
   const found = css.match(new RegExp(`--${name}:\\s*([^;]+);`));
@@ -101,9 +113,21 @@ test("the 44px touch floor is in the component layer, not in call sites", () => 
   // the moment it stopped being a hand-rolled control -- it rendered at 36px on a phone, and
   // only a browser test noticed.
   assert.match(globals, /\(pointer: coarse\)/, "no pointer-based rule");
-  const touch = globals.match(/:root\[data-density="touch"\] \.ds-button[^}]*\}/);
+  const touch = globals.match(/\n\[data-density="touch"\] \.ds-button[^}]*\}/);
   assert.ok(touch, "touch density does not raise the button floor");
   assert.match(touch[0], /min-block-size: 44px/);
+});
+
+test("the touch floor matches a screen's own wrapper, not only the document", () => {
+  // **The same defect the row height already had.** The generated token file was written
+  // `:root[data-density=…]` once, which matches `<html>` and nothing else, so a screen
+  // setting its density on a wrapper read as the default -- found by measuring the rendered
+  // rows. This rule was left behind, and it matters more: 44px on Touch and Spacious is "the
+  // minimum target, not a style", so a Front Desk screen got the type and the row height and
+  // a 36px button under the finger it is designed for.
+  assert.doesNotMatch(
+    globals, /:root\[data-density="(touch|spacious)"\]/,
+    "a density rule scoped to :root cannot be set by a screen");
 });
 
 test("the breakpoint tokens are the source's ranges", () => {
@@ -139,4 +163,28 @@ test("every media query in the app sits on a breakpoint boundary", () => {
       `@media (${direction}: ${value}) is not a breakpoint boundary. Known: ${[...boundaries].join(", ")}`,
     );
   }
+});
+
+test("every ds- class a screen writes is one the stylesheet defines", () => {
+  // **`ds-card` was a class name with no rule behind it.** It appears in globals.css exactly
+  // once, inside a `prefers-reduced-motion` block, and nowhere as a definition -- so two
+  // screens asked for a card and got a loose stack of text. Found by looking at the rendered
+  // page, which is this surface's standing lesson; nothing in four layers of assertions can
+  // see a class that styles nothing, because the text and the structure are identical
+  // either way.
+  //
+  // Scoped to `ds-` because that is the design system's own prefix: an undefined one is a
+  // component this app thinks it has.
+  const used = new Set();
+  for (const file of tsxFiles(fileURLToPath(new URL("../../src", import.meta.url)))) {
+    for (const [, value] of readFileSync(file, "utf8").matchAll(/className="([^"{}]+)"/g)) {
+      for (const name of value.split(/\s+/)) {
+        if (name.startsWith("ds-")) used.add(name);
+      }
+    }
+  }
+  const defined = new Set(
+    [...globals.matchAll(/\.(ds-[a-z0-9-]+)/g)].map((m) => m[1]));
+  const missing = [...used].filter((name) => !defined.has(name)).sort();
+  assert.deepEqual(missing, [], "these ds- classes style nothing");
 });

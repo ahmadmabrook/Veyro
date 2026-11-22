@@ -261,6 +261,16 @@ export default async function SessionPage({
       <section className="ds-panel">
         <div className="ds-panel-head">
           <h2 id="roster-heading" className="ds-panel-title">{text("roster.title")}</h2>
+          {/* **The way to FD-06, and the only way there is.** This board is a manager's view
+              at Compact density; the front desk's is the same roster at Touch with a button
+              on every row, which is a different reader rather than a different fact. A route
+              nothing links to is a route nobody finds -- ADM-MEM-05 specified a button and
+              rendered none, and this app shipped that for as long as the screen existed. */}
+          {mayRoster.allowed ? (
+            <Link href={`/desk/classes/${sessionId}`} className="ds-panel-action">
+              {text("roster.checkPeopleIn")}
+            </Link>
+          ) : null}
         </div>
         <div className="ds-panel-body">
         {!mayRoster.allowed ? (

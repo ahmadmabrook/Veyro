@@ -23,7 +23,7 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
+import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -36,7 +36,10 @@ const web = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
  *
  * `runner` is `"playwright"` unless stated. `"vitest"` is for a protection whose test is a
  * component test rather than a browser one -- the device-label parity, where the whole point
- * of the test is that it needs no browser and no fixture.
+ * of the test is that it needs no browser and no fixture. `"node"` is the foundation layer,
+ * `tests/unit/`, which runs on Node's own test runner: it had no runner here until a
+ * mutation was pointed at one of its assertions and came back uncaught, because `vitest`
+ * does not collect those files and so reported no failure rather than no test.
  */
 const MUTATIONS = [
   {
@@ -1027,9 +1030,17 @@ const MUTATIONS = [
     why: "an amount is an integer count of minor units and JOD has three of them, so a "
       + "hard-coded /100 renders 45.000 dinars as 450.00 -- and every assertion about the "
       + "word 'price' passes either way",
-    file: "src/lib/membership.ts",
-    from: '    return formatMoney(minor, currency, "latn", "en");',
-    to: "    return `${(minor / 100).toFixed(2)} ${currency}`;",
+    // **Repointed: the membership price moved to `MoneyValue` and this still broke the
+    // helper beside it.** `money()` is live on the Command Center and the cash board, so the
+    // mutation applied cleanly and the row it is asserted against was rendered by something
+    // else -- reported as UNCAUGHT, which reads as a gap and was a stale aim. That is this
+    // file's own tell: a mutation whose test asserts the rendered half while the mutation
+    // edits the other half.
+    file: "src/components/ds/money-value.tsx",
+    from: "  const { code, sign, major, minor } = rawParts(amountMinor, currency, numbering);",
+    to: '  const code = currency, sign = amountMinor < 0 ? "-" : "",\n'
+      + '    major = String(Math.trunc(Math.abs(amountMinor) / 100)),\n'
+      + '    minor = `.${String(Math.abs(amountMinor) % 100).padStart(2, "0")}`;',
     grep: "renders the agreed price",
   },
   {
@@ -1380,6 +1391,81 @@ const MUTATIONS = [
     grep: "marks the control and puts nothing",
   },
   {
+    id: "desk-button-outside-the-window",
+    why: "`may_check_in` refuses outside the check-in window, so a button offered for a class "
+      + "tomorrow answers 409 -- a button that answered 403 is worse than its absence",
+    file: "src/lib/desk.ts",
+    from: '  return checkinWindow(booking, now) === "open";',
+    to: "  return true;",
+    runner: "vitest",
+    grep: "withholds it outside the window",
+  },
+  {
+    id: "desk-unreadable-window-reads-open",
+    why: "failing toward offering a control the module will refuse is the direction the whole "
+      + "function exists to avoid",
+    file: "src/lib/desk.ts",
+    from: '  if (Number.isNaN(opens) || Number.isNaN(closes)) return "closed";',
+    to: '  if (false) return "closed";',
+    runner: "vitest",
+    grep: "treats a window it cannot read as closed",
+  },
+  {
+    id: "desk-countdown-has-no-window",
+    why: "'2,266 minutes to go' for a class tomorrow is arithmetic that is correct and a "
+      + "sentence that is absurd, and only looking at the page can see it",
+    file: "src/lib/desk.ts",
+    from: "  if (minutes < 0 || minutes > COUNTDOWN_WINDOW_MINUTES) return null;",
+    to: "  if (minutes < 0) return null;",
+    runner: "vitest",
+    grep: "says nothing about a class tomorrow",
+  },
+  {
+    id: "desk-release-reads-as-absence",
+    why: "MOD-020's worst shipped defect was exactly this collapse: every member of a "
+      + "cancelled class recorded absent, with a fee and a strike",
+    file: "src/lib/desk.ts",
+    from: '  if (booking.state === "released" || booking.state === "session_cancelled") {\n    return "released";\n  }',
+    to: '  if (false) {\n    return "released";\n  }',
+    runner: "vitest",
+    grep: "keeps a gym cancellation apart",
+  },
+  {
+    id: "desk-order-is-booking-order",
+    why: "four minutes from the start a receptionist is looking for who has not arrived, and "
+      + "the rows they want out of the way are the ones already in the room",
+    file: "src/lib/desk.ts",
+    from: "    const byGroup = GROUP[rowState(a)] - GROUP[rowState(b)];",
+    to: "    const byGroup = 0;",
+    runner: "vitest",
+    grep: "puts the people who have not arrived first",
+  },
+  {
+    id: "desk-presence-counts-the-roster",
+    why: "a class with six free seats is twelve of eighteen, not twelve of twelve -- the "
+      + "denominator is MOD-019's capacity and the roster has no cached total",
+    file: "src/lib/desk.ts",
+    from: "    places: roster.places,",
+    to: "    places: roster.bookings.length,",
+    runner: "vitest",
+    grep: "counts who is here against the session",
+  },
+  {
+    id: "ds-touch-floor-scoped-to-root",
+    why: "44px on Touch is the minimum target rather than a style, and a rule matching only "
+      + "`<html>` leaves a screen that sets its own density with a 36px button",
+    file: "src/app/globals.css",
+    from: '[data-density="touch"] .ds-button,\n[data-density="spacious"] .ds-button {',
+    to: ':root[data-density="touch"] .ds-button,\n:root[data-density="spacious"] .ds-button {',
+    // **Not the browser test, which measures a button that is `lg` anyway.** `BUTTON_HEIGHT`
+    // makes `lg` 44px by itself, so FD-06's control clears the floor whichever selector is
+    // live -- the sweep said so by coming back uncaught, which is the right answer and not a
+    // gap. The property this rule carries is that a *screen* can set the density at all, and
+    // the structural assertion is what proves it.
+    runner: "node",
+    grep: "matches a screen.s own wrapper",
+  },
+  {
     id: "walk-in-stale-answer-lands",
     why: "a reply about a number the desk has already edited would mark a clear number as "
       + "duplicated, or clear a duplicated one -- the race the derivation exists to make "
@@ -1433,6 +1519,21 @@ const MUTATIONS = [
 ];
 
 const only = process.argv[2];
+/**
+ * Whether any `tests/unit/` file names a test matching this pattern.
+ *
+ * The pattern is a regex, because that is what `--test-name-pattern` takes.
+ */
+function unitTestsMention(grep) {
+  const dir = join(web, "tests/unit");
+  const pattern = new RegExp(grep);
+  for (const entry of readdirSync(dir)) {
+    if (!entry.endsWith(".mjs")) continue;
+    if (pattern.test(readFileSync(join(dir, entry), "utf8"))) return true;
+  }
+  return false;
+}
+
 const chosen = only ? MUTATIONS.filter((m) => m.id.includes(only)) : MUTATIONS;
 
 // Whatever is currently mutated, so a signal can put it back. One entry at a time, because
@@ -1485,11 +1586,29 @@ for (const mutation of chosen) {
     const run = mutation.runner === "vitest"
       ? spawnSync("npx", ["vitest", "run", "-t", mutation.grep],
                   { cwd: web, encoding: "utf8", timeout: 180_000 })
+      // **The foundation layer had no runner here at all**, so none of its assertions had
+      // ever been mutation-proven through this harness -- found by pointing a mutation at
+      // one and watching it come back uncaught, because `vitest` does not collect
+      // `tests/unit/` and reported no failure rather than no test. `--test-name-pattern` is
+      // Node's own `-t`.
+      : mutation.runner === "node"
+      ? spawnSync("node",
+                  ["--test", "--test-name-pattern", mutation.grep, "tests/unit/"],
+                  { cwd: web, encoding: "utf8", timeout: 180_000 })
       : spawnSync("npx",
                   ["playwright", "test", "--grep", mutation.grep, "--reporter", "line"],
                   { cwd: web, encoding: "utf8", timeout: 180_000 });
     const output = `${run.stdout ?? ""}${run.stderr ?? ""}`;
-    const ranSomething = !/No tests found|No test files found/.test(output)
+    // **Node's runner cannot be asked whether its pattern matched.** With a name pattern
+    // that matches nothing it still runs every file, filters every test out of each, and
+    // reports `pass 9, fail 0` -- so a stale grep is indistinguishable from a real pass by
+    // the exit code and from a real gap by the output. Proved by pointing one at a name that
+    // does not exist and watching it come back UNCAUGHT rather than SKIP. The answer is the
+    // same static check the mutation text already gets: the pattern has to occur in the test
+    // sources, or the mutation is reported as not run.
+    const matched = mutation.runner !== "node" || unitTestsMention(mutation.grep);
+    const ranSomething = matched
+      && !/No tests found|No test files found/.test(output)
       && !/Tests {2}no tests/.test(output);
     if (!ranSomething) {
       notRun.push(`${mutation.id}: --grep "${mutation.grep}" matched no test`);

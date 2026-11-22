@@ -42,6 +42,7 @@ export type Fixture = {
   sessionId: string;
   /** Tomorrow's occurrence, which has a booking on it -- the first one's window has closed. */
   bookedSessionId: string;
+  deskSessionId: string;
   /** The seeded member: a tag, a contact point, two notes and a health custom field. */
   personId: string;
   /** The commissioned, activated turnstile the access point stands on. */
@@ -179,6 +180,7 @@ export function fixture(): Fixture {
     locationId: env.VEYRO_E2E_LOCATION_ID!,
     sessionId: env.VEYRO_E2E_SESSION_ID!,
     bookedSessionId: env.VEYRO_E2E_BOOKED_SESSION_ID!,
+    deskSessionId: env.VEYRO_E2E_DESK_SESSION_ID!,
     personId: env.VEYRO_E2E_PERSON_ID!,
     deviceId: env.VEYRO_E2E_DEVICE_ID!,
     pendingDeviceId: env.VEYRO_E2E_PENDING_DEVICE_ID!,

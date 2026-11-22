@@ -334,6 +334,17 @@ a {
 
 /* --- DataGrid ----------------------------------------------------------- */
 
+/* The grid's own box, and the scope its `data-density` sets for everything inside it. The
+   class had no rule at all -- caught by the `ds-` sweep -- which made the element a density
+   carrier with no stacking context of its own, so a sticky header inside it had nothing to
+   stick to. */
+.ds-grid {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-inline-size: 0;
+}
+
 .ds-grid-table {
   inline-size: 100%;
   border-collapse: collapse;
@@ -510,9 +521,16 @@ a {
   }
 }
 
-/* The same floor at the two densities that declare it, at any width. */
-:root[data-density="touch"] .ds-button,
-:root[data-density="spacious"] .ds-button {
+/* The same floor at the two densities that declare it, at any width.
+ *
+ * **Not `:root[data-density=…]`, which matches `<html>` and nothing else.** The generated
+ * token file already learned this once -- a screen setting its own density on a wrapper read
+ * as the default and rendered at the wrong row height, found by measuring -- and this rule
+ * was left behind. It matters more here than there: 44px on Touch and Spacious is "the
+ * minimum target, not a style", so a Front Desk screen that set its density on a wrapper got
+ * the type and the row height and a 36px button under the finger it is designed for. */
+[data-density="touch"] .ds-button,
+[data-density="spacious"] .ds-button {
   min-block-size: 44px;
 }
 
@@ -1059,6 +1077,34 @@ a {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
+}
+
+/* **A spinner that did not spin.** The glyph had no rule at all -- found by a sweep for
+   `ds-` classes the stylesheet does not define, which is what a class name with nothing
+   behind it looks like from the outside: identical text, identical structure, a static
+   character where a reader expects motion. The reduced-motion block below already names
+   `.ds-spinner` among the things it stops, which is the other half of the contract. */
+.ds-spinner {
+  display: inline-block;
+  animation: ds-spin 900ms linear infinite;
+}
+
+@keyframes ds-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ds-spinner { animation: none; }
+}
+
+/* §23's contextual action slot -- "Use member's phone", "Clear". It sits inside the control
+   at the inline end, after the suffix, and no caller passes one yet: a slot the shell renders
+   and the stylesheet ignores is a slot whose first caller discovers it unstyled. */
+.ds-field-action {
+  display: inline-flex;
+  align-items: center;
+  font-size: var(--type-caption-size);
+  white-space: nowrap;
 }
 
 .ds-tooltip {
@@ -2285,6 +2331,18 @@ a {
 .ds-panel-head {
   padding: 10px 14px;
   border-block-end: 1px solid var(--color-border-subtle);
+  /* A title and, where a panel has one, the action that leaves it. Logical properties, so
+     the action sits at the inline end in both directions without a `dir` check. */
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.ds-panel-action {
+  font-size: var(--type-caption-size);
+  line-height: var(--type-caption-line);
 }
 
 .ds-panel-title { margin: 0; font-size: 12.5px; font-weight: 500; line-height: 1.3; }
@@ -3119,4 +3177,63 @@ a {
   align-items: center;
   gap: var(--space-2);
   margin-block-start: var(--space-2);
+}
+
+/* FD-06 · CLASS CHECK-IN. Touch density, which the source makes non-negotiable on this
+   surface: "Rows are 48px because this is tapped while looking at a person, not at the
+   screen." The row height is `--density-row`, which the wrapper's `data-density="touch"`
+   sets, rather than a literal here -- a number typed into this file is a density the
+   stylesheet decided instead of the token layer. */
+.ds-desk-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+.ds-desk-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--density-gap, var(--space-3));
+  min-block-size: var(--density-row, 48px);
+  padding-block: var(--space-2);
+  border-block-end: 1px solid var(--color-border-subtle);
+}
+.ds-desk-row:last-child {
+  border-block-end: 0;
+}
+.ds-desk-row-name {
+  flex: 1 1 14rem;
+  min-inline-size: 0;
+}
+.ds-desk-row-context {
+  display: block;
+  font-size: var(--type-caption-size);
+  line-height: var(--type-caption-line);
+}
+.ds-desk-row-state {
+  font-size: var(--type-caption-size);
+  color: var(--color-text-secondary);
+}
+/* A member the gym released is not a member who failed to turn up, and the two must not read
+   alike -- MOD-020's worst shipped defect was exactly that collapse. An edge mark rather than
+   a fill, which is the week grid's rule and holds here for the same reason. */
+.ds-desk-row[data-state="absent"] {
+  border-inline-start: 3px solid var(--color-semantic-warning);
+  padding-inline-start: var(--space-2);
+}
+.ds-desk-row[data-state="here"] .ds-desk-row-state {
+  color: var(--color-semantic-success);
+}
+.ds-desk-checkin {
+  margin: 0;
+}
+.ds-desk-row-error {
+  margin: var(--space-1) 0 0;
+  font-size: var(--type-caption-size);
+  color: var(--color-text-critical);
+}
+.ds-desk-gaps {
+  margin-block-start: var(--space-5);
 }

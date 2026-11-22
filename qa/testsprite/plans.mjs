@@ -602,6 +602,73 @@ const PLANS = [
     ],
   },
 
+  {
+    // **FD-06, and the one thing an independent reader is best placed to check**: that a
+    // receptionist at an ordinary sign-in can actually mark somebody present. Every other
+    // write form in this app is a step-up or an absence, and the claim that this one is not
+    // rests on a permission class a tester has never read about.
+    //
+    // **It uses the class that is about to start**, because the module refuses a check-in
+    // outside its window -- an hour before, until the grace period -- and the screen now
+    // says so rather than offering a button that answers 409. Both halves are in the
+    // journey: the class tomorrow offers no button and explains why, and the one starting
+    // soon does.
+    name: "A receptionist can mark somebody present without a stronger sign-in",
+    description:
+      "The class check-in screen is what a front desk opens minutes before a class. Names " +
+      "are deliberately hidden on an ordinary sign-in, so people are identified by their " +
+      "member number. Marking somebody present is the one thing on this screen that " +
+      "changes anything, and it should work at an ordinary sign-in.",
+    priority: "p1",
+    planSteps: [
+      ...signIn,
+      {
+        type: "action",
+        description:
+          `Navigate to /desk/classes/${env.VEYRO_E2E_DESK_SESSION_ID} .`,
+      },
+      {
+        type: "assertion",
+        description:
+          "Verify the page names the class and says how many of its places are filled and " +
+          "how many are on the waitlist. Verify it warns how many minutes remain before " +
+          "the class starts and how many booked people have not arrived.",
+      },
+      {
+        type: "action",
+        description:
+          "Find the first row offering a way to check that person in, note the member " +
+          "number shown on it, and use that control.",
+      },
+      {
+        type: "assertion",
+        description:
+          "Verify that row now reads as present rather than expected, and that the count " +
+          "of people here at the top of the page has gone up by one.",
+      },
+      {
+        type: "assertion",
+        description:
+          "Verify the page states, near the foot, that it does not release a place when " +
+          "the class starts, does not tell the people waiting, and does not read a card " +
+          "— each with a reason.",
+      },
+      {
+        type: "action",
+        description:
+          `Navigate to /desk/classes/${env.VEYRO_E2E_BOOKED_SESSION_ID} , which is a class ` +
+          "tomorrow rather than one about to start.",
+      },
+      {
+        type: "assertion",
+        description:
+          "Verify no row on this page offers a way to check anybody in, and that the rows " +
+          "say check-in opens an hour before instead. Verify the page does not count down " +
+          "minutes to a class that is a day away.",
+      },
+    ],
+  },
+
 ];
 
 mkdirSync(OUT, { recursive: true });

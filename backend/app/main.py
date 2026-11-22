@@ -5460,6 +5460,30 @@ def create_app(
             limit=limit,
         )
 
+    @app.get("/people/names")
+    def read_people_names(
+        tenant_id: TenantId, session: Session,
+        person_id: Annotated[list[str], Query()],
+    ) -> dict[str, Any]:
+        """Who these people are, for a surface that already holds a list of ids.
+
+        **FD-06's roster is MOD-020's and the names are MOD-014's.** Paragraph 1300 bars the
+        join and a surface asking twice is not a join -- but eighteen rows asking one at a
+        time is the round-trip problem `/authz/checks` exists for, which the staff list
+        already paid for once. One request, one answer per id.
+
+        `people.person.read`, masked through this module's own gate, so a routine front-desk
+        session gets the withheld marker and a stepped-up one gets the name: the same answer
+        `GET /people/{id}` gives for each of them, which is what makes a batch a list of
+        single reads rather than a weaker one.
+        """
+        gate = permit(session, "people.person.read")
+        return people.names_of(
+            tenant_pool, tenant_id,
+            require_uuids(person_id, "person_id", limit=people.NAMES_BATCH),
+            masked_fields=gate.masked_fields, held_permissions=held_permissions(session),
+        )
+
     @app.get("/staff")
     def list_staff(
         tenant_id: TenantId, session: Session, employment_state: str | None = None,

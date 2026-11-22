@@ -148,6 +148,42 @@ class BookingApiTestCase(GatedApiTestCase):
         self.assertEqual(response.status_code, 201, response.text)
         return str(response.json()["booking_id"])
 
+    def linked_decider(self, tenant_id: str) -> str:
+        """The owner identity, linked to a person record of its own.
+
+        **Deciding an appeal needs one.** `check_decider` used to permit a decider with no
+        person record on the grounds that such an identity "is not the subject by definition",
+        which is false for the coach who is also a member with a strike -- and both layers of
+        the separation of duties then failed on the same missing `ppl_identity_links` row
+        rather than independently. So a decider has to be somebody, and this is what makes the
+        owner into one.
+        """
+        decider = self.person(tenant_id, name="Duty Manager")
+        linked = self.client.post(
+            f"/people/{decider}/identity-links",
+            json={"identity_id": self.owner_identity(tenant_id),
+                  **self.correlation()}, headers=self.headers(tenant_id))
+        self.assertEqual(linked.status_code, 201, linked.text)
+        return decider
+
+    def settled_no_show(self, gym: dict[str, Any], person_id: str) -> dict[str, Any]:
+        """A real no-show record, produced by the real settlement path."""
+        from app.booking import service as booking_service
+        booking_id = self.booked(gym, person_id)
+        session = self.client.get(f"/booking/bookings/{booking_id}",
+                                  headers=self.headers(gym["tenant_id"])).json()
+        ends_at = datetime.fromisoformat(session["session"]["ends_at"])
+        result = booking_service.settle_session_bookings(
+            self._tenant_pool, gym["tenant_id"], gym["session_id"],
+            actor_id="33333333-3333-4333-8333-333333333333",
+            correlation_id=str(uuid.uuid4()),
+            at=ends_at + timedelta(hours=2))
+        self.assertEqual(result["settled"], 1, result)
+        detail = self.client.get(f"/booking/bookings/{booking_id}",
+                                 headers=self.headers(gym["tenant_id"])).json()
+        self.assertEqual(detail["state"], "no_show", detail)
+        return {"booking_id": booking_id, "no_show": detail["no_show"]}
+
 
 class BookingTests(BookingApiTestCase):
     """OPS-02-R01, and paragraph 4142's atomic reservation."""
@@ -801,42 +837,6 @@ class ReviewRegressionApiTests(BookingApiTestCase):
     *afterwards* -- the appeal, its idempotency, its remedy -- goes over HTTP.
     """
 
-    def linked_decider(self, tenant_id: str) -> str:
-        """The owner identity, linked to a person record of its own.
-
-        **Deciding an appeal needs one.** `check_decider` used to permit a decider with no
-        person record on the grounds that such an identity "is not the subject by definition",
-        which is false for the coach who is also a member with a strike -- and both layers of
-        the separation of duties then failed on the same missing `ppl_identity_links` row
-        rather than independently. So a decider has to be somebody, and this is what makes the
-        owner into one.
-        """
-        decider = self.person(tenant_id, name="Duty Manager")
-        linked = self.client.post(
-            f"/people/{decider}/identity-links",
-            json={"identity_id": self.owner_identity(tenant_id),
-                  **self.correlation()}, headers=self.headers(tenant_id))
-        self.assertEqual(linked.status_code, 201, linked.text)
-        return decider
-
-    def settled_no_show(self, gym: dict[str, Any], person_id: str) -> dict[str, Any]:
-        """A real no-show record, produced by the real settlement path."""
-        from app.booking import service as booking_service
-        booking_id = self.booked(gym, person_id)
-        session = self.client.get(f"/booking/bookings/{booking_id}",
-                                  headers=self.headers(gym["tenant_id"])).json()
-        ends_at = datetime.fromisoformat(session["session"]["ends_at"])
-        result = booking_service.settle_session_bookings(
-            self._tenant_pool, gym["tenant_id"], gym["session_id"],
-            actor_id="33333333-3333-4333-8333-333333333333",
-            correlation_id=str(uuid.uuid4()),
-            at=ends_at + timedelta(hours=2))
-        self.assertEqual(result["settled"], 1, result)
-        detail = self.client.get(f"/booking/bookings/{booking_id}",
-                                 headers=self.headers(gym["tenant_id"])).json()
-        self.assertEqual(detail["state"], "no_show", detail)
-        return {"booking_id": booking_id, "no_show": detail["no_show"]}
-
     # ------------------------------------------- a class the gym cancelled
 
     def test_a_cancelled_session_releases_its_bookings_rather_than_blaming_anybody(self):
@@ -1279,3 +1279,79 @@ class SuspensionTests(BookingApiTestCase, CommercialApiTestCase):
             params={"person_id": person_id, "policy_key": gym["policy_key"]},
             headers=self.headers(tenant_id))
         self.assertEqual(read.json()["reason"], "suspended", read.text)
+
+
+
+class RosterContextTests(BookingApiTestCase):
+    """FD-06 draws a prior-no-show count beside each name, and the canvas says what it is for.
+
+    > "Hala's two prior no-shows are shown without judgement -- it is context for the coach,
+    > not a flag on her."
+
+    `settled_no_show` produces one through the real settlement path -- a hand-written row
+    would be testing a record this module cannot actually write. **It moved to the base class
+    for this**, because subclassing the review tests to borrow a fixture helper re-runs all
+    fifteen of them under a second name.
+
+    Two properties matter and only one is obvious. The count has to be the **same** figure
+    `consequence` is given when it decides a sanction, or a roster and a strike disagree
+    about how many there were; and it has to come back for the whole roster in one query,
+    because eighteen rows asking separately is the round-trip problem the staff list paid
+    for once.
+    """
+
+    def test_the_roster_carries_each_member_s_prior_no_shows(self):
+        gym = self.gym(capacity=5, warn_after_no_shows=5, strike_after_no_shows=9)
+        person_id = self.person(gym["tenant_id"])
+        for session_id in gym["sessions"][1:3]:
+            self.settled_no_show(dict(gym, session_id=session_id), person_id)
+
+        self.booked(gym, person_id)
+        roster = self.client.get(
+            f"/booking/sessions/{gym['session_id']}/roster",
+            headers=self.headers(gym["tenant_id"])).json()
+        row = next(b for b in roster["bookings"] if b["person_id"] == person_id)
+        self.assertEqual(row["prior_no_shows"], 2, roster)
+
+    def test_a_member_with_none_reads_nought_rather_than_being_absent(self):
+        """An absent field reads as "no data" and a surface would render a blank cell, which
+        is the one reading that is always wrong about a count."""
+        gym = self.gym(capacity=5)
+        person_id = self.person(gym["tenant_id"])
+        self.booked(gym, person_id)
+        roster = self.client.get(
+            f"/booking/sessions/{gym['session_id']}/roster",
+            headers=self.headers(gym["tenant_id"])).json()
+        self.assertEqual(roster["bookings"][0]["prior_no_shows"], 0, roster)
+
+    def test_an_overturned_no_show_stops_counting(self):
+        """**The same predicate the sanction uses.** An upheld appeal sets `overturned_at`,
+        which takes the record out of the count without unsaying that they missed the class
+        -- so a roster that counted it would show a coach a figure the module has already
+        decided against.
+        """
+        gym = self.gym(capacity=5, warn_after_no_shows=1, strike_after_no_shows=1)
+        owner = self.headers(gym["tenant_id"])
+        person_id = self.person(gym["tenant_id"])
+        self.linked_decider(gym["tenant_id"])
+        settled = self.settled_no_show(gym, person_id)
+
+        raised = self.client.post("/booking/appeals", json={
+            "subject_person_id": person_id, "against": "strike",
+            "grounds": "She was in the building; the reader was down.",
+            "no_show_id": settled["no_show"]["no_show_id"],
+            "idempotency_key": str(uuid.uuid4()), **self.correlation()}, headers=owner)
+        self.assertEqual(raised.status_code, 201, raised.text)
+        decided = self.client.post(
+            f"/booking/appeals/{raised.json()['appeal_id']}/decide",
+            json={"uphold": True, "note": "Confirmed by the door log.",
+                  **self.correlation()}, headers=owner)
+        self.assertEqual(decided.status_code, 200, decided.text)
+
+        later = dict(gym, session_id=gym["sessions"][3])
+        self.booked(later, person_id, session_id=later["session_id"])
+        roster = self.client.get(
+            f"/booking/sessions/{later['session_id']}/roster",
+            headers=self.headers(gym["tenant_id"])).json()
+        row = next(b for b in roster["bookings"] if b["person_id"] == person_id)
+        self.assertEqual(row["prior_no_shows"], 0, roster)

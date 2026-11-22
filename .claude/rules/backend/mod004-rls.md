@@ -1346,3 +1346,74 @@ anchored on the file's last `];` deleted every line after the mutation array -- 
 report and the exit code -- and the sweep then exited 0 with no output, which reads exactly
 like "nothing to do". The tell was an empty log from a command that always prints; `wc -l`
 before and after would have caught it in a second. Anchor on the *array's* end, not the file's.
+
+
+**A class name that styles nothing is invisible to every layer that is not a screenshot.**
+`ds-card` appeared in `globals.css` exactly once, inside a `prefers-reduced-motion` block,
+and nowhere as a definition -- so two screens asked for a card and rendered a loose stack of
+text. The text is identical, the structure is identical, axe has nothing to say, and the
+phone sweep measures overflow a missing border does not cause. A sweep for `ds-` classes the
+stylesheet does not define found three more: a spinner with no animation, the field shell's
+contextual-action slot, and the data grid's own wrapper. **A design system's prefix is a
+promise that the component exists**, so an undefined one is a component the app thinks it has.
+
+**A density rule scoped to `:root` can only ever be set on `<html>`.** The generated token
+file learned this once -- a screen setting its own density on a wrapper read as the default
+and rendered at the wrong row height, found by measuring -- and the 44px touch floor was left
+behind in `globals.css`, which matters more: on Touch and Spacious that height is "the minimum
+target, not a style". **And the browser test that looks like its proof is not.** The control
+it measures is `size="lg"`, which `BUTTON_HEIGHT` makes 44px on its own, so the measurement
+stays green whichever selector is live -- the mutation sweep said so by coming back uncaught,
+which was the right answer and not a gap. The property is structural and the assertion that
+proves it is structural.
+
+**A mutation sweep with no runner for a test layer reports that layer's protections as gaps.**
+`mutate.mjs` had `vitest` and `playwright` and nothing for `tests/unit/`, which runs on Node's
+own test runner -- so a mutation pointed at one of its eighty-eight assertions came back
+UNCAUGHT, because `vitest` does not collect those files and reported no failure rather than no
+test. **And Node's runner cannot be asked whether its name pattern matched**: with a pattern
+that matches nothing it still runs every file, filters every test out of each, and reports
+`pass 9, fail 0`. So a stale grep there is indistinguishable from a real pass by the exit code
+and from a real gap by the output. The guard is the same static check the mutation text already
+gets -- the pattern has to occur in the test sources -- and it was proved by pointing one at a
+name that does not exist and watching it report NOT RUN.
+
+**A browser test that spends a one-way product state is green on a fresh fixture and red on
+the second run**, which this file already records three times. FD-06's check-in is one-way by
+design -- there is no un-check-in -- and the natural fix, having the test provision its own
+member, is refused: `people.person.write` is financial class and a browser session at AAL 1
+cannot reach it. So the fixture seeds ten members on that class and the suite spends one a
+run, and every assertion is about *a* row the module would still accept rather than a named
+one. **The rule generalises past budgets: when a test consumes state and cannot create it,
+the fixture owes it enough for the number of consecutive runs the suite is expected to
+survive** -- and the only way to know it does is to run it that many times.
+
+**A backend started before a route existed serves a 404 the surface renders as a permission
+problem.** `serve.mjs` prints the commit it started from and says a later route is not served
+until it restarts, and that was paid three times in one session: the batched-names read came
+back 404, the page's `catch` swallowed it, every row read "withheld", and the screen spent an
+afternoon claiming a mask that was not there. The fix is both halves -- restart the backend
+after adding a route, and make the surface say which of the two it is, because "we could not
+ask" and "you may not see it" have different remedies and only one of them is about the
+reader.
+
+
+**A leftover mutation inside a file you also edited is invisible to "which files changed".**
+This file already says to read the diff after an interrupted sweep, and that was done -- the
+file list came back as nothing but files this session had touched, which is what the rule
+says to look for, and the check passed. The mutation was in one of them: a stopped sweep had
+left `{text("roster.capacityIsElsewhere")}` replaced with `{""}` in a page whose panel header
+had been legitimately changed an hour earlier, so the file was expected in the list and the
+hunk was never read. It surfaced forty minutes later as one browser test failing on a
+sentence nobody had touched.
+
+So the check is the **hunks**, not the names: `git diff | grep -E '^-[^-]'` over every
+modified source, and every removed line has to be one you meant to remove. A mutation
+replaces, so it always removes something; a mutation whose replacement is the empty string
+removes a line and adds a blank one, which is why searching the tree for the mutated *text*
+cannot find it either.
+
+**And stopping a sweep through the agent harness does not run its signal handlers**, which
+this file records -- here the stop came from `TaskStop`, so the `finally` never ran. The way
+to not need the check is to not start one you intend to stop: an inspection script that
+`import`s the sweep module *executes it*, because the mutation loop is top-level code.
