@@ -119,8 +119,23 @@ test("a grid under a heading points at it rather than repeating it", () => {
   // said twice**: invisible to a sighted reader, heard in full by a screen-reader user. The
   // hand-rolled tables all used `aria-labelledby` for exactly that reason, and the first
   // DataGrid migration dropped it on eight grids at once -- one e2e test caught one of them.
+  // **Per grid, not per file.** The first version asked whether the *file* contained a
+  // `labelledBy=` anywhere, so a page with three grids passed when one of them lost its
+  // label -- which is exactly `/permissions`, and exactly what a mutation removing one
+  // found: the sweep stayed green while the gate table named itself twice.
+  //
+  // **Counted rather than parsed**, because a `<DataGrid<SourceRow>` opening tag is a
+  // TypeScript generic and `[^>]*>` stops at the generic's own `>` -- which reported a
+  // correctly-labelled grid as an offender, a false finding from the check rather than from
+  // the app. `labelledBy` is a prop of `DataGrid` and `CapabilityMatrix` and nothing else,
+  // so the two counts have to agree.
   const offenders = files
-    .filter((f) => f.text.includes("<DataGrid") && !f.text.includes("labelledBy="))
+    .filter((f) => {
+      const grids = (f.text.match(/<DataGrid\b/g) ?? []).length
+        + (f.text.match(/<CapabilityMatrix\b/g) ?? []).length;
+      const labelled = (f.text.match(/labelledBy=/g) ?? []).length;
+      return grids > labelled;
+    })
     .map((f) => f.path);
   assert.deepEqual(
     offenders,

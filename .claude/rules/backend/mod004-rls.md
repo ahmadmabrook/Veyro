@@ -1417,3 +1417,24 @@ cannot find it either.
 this file records -- here the stop came from `TaskStop`, so the `finally` never ran. The way
 to not need the check is to not start one you intend to stop: an inspection script that
 `import`s the sweep module *executes it*, because the mutation loop is top-level code.
+
+
+**Seventeen stale anchors in one sweep, and three of them were hiding something.** A
+repointing pass is bookkeeping right up until it is not. `gate-order` was aiming at
+`gateVerdict` in `@/lib/api` while the cell it asserts is rendered by `describeGate` on
+`/permissions`, which keeps its own short words -- so a live protection read as a gap.
+`table-name`'s protection had **changed layers**: the hand-rolled table became a `DataGrid`,
+which renders its own caption, so dropping `labelledBy` no longer removes the accessible
+name -- it restores the duplication the prop exists to prevent, which a browser test cannot
+see and a usage sweep can. And tightening that sweep from per-file to per-grid exposed its
+own hole: it asked whether a *file* contained `labelledBy=` anywhere, so a page with three
+grids passed with one of them unlabelled.
+
+**The repointed check then produced a false finding of its own**, which is the other half of
+the lesson. `/<DataGrid\b[^>]*>/` looks like it matches an opening tag and stops at the first
+`>` -- which for `<DataGrid<SourceRow>` is the *generic's*, so a correctly-labelled grid was
+reported as an offender. Counting `<DataGrid` against `labelledBy=` is exact here and parsing
+was not. **A check that reports a defect the app does not have costs the same trust as one
+that misses a defect it does**, and the only way to tell them apart is to go and look at the
+thing it named.
+

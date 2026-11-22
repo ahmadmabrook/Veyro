@@ -142,26 +142,40 @@ const MUTATIONS = [
   {
     id: "gate-order",
     why: "an unreachable assurance level must not be offered as a step-up",
-    file: "src/app/page.tsx",
-    from: '  if (answer.allowed) return "gate.allowed";\n  if (!answer.reachable) return "gate.unreachable";\n  if (answer.step_up_required) return "gate.stepUp";',
-    to: '  if (answer.allowed) return "gate.allowed";\n  if (answer.step_up_required) return "gate.stepUp";\n  if (!answer.reachable) return "gate.unreachable";',
+    // **Repointed: the matrix moved to `/permissions` and kept its own short words.**
+    // `describeGate` is the one that renders this cell -- `gateVerdict` in `@/lib/api`
+    // answers the page-level banners -- and the order is load-bearing in both: an
+    // insufficient assurance always sets `step_up_required`, and `reachable` is what tells
+    // a level nobody can reach from one a stronger sign-in opens. Aiming at `api.ts`
+    // reported this as a gap, which is the tell: a mutation whose test asserts the rendered
+    // half while the mutation edits the other half.
+    file: "src/app/permissions/page.tsx",
+    from: '  if (!answer.reachable) return "gate.unreachable";\n  if (answer.step_up_required) return "gate.stepUp";',
+    to: '  if (answer.step_up_required) return "gate.stepUp";\n  if (!answer.reachable) return "gate.unreachable";',
     grep: "says it is unavailable",
   },
   {
     id: "bidi-isolation",
     why: "a Latin identifier inside Arabic text must carry its own direction",
-    file: "src/app/page.tsx",
-    from: '                  <span className="data" dir="ltr">',
-    to: '                  <span className="data">',
+    // Repointed: the gate table moved to `/permissions` with the design migration.
+    file: "src/app/permissions/page.tsx",
+    from: '              render: (answer) => <span className="data" dir="ltr">{answer.action}</span>,',
+    to: '              render: (answer) => <span className="data">{answer.action}</span>,',
     grep: "renders left-to-right",
   },
   {
     id: "table-name",
     why: "the permissions table must have an accessible name",
-    file: "src/app/page.tsx",
-    from: '          tabIndex={0}\n          aria-labelledby="permissions-heading"',
-    to: "          tabIndex={0}\n",
-    grep: "has an accessible name",
+    // **Repointed, and the protection moved layers with it.** The hand-rolled table became
+    // a `DataGrid`, which renders its own visually-hidden caption -- so dropping
+    // `labelledBy` no longer removes the name, it restores the duplication the prop exists
+    // to prevent: the heading said twice, invisible to a sighted reader and heard in full
+    // by a screen-reader user. What catches it is the usage sweep rather than the browser.
+    file: "src/app/permissions/page.tsx",
+    from: '          labelledBy="gate-heading"',
+    to: "",
+    runner: "node",
+    grep: "points at it rather than repeating it",
   },
   {
     id: "dark-focus-ring",
@@ -210,7 +224,8 @@ const MUTATIONS = [
     id: "access-gaps-hidden",
     why: "a zone must say what it cannot do rather than reading as fully capable",
     file: "src/app/access/[zoneId]/page.tsx",
-    from: "        {zone.access_gaps.length > 0 ? (",
+    // Repointed: the anchor went stale when the code around it moved.
+    from: "      {zone.access_gaps.length > 0 ? (",
     to: "        {false ? (",
     grep: "names what the zone cannot do",
   },
@@ -254,7 +269,8 @@ const MUTATIONS = [
     id: "nav-gate",
     why: "a navigation entry must be present exactly when following it would work",
     file: "src/app/layout.tsx",
-    from: "{ href: \"/organization\", label: \"nav.organization\", allowed: organization.allowed },",
+    // Repointed: the anchor went stale when the code around it moved.
+    from: "{ href: \"/organization\", label: \"nav.organization\", allowed: organization.allowed,",
     to: "{ href: \"/organization\", label: \"nav.organization\", allowed: true },",
     grep: "gets no navigation entry",
   },
@@ -270,7 +286,8 @@ const MUTATIONS = [
     id: "org-identifier-dir",
     why: "an IANA zone inside Arabic text reads as a different zone without dir=ltr",
     file: "src/app/organization/page.tsx",
-    from: "                        <span className=\"data\" dir=\"ltr\">\n                          {location.timezone}",
+    // Repointed: the anchor went stale when the code around it moved.
+    from: "                      <span className=\"data\" dir=\"ltr\">{location.timezone}</span>",
     to: "                        <span className=\"data\">\n                          {location.timezone}",
     grep: "keeps the identifiers left-to-right",
   },
@@ -296,8 +313,9 @@ const MUTATIONS = [
     why: "a health field needs AAL 3, which nothing in this build reaches, so offering a "
       + "step-up would send somebody looking for a key the product cannot check",
     file: "src/app/people/[personId]/page.tsx",
-    from: "                      ? \"member.withheldHealth\"\n                      : \"member.withheldIdentity\"",
-    to: "                      ? \"member.withheldIdentity\"\n                      : \"member.withheldIdentity\"",
+    // Repointed: the anchor went stale when the code around it moved.
+    from: "                        ? \"member.withheldHealth\"\n                        : \"member.withheldIdentity\"",
+    to: "                        ? \"member.withheldIdentity\"\n                        : \"member.withheldIdentity\"",
     grep: "cannot be read by anybody",
   },
   {
@@ -321,7 +339,8 @@ const MUTATIONS = [
     id: "dedup-score-alone",
     why: "a duplicate score with no signals behind it is not something to destroy a record on",
     file: "src/app/people/page.tsx",
-    from: "                    {candidate.signals.join(\", \")}",
+    // Repointed: the anchor went stale when the code around it moved.
+    from: "                render: (candidate) => candidate.signals.join(\", \"),",
     to: "                    {\"\"}",
     grep: "score and the signals behind it",
   },
@@ -392,8 +411,9 @@ const MUTATIONS = [
     why: "a permission name is an identifier, and the bidi algorithm reorders it inside an "
       + "Arabic page into a different string",
     file: "src/app/permissions/page.tsx",
-    from: "                        <span className=\"data\" dir=\"ltr\">\n                          {entry.action}",
-    to: "                        <span className=\"data\">\n                          {entry.action}",
+    // Repointed: the anchor went stale when the code around it moved.
+    from: "                      <span className=\"data\" dir=\"ltr\">{entry.action}</span>",
+    to: "                      <span className=\"data\">{entry.action}</span>",
     grep: "left-to-right inside an Arabic document",
   },
   {
@@ -541,8 +561,9 @@ const MUTATIONS = [
       + "reader who takes 'this projection does not read it' for 'the product does not have "
       + "it' has been told the wrong thing about their own build",
     file: "src/app/people/[personId]/page.tsx",
-    from: "          {text(\"member.unavailableWhy\")}",
-    to: "          {\"\"}",
+    // Repointed: the anchor went stale when the code around it moved.
+    from: "            <p className=\"muted\" style={{ margin: 0 }}>{text(\"member.unavailableWhy\")}</p>",
+    to: "            <p className=\"muted\" style={{ margin: 0 }}>{\"\"}</p>",
     grep: "does not call a module that exists one that was never built",
   },
   {
@@ -550,8 +571,12 @@ const MUTATIONS = [
     why: "a bare number after a timestamp reads as part of it, and the count is the only "
       + "thing on that line which is not a time",
     file: "src/app/fleet/page.tsx",
-    from: "          {text(\"fleet.counted\")}",
-    to: "          {\"\"}",
+    // Repointed, and **the occurrence matters**: `fleet.counted` is on this page twice and
+    // the footer's is the one the test reads, because the header's count has its own label
+    // beside it. An anchor that matched both was reported as ambiguous rather than run,
+    // which is the harness refusing to guess.
+    from: "          <span className=\"data\">{formatInteger(fleet.count, \"latn\")}</span>{\" \"}\n          {text(\"fleet.counted\")}",
+    to: "          <span className=\"data\">{formatInteger(fleet.count, \"latn\")}</span>{\" \"}\n          {\"\"}",
     grep: "labels the count and the clock",
   },
   {
@@ -604,8 +629,11 @@ const MUTATIONS = [
       + "contributed to the document's scrollable area until `contain: layout` bounded it, "
       + "which is the one of the three containments that does not clip the focus ring",
     file: "src/app/globals.css",
-    from: "  contain: layout;",
-    to: "  /* contain: layout -- removed by the sweep */",
+    // Repointed: `contain: layout` is on two boxes now -- the matrix's scroll wrapper and
+    // the week grid's, which learned the same lesson later. The anchor carries the line
+    // after it so it names the matrix's.
+    from: "  contain: layout;\n  border: 1px solid var(--color-border-default);",
+    to: "  border: 1px solid var(--color-border-default);",
     grep: "the permissions page does not scroll sideways",
   },
   {
@@ -635,8 +663,9 @@ const MUTATIONS = [
     why: "an unset key reads back as its own default, which is indistinguishable from a "
       + "tenant that published the same value unless the scope is rendered",
     file: "src/app/configuration/page.tsx",
-    from: "        {isUnset(resolved) ? (",
-    to: "        {false ? (",
+    // Repointed: the anchor went stale when the code around it moved.
+    from: "                    return isUnset(entry) ? (",
+    to: "                    return false ? (",
     grep: "says nobody set the key nobody set",
   },
   {
@@ -644,8 +673,9 @@ const MUTATIONS = [
     why: "`off` could be a kill switch, a flag nobody enabled, or a rule that sent this "
       + "subject to the control arm, and an operator in an incident needs to know which",
     file: "src/app/configuration/page.tsx",
-    from: "      <td style={cell}>{text(label[reason])}</td>",
-    to: "      <td style={cell}>{\"\"}</td>",
+    // Repointed: the anchor went stale when the code around it moved.
+    from: "                  render: ([, decision]) => text(FLAG_REASON[flagReason(decision)]),",
+    to: "                  render: () => \"\",",
     grep: "says why a flag is off",
   },
   {
@@ -805,8 +835,9 @@ const MUTATIONS = [
       + "install carrying traffic without its obligations while the row said they did not "
       + "apply",
     file: "src/app/integrations/page.tsx",
-    from: "                        {!obligationsApply(install) ? (",
-    to: '                        {install.criticality !== "live_critical" ? (',
+    // Repointed: the anchor went stale when the code around it moved.
+    from: "                    return !obligationsApply(install) ? (",
+    to: '                    return install.criticality !== "live_critical" ? (',
     grep: "names the critical install missing a written obligation",
   },
   {
@@ -993,8 +1024,9 @@ const MUTATIONS = [
     why: "a retired account stays on the trial balance because a retired account with a "
       + "balance is the row somebody needs to notice -- unmarked, it reads as a live one",
     file: "src/app/finance/page.tsx",
-    from: '                            : ` · ${text("finance.retired")}`}',
-    to: "                            : ``}",
+    // Repointed: the anchor went stale when the code around it moved.
+    from: '                          {line.status === "active" ? "" : ` · ${text("finance.retired")}`}',
+    to: '                          {line.status === "active" ? "" : ``}',
     grep: "marks a retired account",
   },
   {
@@ -1021,7 +1053,8 @@ const MUTATIONS = [
       + "MOD-017, and 'this member has no invoices' is a different fact from 'you may not "
       + "see them'",
     file: "src/components/membership-panels.tsx",
-    from: "  if (allowed) return <>{children}</>;",
+    // Repointed: the anchor went stale when the code around it moved.
+    from: "  if (answer.allowed) return <>{children}</>;",
     to: "  if (true) return <>{children}</>;",
     grep: "is told each block is refused",
   },
