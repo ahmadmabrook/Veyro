@@ -98,6 +98,13 @@ export function Button({
     blockSize: `${height}px`,
     paddingInline: size === "sm" ? "var(--space-2)" : "var(--space-3)",
     borderRadius: "var(--radius-button)",
+    // **An anchor, so the browser underlines it unless something says not to.** `href`
+    // renders a real `<a>` — the source forbids a link styled as a button *and the inverse*,
+    // and the global `a` rule sets only the colour — so every non-link variant with an
+    // `href` has rendered underlined since this component existed: a primary button with a
+    // line under its label, which is a button that looks like a link. `link` declares its
+    // own underline below and `VARIANT` is spread after this, so it still gets one.
+    textDecoration: "none",
     fontSize: size === "sm" ? "var(--type-label-size)" : "var(--type-label-size)",
     fontWeight: "var(--type-label-weight)",
     letterSpacing: "var(--type-label-tracking)",

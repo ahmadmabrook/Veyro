@@ -39,6 +39,10 @@ const surfaces: [string, string][] = [
   ["a zone", `/access/${creds.zoneId}`],
   ["the permissions page", "/permissions"],
   ["the people list", "/people"],
+  // ADM-MEM-10's form. A fixed `max-inline-size` on a form is the shape that looks
+  // safe at 1440 and clips at 375, and the interruption panel under the phone field
+  // carries two controls on one row.
+  ["the walk-in form", "/members/new"],
   ["a member", `/people/${creds.personId}`],
   // Twelve bars in a flex row: the one chart here whose width is a count rather than a
   // layout, so it is the one most likely to push a phone sideways.

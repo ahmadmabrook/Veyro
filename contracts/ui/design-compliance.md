@@ -295,7 +295,8 @@ corresponds to them. The others map loosely:
 | Existing | Nearest design | Fidelity |
 | --- | --- | --- |
 | `/` | ADM-CC-01…05 Command Center | **built from the canvas** |
-| `/members` | ADM-MEM-05 Members list | **built from the canvas**; its three absent columns and six absent controls are named on the screen |
+| `/members` | ADM-MEM-05 Members list | **built from the canvas**; its three absent columns and six absent controls are named on the screen, and its "Add member" button — specified, absent, and absent from the gap list too — now leads to ADM-MEM-10 |
+| `/members/new` | ADM-MEM-10 Add member · manual | **built from the canvas, over a read that did not exist** — `find_duplicates` scores pairs that already exist, so the moment a duplicate is cheap to prevent had nothing to ask; the sale sheet, the emergency contact and the waiver are named as absent |
 | `/people/{id}` | ADM-MEM-01/02 Member 360 | **rebuilt to the canvas** — pattern 02, the status band, five MetricCells, the tabs, the timeline spine |
 | `/people/{id}?tab=billing` | ADM-MEM-06 Member · billing tab | **built** — the membership, the entitlements and the invoices composed from MOD-017 through three gates, each refusing separately |
 | `/people/{id}?tab=membership` (freeze) | ADM-MSH-03 Membership · freeze | **built from the canvas, and the first stepped-up write form in this app** — the allowance reads routine, the act offers the step-up with `next` back here; the override at the limit and the thirty-second undo are named as absent |

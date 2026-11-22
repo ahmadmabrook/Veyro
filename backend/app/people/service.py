@@ -146,6 +146,132 @@ def normalize_contact(kind: str, raw: str) -> str:
 
 # ------------------------------------------------------------------------------ people
 
+#: How many holders of one contact value a single read may return.
+#:
+#: Small on purpose. An exact normalized match on a phone number is one person, or a handful
+#: on a shared family line; a ceiling in the hundreds would make this a way to enumerate a
+#: tenant's members one value at a time rather than a duplicate check. The caller may ask for
+#: less and not for more, which is every other listing read in this build.
+CONTACT_MATCH_PAGE = 10
+
+
+def match_contact(
+    pool: Pool, tenant_id: str, *, kind: str, value: str,
+    masked_fields: tuple[str, ...], held_permissions: set[str], limit: int = 5,
+) -> dict[str, Any]:
+    """Who already holds this contact point, asked before anybody is created.
+
+    **ADM-MEM-10 runs this as the phone is typed, before anything is saved**: "This number
+    already has a record -- Hala Barakat, joined Feb 2025. Continue and you will create a
+    second record for the same person." The canvas's own note says why it is a read rather
+    than a cleanup: "preventing the duplicate costs one screen; ADM-MEM-11 exists because
+    prevention is never perfect."
+
+    **`find_duplicates` could not answer this.** It scores *pairs that already exist* -- both
+    sides have to be rows in the table -- so the one moment where a duplicate is cheap to
+    prevent, the moment before the second record exists, had nothing to ask. This is that
+    read, and it is the eighth instance of this build's "a writer with no reader" shape read
+    from the other end: the index it uses, `ppl_contact_points_by_value`, has existed since
+    MOD-014 was built with its own comment saying "finding everybody who shares an address is
+    how `find_duplicates` works", and no route could ask it a value.
+
+    **Normalized by the write's own function.** `normalize_contact` is MOD-007's normalizer
+    imported rather than reimplemented, and it is what `create_person` stores; a second
+    spelling rule here would make a duplicate invisible to exactly this check, which is
+    MOD-011's review finding where a limiter lowercased and `normalize_phone` strips
+    separators, so eight spellings of one number each got a full budget.
+
+    **Masked like every other read in this module**, both halves as required arguments. The
+    name is the point of the banner -- a desk cannot recognise a person from a uuid -- and it
+    is `identity` class, so a routine AAL-1 session sees the withheld marker and the rest of
+    the row, which is still enough to say "somebody already has this number". This adds no
+    capability: the same permission already reads any person by id and lists every member.
+
+    **Active records only, which is what makes the answer actionable.** A merge leaves the
+    losing person's contact points where they are -- "a merge copies and nothing cleans up" --
+    so one number can sit on two rows, and offering the merged-away one would point a desk at
+    a record whose own readers are told to follow a pointer. `merge_status = 'active'` is the
+    survivor, which is the record somebody would open.
+    """
+    normalized = normalize_contact(kind, value)
+    if not normalized:
+        raise InvalidRequest("a_contact_value_is_not_blank")
+    if limit < 1 or limit > CONTACT_MATCH_PAGE:
+        raise InvalidRequest("bad_limit")
+    readable = visibility.readable_classes(frozenset(held_permissions))
+    masks = _masks(masked_fields, readable)
+    with tenant_scope(pool, tenant_id) as conn:
+        # **One row per person, oldest first, bounded.** `DISTINCT ON` collapses a person who
+        # holds the same value twice -- two contact rows of one kind are forbidden per person
+        # by `ppl_contact_points_distinct`, so this is the cross-kind and primary-flag case --
+        # and the outer order is by when the record was known, because the oldest is the one a
+        # second entry would be duplicating. Unordered would make the planner the author, which
+        # is MOD-018's `chart_for` finding; unbounded would be a bulk read on a routine
+        # permission. One extra row is fetched so `more` is a fact rather than an inference.
+        rows = conn.execute(
+            "SELECT * FROM ("
+            "  SELECT DISTINCT ON (p.person_id)"
+            "    p.person_id, p.legal_name, p.preferred_name, p.created_at,"
+            "    m.lifecycle_state, m.member_number, m.joined_on, c.is_primary"
+            "    FROM plt01.ppl_contact_points c"
+            "    JOIN plt01.ppl_persons p ON p.person_id = c.person_id"
+            "    LEFT JOIN plt01.ppl_member_profiles m ON m.person_id = c.person_id"
+            "   WHERE c.kind = %s AND c.value_normalized = %s"
+            "     AND p.merge_status = 'active'"
+            "   ORDER BY p.person_id, c.is_primary DESC"
+            ") q"
+            " ORDER BY coalesce(q.joined_on, q.created_at::date), q.person_id"
+            " LIMIT %s",
+            (kind, normalized, limit + 1),
+        ).fetchall()
+    more = len(rows) > limit
+    rows = rows[:limit]
+    people = [
+        visibility.apply_record(
+            {
+                "person_id": str(r[0]),
+                "legal_name": r[1],
+                "preferred_name": r[2],
+                "known_since": r[3].date().isoformat(),
+                "lifecycle_state": r[4],
+                "member_number": r[5],
+                "joined_on": r[6].isoformat() if r[6] else None,
+                "is_primary": bool(r[7]),
+            },
+            masks,
+        )
+        for r in rows
+    ]
+    return {
+        "kind": kind,
+        "matches": people,
+        "count": len(people),
+        #: True when the bound was reached, so a surface says "and others" rather than
+        #: implying the list is everybody who holds this number.
+        "more": more,
+        "limit": limit,
+        "masked_fields": list(masks),
+        #: Named rather than omitted, because the canvas's banner reads "Hala Barakat . Club .
+        #: Sweifieh . joined Feb 2025" and two of those four are other modules' or nobody's.
+        "fields_this_module_cannot_answer": {
+            "plan": "membership.record.read (MOD-017)",
+            "club": "no home-club concept exists in this build",
+        },
+        #: An exact match is one signal, not the judgement.
+        "a_match_is_not_a_duplicate_verdict": (
+            "this is the same normalized contact point, which is one of `dedup.WEIGHTS`' "
+            "signals rather than the whole score. A second record for one person is sometimes "
+            "right -- a shared family phone is the ordinary case -- so this says who already "
+            "holds it and leaves the decision to the person typing, which is paragraph "
+            "10200's requirement that a human decides"),
+        #: And it is deliberately not a search.
+        "this_is_an_exact_match_and_not_a_search": (
+            "the value is normalized and compared for equality, so a mistyped digit finds "
+            "nothing. There is no fuzzy match here for `dedup`'s own reason: an edit distance "
+            "produces a confident wrong answer on two siblings at one address"),
+    }
+
+
 def create_person(
     pool: Pool, tenant_id: str, *, legal_name: str, actor_id: str, correlation_id: str,
     preferred_name: str | None = None, date_of_birth: date | None = None,

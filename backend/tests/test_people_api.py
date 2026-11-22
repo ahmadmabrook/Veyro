@@ -604,3 +604,142 @@ class MembersSubLineTests(PeopleApiTestCase):
         self.assertEqual(read["matching"], 1)
         self.assertEqual(read["by_state"].get("active"), 1)
         self.assertEqual(read["by_state"].get("lead"), 1)
+
+
+class ContactMatchTests(PeopleApiTestCase):
+    """ADM-MEM-10's live duplicate check: who already holds this number, before anybody is
+    created.
+
+    **The read that `find_duplicates` could not be.** That one scores *pairs that already
+    exist*, so the moment a duplicate is cheapest to prevent -- before the second record is
+    written -- had nothing to ask. The index it uses has been in the schema since MOD-014
+    with its own comment about finding everybody who shares a value, and no route could pass
+    it one.
+
+    Two directions a check like this goes wrong, and a test for each: it misses a duplicate
+    that is spelled differently, and it offers a record nobody should be sent to.
+    """
+
+    def walk_in(self, tenant_id: str, name: str, phone: str) -> str:
+        created = self.client.post("/people", json={
+            "legal_name": name, "date_of_birth": "1990-04-02",
+            "contacts": [{"kind": "phone", "value": phone, "is_primary": True}],
+            **self.correlation()}, headers=self.headers(tenant_id))
+        self.assertEqual(created.status_code, 201, created.text)
+        return str(created.json()["person_id"])
+
+    def match(self, tenant_id: str, phone: str, head: dict[str, str] | None = None) -> dict:
+        read = self.client.get(
+            f"/people/contact-match?kind=phone&value={phone.replace('+', '%2B')}",
+            headers=head if head is not None else self.headers(tenant_id))
+        self.assertEqual(read.status_code, 200, read.text)
+        return read.json()
+
+    def test_a_number_already_on_a_record_comes_back_with_who_holds_it(self):
+        tenant_id = self.tenant()
+        person_id = self.walk_in(tenant_id, "Hala Barakat", "+962790001111")
+
+        found = self.match(tenant_id, "+962790001111")
+        self.assertEqual(found["count"], 1, found)
+        self.assertEqual(found["matches"][0]["person_id"], person_id)
+        self.assertEqual(found["matches"][0]["legal_name"], "Hala Barakat")
+
+    def test_a_different_spelling_of_the_same_number_still_matches(self):
+        """**The defect this is written against.** `normalize_phone` strips separators from
+        anywhere in the string, and a check that compared the raw value would miss every
+        spelling but the one that was typed first -- which is the whole failure mode, since a
+        desk types a number the way the member says it. MOD-011's review found exactly this
+        shape in a limiter that lowercased instead.
+        """
+        tenant_id = self.tenant()
+        person_id = self.walk_in(tenant_id, "Hala Barakat", "+962790001111")
+        for spelling in ("+962 79 000 1111", "+962-79-000-1111", "+962(79)0001111"):
+            found = self.match(tenant_id, spelling)
+            self.assertEqual(found["count"], 1, f"{spelling}: {found}")
+            self.assertEqual(found["matches"][0]["person_id"], person_id, spelling)
+
+    def test_a_number_nobody_holds_comes_back_empty_rather_than_guessing(self):
+        """An exact match, so a mistyped digit finds nothing -- `dedup`'s own reason for
+        having no edit distance: a fuzzy match produces a confident wrong answer on two
+        siblings at one address."""
+        tenant_id = self.tenant()
+        self.walk_in(tenant_id, "Hala Barakat", "+962790001111")
+        found = self.match(tenant_id, "+962790001112")
+        self.assertEqual(found["count"], 0, found)
+        self.assertEqual(found["matches"], [])
+
+    def test_a_record_merged_away_is_not_offered_and_its_survivor_is(self):
+        """**"A merge copies and nothing cleans up"**, so one number sits on two rows
+        afterwards. Offering the losing record would send a desk to open a record whose own
+        readers are told to follow a pointer -- the record is dead and the person is not.
+        """
+        tenant_id = self.tenant()
+        owner = self.headers(tenant_id)
+        survivor = self.walk_in(tenant_id, "Hala Barakat", "+962790002222")
+        loser = self.walk_in(tenant_id, "Hala B", "+962790002222")
+
+        both = self.match(tenant_id, "+962790002222")
+        self.assertEqual(both["count"], 2, both)
+
+        merged = self.client.post("/people/merges", json={
+            "source_person_id": loser, "target_person_id": survivor,
+            "reason": "same person, two walk-ins", **self.correlation()}, headers=owner)
+        self.assertEqual(merged.status_code, 201, merged.text)
+
+        after = self.match(tenant_id, "+962790002222")
+        self.assertEqual(after["count"], 1, after)
+        self.assertEqual(after["matches"][0]["person_id"], survivor, after)
+
+    def test_the_name_is_masked_at_an_ordinary_sign_in_and_the_row_is_not(self):
+        """A legal name is `identity` class, so a routine AAL-1 desk gets the withheld marker
+        -- and still gets the answer, because "somebody already holds this number" is the
+        fact the banner is about. A read that dropped the whole row rather than the field
+        would make the duplicate check useless to the credential that does the typing.
+        """
+        tenant_id = self.tenant()
+        self.walk_in(tenant_id, "Hala Barakat", "+962790003333")
+        desk = self.scoped(tenant_id, ["people.person.read"])
+
+        found = self.match(tenant_id, "+962790003333", desk)
+        self.assertEqual(found["count"], 1, found)
+        self.assertEqual(found["matches"][0]["legal_name"], visibility.MASK, found)
+        self.assertIn("legal_name", found["masked_fields"], found)
+        # The parts that are not identity-class still answer.
+        self.assertIsNotNone(found["matches"][0]["known_since"], found)
+
+    def test_an_unknown_kind_and_a_blank_value_are_refused_at_the_boundary(self):
+        tenant_id = self.tenant()
+        head = self.headers(tenant_id)
+        for query in ("kind=fax&value=123", "kind=phone&value=%20%20"):
+            read = self.client.get(f"/people/contact-match?{query}", headers=head)
+            self.assertEqual(read.status_code, 422, f"{query}: {read.text}")
+
+    def test_the_read_is_bounded_and_says_when_it_truncated(self):
+        """A ceiling the caller may lower and not raise, because an exact match on a value is
+        a duplicate check and not a way to enumerate a tenant one value at a time."""
+        tenant_id = self.tenant()
+        for n in range(3):
+            self.walk_in(tenant_id, f"Shared Line {n}", "+962790004444")
+        head = self.headers(tenant_id)
+
+        capped = self.match(tenant_id, "+962790004444", head)
+        self.assertEqual(capped["count"], 3, capped)
+        self.assertFalse(capped["more"], capped)
+
+        one = self.client.get(
+            "/people/contact-match?kind=phone&value=%2B962790004444&limit=1", headers=head)
+        self.assertEqual(one.status_code, 200, one.text)
+        self.assertEqual(len(one.json()["matches"]), 1, one.text)
+        self.assertTrue(one.json()["more"], one.text)
+
+        over = self.client.get(
+            "/people/contact-match?kind=phone&value=%2B962790004444&limit=99", headers=head)
+        self.assertEqual(over.status_code, 422, over.text)
+
+    def test_a_session_without_the_read_permission_is_refused(self):
+        tenant_id = self.tenant()
+        self.walk_in(tenant_id, "Hala Barakat", "+962790005555")
+        nothing = self.scoped(tenant_id, ["people.timeline.read"])
+        read = self.client.get(
+            "/people/contact-match?kind=phone&value=%2B962790005555", headers=nothing)
+        self.assertEqual(read.status_code, 403, read.text)

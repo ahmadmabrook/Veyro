@@ -538,6 +538,70 @@ const PLANS = [
       },
     ],
   },
+  {
+    // **ADM-MEM-10, and the one question an independent reader is best placed to ask**: does
+    // the screen actually stop somebody creating a second record for a person who is already
+    // in the system? The canvas's own footnote is the claim -- "preventing the duplicate
+    // costs one screen" -- and the in-repo spec and the page were written by the same hand
+    // on the same day. A tester who has read neither types a number and sees what happens.
+    //
+    // **It stops at the step-up, deliberately.** Creating a person is a financial-class
+    // permission and the only second factor this build can verify is a single-use recovery
+    // code, which no stored plan can be given: handing one to a test spends it on the first
+    // run. So the journey asserts everything up to the wall and says where the wall is --
+    // the same bound ADM-MSH-03's journey established.
+    name: "Adding a walk-in who already has a record is interrupted before anything is saved",
+    description:
+      "A front desk is adding somebody who walked in. The screen checks the phone number " +
+      "as it is typed and, if that number already belongs to a record, says so and offers " +
+      "to open it instead of creating a second one. Names are deliberately hidden on an " +
+      "ordinary sign-in, so the existing record is identified by its member number and " +
+      "when the person joined.",
+    priority: "p1",
+    planSteps: [
+      ...signIn,
+      { type: "action", description: "Navigate to /members." },
+      {
+        type: "assertion",
+        description:
+          'Verify the page offers a way to add a member, and follow it. Verify the page ' +
+          'that opens is headed "New member \u00b7 walk-in" and asks for a name and a phone.',
+      },
+      {
+        type: "action",
+        description:
+          'In the field labelled "Phone", type +962 79 000 0042. Wait two seconds.',
+      },
+      {
+        type: "assertion",
+        description:
+          "Verify the page says this number already has a record, identifies that record " +
+          "by a member number and the month it joined, and warns that continuing would " +
+          "create a second record for the same person. Verify it offers both to open that " +
+          "record and to say this is a different person. Verify the button that creates " +
+          "the record cannot be used while that warning is on screen.",
+      },
+      {
+        type: "action",
+        description: 'Clear the phone field and type +962 79 555 1234 instead. Wait two seconds.',
+      },
+      {
+        type: "assertion",
+        description:
+          "Verify the warning about an existing record is gone, because no record holds " +
+          "that number. Verify the page still explains that creating a person needs a " +
+          "stronger sign-in than this session has, and offers a link to raise the session " +
+          "rather than a button that would be refused.",
+      },
+      {
+        type: "assertion",
+        description:
+          "Verify the page states, near the foot, that it does not yet sell a membership, " +
+          "record an emergency contact or capture a waiver, and gives a reason for each.",
+      },
+    ],
+  },
+
 ];
 
 mkdirSync(OUT, { recursive: true });

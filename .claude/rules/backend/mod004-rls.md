@@ -1292,3 +1292,57 @@ The ordinary cause is a `uvicorn` left over from seeding the browser fixture, or
 suite still running: both hold pools. `pg_stat_activity` named by `datname` is what says which.
 And `ps aux | grep -c "[u]vicorn"` is not the check — a pipeline counts its own `grep`, which
 is the same shape as the `pgrep` loop that matches its own shell.
+
+
+**A component that renders an anchor inherits the browser's defaults, and a stylesheet that
+sets only the colour leaves the rest.** `Button` with an `href` is a real `<a>`; the global
+`a` rule in this app sets `color` and nothing else, and only the `link` variant declared a
+`text-decoration` of its own -- so **every non-link button with an `href` has rendered
+underlined since the component existed**, which is the thing the design source forbids in as
+many words: "a link styled as a button, and the inverse too". Nothing could see it. An
+assertion about the accessible name matches either way; a component test renders without the
+app's stylesheet; the phone sweep measures overflow; and axe has no rule about it. It was
+found by photographing the running page beside its canvas and looking at the two buttons. The
+general shape: **when a component swaps its element type on a prop, the new element's user-agent
+styles are part of what that prop changed**, and the base style has to neutralise them rather
+than relying on each variant to.
+
+**A control can be marked without carrying a message, and conflating the two renders the
+sentence twice.** The field shell's own rule is that "the message slot holds exactly one
+message", and a screen whose explanation is an adjacent panel -- the canvas's shape for a
+duplicate interruption -- has to mark the control *and* put the sentence somewhere else, or
+the reader gets it under the field and again in the panel. `marked` plus `describedBy` is the
+separation; a mark with neither would be worse than both, which is why the second is required
+alongside the first.
+
+**"Validate on blur, never on keystroke" applies to a disabled submit, not only to a message.**
+A button that un-disables as the fields become acceptable is keystroke validation wearing a
+different control, and it leaves a reader with a dead button and no sentence saying which
+field is wrong. The submit stays reachable and the server action returns which field was
+missing -- which is the "re-validate on submit" half of the same rule. A *hold* that is not
+about the field's own validity, such as an interruption a person has to answer, is a different
+thing and does belong on the button.
+
+**Two copies of one comparison, found by the sweep rather than by reading.** A screen computed
+"a match about this value that nobody has acknowledged" inline for its banner while the
+decision module computed the same thing for its button; breaking one left the other intact and
+the suite stayed green, so the mutation that named the protection came back uncaught. That is
+this repository's "one module, two definitions of the same balance" in a surface, and the
+remedy is the same one: one exported function that both the render and the decision read. **The
+tell in a sweep is a mutation whose test asserts the rendered half while the mutation edits the
+other half** -- so when a browser mutation comes back green, check that the line it broke is
+the line the page actually reads.
+
+**The browser mutation sweep needs the dev server, and judging the suite needs the built one.**
+`next start` serves whatever `.next` is on disk, so a sweep that mutates a source file and runs
+Playwright against a production server tests the *unmutated* bundle and reports every mutation
+as a gap -- three came back uncaught that way before the cause was obvious. The dev server
+compiles on demand, which is what makes the mutation visible. The reverse holds for the real
+run: a suite that only ever saw `next dev` has not seen the artefact, which is already recorded
+above. Two servers, two purposes, and using the wrong one is silent in both directions.
+
+**Appending to a list in a file whose runner follows it truncates the runner.** A splice that
+anchored on the file's last `];` deleted every line after the mutation array -- the loop, the
+report and the exit code -- and the sweep then exited 0 with no output, which reads exactly
+like "nothing to do". The tell was an empty log from a command that always prints; `wc -l`
+before and after would have caught it in a second. Anchor on the *array's* end, not the file's.

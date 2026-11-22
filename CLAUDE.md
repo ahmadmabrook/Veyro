@@ -1717,6 +1717,24 @@ Known gaps, deliberate:
   pre-filter is ENG-01's, and a `LIKE` scan presented as search would be a read path with no
   freshness contract and no pre-filter. The duplicate detector draws its candidates through the
   indexes instead, which is the one place this module needs to find people by a value.
+- **A duplicate can be prevented now, and until it could it was only ever cleaned up.**
+  `find_duplicates` scores *pairs that already exist* -- both sides have to be rows -- so the
+  one moment a duplicate is cheap to stop, the moment before the second record is written,
+  had nothing to ask. `GET /people/contact-match` is that read, and the finding is where it
+  had to come from: `ppl_contact_points_by_value` has been in the schema since this module
+  was built, with its own comment saying "finding everybody who shares an address is how
+  `find_duplicates` works", and **no route could pass it a value**. The eighth instance of
+  this build's "a writer with no reader" shape, read from the other end -- an index with no
+  asker. Three decisions in it: it is normalized by `normalize_contact`, which is the write's
+  own function, because a second spelling rule here would make a duplicate invisible to
+  exactly the check that exists to find it; it is masked like every other read in the module,
+  so a routine AAL-1 desk gets the withheld marker *and* the rest of the row, which is still
+  enough to say somebody already holds this number; and it filters `merge_status = 'active'`,
+  because a merge leaves the losing record's contact points where they are, so one number
+  sits on two rows and offering the merged-away one points a desk at a record whose own
+  readers are told to follow a pointer. **It is an exact match and not a search**: a mistyped
+  digit finds nothing, which is `dedup`'s own reason for having no edit distance, and the gap
+  above is unchanged.
 - **The timeline projection runs on a schedule now.** `people.project_timeline` is a worker
   job at sixty seconds, which closes the gap this bullet used to record -- the third place
   where the absence changed the product, because a timeline nobody projects stays empty and
@@ -4116,6 +4134,57 @@ decisions rather than rendering:
     form writes a dated absence and takes one back, and a reader without the write
     permission is given neither control rather than one that answers 403.
 
+**ADM-MEM-10's walk-in form is the second write in this app that is not a member acting on
+their own account, and it needed a read nothing could ask for.** The canvas is two fields and
+one interruption -- "This number already has a record · **Hala Barakat** · joined Feb 2025.
+Continue and you will create a second record for the same person", with "Open that record" and
+"Different person" -- and its own footnote states the mechanism: "Detection runs on phone as it
+is typed, before anything is saved. Preventing the duplicate costs one screen; ADM-MEM-11
+exists because prevention is never perfect." The read is in MOD-014's notes above. Five things
+on the screen are decisions rather than rendering:
+
+  * **A stale answer can never land, and that is a derivation rather than a guard.** The
+    check is debounced and asynchronous, so a reply for a number the desk has already edited
+    would mark a clear number as duplicated, or clear a duplicated one. The first version
+    stored the whole state and compared each reply against a ref; `detectionFor(value,
+    answer)` derives it instead, so an answer carries the value it was about and is simply not
+    the answer to any other. **Found by the linter**, which refused `setState` inside the
+    effect for two of the three writes -- and it was right for a better reason than the one it
+    gives: a value computable from a prop is not state, and storing it is what created the
+    race.
+  * **"Different person" answers one number.** A dismissal that survived an edit would hide
+    the interruption for whatever is typed next, so the acknowledgement *is* the value.
+    Proving it in a browser takes two seeded duplicate numbers; one can only ever prove that
+    a dismissal sticks.
+  * **A check that could not run is not a check that passed.** An unreachable server holds the
+    button exactly as a match does, because "we do not know" and "it is free" are different
+    facts and conflating them turns a network blip into a silent duplicate.
+  * **No keystroke validation, which is the Input contract's own rule.** "Validate on blur,
+    never on keystroke; re-validate on submit" -- so the submit is not gated on the fields
+    being filled, because a button that un-disables as they become acceptable is keystroke
+    validation wearing a different control and leaves a reader with a dead button and no
+    sentence. The *duplicate* hold is not validation: it is the canvas's own mechanism.
+  * **One primary per view, and which control it is is what the duplicate changes.** With an
+    interruption on screen, opening the record it found *is* the recommended action, so the
+    create drops to secondary.
+
+**And the sweep found the two shared-component defects, which is what a shared component
+costs.** `Button` with an `href` renders a real anchor, and the global `a` rule sets only the
+colour -- so **every non-link button with an `href` in this app has rendered underlined since
+the component existed**, which is the thing the source forbids in as many words ("a link
+styled as a button, and the inverse too"). And `Field` marked its control only for an `error`,
+while the canvas marks the phone in the attention colour with the sentence in the panel below;
+putting that sentence in the message slot as well renders it twice under one field, which is
+the duplication the slot's own rule exists to prevent. `marked` is a mark without a message,
+for the one case the slot cannot serve: the explanation is a region the control points at.
+
+**And ADM-MEM-05 specified a control it did not have, with nothing recording that it did
+not.** "Add member" is in that canvas's header and this app rendered nothing there -- and it
+was not in that screen's own gap list either, so a specified control was missing from the
+product with no record anywhere. It is the only way to reach ADM-MEM-10, and it is shown by
+`gateVerdict` rather than by `allowed`: a reader who could step up gets the button, and one
+the gate denies outright does not.
+
 **ADM-RPT-04's board is one chart and one sentence, and the sentence is the requirement.**
 The canvas's own note says why it is derived rather than left to the reader: "The conclusion is
 written in words beneath the chart. A manager should not have to interpret a heat strip to find
@@ -4392,7 +4461,8 @@ re-running the fixture invalidates every test already created.
 Known gaps: the surface covers the sign-in, the step-up, the account page, MOD-004, MOD-005,
 MOD-007, MOD-008, MOD-009, MOD-010, MOD-011, MOD-012, MOD-013, MOD-014, MOD-016, MOD-017,
 MOD-018, MOD-019, MOD-021 and MOD-022, plus MOD-020's roster on a session, ADM-SCH-04's
-availability grid at `/rota`, ADM-STF-01/02's
+availability grid at `/rota`, ADM-MEM-10's walk-in form at
+`/members/new`, ADM-STF-01/02's
 staff list and staff record, ADM-PAY-05's
 recovery workspace, ADM-PAY-10's dispute board, ADM-RPT-01/02/03/04
 under `/reports`, ADM-PAY-07's wallet on a member's billing tab and ADM-MEM-07's attendance
@@ -4437,7 +4507,7 @@ the backend does not hold, or an object store. **"Not built yet" is not a cause 
 deliberately no token for it**, which is `GateCoverageTests.UNGATED`'s discipline one layer up:
 adding to the list is meant to be uncomfortable.
 
-It reads **41 in the inventory, 6 states of those, 34 blocked with a reason**, and it checks
+It reads **43 in the inventory, 6 states of those, 32 blocked with a reason**, and it checks
 both directions -- a reason for a screen the inventory now argues is a stale excuse and fails,
 which is the schedule board's "gap note that outlived its gap" caught structurally. My own hand
 audit had said 43 were missing; the truth was that most were built, mislabelled or states, and
@@ -4450,6 +4520,13 @@ design's "Add an exception" is buildable today. **ADM-SCH-06 did not come off it
 reason worth recording: the canvas draws capacity and equipment columns, `sch_resources` has
 `quantity` -- how many of a thing there are -- and capacity lives on a template's own policy,
 so the screen as drawn would have one real column and two invented ones.
+**ADM-MEM-10 came off that list the same way, and the read it needed is the one worth
+naming**: `find_duplicates` scores pairs that already exist, so the moment a duplicate is
+cheapest to prevent had nothing to ask, and the index that would answer it has been in
+MOD-014's schema since the module was built. It is also where **ADM-MEM-05's own missing
+"Add member" button** surfaced -- specified in that canvas's header, rendered nowhere, and
+absent from that screen's gap list too, so nothing in the repository recorded that a
+specified control was missing.
 **ADM-RPT-04 came off that list by writing the read it needed**, and the
 interesting half was deciding what *not* to answer: `GET /reports/attendance` buckets entries
 into a club's own local hours over complete local days of a caller-chosen day set, and

@@ -85,6 +85,7 @@ READ_ROUTES = [
     ("get", "/notifications/suppressions/all", None),
     ("get", "/notifications/digests/all", None),
     ("get", f"/notifications/recipients/{_SUBJECT}/channels", None),
+    ("get", "/people/contact-match?kind=phone&value=%2B962790000000", None),
     ("get", f"/people/{_ID}", None),
     ("get", f"/people/{_ID}/notes", None),
     ("get", f"/people/{_ID}/timeline", None),

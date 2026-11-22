@@ -56,8 +56,8 @@ const STATE_OF = {
  * **Every reason names one of four causes**, and the check enforces that vocabulary:
  *
  *   - `module:` — it needs a backend module this repository does not have.
- *   - `stepped-up:` — it is a write whose permission is financial class, and "a button that
- *     answered 403 is worse than its absence". Naming the permission is required.
+ *   - `owner-reserved:` — it moves real money, which the owner reserves and no form in this
+ *     app may do. Naming what it would move is required.
  *   - `data:` — the backend exists and does not hold what the screen draws, so the screen as
  *     drawn would have invented columns. ADM-SCH-06 is the worked example.
  *   - `store:` — it needs an object store and a residency decision, both unmade.
@@ -74,47 +74,47 @@ const BLOCKED = {
   "ADM-CRM-07": "module: CRM",
   "ADM-MEM-08": "store: documents need an object store and a residency decision, the same "
     + "wall MOD-009's export and MOD-014's progress media hit",
-  "ADM-MEM-10": "stepped-up: people.person.write is financial class",
-  "ADM-MSH-02": "stepped-up: membership.record.write is financial class",
-  "ADM-MSH-04": "stepped-up: membership.record.write is financial class",
-  "ADM-MSH-06": "stepped-up: membership.record.write is financial class",
-  "ADM-MSH-09": "stepped-up: catalog.price.write and catalog.product.write are financial",
-  "ADM-PAY-04": "stepped-up: finance.payment.take is financial class",
-  "ADM-PAY-06": "stepped-up: finance.dunning.configure is financial class",
-  "ADM-PAY-08": "stepped-up: finance.refund.request is financial class, and a refund needs "
-    + "two people by design",
-  "ADM-SCH-03": "stepped-up: scheduling.schedule.publish is financial class",
+  "ADM-MSH-01": "owner-reserved: selling a membership ends in taking a payment, which moves "
+    + "real money, and there is no payment provider in this build",
+  "ADM-MSH-02": "owner-reserved: the canvas's action is 'Take 795.60' after a price-change "
+    + "disclosure. Renewing is taking a payment, and there is no provider here",
+  "ADM-MSH-04": "owner-reserved: the canvas's action is 'Resume, take 30.19' -- a pro-rata "
+    + "charge. The resume itself is built and the unused freeze days do return to the "
+    + "allowance; the charge is the act the button names",
+  "ADM-MSH-05": "owner-reserved: an upgrade is priced and charged on the spot, and the "
+    + "proration MOD-017 computes ends in a payment nothing here can take",
+  "ADM-MSH-06": "data: the canvas takes effect on a future date -- 'from 1 September, not "
+    + "today, she has paid for August at the higher rate and keeps it' -- and `change_plan` "
+    + "applies now. Nothing books a plan change for a later date, which is the same refusal "
+    + "MOD-017 makes about a future-dated freeze",
+  "ADM-MSH-07": "data: the canvas discloses a cancellation fee the member acknowledges and "
+    + "then the notice period runs. Nothing here applies a cancellation when its notice "
+    + "expires -- `membership_as_of` is the function that tells the truth",
+  "ADM-MSH-09": "data: the canvas's whole argument is the blast radius -- '2,140 members are "
+    + "on this plan, 890 are inside a fixed-term commitment and keep 55.00' -- and nothing "
+    + "counts members per plan or splits them by commitment",
+  "ADM-PAY-02": "owner-reserved: approving a refund moves money out, and MOD-017 requires "
+    + "two people by design -- the approver may not be the requester",
+  "ADM-PAY-04": "owner-reserved: taking a card is real money, and there is no payment "
+    + "provider and no stored payment method in this build",
+  "ADM-PAY-06": "data: the canvas configures the dunning policy in sentence form -- the "
+    + "retry count, the hour it runs, the grace days, the exception threshold -- and none of "
+    + "those is stored anywhere. `collections.py` decides from a fixed policy",
+  "ADM-PAY-08": "owner-reserved: a refund moves money out, and MOD-017 requires two people "
+    + "by design -- the approver may not be the requester",
+  "ADM-SCH-03": "data: the canvas warns as the coach field changes -- 'Omar already has PT "
+    + "at 19:00 Thursdays ... Dana and Yousef are both qualified and free' -- and `skills` "
+    + "is the caller's word here, so 'qualified' is a fact nothing stores",
   "ADM-SCH-05": "data: a personal-training session is not a kind this build distinguishes "
     + "from a class -- a session comes from a template, and a template is a service and a "
     + "place",
-  "ADM-MSH-01": "stepped-up: selling a membership writes an agreement and a price "
-    + "resolution, both financial class",
-  "ADM-MSH-05": "stepped-up: membership.record.write is financial class",
-  "ADM-MSH-07": "stepped-up: membership.record.write is financial class, and a cancellation "
-    + "discloses a fee the member has to acknowledge",
-  "ADM-PAY-02": "stepped-up: finance.refund.approve is financial class, and MOD-017 requires "
-    + "two people -- the approver may not be the requester",
-  "ADM-COM-01": "module: a messaging provider. MOD-013 authors and never sends, and there is "
-    + "no inbound receiver at all -- a conversation needs both halves",
-  "ADM-SET-03": "module: a tax engine and a JoFotara connector. MOD-017 records that a "
-    + "document was fiscalized and takes the rate from the caller; nothing computes one",
-  "ADM-SET-06": "store: branding assets need an object store and a residency decision, the "
-    + "same wall MOD-009's export hits",
-  "ADM-SET-07": "data: a tenant's locale, numeral system and first day of the week are not "
-    + "settings this build carries -- the numeral system is latn everywhere and the attendance "
-    + "report refuses to name a working week for the same reason",
-  "ADM-AI-01": "module: there is no AI surface in this build, and MOD-008 classifies AI "
-    + "acting for a member as privileged, which needs an assurance level nobody can reach",
-  "ADM-SRCH-01": "module: search is ENG-01's, and a LIKE scan presented as search would be a "
-    + "read path with no freshness contract and no permission pre-filter",
   // **Read the canvas before writing the reason.** The first version of this entry said
   // "stepped-up", which is true of the permission and is not what blocks the screen. The
   // canvas's own rule is "cannot commit without choosing what the members get. A
   // cancellation that notifies nobody is the most damaging thing this screen could permit,
   // so the notification is the action rather than a follow-up" -- and it offers two
   // remedies, moving all eighteen to another session or crediting each of them. MOD-013
-  // authors and never sends, and neither bulk remedy exists anywhere. A cancel form without
-  // them would be exactly the screen the canvas forbids.
+  // authors and never sends, and neither bulk remedy exists anywhere.
   "ADM-SCH-07": "module: a messaging provider, and a bulk transfer or bulk credit. The "
     + "canvas makes the notification the action and refuses to commit without choosing what "
     + "the members get; MOD-013 sends nothing and neither remedy is a built operation",
@@ -122,11 +122,39 @@ const BLOCKED = {
   "ADM-TSK-01": "module: tasks",
   "ADM-AUT-01": "module: automation",
   "ADM-AUT-03": "module: automation",
+  "ADM-COM-01": "module: a messaging provider. MOD-013 authors and never sends, and there is "
+    + "no inbound receiver at all -- a conversation needs both halves",
+  "ADM-SET-03": "module: a tax engine and a JoFotara connector. MOD-017 records that a "
+    + "document was fiscalized and takes the rate from the caller; nothing computes one",
   "ADM-SET-04": "module: a payment provider. Taking a card is owner-reserved and nothing "
     + "here stores a payment method",
+  "ADM-SET-06": "store: branding assets need an object store and a residency decision, the "
+    + "same wall MOD-009's export hits",
+  "ADM-SET-07": "data: a tenant's locale, numeral system and first day of the week are not "
+    + "settings this build carries -- the numeral system is latn everywhere and the "
+    + "attendance report refuses to name a working week for the same reason",
+  "ADM-AI-01": "module: there is no AI surface in this build, and MOD-008 classifies AI "
+    + "acting for a member as privileged, which needs an assurance level nobody can reach",
+  "ADM-SRCH-01": "module: search is ENG-01's, and a LIKE scan presented as search would be a "
+    + "read path with no freshness contract and no permission pre-filter",
 };
 
-const CAUSES = ["module:", "stepped-up:", "data:", "store:"];
+/**
+ * **`stepped-up:` was a cause and is not one any more.** Twelve screens carried it, on the
+ * reasoning that "a button that answered 403 is worse than its absence" -- which is true of
+ * a button that just fails and says nothing about one that offers the step-up first, as this
+ * app already did for a masked *read*. ADM-MSH-03 proved it: the figure bounding the act
+ * reads on the routine permission, the act offers `/step-up` with `next` back, and the cost
+ * is one recovery code per twelve-hour window rather than one per act.
+ *
+ * So the token is gone and every screen that carried it was re-derived against its own
+ * canvas. Most turned out to be blocked by something real and quite different -- money this
+ * build may not move, or a figure it does not hold -- and one, ADM-MEM-10, was blocked by
+ * nothing at all and has to be built. **Removing a cause from this list is how that gets
+ * found**, which is the argument for the list being short and for every entry naming a
+ * thing rather than a permission.
+ */
+const CAUSES = ["module:", "owner-reserved:", "data:", "store:"];
 
 const screens = JSON.parse(readFileSync(SCREENS, "utf8"));
 const rows = Array.isArray(screens) ? screens : (screens.screens ?? []);

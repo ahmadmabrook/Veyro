@@ -5435,6 +5435,31 @@ def create_app(
             lifecycle_state=lifecycle_state, tag_key=tag_key, limit=limit,
         )
 
+    @app.get("/people/contact-match")
+    def match_contact(
+        tenant_id: TenantId, session: Session, kind: str, value: str, limit: int = 5,
+    ) -> dict[str, Any]:
+        """Who already holds this contact value, asked **before** a record is created.
+
+        ADM-MEM-10 calls this as the phone is typed. `find_duplicates` scores pairs that
+        already exist, so the moment a duplicate is cheapest to prevent had nothing to ask;
+        the index this uses has existed since MOD-014 with no route able to pass it a value.
+
+        `people.person.read` rather than a permission of its own: the same credential already
+        reads any person by id and lists every member, and the name comes back through the
+        gate's masked-field list like every other read of a person here.
+
+        **Not in `UNGATED` and not a search.** The value is normalized by the write's own
+        function and compared for equality, so a mistyped digit finds nothing -- which is
+        `dedup`'s own reason for having no fuzzy match.
+        """
+        gate = permit(session, "people.person.read")
+        return people.match_contact(
+            tenant_pool, tenant_id, kind=kind, value=value,
+            masked_fields=gate.masked_fields, held_permissions=held_permissions(session),
+            limit=limit,
+        )
+
     @app.get("/staff")
     def list_staff(
         tenant_id: TenantId, session: Session, employment_state: str | None = None,

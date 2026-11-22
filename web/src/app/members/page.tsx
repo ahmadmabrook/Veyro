@@ -1,10 +1,11 @@
 import Link from "next/link";
 
 import { Banner } from "@/components/ds/banner";
+import { Button } from "@/components/ds/button";
 import { WithheldLink } from "@/components/withheld";
 import { DataGrid } from "@/components/ds/data-grid";
 import { fill, formatInteger, t, type MessageKey } from "@/i18n/locale";
-import { ApiError, gate, gateMessage } from "@/lib/api";
+import { ApiError, gate, gateMessage, gateVerdict } from "@/lib/api";
 import {
   LIFECYCLE_STATES,
   UNANSWERABLE,
@@ -59,10 +60,22 @@ export default async function MembersPage({
   const wanted = typeof params.state === "string" ? params.state : undefined;
   const lifecycleState = isLifecycleState(wanted) ? wanted : undefined;
 
-  const [mayPeople, mayMemberships] = await Promise.all([
+  const [mayPeople, mayMemberships, mayWrite] = await Promise.all([
     gate("people.person.read"),
     gate("membership.record.read"),
+    // **For the header's "Add member" and nothing else.** `people.person.write` is financial
+    // class, so a front desk holds it at an assurance it has not reached — and the screen it
+    // leads to offers the step-up, which is why `needs_step_up` shows the button and `denied`
+    // does not. Hiding it from somebody who could step up would make the capability
+    // undiscoverable; showing it to somebody who holds nothing is a button that answers 403.
+    gate("people.person.write"),
   ]);
+  const addMember = gateVerdict(mayWrite) === "denied" ? undefined : (
+    <Button
+      variant="secondary" size="md" href="/members/new"
+      label={text("members.addMember")}
+    />
+  );
 
   if (!mayPeople.allowed) {
     return (
@@ -107,7 +120,7 @@ export default async function MembersPage({
   const counts = stateCounts(page.by_state);
 
   return (
-    <Shell locale={locale}>
+    <Shell locale={locale} action={addMember}>
       <section className="ds-page-section">
         <h2 id="members-heading" className="ds-visually-hidden">{text("members.title")}</h2>
 
@@ -383,9 +396,17 @@ function FilterLink({
 function Shell({
   locale,
   children,
+  action,
 }: {
   locale: "en" | "ar";
   children: React.ReactNode;
+  /**
+   * The header's end slot. The design draws "Add member" there and this screen rendered
+   * nothing — **and it was not in the gap list either**, so a specified control was missing
+   * from the screen with no record anywhere that it was missing. ADM-MEM-10 is that screen,
+   * and this is the only way to reach it.
+   */
+  action?: React.ReactNode;
 }) {
   // **Compact density, which the design states for this screen.** `data-density` redefines
   // the row height, the spacing step and the body type step and nothing else -- colour,
@@ -401,6 +422,7 @@ function Shell({
         <div className="ds-page-head-text">
           <h1 style={{ margin: 0 }}>{t(locale, "members.title")}</h1>
         </div>
+        {action === undefined ? null : <div className="ds-page-head-end">{action}</div>}
       </div>
       {children}
     </div>

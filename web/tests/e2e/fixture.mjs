@@ -530,11 +530,30 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
   // tag, so a test can tell "withheld" from "absent".
   await call(`/people/${person.person_id}/member-profile`, {
     method: "POST", ...as(token),
-    body: { correlation_id: cid(), lifecycle_state: "lead", member_number: "M-00042" },
+    // **A join date, because ADM-MEM-10's duplicate banner identifies a record by one.**
+    // Without it the banner falls back to when the record was first known, which for a
+    // fixture is "today" -- so the screen rendered "known since Nov 2026" and demonstrated
+    // the fallback rather than the ordinary case the canvas draws ("joined Feb 2025").
+    body: { correlation_id: cid(), lifecycle_state: "lead", member_number: "M-00042",
+            joined_on: "2025-02-12" },
   });
   await call(`/people/${person.person_id}/contacts`, {
     method: "POST", ...as(token),
     body: { kind: "email", value: "jane.member@veyro.test", is_primary: true,
+            correlation_id: cid() },
+  });
+  // **A phone, because ADM-MEM-10's duplicate check runs on one.** Nothing in the build had
+  // seeded a phone contact point, so the screen whose whole subject is "this number already
+  // has a record" had no number to find -- and a test against the unseeded version would
+  // assert an empty state, which proves nothing about the populated one.
+  //
+  // **Not the canvas's own number**, deliberately: `+962 79 662 4180` is a plausible real
+  // Jordanian mobile, and this repository's standard is synthetic data. The `0042` pairs with
+  // the member number above so it reads as a fixture at a glance, and the detection assertion
+  // is about the *answer* rather than the digits.
+  await call(`/people/${person.person_id}/contacts`, {
+    method: "POST", ...as(token),
+    body: { kind: "phone", value: "+962 79 000 0042", is_primary: true,
             correlation_id: cid() },
   });
   const tag = await call("/people/tags", {
@@ -575,6 +594,17 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
     method: "POST", ...as(token),
     body: { legal_name: "Jane Member", correlation_id: cid(),
             contacts: [{ kind: "email", value: "jane.member@veyro.test", is_primary: true }] },
+  });
+  // **A second phone that is somebody's, and a different somebody's.** ADM-MEM-10 keys its
+  // "different person" acknowledgement to the value it was given, and the only way to show
+  // that in a browser is two numbers that each already have a record: acknowledge one, type
+  // the other, and the interruption has to come back. One seeded number can only ever prove
+  // that the acknowledgement sticks. A *different* number from Jane's, so it adds no matching
+  // signal and the duplicate pair's score stays where the people board asserts it.
+  await call(`/people/${twin.person_id}/contacts`, {
+    method: "POST", ...as(token),
+    body: { kind: "phone", value: "+962 79 000 0043", is_primary: true,
+            correlation_id: cid() },
   });
   const candidates = await call(`/people/${twin.person_id}/duplicates`, {
     method: "POST", ...as(token), body: { correlation_id: cid() },

@@ -954,7 +954,15 @@ a {
 }
 
 .ds-field-message-warning {
-  color: var(--color-text-primary);
+  color: var(--color-semantic-warning);
+}
+
+/* ADM-MEM-10 draws the phone field's border in the attention colour while the number it
+   holds is already on a record. The semantic token, not the canvas's `#8a5a1f`: a raw
+   light-theme hex here is a border that vanishes in dark, which is the rule the generated
+   token file states -- a theme is a remapping of layer 2 rather than a rewrite of layer 1. */
+.ds-field-control[data-message="warning"] {
+  border-color: var(--color-semantic-warning);
 }
 
 /* An invalid field is outlined and paired with a message -- never one without the other. */
@@ -3039,4 +3047,76 @@ a {
   min-inline-size: 11px;
   inline-size: 11px;
   flex-shrink: 0;
+}
+
+/* ADM-MEM-10 · ADD MEMBER MANUALLY — "New member · walk-in".
+   The canvas is a narrow card: two fields stacked, the interruption under the phone, and the
+   footnote last. `max-inline-size` rather than a column count, because a form whose fields
+   stretch to 1440px is one where the eye loses the label; the design draws it at 330px of a
+   three-card row and a single-column page is the same measure. */
+.ds-walk-in-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  max-inline-size: 34rem;
+}
+.ds-walk-in-match {
+  display: block;
+}
+.ds-walk-in-others {
+  display: block;
+  margin-block-start: var(--space-1);
+  font-size: var(--type-caption-size);
+}
+/* The live region is empty most of the time. Zero height when it has nothing in it, so it
+   does not reserve a gap under the field it belongs to. */
+.ds-walk-in-detection:empty {
+  display: none;
+}
+.ds-walk-in-submit {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  align-items: flex-start;
+}
+.ds-walk-in-hold,
+.ds-walk-in-note {
+  margin: 0;
+  font-size: var(--type-caption-size);
+  line-height: var(--type-caption-line);
+}
+.ds-walk-in-gaps {
+  margin-block-start: var(--space-5);
+}
+
+/* ADM-MEM-10's duplicate interruption. The canvas draws a full border in the attention
+   colour with the title in that colour, which is an inline panel rather than the design
+   system's page-level Banner -- the same split the freeze form's consequence panel makes.
+   Semantic tokens rather than the canvas's `#8a5a1f`, so it survives the dark theme. */
+.ds-walk-in-duplicate {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  border: 1px solid var(--color-semantic-warning);
+  /* The canvas draws 4px here and the system has two radii, 2 and 6. A third value would be
+     prototype drift promoted to a token, which is the distinction the visual harness makes:
+     an unmatched declaration is a deviation only where the token tables sanction it. */
+  border-radius: var(--radius-card);
+  padding: var(--space-3);
+}
+.ds-walk-in-duplicate-title {
+  margin: 0;
+  color: var(--color-semantic-warning);
+  font-size: var(--type-label-size);
+  font-weight: var(--type-label-weight);
+}
+.ds-walk-in-duplicate p {
+  margin: 0;
+}
+.ds-walk-in-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-block-start: var(--space-2);
 }

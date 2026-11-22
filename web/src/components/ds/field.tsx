@@ -76,6 +76,8 @@ export function Field({
   action,
   required,
   rarer = "required",
+  marked,
+  describedBy,
   defaultValue,
   autoComplete,
   placeholder,
@@ -97,6 +99,20 @@ export function Field({
   required?: boolean;
   /** Which side is rarer in this form, and therefore which gets the mark. */
   rarer?: "required" | "optional";
+  /**
+   * Mark the control without putting anything in the message slot.
+   *
+   * **For the one case the slot cannot serve: the explanation is a region beside the field.**
+   * ADM-MEM-10 draws a phone input bordered in the attention colour with a panel under it
+   * whose title *is* the sentence — and putting that sentence in the message slot as well
+   * renders it twice, which is the duplication the slot's own rule exists to prevent ("the
+   * message slot holds exactly one message"). So the mark and the message are separable, and
+   * a caller that marks without a message points `describedBy` at the region that explains
+   * it, which is what makes this different from a mark with no explanation at all.
+   */
+  marked?: "warning" | undefined;
+  /** An element outside this shell that explains the control. Required with `marked`. */
+  describedBy?: string | undefined;
   defaultValue?: string;
   autoComplete?: string;
   placeholder?: string;
@@ -106,7 +122,10 @@ export function Field({
   style?: CSSProperties;
 }) {
   const shown = visibleMessage(message, description);
-  const messageId = shown ? `${id}-message` : undefined;
+  const ownMessage = shown ? `${id}-message` : undefined;
+  // Both, where both exist: a field can carry its own description *and* point at the panel
+  // that explains why it is marked.
+  const messageId = [ownMessage, describedBy].filter(Boolean).join(" ") || undefined;
   const invalid = shown?.kind === "error";
   const mark =
     (rarer === "required" && required) || (rarer === "optional" && !required);
@@ -124,7 +143,12 @@ export function Field({
         ) : null}
       </label>
 
-      <div className="ds-field-control">
+      {/* **The control carries the message's kind, not only `aria-invalid`.** The source
+          states a priority -- error > warning > success > description -- and ADM-MEM-10 draws
+          the warning one on the border: a phone number that already has a record is marked on
+          the field as well as under it. `aria-invalid` stays error-only, because a warning is
+          not an invalid value and announcing it as one would be wrong. */}
+      <div className="ds-field-control" data-message={marked ?? shown?.kind}>
         {prefix ? (
           // Decorative and excluded from the accessible name. It sits at the inline-start
           // edge, which mirrors without a direction check.
@@ -165,7 +189,7 @@ export function Field({
       </div>
 
       {shown ? (
-        <p id={messageId} className={`ds-field-message ds-field-message-${shown.kind}`}>
+        <p id={ownMessage} className={`ds-field-message ds-field-message-${shown.kind}`}>
           {shown.text}
         </p>
       ) : null}

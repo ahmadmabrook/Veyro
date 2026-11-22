@@ -103,3 +103,26 @@ export function dayLabel(instant: string, now: Date = new Date()): string {
     ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
       "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][at.getUTCMonth()]}`;
 }
+
+/**
+ * A calendar date as a month and a year — "joined Feb 2025", which is how ADM-MEM-10's
+ * duplicate banner identifies the record it found.
+ *
+ * **Here rather than beside the screen, and UTC-pinned for `monthDayLabel`'s reason**: a bare
+ * `YYYY-MM-DD` parses as UTC midnight, so the formatter has to be pinned to UTC to read back
+ * the calendar date it was given. Formatted in the host's zone instead, a date west of UTC
+ * renders as the previous month for part of every first-of-the-month. A second copy of that
+ * reasoning next to the screen that needed it is how two date formatters start to disagree.
+ *
+ * **A month and no day, because the day is not what identifies a record.** A desk recognising
+ * somebody by when they joined thinks in months; a precise date would also be a slightly
+ * sharper way to confirm facts about a person whose name this session may not be allowed to
+ * see, which is the direction to err away from.
+ */
+export function monthYearLabel(date: string, locale: "en" | "ar"): string {
+  const parsed = new Date(`${date}T00:00:00Z`);
+  if (Number.isNaN(parsed.getTime())) return date;
+  return new Intl.DateTimeFormat(locale === "ar" ? "ar" : "en-GB", {
+    timeZone: "UTC", month: "short", year: "numeric",
+  }).format(parsed);
+}

@@ -55,6 +55,30 @@ describe("Button", () => {
     render(<Button label="Save" />);
     expect(screen.getByRole("button").style.outline).toBe("");
   });
+
+  it("is not underlined when `href` makes it an anchor", () => {
+    // **Every non-link button with an `href` rendered underlined**, for as long as this
+    // component existed: `href` makes a real `<a>`, the browser underlines one by default,
+    // and the app's global `a` rule sets only the colour. The source forbids "a link styled
+    // as a button, and the inverse too", and an underlined primary is the inverse.
+    //
+    // Found by photographing the running page beside its canvas. No assertion could see it:
+    // the accessible name matches either way, a component test renders without the app's
+    // stylesheet, the phone sweep measures overflow, and axe has no rule about it.
+    for (const variant of ["primary", "secondary", "tertiary", "ghost", "destructive"] as const) {
+      const { unmount } = render(
+        <Button label="Open that record" variant={variant} href="/people/1" />);
+      expect(screen.getByRole("link").style.textDecoration, variant).toBe("none");
+      unmount();
+    }
+  });
+
+  it("still underlines the one variant that is a link", () => {
+    // The other half, or the fix above is a fix that removes the affordance from the
+    // variant whose whole job is to look like a link.
+    render(<Button label="Different person" variant="link" href="/x" />);
+    expect(screen.getByRole("link").style.textDecoration).toContain("underline");
+  });
 });
 
 describe("Field", () => {
@@ -127,6 +151,47 @@ describe("Field", () => {
   it("asks for the right keyboard without the caller remembering to", () => {
     render(<Field id="amount" name="amount" label="Amount" type="currency" />);
     expect(screen.getByLabelText("Amount")).toHaveAttribute("inputmode", "decimal");
+  });
+});
+
+describe("Field, marked without a message", () => {
+  /**
+   * ADM-MEM-10 draws a phone input bordered in the attention colour with a panel under it
+   * whose title *is* the sentence. Putting that sentence in the message slot as well renders
+   * it twice under one field, which is the duplication the slot's own rule exists to
+   * prevent — so the mark and the message are separable.
+   */
+  it("marks the control and puts nothing in the message slot", () => {
+    const { container } = render(
+      <Field id="p" name="p" label="Phone" type="phone"
+             marked="warning" describedBy="panel-title" />);
+    const control = container.querySelector(".ds-field-control") as HTMLElement;
+    expect(control.dataset.message).toBe("warning");
+    expect(container.querySelector(".ds-field-message")).toBeNull();
+  });
+
+  it("points the control at the region that explains it", () => {
+    // A mark with no explanation would be worse than no mark, which is why `describedBy`
+    // exists beside it rather than instead of a message by accident.
+    const { container } = render(
+      <Field id="p" name="p" label="Phone" type="phone"
+             marked="warning" describedBy="panel-title" />);
+    expect(container.querySelector("input")).toHaveAttribute(
+      "aria-describedby", "panel-title");
+  });
+
+  it("carries both when a field has its own description as well", () => {
+    const { container } = render(
+      <Field id="p" name="p" label="Phone" type="phone" description="Full number."
+             marked="warning" describedBy="panel-title" />);
+    expect(container.querySelector("input")?.getAttribute("aria-describedby"))
+      .toBe("p-message panel-title");
+  });
+
+  it("does not claim the value is invalid, because a warning is not an error", () => {
+    const { container } = render(
+      <Field id="p" name="p" label="Phone" type="phone" marked="warning" />);
+    expect(container.querySelector("input")).not.toHaveAttribute("aria-invalid");
   });
 });
 

@@ -215,8 +215,12 @@ const MUTATIONS = [
     id: "no-policy-reads-blank",
     why: "a zone with no live policy must say so, not render an empty cell",
     file: "src/app/access/page.tsx",
-    from: "                  {zone.live_policy_version === null ? (",
-    to: "                  {false ? (",
+    // **Repointed: the anchor went stale when this board moved to `DataGrid`.** The sweep is
+    // the only thing that notices, and it reports it as NOT RUN rather than as a catch --
+    // which is the right way round, because a mutation that cannot apply is a protection
+    // with no evidence rather than one that passed.
+    from: "                zone.live_policy_version === null ? (",
+    to: "                false ? (",
     grep: "says in words when a zone has no live policy",
   },
   {
@@ -1353,6 +1357,78 @@ const MUTATIONS = [
     to: 'return `browser:${createHash("sha256")',
     runner: "vitest",
     grep: "device label",
+  },
+  {
+    id: "ds-button-href-underlined",
+    why: "`href` renders a real anchor and the global `a` rule sets only the colour, so every "
+      + "non-link button with one rendered underlined -- a button that looks like a link, "
+      + "which the source forbids in as many words",
+    file: "src/components/ds/button.tsx",
+    from: '    textDecoration: "none",',
+    to: "",
+    runner: "vitest",
+    grep: "not underlined when",
+  },
+  {
+    id: "ds-field-mark-needs-a-message",
+    why: "a control marked only by its message slot cannot be marked by a panel beside it, "
+      + "so the sentence ends up rendered twice under one field",
+    file: "src/components/ds/field.tsx",
+    from: '      <div className="ds-field-control" data-message={marked ?? shown?.kind}>',
+    to: '      <div className="ds-field-control" data-message={shown?.kind}>',
+    runner: "vitest",
+    grep: "marks the control and puts nothing",
+  },
+  {
+    id: "walk-in-stale-answer-lands",
+    why: "a reply about a number the desk has already edited would mark a clear number as "
+      + "duplicated, or clear a duplicated one -- the race the derivation exists to make "
+      + "impossible rather than guard",
+    file: "src/lib/walk-in.ts",
+    from: '  if (answer === null || answer.value !== value) return { kind: "checking", value };',
+    to: '  if (answer === null) return { kind: "checking", value };',
+    runner: "vitest",
+    grep: "checking until an answer about THIS value",
+  },
+  {
+    id: "walk-in-failed-check-reads-as-clear",
+    why: "a check the server could not be asked is not a check that passed, and treating the "
+      + "two alike turns a network blip into a silent duplicate",
+    file: "src/lib/walk-in.ts",
+    from: '  if (state.kind === "failed") {\n    return isAbout(state, value) && acknowledgedValue === value;\n  }',
+    to: "  if (state.kind === \"failed\") return true;",
+    runner: "vitest",
+    grep: "holds a check that could not run",
+  },
+  {
+    id: "walk-in-dismissal-outlives-its-number",
+    why: "'different person' answers one number, and a dismissal that survived an edit would "
+      + "hide the interruption for whatever is typed next",
+    file: "src/lib/walk-in.ts",
+    from: "  if (acknowledgedValue === value) return null;",
+    to: "  if (acknowledgedValue !== null) return null;",
+    runner: "playwright",
+    grep: "acknowledges one number and not the next one",
+  },
+  {
+    id: "walk-in-field-is-not-marked",
+    why: "the border is how the field itself says the number it holds is already somebody's, "
+      + "and a panel below with an unmarked control above it leaves the eye in the wrong place",
+    file: "src/app/members/new/walk-in-form.tsx",
+    from: '        marked={duplicate !== null && !state.missing.phone ? "warning" : undefined}',
+    to: "        marked={undefined}",
+    runner: "playwright",
+    grep: "acknowledges one number and not the next one",
+  },
+  {
+    id: "walk-in-add-member-shown-to-a-denied-reader",
+    why: "a button that answers 403 is worse than its absence, and gateVerdict is what tells "
+      + "'a stronger sign-in would open this' from 'you may not'",
+    file: "src/app/members/page.tsx",
+    from: '  const addMember = gateVerdict(mayWrite) === "denied" ? undefined : (',
+    to: "  const addMember = (",
+    runner: "playwright",
+    grep: "no Add member button at all",
   },
 ];
 
