@@ -4553,13 +4553,25 @@ above; what is the surface's own is the shape of the sheet and five decisions in
     `disclosed_fee_minor` back for the command to compare against what it recomputes, so a sum
     computed here would be the second arithmetic this whole screen was built out of.
 
-Proven: 17 component tests over every branch and 5 browser mutations, all caught.
-**The browser layer has not been run for this screen**, and that is a gap rather than a
-judgement: the suite needs port 3000 and the shared `.env.e2e.local`, both held by another
-session's dev servers in this working tree, and stopping another session's servers is not
-this session's call. `phone.spec.ts` carries the sheet's route so the next run covers it, and
-the fixture seed that would make the canvas's own case renderable -- a contract with a
-twelve-month term and a two-month buy-out -- is the piece still owed.
+Proven: 23 component tests over every branch and 5 browser mutations, all caught; and the
+sheet renders in a real browser at 375px without pushing the page sideways, which CI ran and
+passed -- `phone.spec.ts` carries its route, and a surface reachable only with a query string
+is exactly the kind that gets left out of a list of paths.
+
+**What has *not* been asserted in a browser is the sheet's content**, and the distinction is
+worth keeping: the geometry is covered and the figures are not. Nothing in the browser suite
+reads the commitment sentence, the fee lines or the button's figure off the page, and the
+fixture seeds no contract with a term and a buy-out, so the canvas's own case -- the one that
+renders two fee lines rather than one -- has never been drawn. That seed is the piece still
+owed, and `fixture.mjs` is where it goes.
+
+**This paragraph claimed the browser layer had not run at all, which was wrong**, and the
+error is worth recording rather than quietly fixing: the local suite needs port 3000 and the
+shared `.env.e2e.local`, both held by another session's servers in this tree, and I read "I
+cannot run it here" as "it has not run". CI builds the database, starts the backend, installs
+Chromium and runs the whole browser suite on every push -- which this file says two sections
+down. **An under-claim is a stale gap note like any other**, and it points a reader at work
+that is already done.
 
 **ADM-MEM-10's walk-in form is the second write in this app that is not a member acting on
 their own account, and it needed a read nothing could ask for.** The canvas is two fields and

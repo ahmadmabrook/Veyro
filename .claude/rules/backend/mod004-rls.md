@@ -1689,3 +1689,20 @@ and rebuilds `veyro`, which destroys whatever fixture the other session was hold
 roles are cluster-wide so a second database in the same cluster cannot coexist. A second
 container plus `PSQL="docker exec -i <name> psql -U postgres"` is the isolation that costs
 nothing, and it is what the script's own `PSQL` override is for.
+
+
+**"I cannot run it here" is not "it has not run."** ADM-MSH-07's note in `CLAUDE.md` said the
+browser layer had not been run for the screen, because the local suite needs port 3000 and the
+shared `.env.e2e.local` and another session's servers held both. CI builds the database, starts
+the backend, installs Chromium and runs the whole browser suite on every push — so the sheet
+had in fact rendered at 375px in a real browser and passed before the note was written. An
+under-claimed gap is a stale gap note like any other and costs the same thing: it points the
+next reader at work that is already done, and it makes the notes that *are* true harder to
+trust. Before writing that a layer did not run, check where else it runs.
+
+And the correction has a narrower finding inside it, which is the one worth keeping: the phone
+sweep covers a *route list*, and a surface reachable only with a query string is exactly the
+kind that gets left off one. `?tab=membership&cancel=1` had to be added by hand. The geometry
+is now covered and the *content* is not — nothing in the browser suite reads the sheet's
+figures off the page — which is a real distinction and the sort that a single sentence saying
+"the browser layer covers this" would bury.
