@@ -141,6 +141,18 @@
     "failed": 0
    },
    "note": "FD-06, the first Front Desk screen. The journey checks somebody in at an ordinary password sign-in -- the claim this screen rests on, since every other write form in this app is a step-up or an absence -- and then opens a class a day away to verify no row offers the control there. **This one does not stop at a step-up**, unlike ADM-MSH-03's and ADM-MEM-10's: `booking.attendance.write` is routine, which is exactly the fact being tested, so an outside reader can reach the whole journey."
+  },
+  {
+   "journey": "A receptionist is told what to do when a reader is not responding",
+   "testId": "b0046687-bd25-4880-8ef4-679608e45d98",
+   "runId": "505050a0-9bd9-49b9-bd35-d0b6e0e7640e",
+   "status": "passed",
+   "steps": {
+    "total": 7,
+    "passed": 7,
+    "failed": 0
+   },
+   "note": "FD-08's device strip. The journey asks the question the canvas asks -- does the strip say what to do instead, or only that something failed -- and an outside reader is the right judge of whether the sentence is actionable, because the fallback was written here and could have pointed at a capability this product lacks. It also checks the strip does not claim all is well above an out-of-service reader, which is the defect the first version shipped."
   }
  ],
  "finishedAt": "2026-11-22T00:20:00Z",

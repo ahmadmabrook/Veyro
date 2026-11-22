@@ -112,9 +112,16 @@ test.describe("the fleet board", () => {
   test("does not call an unfinished or unreachable-but-idle device an incident", async ({
     page,
   }) => {
-    // `blocks_operation` is `active` *and* `offline` together. The scanner has never reported
-    // and the south turnstile is half-installed; neither is somebody's problem right now, and
-    // listing them as problems is how an alert channel gets muted.
+    // `blocks_operation` is `active` *and* `offline` together. The reception scanner has
+    // never reported and the south turnstile is half-installed; neither is somebody's
+    // problem right now, and listing them as problems is how an alert channel gets muted.
+    //
+    // **And `never_seen` is not `offline`**, which is the distinction FD-08 made visible:
+    // the fixture now carries a scanner that is in service and has never reported, and this
+    // board still says nothing has gone quiet -- correctly, because a device that never
+    // spoke has not gone silent and nobody can be paged about when it stopped. The front
+    // desk's strip shows that same scanner as not responding, because its question is "can
+    // I use this now" rather than "who do I page", and the two answers differ on purpose.
     const attention = page.locator("section").filter({ hasText: "Needs somebody" }).first();
     await expect(attention).toContainText("No device in service is unreachable");
     await expect(attention.getByRole("link")).toHaveCount(0);

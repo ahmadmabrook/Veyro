@@ -465,6 +465,41 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
     },
   });
 
+  // **A fourth device: in service and not answering.** FD-08's whole requirement is that a
+  // degraded row names what to do instead, and the three devices above cannot produce one --
+  // two are registered and never activated, which is "out of service" rather than an
+  // incident, and the third reports health a line above. So the strip's fallback branch, and
+  // the fleet board's own "needs somebody" block, had no fixture between them: both had only
+  // ever been seen empty.
+  //
+  // **A scanner rather than a turnstile**, because `activate_device` re-runs paragraph
+  // 4175's commissioning gate for anything that can move a barrier and a scanner declares
+  // `credential.read` instead. It is activated and never reports, which is exactly
+  // `blocks_operation`: in service, unreachable, and the one shape MOD-021 says to page on.
+  const silent = await call("/fleet", {
+    method: "POST", ...as(token),
+    body: {
+      type_id: scannerType.type_id, location_id: location.location_id,
+      serial_number: `SN-${randomUUID().slice(0, 10).toUpperCase()}`,
+      display_name: "Studio A scanner", correlation_id: cid(),
+    },
+  });
+  // Provisioned first: `registered` has no agent behind it, and the state machine refuses
+  // the jump -- a device with no credential cannot be in service.
+  await call(`/fleet/${silent.device_id}/provision`, {
+    method: "POST", ...as(token),
+    body: {
+      fingerprint: (randomUUID() + randomUUID()).replace(/-/g, "").slice(0, 64),
+      vault_ref: "vault:acme/studio-a/scanner",
+      not_before: new Date(Date.now() - 60_000).toISOString(),
+      not_after: new Date(Date.now() + 90 * 86_400_000).toISOString(),
+      correlation_id: cid(),
+    },
+  });
+  await call(`/fleet/${silent.device_id}/activate`, {
+    method: "POST", ...as(token), body: { correlation_id: cid() },
+  });
+
   const zone = await call("/access/zones", {
     method: "POST", ...as(token),
     body: {

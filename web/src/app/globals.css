@@ -3237,3 +3237,92 @@ a {
 .ds-desk-gaps {
   margin-block-start: var(--space-5);
 }
+
+/* FD-08 · DEVICE STRIP. Four rows above a working screen: dense, bounded, and quiet until
+   something is wrong. It is at Touch density like the rest of the Front Desk surface, so the
+   row height comes from the token rather than from a number typed here. */
+.ds-strip {
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-card);
+  background: var(--color-surface-default);
+  padding: var(--space-3);
+  margin-block-end: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+/* **An edge mark, not a fill.** The week grid's rule: a panel tinted end to end reads as
+   wholly wrong, and most of this strip is usually fine. */
+.ds-strip[data-attention="yes"] {
+  border-inline-start: 3px solid var(--color-semantic-warning);
+}
+.ds-strip-title {
+  margin: 0;
+  font-size: var(--type-label-size);
+  font-weight: var(--type-label-weight);
+  letter-spacing: var(--type-label-tracking);
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+}
+.ds-strip-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+.ds-strip-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding-block: var(--space-2);
+  border-block-end: 1px solid var(--color-border-subtle);
+}
+.ds-strip-row:last-child {
+  border-block-end: 0;
+}
+/* Decorative: the state is a word beside it, because a colour alone is not a state a
+   colour-blind reader can read. */
+.ds-strip-dot {
+  inline-size: 8px;
+  block-size: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--color-semantic-success);
+}
+.ds-strip-row[data-state="down"] .ds-strip-dot {
+  background: var(--color-semantic-error);
+}
+.ds-strip-row[data-state="degraded"] .ds-strip-dot {
+  background: var(--color-semantic-warning);
+}
+.ds-strip-row[data-state="paused"] .ds-strip-dot {
+  background: var(--color-text-tertiary);
+}
+.ds-strip-name {
+  flex: 1 1 14rem;
+  min-inline-size: 0;
+}
+.ds-strip-meta {
+  display: block;
+  font-size: var(--type-caption-size);
+  line-height: var(--type-caption-line);
+}
+.ds-strip-state {
+  font-size: var(--type-caption-size);
+  color: var(--color-text-secondary);
+}
+/* The fallback takes the whole next line, because it is an instruction rather than a label
+   and a sentence squeezed into a column is one nobody reads under pressure. */
+.ds-strip-fallback {
+  flex-basis: 100%;
+  font-size: var(--type-bodySm-size);
+  line-height: var(--type-bodySm-line);
+  color: var(--color-text-primary);
+}
+.ds-strip-note {
+  margin: 0;
+  font-size: var(--type-caption-size);
+  line-height: var(--type-caption-line);
+}

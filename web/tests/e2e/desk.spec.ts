@@ -230,3 +230,77 @@ async function presentCount(page: Page): Promise<number> {
   expect(found, `no "N of M here" in ${text}`).not.toBeNull();
   return Number(found![1]);
 }
+
+test.describe("the device strip above the desk", () => {
+  /**
+   * FD-08 · DEVICE STRIP · ALWAYS VISIBLE.
+   *
+   * > "The card reader is down and the strip says **what to do instead**, not just that it
+   * > failed. Every degraded state on this strip names its fallback. Hardware failing
+   * > silently is how a receptionist ends up apologising for something they could not see."
+   *
+   * The fixture carries one scanner in service that has never reported, which is the row
+   * this whole component exists for -- and until FD-08 needed it, nothing in the fixture
+   * produced a device a surface had to say anything about.
+   */
+  test.beforeEach(async ({ page }) => {
+    await useOwnerSession(page);
+    await page.goto(SOON);
+  });
+
+  test("sits above the screen rather than being a screen", async ({ page }) => {
+    // A layout, so every `/desk` route carries it. "It sits above both Front Desk and POS at
+    // all times" -- there is no POS here, which is a gap rather than a decision.
+    const strip = page.locator(".ds-strip");
+    await expect(strip).toBeVisible();
+    const stripBox = await strip.boundingBox();
+    const headBox = await page.locator(".ds-page-head").boundingBox();
+    expect(stripBox!.y).toBeLessThan(headBox!.y);
+  });
+
+  test("names what to do instead, which is the requirement", async ({ page }) => {
+    const row = page.locator('.ds-strip-row[data-state="degraded"]').first();
+    await expect(row).toContainText("Studio A scanner");
+    await expect(row).toContainText("Not responding");
+    // **Not "type the name instead"**, which the canvas writes and this product cannot
+    // honour: there is no member search here, so that advice fails at the keyboard.
+    await expect(row).toContainText("Find the member on the class they booked");
+  });
+
+  test("puts what is broken above what is fine", async ({ page }) => {
+    const states = await page.locator(".ds-strip-row").evaluateAll(
+      (rows) => rows.map((row) => (row as HTMLElement).dataset.state));
+    expect(states.length).toBeGreaterThan(1);
+    expect(states[0]).toMatch(/down|degraded/);
+    expect(states[states.length - 1]).toBe("working");
+  });
+
+  test("does not say all is well while a reader is out of service", async ({ page }) => {
+    // **The defect this replaced.** Two out-of-service readers raise no attention, and the
+    // strip said "everything this desk needs is responding" directly above both of them.
+    await expect(page.locator(".ds-strip")).not.toContainText("Everything this desk needs");
+  });
+
+  test("marks the strip itself when something needs doing", async ({ page }) => {
+    // An edge mark rather than a fill, and `aria-live` so it is announced -- a strip of
+    // green rows is chrome and should not be read out on every navigation.
+    await expect(page.locator(".ds-strip")).toHaveAttribute("data-attention", "yes");
+    await expect(page.locator(".ds-strip")).toHaveAttribute("aria-live", "polite");
+  });
+
+  test("says which hardware it cannot see at all", async ({ page }) => {
+    // The canvas draws a receipt printer and a card terminal; neither is a kind of device
+    // MOD-021 registers, so a reader who took this strip for the whole desk would be wrong.
+    await expect(page.locator(".ds-strip")).toContainText("receipt printer");
+  });
+
+  test("is refused rather than silent for a session that may not read devices",
+    async ({ page }) => {
+      // A strip that rendered nothing would be hardware failing silently with the silence
+      // built into the product.
+      await useDeskSession(page);
+      await page.goto(SOON);
+      await expect(page.locator(".ds-strip")).toContainText("may not read the hardware");
+      await expect(page.locator(".ds-strip-row")).toHaveCount(0);
+    });
+});

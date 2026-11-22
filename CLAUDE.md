@@ -4247,6 +4247,43 @@ animation; the field shell's contextual-action slot; and the data grid's own wra
 that styles nothing is invisible to every other layer -- the text and the structure are
 identical either way.
 
+**FD-08 is the strip above that desk, and it is the first thing in this app that is
+deliberately not a screen.** "It sits above both Front Desk and POS at all times. Hardware
+failing silently is how a receptionist ends up apologising for something they could not see."
+So it is a layout, and every `/desk` route carries it; there is no POS here, which is the
+other half of the sentence and a gap rather than a decision.
+
+**The requirement is the fallback, and it is the part a backend cannot answer.** "The card
+reader is down and the strip says *what to do instead*, not just that it failed." MOD-021
+knows a device's kind, its state and whether it has reported; it does not know what a
+receptionist should do, and there is no column where a tenant could say. So the fallback is a
+map from kind to a sentence, and the discipline is that **every sentence names something this
+build can actually do**. The canvas's own example is not one of them: "type the name instead"
+needs a member search this product does not have, so following it would stop a receptionist
+twice -- once at the hardware and once at the advice. What a desk can do when a reader dies is
+find the member on the class they booked, which FD-06 renders. Where there is no honest answer
+-- a kiosk, a gateway -- the kind is absent from the map and the strip says it has no fallback
+to offer, which is true and uncomfortable.
+
+**Two screens over the same data disagree on purpose, and both say so.** MOD-021's
+`blocks_operation` is `active` *and* `offline`, and it deliberately excludes a device that has
+never reported: nobody can be paged about when it stopped. The fleet board therefore says
+nothing has gone quiet. A front desk's question is whether the reader works *now*, and an
+in-service scanner that never checked in is exactly as unusable as one that died this morning
+-- so the strip calls it degraded and names the fallback. The first attempt changed the
+*board's* test to match the strip, which was the wrong direction; the board was right.
+
+**And a false all-clear was on the screen.** `needsAttention` is not the inverse of "all is
+well": a device registered and never activated raises no attention -- correctly, since a
+half-installed reader is not an incident -- so the strip said "everything this desk needs is
+responding" directly above two out-of-service readers. One statement is about whether to act
+and the other is about the hardware. Found by looking at the page.
+
+**The fixture gained the device both boards needed.** Nothing in it was ever `active` and
+unreachable, so FD-08's degraded row and the fleet board's own "needs somebody" title had
+never rendered -- the fourth instance of this build's "a branch no fixture can reach". One
+scanner, provisioned and activated and never reporting, is what makes both legible.
+
 **ADM-RPT-04's board is one chart and one sentence, and the sentence is the requirement.**
 The canvas's own note says why it is derived rather than left to the reader: "The conclusion is
 written in words beneath the chart. A manager should not have to interpret a heat strip to find
@@ -4524,8 +4561,8 @@ Known gaps: the surface covers the sign-in, the step-up, the account page, MOD-0
 MOD-007, MOD-008, MOD-009, MOD-010, MOD-011, MOD-012, MOD-013, MOD-014, MOD-016, MOD-017,
 MOD-018, MOD-019, MOD-021 and MOD-022, plus MOD-020's roster on a session, ADM-SCH-04's
 availability grid at `/rota`, ADM-MEM-10's walk-in form at
-`/members/new`, FD-06's class check-in at `/desk/classes/{id}` -- the first Front Desk
-screen -- ADM-STF-01/02's
+`/members/new`, FD-06's class check-in at `/desk/classes/{id}` with FD-08's device strip
+above it -- the first Front Desk screens -- ADM-STF-01/02's
 staff list and staff record, ADM-PAY-05's
 recovery workspace, ADM-PAY-10's dispute board, ADM-RPT-01/02/03/04
 under `/reports`, ADM-PAY-07's wallet on a member's billing tab and ADM-MEM-07's attendance

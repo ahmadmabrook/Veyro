@@ -1371,12 +1371,19 @@ proves it is structural.
 `mutate.mjs` had `vitest` and `playwright` and nothing for `tests/unit/`, which runs on Node's
 own test runner -- so a mutation pointed at one of its eighty-eight assertions came back
 UNCAUGHT, because `vitest` does not collect those files and reported no failure rather than no
-test. **And Node's runner cannot be asked whether its name pattern matched**: with a pattern
-that matches nothing it still runs every file, filters every test out of each, and reports
-`pass 9, fail 0`. So a stale grep there is indistinguishable from a real pass by the exit code
-and from a real gap by the output. The guard is the same static check the mutation text already
-gets -- the pattern has to occur in the test sources -- and it was proved by pointing one at a
-name that does not exist and watching it report NOT RUN.
+test.
+
+**And neither of those runners can be asked whether its name pattern matched.** Node's runs
+every file, filters every test out of each and reports `pass 9, fail 0`; vitest reports
+`Tests 408 skipped` and exits 0. Both are indistinguishable from a real pass by the exit code
+and from a real gap by the output, so a stale grep comes back UNCAUGHT -- which reads as a
+protection with no evidence and is in fact a mutation that was never judged. **This is not
+hypothetical**: renaming a test to make its case exercise the branch it names left its
+mutation's grep behind, and two rounds were spent reading the branch before the cause was
+obvious. The guard is the same static check the mutation text already gets -- the pattern has
+to occur in the tests that runner reads -- and it was proved by pointing one at a name that
+does not exist and watching it report NOT RUN. Playwright needs none: it says "No tests found"
+and exits non-zero.
 
 **A browser test that spends a one-way product state is green on a fresh fixture and red on
 the second run**, which this file already records three times. FD-06's check-in is one-way by
@@ -1437,4 +1444,25 @@ reported as an offender. Counting `<DataGrid` against `labelledBy=` is exact her
 was not. **A check that reports a defect the app does not have costs the same trust as one
 that misses a defect it does**, and the only way to tell them apart is to go and look at the
 thing it named.
+
+
+**A branch subsumed by the next one is proved only by the input that breaks the invariant
+behind the subsumption.** A device strip checks `state === "maintenance"` before it checks the
+server's `blocks_operation`, and the branch below -- "anything not active is out of service"
+-- answers a maintenance device anyway, so removing the first changed nothing and the sweep
+said so. The branch is not redundant: it is a guard against the *server* disagreeing with
+itself, because `blocks_operation` is `active` and `offline` together and a maintenance device
+can never carry it. So the case that proves it is the contract being violated -- both set at
+once -- and the comment has to say that is what it is, or the next reader deletes the branch
+as dead. **Same shape as a trigger that exists for the writer that is not the service**: the
+input is one the current producer cannot emit, and that is the point rather than the problem.
+
+**Two screens over the same data can disagree on purpose, and then both have to say so.**
+MOD-021's `blocks_operation` deliberately excludes a device that has *never* reported --
+nobody can be paged about when it stopped -- so the fleet board says nothing has gone quiet.
+A front desk's question is whether the reader works now, and an in-service scanner that never
+checked in is exactly as unusable as one that died, so FD-08's strip calls it degraded and
+names a fallback. The first attempt "fixed" the board's test to match the strip, which was
+the wrong direction: the board was right. The resolution is a comment on each side naming the
+other, because a reader who sees two screens disagree deserves to know it was deliberate.
 

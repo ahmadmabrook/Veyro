@@ -669,6 +669,47 @@ const PLANS = [
     ],
   },
 
+  {
+    // **FD-08, and the question an independent reader is best placed to ask**: does the
+    // strip tell a receptionist what to do, or only that something failed? The canvas is
+    // explicit that the first is the requirement -- "the strip says *what to do instead*,
+    // not just that it failed" -- and a tester who has not read this repository is the
+    // right judge of whether the sentence is actionable.
+    name: "A receptionist is told what to do when a reader is not responding",
+    description:
+      "Above the class check-in screen there is a strip showing the hardware this desk " +
+      "depends on. One of the readers is in service and has never reported, which is a " +
+      "reader a receptionist cannot use. The strip is supposed to say what to do instead " +
+      "rather than only that it failed.",
+    priority: "p1",
+    planSteps: [
+      ...signIn,
+      {
+        type: "action",
+        description: `Navigate to /desk/classes/${env.VEYRO_E2E_DESK_SESSION_ID} .`,
+      },
+      {
+        type: "assertion",
+        description:
+          "Verify that above the class there is a list of hardware, and that the first " +
+          "entry in it is one that is not working rather than one that is.",
+      },
+      {
+        type: "assertion",
+        description:
+          "Verify the entry that is not working names a scanner, says it is not " +
+          "responding, and tells the reader what to do instead — an instruction they could " +
+          "follow on this product, not merely a statement that it failed.",
+      },
+      {
+        type: "assertion",
+        description:
+          "Verify the list does not claim everything is fine while entries on it are out " +
+          "of service, and that it says which hardware it cannot see at all.",
+      },
+    ],
+  },
+
 ];
 
 mkdirSync(OUT, { recursive: true });

@@ -1424,6 +1424,67 @@ const MUTATIONS = [
     grep: "marks the control and puts nothing",
   },
   {
+    id: "strip-never-seen-is-not-degraded",
+    why: "an in-service reader that has never reported is exactly as unusable as one that "
+      + "died this morning, and the fleet board's `blocks_operation` deliberately excludes it "
+      + "because nobody can be paged about when it stopped",
+    file: "src/lib/device-strip.ts",
+    from: '  return device.reachability === "online" ? "working" : "degraded";',
+    to: '  return "working";',
+    runner: "vitest",
+    grep: "degraded for an in-service device that has never reported",
+  },
+  {
+    id: "strip-maintenance-reads-as-broken",
+    why: "somebody took it out of service, which is the reason it is silent, and reporting "
+      + "that as a fault sends them to a device they unplugged",
+    file: "src/lib/device-strip.ts",
+    from: '  if (device.state === "maintenance") return "paused";',
+    to: "",
+    runner: "vitest",
+    grep: "paused even if the server calls it blocking",
+  },
+  {
+    id: "strip-all-well-is-the-inverse",
+    why: "two out-of-service readers raise no attention, so a strip that inverted that said "
+      + "'everything this desk needs is responding' directly above both of them",
+    file: "src/lib/device-strip.ts",
+    from: '  return devices.length > 0 && devices.every((d) => stripState(d) === "working");',
+    to: "  return devices.length > 0 && !needsAttention(devices);",
+    runner: "vitest",
+    grep: "all is well only when every device is working",
+  },
+  {
+    id: "strip-order-is-the-server-s",
+    why: "four rows above a working screen and a receptionist reads the top one -- a dead "
+      + "reader sorted under three healthy devices is hardware failing silently with steps",
+    file: "src/lib/device-strip.ts",
+    from: "  return [...devices].sort((a, b) => RANK[stripState(a)] - RANK[stripState(b)]);",
+    to: "  return [...devices];",
+    runner: "vitest",
+    grep: "puts what is broken above what is fine",
+  },
+  {
+    id: "strip-invents-a-fallback",
+    why: "a fallback pointing at a capability this product lacks is worse than none: a "
+      + "receptionist following it stops twice, once at the hardware and once at the advice",
+    file: "src/lib/device-strip.ts",
+    from: "  return FALLBACK[device.kind] ?? null;",
+    to: '  return FALLBACK[device.kind] ?? "strip.fallback.scanner";',
+    runner: "vitest",
+    grep: "says there is none rather than inventing one",
+  },
+  {
+    id: "strip-refusal-is-silence",
+    why: "a strip that rendered nothing for a session without the device read is hardware "
+      + "failing silently with the silence built into the product",
+    file: "src/components/device-strip.tsx",
+    from: "          {text(gateMessage(may))} {text(\"strip.notPermitted\")}",
+    to: '          {""}',
+    runner: "playwright",
+    grep: "refused rather than silent",
+  },
+  {
     id: "desk-button-outside-the-window",
     why: "`may_check_in` refuses outside the check-in window, so a button offered for a class "
       + "tomorrow answers 409 -- a button that answered 403 is worse than its absence",
@@ -1553,15 +1614,15 @@ const MUTATIONS = [
 
 const only = process.argv[2];
 /**
- * Whether any `tests/unit/` file names a test matching this pattern.
+ * Whether any test file this runner reads names a test matching the pattern.
  *
- * The pattern is a regex, because that is what `--test-name-pattern` takes.
+ * The pattern is a regex, because that is what both `-t` and `--test-name-pattern` take.
  */
-function unitTestsMention(grep) {
-  const dir = join(web, "tests/unit");
+function testsMention(runner, grep) {
+  const dir = join(web, runner === "node" ? "tests/unit" : "tests/component");
   const pattern = new RegExp(grep);
   for (const entry of readdirSync(dir)) {
-    if (!entry.endsWith(".mjs")) continue;
+    if (!/\.(mjs|ts|tsx)$/.test(entry)) continue;
     if (pattern.test(readFileSync(join(dir, entry), "utf8"))) return true;
   }
   return false;
@@ -1632,14 +1693,24 @@ for (const mutation of chosen) {
                   ["playwright", "test", "--grep", mutation.grep, "--reporter", "line"],
                   { cwd: web, encoding: "utf8", timeout: 180_000 });
     const output = `${run.stdout ?? ""}${run.stderr ?? ""}`;
-    // **Node's runner cannot be asked whether its pattern matched.** With a name pattern
-    // that matches nothing it still runs every file, filters every test out of each, and
-    // reports `pass 9, fail 0` -- so a stale grep is indistinguishable from a real pass by
-    // the exit code and from a real gap by the output. Proved by pointing one at a name that
-    // does not exist and watching it come back UNCAUGHT rather than SKIP. The answer is the
-    // same static check the mutation text already gets: the pattern has to occur in the test
-    // sources, or the mutation is reported as not run.
-    const matched = mutation.runner !== "node" || unitTestsMention(mutation.grep);
+    // **No runner here can be asked whether its name pattern matched.** Node's runs every
+    // file, filters every test out of each and reports `pass 9, fail 0`; vitest reports
+    // `Tests 408 skipped` and exits 0. Both are indistinguishable from a real pass by the
+    // exit code and from a real gap by the output -- a stale grep comes back UNCAUGHT, which
+    // reads as a protection with no evidence and is in fact a mutation that was never
+    // judged. It cost two rounds on a renamed test before the cause was obvious.
+    //
+    // So the grep gets the same static check the mutation text already gets: the pattern has
+    // to occur in the tests that runner reads, or the mutation is reported as not run.
+    // Playwright is the exception and needs none -- it says "No tests found" and exits
+    // non-zero, which the output check below already catches.
+    // **An absent `runner` is playwright**, which this file's own doc says and which the
+    // first version of this guard forgot -- so ninety mutations whose runner was simply not
+    // stated were checked against the component tests, found nothing and were reported as
+    // not run. A guard that reports most of the suite as unjudged is louder than the thing
+    // it guards against, which is the only reason it was obvious.
+    const matched = (mutation.runner ?? "playwright") === "playwright"
+      || testsMention(mutation.runner, mutation.grep);
     const ranSomething = matched
       && !/No tests found|No test files found/.test(output)
       && !/Tests {2}no tests/.test(output);
