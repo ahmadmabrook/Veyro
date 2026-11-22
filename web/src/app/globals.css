@@ -2940,6 +2940,22 @@ a {
   inline-size: 100%;
 }
 
+/* ADM-MSH-07's two buttons: the destructive primary, and the way out beside it.
+
+   **A row that wraps rather than a grid**, because the two labels are very different lengths
+   -- one carries the fee -- and a pair of equal columns would leave "Keep it" stretched
+   across half the sheet, which makes a dismissal look like a second commitment. At phone
+   width they stack, and the primary stays first in both the source and the reading order:
+   the canvas draws the destructive act as the filled button, which is the one case where one
+   primary per view is the destructive one. */
+.ds-cancel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: center;
+  inline-size: 100%;
+}
+
 /* The cost of the act, where the canvas puts it. A quiet surface rather than a tinted one:
    this is what the freeze *will* do, not a warning -- a refusal replaces it and carries the
    edge-mark instead. */

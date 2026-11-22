@@ -2440,6 +2440,63 @@ carried forward as a rule, because each is a shape that has now recurred:
   UPDATE on a payment intent could violate the unique provider reference and answer 500 with
   the transaction aborted.
 
+**A contract may now let a member leave inside the minimum term for a price, and the finding
+is that the design and the implementation disagreed about a money figure.** ADM-MSH-07's
+canvas discloses "his 12-month commitment runs to March. Cancelling now triggers a two-month
+fee of JOD 80.00, and his access ends on 7 September after the notice period" -- a commitment
+broken, a buy-out charged, access ending after notice. `cancellation_effective_on` implemented
+the opposite and argued for it in its own docstring: "a member inside their commitment cannot
+cancel out of it by giving notice: the notice runs, and the effective date is whichever is
+later". Under that rule Tareq's access ends in March and no fee arises at all.
+
+Both readings are defensible from the sources, which name a "contract version, signature,
+start/end, minimum term, notice, renewal and cancellation policy" and never say what the
+cancellation policy *is*. The design is the authority on what the product does, so the buy-out
+is what got implemented -- and **nothing had noticed the divergence because no screen rendered
+the fee**, so the only reader of that arithmetic was a test asserting the arithmetic. A figure
+with no reader is a figure nobody has checked against the design, which is this build's "a
+writer with no reader" shape pointed at a number instead of a table.
+
+Four decisions carry it:
+
+- **`Terms.early_termination_months` is nullable, because zero is a term and not an absence.**
+  `NULL` is "this contract holds them to the term", which is what every contract in this build
+  said until now and what the lifecycle still enforces for one; `0` is "they may leave free",
+  which is a different product a tenant may legitimately sell; an integer is the buy-out in
+  months of the agreement amount. A boolean beside a count would let the two disagree, which
+  is MOD-020's "two caller-supplied keys that nothing relates are two halves of a control".
+- **The term still ends when it ends; what moves is the member's access.** A contract offering
+  a buy-out is one where notice is the date and the commitment is the price, so the date stands
+  and the fee charges for the rest. Pushing the date out *and* charging the buy-out would make
+  the member pay twice for the same months.
+- **The fee is `lifecycle.cancellation_fee`, in parts, and both callers read the same
+  function.** It used to be an inline proration in `preview_cancellation` and another one in
+  `cancel_membership`: two expressions, identical, agreeing for as long as nobody edited one of
+  them. Adding the buy-out pulled them apart in the worst direction -- the disclosure read
+  would have quoted a figure the command then refused as a mismatch, which is the disclosure
+  requirement defeated by the function that exists to serve it. The parts are kept apart rather
+  than summed early for MOD-018's reason: a total that has lost its components cannot be
+  reconciled against anything, and the first question about a fee is always which half is
+  which.
+- **The reasoning reaches the caller.** `cancellation_effective_on` returns its steps because
+  "COM-01-R06 requires the member to understand the consequence before confirming -- a date
+  with no explanation is the thing they dispute", and the only caller unpacked them into `_`.
+  A value computed for a reason nobody reads, with the reason written down beside the value.
+
+Proven: 9 domain tests with no database and 8 mutations against the arithmetic, every one
+caught -- one of which found a real hole, because nothing asserted the *value* of the period
+part and swapping it for the remainder passed; 5 HTTP tests including the canvas's figures end
+to end; migration `0018`, whose two constraints are three named isolation cases and 6
+mutations, all caught.
+
+**And the gap note that sent me here was wrong, which is the lesson worth more than the
+feature.** ADM-MSH-07's backlog entry said the fee had no reader and was learnable only by
+cancelling. `GET /memberships/{id}/cancellation-preview` has existed since the module was
+built. The real gap was that the read quoted a different product from the one the design
+approved, and nothing compared the two. **A claimed gap is a claim to check before building on
+it** -- and had I not gone looking for the reader I would have shipped the second fee
+expression this paragraph describes.
+
 **And the future-dated freeze is worth its own paragraph, because the fix was to refuse rather
 than to build.** `freeze_membership` took an unbounded `starts_on`, and the allowance is counted
 in the contract year containing it -- so a member who had spent all thirty days sent a date one
@@ -2507,6 +2564,16 @@ Known gaps, deliberate:
   sources do not state. The cache is the mildest of them: `membership_as_of` is the function
   that tells the truth, and the door does not read the cache.
 - **A freeze cannot be booked ahead**, which is the refusal above rather than an omission.
+- **The cancellation fee is what the act costs, not what is outstanding.** The period part is
+  what the current billing period costs for the days the member will have used when access
+  ends; whether that period has already been paid is a question for the invoice and the
+  payments against it, and nothing joins the two. The buy-out is always a new charge. Both are
+  disclosed on the read and on the screen rather than resolved, because resolving them means
+  deciding what "owed" means across an invoice, its payments and a credit note -- which is a
+  figure MOD-018 owns and this module would be inventing a second definition of.
+- **Nothing invoices the cancellation fee.** It is disclosed and recorded against the change,
+  and no invoice is issued and no payment taken, which is why ADM-MSH-07 is buildable while
+  ADM-MSH-01, 02, 04 and 05 are not: their buttons take money and this one does not.
 - **No installment schedule generation.** `fin_billing_schedules` records the plan and its
   remaining count; nothing walks it.
 - **Nothing reverses a payment inside the module.** A payment has no UPDATE grant at all, so a
@@ -4458,6 +4525,42 @@ decisions rather than rendering:
     form writes a dated absence and takes one back, and a reader without the write
     permission is given neither control rather than one that answers 403.
 
+**ADM-MSH-07's cancellation is the third write form, and building it found that the design
+and the implementation disagreed about a money figure.** That half is in MOD-017's notes
+above; what is the surface's own is the shape of the sheet and five decisions in it:
+
+  * **A side sheet this app has none of, so it is a parameter on the tab.** The canvas is
+    explicit -- "none uses a modal -- they are side sheets over Member 360, so the member's
+    context stays visible while you change their agreement" -- and `?tab=membership&cancel=1`
+    keeps that property while giving "Keep it" something to do. A permanently-open destructive
+    form has no way out, and a `<button>` that did nothing would be confirmed by somebody
+    reaching for the exit.
+  * **The commitment line is four sentences and the canvas draws one of them.** "His 12-month
+    commitment runs to March" is false for a member on a rolling contract, for one whose term
+    has run out, and for one whose contract sells no way out of a term they are inside -- the
+    last being the state *every* contract in this build was in until the buy-out existed.
+    `commitmentLine` decides which, so each branch has a test.
+  * **The interruption's argument is conditional, and its two halves come apart.** "He stopped
+    visiting 12 days ago and has not given a reason. A freeze costs him nothing and keeps the
+    commitment intact" joins a claim about attendance to a claim about a commitment, and
+    `freezeOffer` returns which of them holds. Told to a member on a monthly rolling contract,
+    the second half describes a benefit that does not exist.
+  * **An unknown last visit is not dormancy.** `days_since` is null at a club with no readers
+    as readily as for a member who never came, so the freeze is not offered on dormancy
+    grounds rather than offered on the assumption nobody has come -- MOD-014's "an unknown
+    birth date is not a minor", in the same direction.
+  * **The total is the server's and the screen never adds the parts.** The form echoes
+    `disclosed_fee_minor` back for the command to compare against what it recomputes, so a sum
+    computed here would be the second arithmetic this whole screen was built out of.
+
+Proven: 17 component tests over every branch and 5 browser mutations, all caught.
+**The browser layer has not been run for this screen**, and that is a gap rather than a
+judgement: the suite needs port 3000 and the shared `.env.e2e.local`, both held by another
+session's dev servers in this working tree, and stopping another session's servers is not
+this session's call. `phone.spec.ts` carries the sheet's route so the next run covers it, and
+the fixture seed that would make the canvas's own case renderable -- a contract with a
+twelve-month term and a two-month buy-out -- is the piece still owed.
+
 **ADM-MEM-10's walk-in form is the second write in this app that is not a member acting on
 their own account, and it needed a read nothing could ask for.** The canvas is two fields and
 one interruption -- "This number already has a record · **Hala Barakat** · joined Feb 2025.
@@ -5088,7 +5191,8 @@ re-running the fixture invalidates every test already created.
 Known gaps: the surface covers the sign-in, the step-up, the account page, MOD-004, MOD-005,
 MOD-007, MOD-008, MOD-009, MOD-010, MOD-011, MOD-012, MOD-013, MOD-014, MOD-016, MOD-017,
 MOD-018, MOD-019, MOD-021 and MOD-022, plus MOD-020's roster on a session, ADM-SCH-04's
-availability grid at `/rota`, ADM-MEM-10's walk-in form at
+availability grid at `/rota`, ADM-MSH-07's cancellation sheet at
+`/people/{id}?tab=membership&cancel=1`, ADM-MEM-10's walk-in form at
 `/members/new`, FD-06's class check-in at `/desk/classes/{id}` and FD-03's denial
 resolution at `/desk/denials/{id}`, with FD-08's device strip above both -- the first Front
 Desk screens -- ADM-STF-01/02's
@@ -5138,13 +5242,13 @@ specified V1 screens and leaves `owning_module` null for every one of them -- it
 not a pass. So nothing maps a screen to a module, and any statement of the form "module X's
 frontend is complete" is an assertion about a mapping that does not exist here. What the
 artefacts do support is per *surface*: `design:coverage` reports 39 screens in the inventory
-across Admin and Front Desk, 12 blocked on something external and 33 in the backlog, and
+across Admin and Front Desk, 12 blocked on something external and 32 in the backlog, and
 Member, Coach, Console and POS have no implementation at all. **Closing this honestly means
 resolving the mapping before claiming a module is done**, not counting routes -- and the
 backlog is now the half of that mapping which exists: every unbuilt screen on those two
 surfaces names the module that owns it, checked against the catalogue, so the modules with
 Admin and Front Desk screens still owed are MOD-026 (3), MOD-027 (8), MOD-055 (3), MOD-058 (1)
-and MOD-059 (1), plus 16 screens that are work inside modules already built.
+and MOD-059 (1), plus 15 screens that are work inside modules already built.
 
 So "implemented" above is accurate about the server plane and incomplete about the product
 everywhere, and the backlog has two halves.
@@ -5208,8 +5312,8 @@ on one of the eight external causes, or put in the backlog under the module whos
 `GateCoverageTests.UNGATED`'s discipline one layer up: adding to either list is meant to be
 uncomfortable.
 
-It reads **90 specified screens on Admin and Front desk: 39 in the inventory, 6 states of
-those, 12 blocked on something external, 33 in the backlog**, and it names the five surfaces
+It reads **90 specified screens on Admin and Front desk: 40 in the inventory, 6 states of
+those, 12 blocked on something external, 32 in the backlog**, and it names the five surfaces
 it does *not* cover with their counts. It checks both directions -- a reason for a screen the inventory now argues is a
 stale excuse and fails, which is the schedule board's "gap note that outlived its gap" caught
 structurally. My own hand audit had said 43 were missing; the truth was that most were built,

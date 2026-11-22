@@ -1,5 +1,6 @@
 import { formatMoney } from "@/i18n/locale";
 import { api } from "@/lib/api";
+import type { CancellationQuote } from "@/lib/cancellation";
 import type { FreezeAllowance } from "@/lib/freeze";
 
 /**
@@ -257,4 +258,20 @@ export function outstandingMinor(invoices: InvoiceRow[]): number {
 export function readFreezeAllowance(membershipId: string): Promise<FreezeAllowance> {
   return api<FreezeAllowance>(
     `/memberships/${encodeURIComponent(membershipId)}/freeze-allowance`);
+}
+
+/**
+ * What cancelling would cost and when access would end. ADM-MSH-07, COM-01-R06.
+ *
+ * **This route has existed since MOD-017 was built and nothing had ever called it.** The
+ * screen's own backlog entry claimed the fee had no reader, which was wrong -- the gap was
+ * that the figure it returned was a different product from the one the design approved, and
+ * nothing compared the two because no surface rendered either. A figure with no reader is a
+ * figure nobody has checked against the design.
+ */
+export function readCancellationPreview(
+  membershipId: string,
+): Promise<CancellationQuote> {
+  return api<CancellationQuote>(
+    `/memberships/${encodeURIComponent(membershipId)}/cancellation-preview`);
 }

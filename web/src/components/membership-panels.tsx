@@ -5,8 +5,17 @@ import { MoneyValue } from "@/components/ds/money-value";
 import { fill, formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
 import { gate, gateAll, gateMessage, gateVerdict, failureMessage, type GateAnswer }
   from "@/lib/api";
-import { readFreezeAllowance } from "@/lib/membership";
+import { readCancellationPreview, readFreezeAllowance } from "@/lib/membership";
 import { affordanceFor, type FreezeAllowance } from "@/lib/freeze";
+import {
+  affordanceFor as cancelAffordanceFor,
+  commitmentLine,
+  feeLines,
+  freezeOffer,
+  type CancellationQuote,
+} from "@/lib/cancellation";
+import { readAttendance } from "@/lib/member-record";
+import { CancelForm } from "@/app/people/[personId]/cancel-form";
 import { FreezeForm } from "@/app/people/[personId]/freeze-form";
 import {
   kindName,
@@ -20,6 +29,7 @@ import {
   listGrants,
   listInvoices,
   listMemberships,
+  money,
   outstandingMinor,
   remaining,
   type BillingAccount,
@@ -61,6 +71,7 @@ export async function MembershipPanels({
   personId,
   locale,
   only,
+  cancelling = false,
 }: {
   personId: string;
   locale: Locale;
@@ -73,6 +84,17 @@ export async function MembershipPanels({
    * surface composing a member wants.
    */
   only?: "membership" | "billing";
+  /**
+   * Whether ADM-MSH-07's sheet is open.
+   *
+   * **The canvas draws these as side sheets over Member 360 and this app has none**, so the
+   * sheet is a query parameter on the tab: `?tab=membership&cancel=1`. That keeps the
+   * canvas's own structure -- "the member's context stays visible while you change their
+   * agreement" -- and gives "Keep it" something to do, which a permanently-open destructive
+   * form cannot. It also means the form is opened deliberately rather than sitting under the
+   * membership it would end.
+   */
+  cancelling?: boolean;
 }) {
   const text = (key: MessageKey) => t(locale, key);
   // One round trip rather than three; see `member-metrics.tsx` for why that matters.
@@ -108,6 +130,14 @@ export async function MembershipPanels({
           shift rather than one an act, and the allowance panel reads without one. */}
       {show("membership") ? (
         <Freezing personId={personId} locale={locale} />
+      ) : null}
+
+      {/* **ADM-MSH-07, and the third of the canvas's "three consequence-heavy actions".**
+          The other two are a sale and an upgrade, and both end in taking a payment this
+          build has no provider for; a cancellation ends in a disclosure and a recorded
+          decision, which is why this one is buildable and they are not. */}
+      {show("membership") ? (
+        <Cancelling personId={personId} locale={locale} open={cancelling} />
       ) : null}
 
       {show("membership") ? (
@@ -740,6 +770,211 @@ async function Freezing({ personId, locale }: { personId: string; locale: Locale
         {([
           ["freeze.gapOverrideLabel", "freeze.gapOverride"],
           ["freeze.gapUndoLabel", "freeze.gapUndo"],
+        ] as [MessageKey, MessageKey][]).map(([label, why]) => (
+          <div key={label} style={{ display: "contents" }}>
+            <dt className="muted">{text(label)}</dt>
+            <dd style={{ margin: 0 }}>{text(why)}</dd>
+          </div>
+        ))}
+      </dl>
+    </section>
+  );
+}
+
+
+/**
+ * ADM-MSH-07's cancellation, with the money consequence before the commit.
+ *
+ * **The canvas's three facts, and each of them is a different sentence depending on the
+ * contract.** "His 12-month commitment runs to March. Cancelling now triggers a two-month
+ * fee of JOD 80.00, and his access ends on 7 September after the notice period" is one of
+ * four commitment states, and the other three would be false if this rendered that sentence
+ * for everybody -- a member on a rolling contract has no commitment, one whose term has run
+ * out has one that no longer binds, and one whose contract offers no buy-out cannot leave
+ * early at all. `commitmentLine` is where that is decided, so each branch has a test.
+ *
+ * **The interruption above the button is the canvas's, and its argument is conditional.**
+ * "He stopped visiting 12 days ago and has not given a reason. A freeze costs him nothing
+ * and keeps the commitment intact" joins two claims that are not always both true, so
+ * `freezeOffer` returns which of them holds and the panel says only that much. A page that
+ * told a member on a monthly rolling contract that a freeze "keeps the commitment intact"
+ * would be describing a benefit that does not exist.
+ *
+ * **Attendance is composed through its own gate and its absence is not dormancy.** The last
+ * visit is MOD-022's and needs `access.zone.read`, which a reader of a membership may not
+ * hold; an unknown last visit means the freeze is not offered on dormancy grounds rather
+ * than offered on the assumption that nobody has come. MOD-014's rule, in the same
+ * direction: absent data is not a fact about somebody.
+ */
+async function Cancelling(
+  { personId, locale, open }: { personId: string; locale: Locale; open: boolean },
+) {
+  const text = (key: MessageKey) => t(locale, key);
+  const back = `/people/${personId}?tab=membership`;
+
+  let live: MembershipRow | undefined;
+  try {
+    live = (await listMemberships(personId)).memberships.find(
+      (row) => row.status === "active" || row.status === "frozen");
+  } catch {
+    // The membership block above already reported the failure; a second banner for the same
+    // request would be the same fact twice.
+    return null;
+  }
+  if (live === undefined) return null;
+
+  let quote: CancellationQuote;
+  try {
+    quote = await readCancellationPreview(live.membership_id);
+  } catch {
+    return null;
+  }
+
+  // **Closed is one control, because the consequence belongs in the sheet.** Printing the
+  // fee under every member's membership would make a figure nobody asked for the most
+  // prominent thing on the tab, and the canvas puts it behind the deliberate act of opening
+  // the sheet.
+  if (!open) {
+    return (
+      <section className="page-section" aria-labelledby={`cancel-${live.membership_id}`}>
+        <h2 id={`cancel-${live.membership_id}`} style={{ margin: 0 }}>
+          {text("cancel.title")}
+        </h2>
+        <p className="muted" style={{ margin: 0 }}>{text("cancel.closedLead")}</p>
+        <p style={{ margin: 0 }}>
+          <Link href={`${back}&cancel=1`}>{text("cancel.open")}</Link>
+        </p>
+      </section>
+    );
+  }
+
+  const may = await gate("membership.lifecycle.change");
+  const affordance = cancelAffordanceFor(quote, {
+    allowed: may.allowed, verdict: gateVerdict(may),
+  });
+
+  let daysSince: number | null = null;
+  const maySee = await gate("access.zone.read");
+  if (maySee.allowed) {
+    try {
+      daysSince = (await readAttendance(personId)).days_since;
+    } catch {
+      daysSince = null;
+    }
+  }
+  const offer = freezeOffer(quote, daysSince);
+  const line = commitmentLine(quote);
+  const lines = feeLines(quote);
+  const feeText = money(quote.disclosed_fee_minor, quote.disclosed_fee_currency);
+
+  return (
+    <section className="page-section" aria-labelledby={`cancel-${live.membership_id}`}>
+      <h2 id={`cancel-${live.membership_id}`} style={{ margin: 0 }}>
+        {text("cancel.title")}
+      </h2>
+
+      {/* **The consequence, where the canvas puts it: above everything else.** The
+          commitment, then the money, then the date -- in that order, because that is the
+          order the canvas states them and the order a member asks about them. */}
+      <div className="ds-freeze-consequence">
+        {line === "none" ? null : (
+          <p style={{ margin: 0 }}>
+            {line === "served"
+              ? fill(locale, "cancel.termServed", { date: quote.commitment.ends_on ?? "" })
+              : line === "held_to_term"
+                ? fill(locale, "cancel.termHolds",
+                       { date: quote.commitment.ends_on ?? "" })
+                : fill(locale, "cancel.termEarly",
+                       { months: formatInteger(quote.commitment.minimum_term_months, "latn"),
+                         date: quote.commitment.ends_on ?? "" })}
+          </p>
+        )}
+        <p style={{ margin: 0 }}>
+          <strong>
+            {quote.disclosed_fee_minor === 0
+              ? text("cancel.noFee")
+              : fill(locale, "cancel.feeIs", { fee: feeText })}
+          </strong>
+        </p>
+        {lines.length > 1 ? (
+          <dl className="facts">
+            {lines.map((part) => (
+              <div key={part.key} style={{ display: "contents" }}>
+                <dt className="muted">{text(part.key)}</dt>
+                <dd style={{ margin: 0 }}>
+                  <MoneyValue
+                    kind="owed" amountMinor={part.minor}
+                    currency={quote.disclosed_fee_currency}
+                  />
+                </dd>
+              </div>
+            ))}
+          </dl>
+        ) : null}
+        <p style={{ margin: 0 }}>
+          {quote.ends_immediately
+            ? text("cancel.endsToday")
+            : fill(locale, "cancel.endsOn",
+                   { date: quote.effective_on,
+                     days: formatInteger(quote.notice_days, "latn") })}
+        </p>
+      </div>
+
+      {/* **"Before you cancel", which is the canvas's own heading.** It is an interruption
+          rather than a warning: the next step is a different act, not a confirmation, so it
+          carries the link to the freeze rather than a tone that says something went wrong. */}
+      {offer !== null ? (
+        <div className="ds-freeze-consequence">
+          <p style={{ margin: 0 }}><strong>{text("cancel.beforeYouCancel")}</strong></p>
+          <p style={{ margin: 0 }}>
+            {offer === "dormant_and_committed"
+              ? fill(locale, "cancel.offerDormantCommitted",
+                     { days: formatInteger(daysSince ?? 0, "latn") })
+              : offer === "dormant"
+                ? fill(locale, "cancel.offerDormant",
+                       { days: formatInteger(daysSince ?? 0, "latn") })
+                : text("cancel.offerCommitted")}
+          </p>
+          <p style={{ margin: 0 }}>
+            <Link href={back}>{text("cancel.offerFreeze")}</Link>
+          </p>
+        </div>
+      ) : null}
+
+      {affordance === "cannot" ? (
+        <Banner severity="info">{text("cancel.cannot")}</Banner>
+      ) : affordance === "form" ? (
+        <CancelForm
+          locale={locale}
+          personId={personId}
+          membershipId={live.membership_id}
+          feeMinor={quote.disclosed_fee_minor}
+          currency={quote.disclosed_fee_currency}
+          version={quote.version}
+          feeText={feeText}
+          backHref={back}
+        />
+      ) : affordance === "step_up" ? (
+        <>
+          <Banner severity="info">{text("cancel.stepUpFirst")}</Banner>
+          <Link
+            href={`/step-up?for=financial&action=membership.lifecycle.change&next=${
+              encodeURIComponent(`${back}&cancel=1`)}`}
+          >
+            {text("cancel.stepUp")}
+          </Link>
+        </>
+      ) : (
+        <Banner severity="info">
+          {affordance === "refused" && gateVerdict(may) === "denied"
+            ? text("cancel.notPermitted") : text(gateMessage(may))}
+        </Banner>
+      )}
+
+      <dl className="facts">
+        {([
+          ["cancel.gapFeeLabel", "cancel.gapFee"],
+          ["cancel.gapChargeLabel", "cancel.gapCharge"],
         ] as [MessageKey, MessageKey][]).map(([label, why]) => (
           <div key={label} style={{ display: "contents" }}>
             <dt className="muted">{text(label)}</dt>

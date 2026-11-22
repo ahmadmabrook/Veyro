@@ -68,6 +68,7 @@ def draft_contract_version(
     minimum_term_months: int, notice_days: int, renewal_mode: str,
     cancellation_mode: str, freeze_days_per_year: int, grace_days: int,
     actor_id: str, correlation_id: str, locale: str = "en",
+    early_termination_months: int | None = None,
 ) -> dict[str, Any]:
     """Write a contract version as a draft. It is not signable until somebody else publishes it.
 
@@ -113,13 +114,14 @@ def draft_contract_version(
                 INSERT INTO plt01.mem_contract_versions
                     (tenant_id, contract_key, version, body, locale, minimum_term_months,
                      notice_days, renewal_mode, cancellation_mode, freeze_days_per_year,
-                     grace_days, status, created_by, correlation_id)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'draft', %s, %s)
+                     grace_days, early_termination_months, status, created_by,
+                     correlation_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'draft', %s, %s)
                 RETURNING contract_version_id
                 """,
                 (tenant_id, contract_key, version, body, locale, minimum_term_months,
                  notice_days, renewal_mode, cancellation_mode, freeze_days_per_year,
-                 grace_days, actor_id, correlation_id),
+                 grace_days, early_termination_months, actor_id, correlation_id),
             ).fetchone()
         except errors.UniqueViolation:
             raise Conflict("this_contract_version_was_drafted_by_somebody_else") from None
@@ -128,7 +130,8 @@ def draft_contract_version(
         assert row is not None
         version_id = str(row[0])
     return {"contract_version_id": version_id, "contract_key": contract_key,
-            "version": version, "status": "draft"}
+            "version": version, "status": "draft",
+            "early_termination_months": early_termination_months}
 
 
 def publish_contract_version(
@@ -237,7 +240,8 @@ def _terms_of(conn: Connection[Any], agreement_id: str) -> lifecycle.Terms:
     """
     row = conn.execute(
         "SELECT c.minimum_term_months, c.notice_days, c.renewal_mode,"
-        " c.cancellation_mode, c.freeze_days_per_year, c.grace_days"
+        " c.cancellation_mode, c.freeze_days_per_year, c.grace_days,"
+        " c.early_termination_months"
         " FROM plt01.mem_agreements a"
         " JOIN plt01.mem_contract_versions c"
         "   ON c.contract_version_id = a.contract_version_id"
@@ -249,7 +253,8 @@ def _terms_of(conn: Connection[Any], agreement_id: str) -> lifecycle.Terms:
     return lifecycle.Terms(
         minimum_term_months=int(row[0]), notice_days=int(row[1]),
         renewal_mode=str(row[2]), cancellation_mode=str(row[3]),
-        freeze_days_per_year=int(row[4]), grace_days=int(row[5]))
+        freeze_days_per_year=int(row[4]), grace_days=int(row[5]),
+        early_termination_months=(None if row[6] is None else int(row[6])))
 
 
 def create_agreement(
@@ -1001,15 +1006,30 @@ def preview_cancellation(
 
     **"Members understand consequences before confirming changes"** is a required outcome
     (paragraph 1500), and a disclosure the member cannot see before deciding is not one. So the
-    effective date and the proration are computed here, returned with their reasoning, and
-    recorded on the change when the member confirms -- which is how the figure they were shown
-    and the figure that was applied are provably the same one.
+    effective date and the fee are computed here, returned with their reasoning, and recorded
+    on the change when the member confirms -- which is how the figure they were shown and the
+    figure that was applied are provably the same one.
+
+    **The fee is `lifecycle.cancellation_fee`, which is what makes that last sentence true.**
+    It used to be an inline proration here and another one in `cancel_membership`: two
+    expressions, identical, agreeing for as long as nobody edited one of them. Adding the
+    contract buy-out ADM-MSH-07 discloses pulled them apart in the worst direction -- this
+    read would have quoted a figure the command then refused as a mismatch, which is the
+    disclosure requirement defeated by the function that exists to serve it. MOD-018's "one
+    module, two definitions of the same balance", in a module whose own header says a control
+    and the state it bounds commit together.
+
+    **And this is the reader ADM-MSH-07's backlog entry said did not exist.** It said the fee
+    was learnable only by cancelling, which was wrong -- this route has been here since the
+    module was built. The gap was never the read; it was that the read quoted a different
+    product from the one the design approved, and nothing compared the two because no screen
+    rendered either. A claimed gap is a claim to check before building on it.
     """
     today = at or _today()
     with tenant_scope(pool, tenant_id) as conn:
         membership = conn.execute(
             "SELECT m.agreement_id, m.status, m.current_period_start, m.current_period_end,"
-            " a.minimum_term_ends_on, a.amount_minor, a.currency"
+            " a.minimum_term_ends_on, a.amount_minor, a.currency, m.version"
             " FROM plt01.mem_memberships m"
             " JOIN plt01.mem_agreements a ON a.agreement_id = m.agreement_id"
             " WHERE m.membership_id = %s",
@@ -1018,27 +1038,71 @@ def preview_cancellation(
         if membership is None:
             raise NotFound("membership_not_found")
         terms = _terms_of(conn, str(membership[0]))
+    # **Whether it can be cancelled at all, asked the way the command asks it.** A panel
+    # pricing a cancellation the command would refuse as a bad transition is a figure offered
+    # for an act that cannot happen -- and the screen needs to say which of the two it is.
+    may_cancel, refused_because = True, None
+    try:
+        lifecycle.check_transition("cancellation", str(membership[1]), "cancelled")
+    except lifecycle.LifecycleError as e:
+        may_cancel, refused_because = False, str(e)
     effective_on, steps = lifecycle.cancellation_effective_on(
         decided_on=today, terms=terms, period_end=membership[3],
         minimum_term_ends_on=membership[4])
-    fee_minor: int | None = None
-    fee_steps: tuple[str, ...] = ()
-    if membership[2] is not None and membership[3] is not None:
-        # What is still owed for the part of the current period that will be served. A
-        # cancellation effective at the end of the period owes the whole of it; one effective
-        # mid-period owes the part before the effective date.
-        served, fee_steps = lifecycle.prorated_amount(
-            full_amount_minor=int(membership[5]), period_start=membership[2],
-            period_end=membership[3], effective_on=effective_on)
-        fee_minor = int(membership[5]) - served
+    fee_minor, fee_parts, fee_steps = lifecycle.cancellation_fee(
+        effective_on=effective_on, terms=terms, amount_minor=int(membership[5]),
+        period_start=membership[2], period_end=membership[3],
+        minimum_term_ends_on=membership[4])
+    minimum_term_ends_on: date | None = membership[4]
     return {
         "membership_id": membership_id, "status": str(membership[1]),
+        # The form's optimistic-concurrency token, because the command takes
+        # `expected_version` and a screen that cannot supply it is a screen whose write
+        # cannot be guarded -- two staff cancelling one membership is MOD-014's ordinary case.
+        "version": int(membership[7]),
+        "may_cancel": may_cancel,
+        "refused_because": refused_because,
         "effective_on": effective_on.isoformat(),
+        "ends_immediately": effective_on <= today,
         "disclosed_fee_minor": fee_minor,
-        "disclosed_fee_currency": str(membership[6]) if fee_minor is not None else None,
+        "disclosed_fee_currency": str(membership[6]),
+        # **The parts, not only the total.** They answer different questions and a member
+        # disputing one should not have to take the other on trust -- which is MOD-018's
+        # argument for four wallet balances rather than one, and is what makes the headline
+        # figure checkable rather than merely stated.
+        "fee_parts": fee_parts,
+        "amount_minor": int(membership[5]),
         "explanation": list(steps) + list(fee_steps),
         "cancellation_mode": terms.cancellation_mode,
         "notice_days": terms.notice_days,
+        "commitment": {
+            "minimum_term_months": terms.minimum_term_months,
+            "ends_on": (
+                minimum_term_ends_on.isoformat() if minimum_term_ends_on else None),
+            "leaving_early": (
+                minimum_term_ends_on is not None and effective_on < minimum_term_ends_on),
+            # Three states, as the column has them: no early exit, a free one, or a priced
+            # one. A screen reading a null as a zero would tell a member they may walk away
+            # free from a contract that holds them to March.
+            "early_termination_months": terms.early_termination_months,
+            "may_leave_early": terms.early_termination_months is not None,
+        },
+        # **The alternative the canvas puts above the button.** "A freeze costs him nothing
+        # and keeps the commitment intact" is only true where the contract allows one; how
+        # much of the allowance is left is `freeze_allowance`'s answer rather than a second
+        # count here.
+        "freeze_is_an_alternative": terms.freeze_days_per_year > 0,
+        "the_fee_is_what_it_costs_not_what_is_owed": (
+            "period_minor is what the current billing period costs for the part of it the "
+            "member will have used when access ends -- whether that period has already been "
+            "paid is a question for the invoice and the payments against it, which this "
+            "read does not join to. early_termination_minor is the contract's buy-out and "
+            "is always a new charge"),
+        "the_figures_are_the_writes_own": (
+            "effective_on and disclosed_fee_minor are `cancellation_effective_on` and "
+            "`cancellation_fee` over this membership's own terms, which are the expressions "
+            "`cancel_membership` compares an acknowledged figure against -- not a second "
+            "pair that agrees with them today"),
     }
 
 
@@ -1084,6 +1148,11 @@ def cancel_membership(
                     "takes_effect_immediately": prior["effective_on"] <= today,
                     "disclosed_fee_minor": prior["disclosed_fee_minor"],
                     "fee_due_minor": prior["disclosed_fee_minor"],
+                    # The recorded row carries the total and not its parts, so a repeat
+                    # reports no breakdown rather than re-deriving one against terms that
+                    # may have been superseded since. Answering from what was written down
+                    # is this function's own rule one field over.
+                    "fee_parts": None, "reasoning": [],
                     "entitlements_revoked": [], "repeated": True}
         if expected_version is not None and membership["version"] != expected_version:
             raise Conflict("this_membership_changed_since_it_was_read")
@@ -1099,18 +1168,21 @@ def cancel_membership(
         ).fetchone()
         assert agreement is not None
         terms = _terms_of(conn, membership["agreement_id"])
-        effective_on, _ = lifecycle.cancellation_effective_on(
+        effective_on, reasoning = lifecycle.cancellation_effective_on(
             decided_on=today, terms=terms, period_end=membership["current_period_end"],
             minimum_term_ends_on=agreement[0])
-        fee_minor: int | None = None
-        if (membership["current_period_start"] is not None
-                and membership["current_period_end"] is not None):
-            served, _ = lifecycle.prorated_amount(
-                full_amount_minor=int(agreement[1]),
-                period_start=membership["current_period_start"],
-                period_end=membership["current_period_end"],
-                effective_on=effective_on)
-            fee_minor = int(agreement[1]) - served
+        # **One function decides the fee, and the quote reads the same one.** The first
+        # version computed the period part inline here and `cancellation_quote` did not
+        # exist, so the only reader of this arithmetic was a test asserting the arithmetic --
+        # which is how it went unnoticed that the design charges a buy-out this build refused
+        # to have. A second expression in the quote that agreed with this one today is
+        # MOD-018's "one module, two definitions of the same balance", and the figure here is
+        # the one a member acknowledges.
+        fee_minor, fee_parts, fee_steps = lifecycle.cancellation_fee(
+            effective_on=effective_on, terms=terms, amount_minor=int(agreement[1]),
+            period_start=membership["current_period_start"],
+            period_end=membership["current_period_end"],
+            minimum_term_ends_on=agreement[0])
         if acknowledged_fee_minor is not None and acknowledged_fee_minor != fee_minor:
             raise Conflict(
                 f"the fee disclosed was {acknowledged_fee_minor} and the fee due is "
@@ -1138,9 +1210,9 @@ def cancel_membership(
                 (effective_on, change_id, effective_on, membership_id))
             # The entitlements this membership gave stop being drawable in the same
             # transaction. A future-dated cancellation revokes nothing yet, because the
-            # member is still paying for the notice period and still entitled to train --
-            # and nothing in this build revokes them when the date arrives, which is the
-            # ninth schedule wanting the worker runtime that does not exist.
+            # member is still paying for the notice period and still entitled to train;
+            # `memberships.revoke_ended_grants` is the worker job that revokes them when the
+            # date arrives, which this comment said did not exist until the runtime landed.
             revoked = _revoke_grants(
                 conn, tenant_id, membership_id=membership_id,
                 reason=f"the membership was cancelled: {reason}", actor_id=actor_id,
@@ -1158,8 +1230,15 @@ def cancel_membership(
             "effective_on": effective_on.isoformat(),
             "takes_effect_immediately": effective_on <= today,
             "disclosed_fee_minor": acknowledged_fee_minor,
-            "fee_due_minor": fee_minor, "entitlements_revoked": revoked,
-            "repeated": repeated}
+            "fee_due_minor": fee_minor, "fee_parts": fee_parts,
+            # **The reasoning was computed and discarded by the only caller.**
+            # `cancellation_effective_on` returns its steps because "COM-01-R06 requires the
+            # member to understand the consequence before confirming -- a date with no
+            # explanation is the thing they dispute", and this function unpacked it into `_`.
+            # A value computed for a reason nobody reads is this build's recurring shape, and
+            # here the reason was written down beside the value that implements it.
+            "reasoning": list(reasoning) + list(fee_steps),
+            "entitlements_revoked": revoked, "repeated": repeated}
 
 
 #: The change kinds whose reason is health data, so the prose is masked rather than returned.

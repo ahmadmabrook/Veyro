@@ -95,6 +95,21 @@ class Terms:
     cancellation_mode: str = "end_of_term"
     freeze_days_per_year: int = 0
     grace_days: int = 0
+    # **Whether the member may leave inside the minimum term, and what that costs.**
+    #
+    # `None` is "they may not", which is what every contract in this build said until now and
+    # what `cancellation_effective_on` enforces by pushing the date out to the end of the
+    # term. An integer is "they may, for this many months of the agreement amount" -- the
+    # buy-out an ordinary gym contract offers, and what ADM-MSH-07 discloses: "his 12-month
+    # commitment runs to March. Cancelling now triggers a two-month fee of JOD 80.00, and his
+    # access ends on 7 September after the notice period."
+    #
+    # **Three states in one nullable field, because zero is a real term and not an absence.**
+    # A contract that lets somebody walk away free inside the term is a different product
+    # from one that holds them to it, and a boolean beside an integer would let the two
+    # disagree. The sources name a "cancellation policy" and do not say what it is, so which
+    # of the three a tenant sells is theirs to write on the contract version.
+    early_termination_months: int | None = None
 
 
 @dataclass(frozen=True)
@@ -285,10 +300,85 @@ def cancellation_effective_on(
         raise LifecycleError(
             f"{terms.cancellation_mode!r} is not a cancellation mode this build evaluates")
     if minimum_term_ends_on and minimum_term_ends_on > candidate:
-        steps.append(f"minimum_term_ends_on: {minimum_term_ends_on.isoformat()} (later)")
-        candidate = minimum_term_ends_on
+        if terms.early_termination_months is None:
+            steps.append(f"minimum_term_ends_on: {minimum_term_ends_on.isoformat()} (later)")
+            candidate = minimum_term_ends_on
+        else:
+            # **The term still ends when it ends; what moves is the member's access.** A
+            # contract offering a buy-out is one where notice is the date and the commitment
+            # is the price, so the date stands and `cancellation_fee` charges for the rest.
+            # Pushing the date out *and* charging the buy-out would make the member pay twice
+            # for the same months, which is the direction nobody would defend.
+            steps.append(
+                f"minimum_term_ends_on: {minimum_term_ends_on.isoformat()} (bought out at "
+                f"{terms.early_termination_months} months)")
     steps.append(f"effective_on: {candidate.isoformat()}")
     return candidate, tuple(steps)
+
+
+def cancellation_fee(
+    *, effective_on: date, terms: Terms, amount_minor: int, period_start: date | None,
+    period_end: date | None, minimum_term_ends_on: date | None,
+) -> tuple[int, dict[str, int], tuple[str, ...]]:
+    """What a cancellation costs, in parts. COM-01-R06's disclosure, as arithmetic.
+
+    **Two components, named separately, because they answer different questions** and a
+    member disputing one should not have to take the other on trust. The period part is what
+    they owe for the part of the current period they will have used by the time access ends;
+    the buy-out is what the contract charges for leaving the commitment early. ADM-MSH-07
+    draws one headline figure and this returns the headline *and* its parts, which is more
+    than the canvas asks for and is what makes the headline checkable.
+
+    **The parts are kept apart rather than summed early** for the reason MOD-018 keeps four
+    wallet balances rather than one: a total that has lost its components cannot be
+    reconciled against anything, and the first question about a fee is always which half of
+    it is which.
+
+    A buy-out is charged only where the contract offers one and the member is actually
+    leaving inside the term. `early_termination_months = 0` is a contract that lets them
+    leave free, and it produces a step saying so -- a zero that means "no charge" and a zero
+    that means "no early exit at all" must not read alike, which is the whole reason
+    `Terms.early_termination_months` is nullable.
+    """
+    if amount_minor < 0:
+        raise LifecycleError("an_agreement_amount_is_not_negative")
+    steps: list[str] = []
+    parts: dict[str, int] = {"period_minor": 0, "early_termination_minor": 0}
+
+    if period_start is not None and period_end is not None:
+        remaining, prorate_steps = prorated_amount(
+            full_amount_minor=amount_minor, period_start=period_start,
+            period_end=period_end, effective_on=effective_on)
+        parts["period_minor"] = amount_minor - remaining
+        steps.extend(prorate_steps)
+        steps.append(f"period_minor: {parts['period_minor']} (the part already used)")
+    else:
+        steps.append("period_minor: 0 (this membership has no billing period)")
+
+    months = terms.early_termination_months
+    # **Validated before the branches, not inside one.** The first version checked this in
+    # the branch that charges a buy-out, so a negative one on a contract whose term had
+    # already been served was reported as zero rather than refused -- a guard with a window,
+    # which is the shape this build has found in nine modules. The database forbids the value
+    # outright; this is the half that holds for a caller who is not the database.
+    if months is not None and months < 0:
+        raise LifecycleError("a_buy_out_is_not_negative")
+    if months is None:
+        steps.append("early_termination_minor: 0 (this contract has no buy-out)")
+    elif minimum_term_ends_on is None or effective_on >= minimum_term_ends_on:
+        steps.append(
+            "early_termination_minor: 0 (access ends on or after the minimum term, so "
+            "nothing is being left early)")
+    else:
+        parts["early_termination_minor"] = months * amount_minor
+        steps.append(
+            f"early_termination_minor: {months} x {amount_minor} = "
+            f"{parts['early_termination_minor']} (leaving before "
+            f"{minimum_term_ends_on.isoformat()})")
+
+    total = parts["period_minor"] + parts["early_termination_minor"]
+    steps.append(f"fee_due_minor: {total}")
+    return total, parts, tuple(steps)
 
 
 def prorated_amount(

@@ -1857,6 +1857,62 @@ const MUTATIONS = [
     runner: "playwright",
     grep: "say they are the only way back, which the lead used to get wrong",
   },
+  {
+    id: "cancel-term-sentence-for-everybody",
+    why: "ADM-MSH-07's commitment line is true of its own member and false of three others:"
+      + " a rolling contract has no commitment, a served term no longer binds, and a"
+      + " contract with no buy-out cannot be left early at all. One sentence for all four"
+      + " tells three members something untrue about what they are agreeing to",
+    file: "src/lib/cancellation.ts",
+    from: '  if (!quote.commitment.leaving_early) return "served";\n'
+      + '  return quote.commitment.may_leave_early ? "leaving_early" : "held_to_term";',
+    to: '  return "leaving_early";',
+    grep: "says the term holds where the contract sells no way out of it",
+    runner: "vitest",
+  },
+  {
+    id: "cancel-zero-fee-line",
+    why: "a line reading \"leaving the commitment early \u00b7 0.00\" states a price for"
+      + " something that is not on offer, in a money column where a zero is a figure",
+    file: "src/lib/cancellation.ts",
+    from: "  if (quote.fee_parts.period_minor !== 0) {",
+    to: "  if (true) {",
+    grep: "leaves out a part that is not charged",
+    runner: "vitest",
+  },
+  {
+    id: "cancel-dormancy-from-absent-data",
+    why: "`days_since` is null at a club with no readers as readily as for a member who"
+      + " never came, so reading absence as dormancy tells a receptionist somebody stopped"
+      + " attending on the strength of there being no turnstile -- MOD-014's rule that an"
+      + " unknown birth date is not a minor, in the other direction",
+    file: "src/lib/cancellation.ts",
+    from: "    daysSinceLastVisit !== null && daysSinceLastVisit >= DORMANT_AFTER_DAYS;",
+    to: "    daysSinceLastVisit === null || daysSinceLastVisit >= DORMANT_AFTER_DAYS;",
+    grep: "treats an unknown last visit as not dormant",
+    runner: "vitest",
+  },
+  {
+    id: "cancel-freeze-offered-without-one",
+    why: "offering a freeze on a contract that allows none points at a form that cannot"
+      + " accept them, which is the freeze block's own `no_allowance` rule from the other"
+      + " side",
+    file: "src/lib/cancellation.ts",
+    from: "  if (!quote.freeze_is_an_alternative) return null;",
+    to: "  if (false) return null;",
+    grep: "offers nothing where the contract allows no freezing",
+    runner: "vitest",
+  },
+  {
+    id: "cancel-step-up-for-an-impossible-act",
+    why: "a membership already cancelled cannot be cancelled by anybody, so offering a"
+      + " step-up sends somebody to find a second factor that changes nothing",
+    file: "src/lib/cancellation.ts",
+    from: '  if (!quote.may_cancel) return "cannot";',
+    to: '  if (false) return "cannot";',
+    grep: "says so where the membership cannot be cancelled by anybody",
+    runner: "vitest",
+  },
 ];
 
 const only = process.argv[2];

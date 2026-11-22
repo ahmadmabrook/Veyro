@@ -669,6 +669,148 @@ class LifecycleTests(CommercialApiTestCase):
                 "idempotency_key": "c-right", **self.correlation()}, headers=owner)
         self.assertEqual(right.status_code, 200, right.text)
 
+    def test_the_preview_carries_what_the_screen_has_to_draw(self):
+        """ADM-MSH-07's three facts, before the button.
+
+        **The route existed and nothing had ever called it**, so what it returned had never
+        been compared against the screen that needs it: the commitment, the fee *in parts*,
+        when access ends, whether a freeze is an alternative, and whether this membership can
+        be cancelled at all. Each of those is a sentence on the sheet, and a screen deriving
+        any of them for itself would be a second definition of the figure a member is held
+        to.
+        """
+        tenant_id = self.tenant()
+        live = self.membership(tenant_id, contract={
+            "minimum_term_months": 12, "notice_days": 30,
+            "cancellation_mode": "end_of_notice", "freeze_days_per_year": 30,
+            "early_termination_months": 2})
+        owner = self.headers(tenant_id)
+        preview = self.client.get(
+            f"/memberships/{live['membership_id']}/cancellation-preview", headers=owner)
+        self.assertEqual(preview.status_code, 200, preview.text)
+        body = preview.json()
+        self.assertTrue(body["may_cancel"])
+        self.assertIsNone(body["refused_because"])
+        # The commitment, which is the canvas's first sentence.
+        self.assertEqual(body["commitment"]["minimum_term_months"], 12)
+        self.assertTrue(body["commitment"]["leaving_early"])
+        self.assertTrue(body["commitment"]["may_leave_early"])
+        self.assertEqual(body["commitment"]["early_termination_months"], 2)
+        self.assertIsNotNone(body["commitment"]["ends_on"])
+        # The money, in parts, with the buy-out at two months of the agreement amount.
+        self.assertEqual(body["fee_parts"]["early_termination_minor"], 2 * 4500)
+        self.assertEqual(
+            body["disclosed_fee_minor"],
+            body["fee_parts"]["period_minor"]
+            + body["fee_parts"]["early_termination_minor"])
+        self.assertEqual(body["disclosed_fee_currency"], "JOD")
+        # And the two things the sheet needs that are not money: the version the form guards
+        # its write with, and whether the freeze the canvas offers instead is available.
+        #
+        # **Compared against the membership's own read rather than against a literal**, which
+        # is what the first version did -- and `1` was a coincidence of the fixture, since
+        # activation bumps the row. A literal here would pass until somebody added a step to
+        # the fixture, and would then fail for a reason that has nothing to do with the
+        # screen.
+        live_read = self.client.get(
+            f"/memberships/{live['membership_id']}", headers=owner)
+        self.assertEqual(live_read.status_code, 200, live_read.text)
+        self.assertEqual(body["version"], live_read.json()["version"])
+        self.assertTrue(body["freeze_is_an_alternative"])
+        self.assertTrue(body["explanation"])
+
+    def test_a_contract_with_no_buy_out_prices_and_dates_it_differently(self):
+        """**The same read, the other product, and the difference is the point.** A contract
+        that does not sell an early exit holds the member to the term: access ends then
+        rather than after notice, and no buy-out arises. Both are legitimate contracts and
+        the screen draws a different sentence for each, so the read has to tell them apart."""
+        tenant_id = self.tenant()
+        live = self.membership(tenant_id, contract={
+            "minimum_term_months": 12, "notice_days": 30,
+            "cancellation_mode": "end_of_notice"})
+        owner = self.headers(tenant_id)
+        body = self.client.get(
+            f"/memberships/{live['membership_id']}/cancellation-preview",
+            headers=owner).json()
+        self.assertFalse(body["commitment"]["may_leave_early"])
+        self.assertIsNone(body["commitment"]["early_termination_months"])
+        self.assertEqual(body["fee_parts"]["early_termination_minor"], 0)
+        # Access ends at the minimum term, not after the notice.
+        self.assertEqual(body["effective_on"], body["commitment"]["ends_on"])
+        self.assertFalse(body["commitment"]["leaving_early"])
+
+    def test_the_buy_out_reaches_the_recorded_cancellation(self):
+        """**The disclosure is only worth anything if the command charges what was quoted.**
+        The preview's figure includes the buy-out, so the command must accept that figure and
+        refuse the one the old arithmetic would have produced -- which is the period part
+        alone. A preview and a command with two expressions agree until one of them changes,
+        and this is the change that would have pulled them apart."""
+        tenant_id = self.tenant()
+        live = self.membership(tenant_id, contract={
+            "minimum_term_months": 12, "notice_days": 30,
+            "cancellation_mode": "end_of_notice", "early_termination_months": 2})
+        owner = self.headers(tenant_id)
+        quoted = self.client.get(
+            f"/memberships/{live['membership_id']}/cancellation-preview",
+            headers=owner).json()
+        period_only = quoted["fee_parts"]["period_minor"]
+        self.assertNotEqual(period_only, quoted["disclosed_fee_minor"])
+        stale = self.client.post(
+            f"/memberships/{live['membership_id']}/cancel", json={
+                "reason": "moving away", "acknowledged_fee_minor": period_only,
+                "idempotency_key": "c-old-arithmetic", **self.correlation()},
+            headers=owner)
+        self.assertEqual(stale.status_code, 409, stale.text)
+        done = self.client.post(
+            f"/memberships/{live['membership_id']}/cancel", json={
+                "reason": "moving away",
+                "acknowledged_fee_minor": quoted["disclosed_fee_minor"],
+                "expected_version": quoted["version"],
+                "idempotency_key": "c-quoted", **self.correlation()}, headers=owner)
+        self.assertEqual(done.status_code, 200, done.text)
+        recorded = done.json()
+        self.assertEqual(recorded["fee_due_minor"], quoted["disclosed_fee_minor"])
+        self.assertEqual(recorded["effective_on"], quoted["effective_on"])
+        self.assertEqual(
+            recorded["fee_parts"]["early_termination_minor"], 2 * 4500)
+        # **The reasoning the command used to compute and throw away.** COM-01-R06 wants the
+        # member to understand the consequence, and `cancellation_effective_on` returns its
+        # steps for that reason; the only caller unpacked them into `_`.
+        self.assertTrue(recorded["reasoning"])
+        self.assertTrue(any("bought out" in step for step in recorded["reasoning"]))
+
+    def test_a_membership_that_cannot_be_cancelled_says_so_rather_than_pricing_one(self):
+        """**A figure offered for an act that cannot happen is worse than no figure.** The
+        screen asks `may_cancel` the way the command asks it, so a sheet opened on an
+        already-cancelled membership says what is true instead of quoting a fee and then
+        being refused."""
+        tenant_id = self.tenant()
+        live = self.membership(tenant_id, contract={
+            "notice_days": 0, "cancellation_mode": "immediate"})
+        owner = self.headers(tenant_id)
+        self.assertEqual(self.client.post(
+            f"/memberships/{live['membership_id']}/cancel", json={
+                "reason": "moving away", "idempotency_key": "c-once",
+                **self.correlation()}, headers=owner).status_code, 200)
+        again = self.client.get(
+            f"/memberships/{live['membership_id']}/cancellation-preview", headers=owner)
+        self.assertEqual(again.status_code, 200, again.text)
+        self.assertFalse(again.json()["may_cancel"])
+        self.assertIsNotNone(again.json()["refused_because"])
+
+    def test_a_buy_out_on_a_contract_with_no_term_is_refused_at_the_boundary(self):
+        """A buy-out of a term that does not exist is inert -- the agreement carries no
+        `minimum_term_ends_on`, so nothing could ever charge it -- and a column implying a
+        control nobody implemented is this build's most repeated finding. Refused by the
+        schema, and the route answers 422 rather than 500."""
+        tenant_id = self.tenant()
+        refused = self.client.post("/memberships/contract-versions", json={
+            "contract_key": f"c{uuid.uuid4().hex[:8]}", "body": "Rolling terms.",
+            "minimum_term_months": 0, "early_termination_months": 2,
+            **self.correlation()}, headers=self.headers(tenant_id))
+        self.assertEqual(refused.status_code, 422, refused.text)
+        self.assertIn("early_termination", refused.text)
+
     def test_a_cancellation_under_notice_leaves_the_membership_active(self):
         """**Which is what a notice period is.** The history carries the decision from today,
         so the member cannot be told later that nobody cancelled -- and the status does not move

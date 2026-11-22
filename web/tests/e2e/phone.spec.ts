@@ -62,6 +62,14 @@ const surfaces: [string, string][] = [
   // names it came back uncaught: the rule was live and the page that depends on it was
   // missing. Found by running the sweep and measuring, not by reading the CSS.
   ["a member's membership", `/people/${creds.personId}?tab=membership`],
+  // **ADM-MSH-07's sheet, which is behind a parameter and so invisible to a sweep of
+  //    routes.** It holds the one layout in this screen that can push a page sideways: a
+  //    row of two buttons where one label carries a money figure, beside a two-column
+  //    `.facts` grid of fee parts. Neither is wide on a desktop and both are the shape
+  //    this sweep exists for -- and a surface reachable only with a query string is
+  //    exactly the kind that gets left out of a list of paths.
+  ["a membership cancellation",
+   `/people/${creds.personId}?tab=membership&cancel=1`],
   ["a member's billing", `/people/${creds.personId}?tab=billing`],
   // MOD-018's board is the widest table in the app -- four money columns over a chart of
   // thirteen accounts -- so it is the one most likely to push the page sideways.

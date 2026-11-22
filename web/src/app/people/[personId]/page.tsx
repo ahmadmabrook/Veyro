@@ -107,6 +107,9 @@ export default async function Member360Page({
   const text = (key: MessageKey) => t(locale, key);
   const tabParam = typeof query.tab === "string" ? query.tab : undefined;
   const tab: TabKey = isTab(tabParam) ? tabParam : "overview";
+  // ADM-MSH-07's sheet, which this app draws as a parameter on the tab rather than as an
+  // overlay -- see `MembershipPanels`' own note on why.
+  const cancelling = query.cancel === "1";
   const filterParam = typeof query.filter === "string" ? query.filter : undefined;
   const filter: TimelineFilterKey = isTimelineFilter(filterParam) ? filterParam : "all";
 
@@ -238,7 +241,10 @@ export default async function Member360Page({
           />
         ) : null}
         {tab === "membership" || tab === "billing" ? (
-          <MembershipPanels personId={personId} locale={locale} only={tab} />
+          <MembershipPanels
+            personId={personId} locale={locale} only={tab}
+            cancelling={cancelling}
+          />
         ) : null}
         {tab === "attendance"
           ? <AttendanceTab personId={personId} locale={locale} />

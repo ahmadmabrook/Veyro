@@ -131,6 +131,169 @@ class NoticeAndTermTests(unittest.TestCase):
             lifecycle.minimum_term_end(date(2026, 1, 1), lifecycle.Terms()))
 
 
+class EarlyTerminationTests(unittest.TestCase):
+    """COM-01-R02's cancellation policy, in the form ADM-MSH-07 discloses it.
+
+    **The canvas and the implementation disagreed about a money figure and nothing noticed**,
+    because the fee had no reader anywhere in the product: "his 12-month commitment runs to
+    March. Cancelling now triggers a two-month fee of JOD 80.00, and his access ends on
+    7 September after the notice period" is a commitment bought out, and
+    `cancellation_effective_on` pushed the date to March and charged nothing. These tests are
+    the canvas's own case and the three states around it.
+    """
+
+    #: Tareq Odeh's contract, from ADM-MSH-07: Flex at 40.00 a month, a twelve-month
+    #: commitment to March, thirty days' notice, and a two-month buy-out.
+    BOUGHT_OUT = lifecycle.Terms(
+        minimum_term_months=12, notice_days=30, cancellation_mode="end_of_notice",
+        early_termination_months=2)
+    HELD = lifecycle.Terms(
+        minimum_term_months=12, notice_days=30, cancellation_mode="end_of_notice")
+
+    def test_the_canvas_case_end_to_end(self):
+        """8 August, access ends 7 September, and the buy-out is two months of 40.00."""
+        effective, steps = lifecycle.cancellation_effective_on(
+            decided_on=date(2026, 8, 8), terms=self.BOUGHT_OUT,
+            period_end=date(2026, 8, 31), minimum_term_ends_on=date(2027, 3, 1))
+        self.assertEqual(effective, date(2026, 9, 7))
+        self.assertTrue(any("bought out at 2 months" in step for step in steps))
+        fee, parts, _ = lifecycle.cancellation_fee(
+            effective_on=effective, terms=self.BOUGHT_OUT, amount_minor=4000,
+            period_start=date(2026, 8, 1), period_end=date(2026, 8, 31),
+            minimum_term_ends_on=date(2027, 3, 1))
+        self.assertEqual(parts["early_termination_minor"], 8000)
+        self.assertEqual(fee, parts["period_minor"] + parts["early_termination_minor"])
+
+    def test_a_contract_with_no_buy_out_still_holds_them_to_the_term(self):
+        """**The behaviour every contract in this build had, unchanged.** `None` is not zero:
+        the term wins, the date moves to it, and no buy-out arises."""
+        effective, _ = lifecycle.cancellation_effective_on(
+            decided_on=date(2026, 8, 8), terms=self.HELD,
+            period_end=date(2026, 8, 31), minimum_term_ends_on=date(2027, 3, 1))
+        self.assertEqual(effective, date(2027, 3, 1))
+        _, parts, steps = lifecycle.cancellation_fee(
+            effective_on=effective, terms=self.HELD, amount_minor=4000,
+            period_start=date(2026, 8, 1), period_end=date(2026, 8, 31),
+            minimum_term_ends_on=date(2027, 3, 1))
+        self.assertEqual(parts["early_termination_minor"], 0)
+        self.assertTrue(any("no buy-out" in step for step in steps))
+
+    def test_a_free_early_exit_is_not_the_same_as_no_early_exit(self):
+        """**Zero is a term and not an absence**, which is why the field is nullable. A
+        contract that lets somebody walk away free moves the date to the notice and charges
+        nothing; one with no buy-out at all moves the date to the term. Reading the first as
+        the second would hold a member to a commitment their contract released them from."""
+        free = lifecycle.Terms(
+            minimum_term_months=12, notice_days=30, cancellation_mode="end_of_notice",
+            early_termination_months=0)
+        effective, _ = lifecycle.cancellation_effective_on(
+            decided_on=date(2026, 8, 8), terms=free, period_end=date(2026, 8, 31),
+            minimum_term_ends_on=date(2027, 3, 1))
+        self.assertEqual(effective, date(2026, 9, 7))
+        _, parts, _ = lifecycle.cancellation_fee(
+            effective_on=effective, terms=free, amount_minor=4000,
+            period_start=date(2026, 8, 1), period_end=date(2026, 8, 31),
+            minimum_term_ends_on=date(2027, 3, 1))
+        self.assertEqual(parts["early_termination_minor"], 0)
+
+    def test_nothing_is_bought_out_once_the_term_has_been_served(self):
+        """A member whose commitment has run out is not leaving it early, so the buy-out is
+        not charged however the contract prices one."""
+        for ends_on in (None, date(2026, 1, 1), date(2026, 9, 7)):
+            _, parts, _ = lifecycle.cancellation_fee(
+                effective_on=date(2026, 9, 7), terms=self.BOUGHT_OUT, amount_minor=4000,
+                period_start=None, period_end=None, minimum_term_ends_on=ends_on)
+            self.assertEqual(parts["early_termination_minor"], 0, ends_on)
+
+    def test_the_buy_out_is_charged_on_the_last_day_before_the_term_ends(self):
+        """**The boundary, from both sides.** `effective_on >= minimum_term_ends_on` is not
+        leaving early, and one day earlier is -- a comparison written the other way round
+        charges a member who served their whole term, or releases one who left a day short."""
+        _, served, _ = lifecycle.cancellation_fee(
+            effective_on=date(2027, 3, 1), terms=self.BOUGHT_OUT, amount_minor=4000,
+            period_start=None, period_end=None, minimum_term_ends_on=date(2027, 3, 1))
+        self.assertEqual(served["early_termination_minor"], 0)
+        _, early, _ = lifecycle.cancellation_fee(
+            effective_on=date(2027, 2, 28), terms=self.BOUGHT_OUT, amount_minor=4000,
+            period_start=None, period_end=None, minimum_term_ends_on=date(2027, 3, 1))
+        self.assertEqual(early["early_termination_minor"], 8000)
+
+    def test_a_membership_with_no_period_has_no_period_part(self):
+        """The two parts are independent: a membership that has never been billed owes
+        nothing for a period and may still owe a buy-out."""
+        fee, parts, steps = lifecycle.cancellation_fee(
+            effective_on=date(2026, 9, 7), terms=self.BOUGHT_OUT, amount_minor=4000,
+            period_start=None, period_end=None, minimum_term_ends_on=date(2027, 3, 1))
+        self.assertEqual(parts["period_minor"], 0)
+        self.assertEqual(fee, 8000)
+        self.assertTrue(any("no billing period" in step for step in steps))
+
+    def test_the_period_part_is_what_was_used_and_not_what_is_left(self):
+        """**The direction, which nothing asserted until a mutation flipped it.**
+
+        `prorated_amount` returns the part of the period *on or after* the effective date, so
+        the part the member has used is the amount minus that. Returning the remainder
+        instead reads as a plausible fee and is the opposite one: a member cancelling on the
+        16th of a 31-day month would be charged for the fifteen days they have not had
+        rather than the sixteen they have. The sweep caught it uncaught, because every other
+        case here asserts the total or the buy-out and the total is the same either way when
+        the whole period has been consumed.
+        """
+        # Access ends after the period ends, so the whole of it has been used.
+        _, whole, _ = lifecycle.cancellation_fee(
+            effective_on=date(2026, 9, 7), terms=self.BOUGHT_OUT, amount_minor=4000,
+            period_start=date(2026, 8, 1), period_end=date(2026, 8, 31),
+            minimum_term_ends_on=date(2027, 3, 1))
+        self.assertEqual(whole["period_minor"], 4000)
+
+        # Mid-period: sixteen of the thirty-one days fall on or after the 16th, so 4000
+        # prorates to 2065 and the part used is the other 1935.
+        _, part, _ = lifecycle.cancellation_fee(
+            effective_on=date(2026, 8, 16), terms=self.HELD, amount_minor=4000,
+            period_start=date(2026, 8, 1), period_end=date(2026, 8, 31),
+            minimum_term_ends_on=None)
+        self.assertEqual(part["period_minor"], 1935)
+
+        # And a cancellation effective before the period starts has used none of it.
+        _, none_used, _ = lifecycle.cancellation_fee(
+            effective_on=date(2026, 8, 1), terms=self.HELD, amount_minor=4000,
+            period_start=date(2026, 8, 1), period_end=date(2026, 8, 31),
+            minimum_term_ends_on=None)
+        self.assertEqual(none_used["period_minor"], 0)
+
+    def test_a_negative_amount_or_a_negative_buy_out_refuses(self):
+        with self.assertRaises(lifecycle.LifecycleError):
+            lifecycle.cancellation_fee(
+                effective_on=date(2026, 9, 7), terms=self.BOUGHT_OUT, amount_minor=-1,
+                period_start=None, period_end=None, minimum_term_ends_on=None)
+        with self.assertRaises(lifecycle.LifecycleError):
+            lifecycle.cancellation_fee(
+                effective_on=date(2026, 9, 7),
+                terms=lifecycle.Terms(early_termination_months=-2), amount_minor=4000,
+                period_start=None, period_end=None,
+                minimum_term_ends_on=date(2027, 3, 1))
+        # **And on the path that would not have charged it either way**, which the branch-
+        # local version of the guard let through as a zero: the term is served, so nothing is
+        # bought out, and a contract carrying a negative buy-out is still a contract nobody
+        # should be able to write.
+        with self.assertRaises(lifecycle.LifecycleError):
+            lifecycle.cancellation_fee(
+                effective_on=date(2027, 6, 1),
+                terms=lifecycle.Terms(early_termination_months=-2), amount_minor=4000,
+                period_start=None, period_end=None,
+                minimum_term_ends_on=date(2027, 3, 1))
+
+    def test_the_total_is_the_parts(self):
+        """**The screen renders the total and never adds the parts itself**, so the invariant
+        that makes that safe is asserted here rather than assumed there."""
+        fee, parts, steps = lifecycle.cancellation_fee(
+            effective_on=date(2026, 9, 7), terms=self.BOUGHT_OUT, amount_minor=4000,
+            period_start=date(2026, 8, 1), period_end=date(2026, 8, 31),
+            minimum_term_ends_on=date(2027, 3, 1))
+        self.assertEqual(fee, sum(parts.values()))
+        self.assertIn(f"fee_due_minor: {fee}", steps)
+
+
 class FreezeAllowanceTests(unittest.TestCase):
     def test_only_the_overlap_with_the_contract_year_counts(self):
         """A freeze that began in December and ran into February spends part of each contract

@@ -273,13 +273,6 @@ const BACKLOG = {
     + "rate and keeps it'. A booked change needs a row and a job to apply it, which is the "
     + "same shape as the future-dated freeze MOD-017 refuses, and the worker runtime that "
     + "refusal was written without now exists",
-  "ADM-MSH-07": "work: MOD-017's `cancel_membership` takes the acknowledged fee and the "
-    + "notice date, and `memberships.revoke_ended_grants` now revokes the entitlements when "
-    + "the notice runs out. Two pieces are missing: the fee has no reader, so the figure the "
-    + "member acknowledges is only learnable by cancelling, which is the shape "
-    + "`GET /memberships/{id}/freeze-allowance` was written to fix one act over -- and the "
-    + "form itself, which is a stepped-up financial write of the kind ADM-MSH-03 proved is "
-    + "buildable",
   "ADM-MSH-09": "work: MOD-016 holds the plan and MOD-017 the agreements, and nothing counts "
     + "members per plan or splits them by commitment -- which is the canvas's whole argument: "
     + "'2,140 members are on this plan, 890 are inside a fixed-term commitment and keep "

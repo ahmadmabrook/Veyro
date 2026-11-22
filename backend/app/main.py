@@ -1345,6 +1345,12 @@ class ContractVersionBody(BaseModel):
     cancellation_mode: Literal["immediate", "end_of_notice", "end_of_term"] = "end_of_term"
     freeze_days_per_year: int = Field(default=0, ge=0, le=365)
     grace_days: int = Field(default=0, ge=0, le=180)
+    # **Nullable, and the null is the default this build has always had.** Omitted means the
+    # contract holds the member to the minimum term, which is what `cancellation_effective_on`
+    # enforced for every contract until ADM-MSH-07 showed the design buying out of one. A
+    # value is the buy-out in months of the agreement amount, and 0 is a free early exit --
+    # three states in one field, because zero is a term rather than an absence.
+    early_termination_months: int | None = Field(default=None, ge=0, le=120)
     correlation_id: str
 
 
@@ -6380,6 +6386,7 @@ def create_app(
             notice_days=body.notice_days, renewal_mode=body.renewal_mode,
             cancellation_mode=body.cancellation_mode,
             freeze_days_per_year=body.freeze_days_per_year, grace_days=body.grace_days,
+            early_termination_months=body.early_termination_months,
             actor_id=session["identity_id"], correlation_id=body.correlation_id,
         )
 

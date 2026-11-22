@@ -1661,3 +1661,31 @@ UNCAUGHT — a gap it had manufactured, sitting in a list beside a real one. The
 this file already prescribes does not cover it, because the anchor was present and the write
 never happened. Compare the file's bytes before and after, and classify "unchanged" as NOT
 RUN.
+
+
+**A claimed gap is a claim to check before building on it.** `design:coverage`'s backlog entry
+for ADM-MSH-07 said the cancellation fee had no reader and was learnable only by cancelling;
+`GET /memberships/{id}/cancellation-preview` had existed since MOD-017 was built. I wrote a
+second reader beside it and found the first one only when wiring the route. The real gap was
+narrower and worse: the read quoted a *different product* from the one the design approved,
+and nothing compared the two because no screen rendered either figure — so the module had two
+inline copies of one fee expression, identical, agreeing for exactly as long as nobody edited
+one. Adding the buy-out to one of them would have had the disclosure read quote a figure the
+command then refused, which is the disclosure requirement defeated by the function that exists
+to serve it. **The gap note was a sentence somebody wrote about the code, and the code was
+three greps away.** Ask of any note that says a reader is missing: grep the route table before
+writing one.
+
+**A modified file this session never touched has a second cause, and it is not always a
+leftover mutation.** This file already records the interrupted-sweep case — read the diff
+hunks, because a mutation whose replacement is the empty string leaves nothing to search for.
+The other cause is a *concurrent session* in the same working tree: two sessions in one
+checkout both see each other's uncommitted work, and `git add -A` then commits whichever half
+is further along under one message. The tell is the same and the remedy is different: read the
+hunks, and if they are coherent work in the project's own voice rather than one mechanical
+substitution, they are somebody else's and the commit stages explicit paths. Related, and
+sharper: **a shared dev database and a shared port are shared state.** `verify_db.sh` drops
+and rebuilds `veyro`, which destroys whatever fixture the other session was holding, and the
+roles are cluster-wide so a second database in the same cluster cannot coexist. A second
+container plus `PSQL="docker exec -i <name> psql -U postgres"` is the isolation that costs
+nothing, and it is what the script's own `PSQL` override is for.

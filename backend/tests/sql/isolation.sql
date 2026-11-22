@@ -12679,10 +12679,10 @@ BEGIN
          'supersedes_agreement_id,tenant_id,variant_id'),
         ('plt01.mem_contract_versions',
          'body,cancellation_mode,contract_key,contract_version_id,'
-         'correlation_id,created_at,created_by,freeze_days_per_year,'
-         'grace_days,locale,minimum_term_months,notice_days,'
-         'publish_correlation_id,published_at,published_by,renewal_mode,'
-         'status,tenant_id,version'),
+         'correlation_id,created_at,created_by,early_termination_months,'
+         'freeze_days_per_year,grace_days,locale,minimum_term_months,'
+         'notice_days,publish_correlation_id,published_at,published_by,'
+         'renewal_mode,status,tenant_id,version'),
         ('plt01.mem_entitlement_grants',
          'brand_id,correlation_id,created_at,created_by,grant_id,'
          'granted_quantity,is_counted,location_id,membership_id,person_id,'
@@ -13263,6 +13263,8 @@ VALUES ('11111111-1111-4111-8111-111111111111', 'dddddddd-2000-4000-8000-0000000
         '33333333-3333-4333-8333-333333333333');
 
 DO $$
+DECLARE
+    offender text;
 BEGIN
     BEGIN
         INSERT INTO plt01.mem_contract_versions
@@ -13407,6 +13409,118 @@ BEGIN
         RAISE EXCEPTION 'CHECK 78 FAILED: a contract version with an unknown status';
     EXCEPTION
         WHEN check_violation THEN NULL;
+    END;
+
+    -- **Named, not counted.** `check_violation` is the same exception for every CHECK on
+    -- this table, so a case that counts it proves whichever one fires first -- the trap this
+    -- repository has shipped in five modules and swept up afterwards each time. These three
+    -- assert the constraint that actually refused the row, which fails on a clean database
+    -- rather than at the next sweep. The two bounds are a case each, because a two-sided
+    -- bound weakened on one side is admitted by a case at the other.
+    BEGIN
+        INSERT INTO plt01.mem_contract_versions
+            (body, cancellation_mode, contract_key, correlation_id,
+             created_by, early_termination_months, freeze_days_per_year, grace_days, locale,
+             minimum_term_months, notice_days, publish_correlation_id,
+             published_at, published_by, renewal_mode, status,
+             tenant_id, version)
+        VALUES ('Other terms.',
+                'end_of_term',
+                'other.terms',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                121,
+                30,
+                7,
+                'en',
+                12,
+                30,
+                NULL,
+                NULL,
+                NULL,
+                'manual',
+                'draft',
+                '11111111-1111-4111-8111-111111111111',
+                2);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a buy-out above the bound';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender <> 'mem_contract_versions_early_termination_sane' THEN
+                RAISE EXCEPTION
+                    'CHECK 78 FAILED: a buy-out above the bound was refused by % rather than by '
+                    'mem_contract_versions_early_termination_sane', offender;
+            END IF;
+    END;
+    BEGIN
+        INSERT INTO plt01.mem_contract_versions
+            (body, cancellation_mode, contract_key, correlation_id,
+             created_by, early_termination_months, freeze_days_per_year, grace_days, locale,
+             minimum_term_months, notice_days, publish_correlation_id,
+             published_at, published_by, renewal_mode, status,
+             tenant_id, version)
+        VALUES ('Other terms.',
+                'end_of_term',
+                'other.terms',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                -1,
+                30,
+                7,
+                'en',
+                12,
+                30,
+                NULL,
+                NULL,
+                NULL,
+                'manual',
+                'draft',
+                '11111111-1111-4111-8111-111111111111',
+                2);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a negative buy-out';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender <> 'mem_contract_versions_early_termination_sane' THEN
+                RAISE EXCEPTION
+                    'CHECK 78 FAILED: a negative buy-out was refused by % rather than by '
+                    'mem_contract_versions_early_termination_sane', offender;
+            END IF;
+    END;
+    BEGIN
+        INSERT INTO plt01.mem_contract_versions
+            (body, cancellation_mode, contract_key, correlation_id,
+             created_by, early_termination_months, freeze_days_per_year, grace_days, locale,
+             minimum_term_months, notice_days, publish_correlation_id,
+             published_at, published_by, renewal_mode, status,
+             tenant_id, version)
+        VALUES ('Other terms.',
+                'end_of_term',
+                'other.terms',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                2,
+                30,
+                7,
+                'en',
+                0,
+                30,
+                NULL,
+                NULL,
+                NULL,
+                'manual',
+                'draft',
+                '11111111-1111-4111-8111-111111111111',
+                2);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a buy-out on a contract with no minimum term';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender <> 'mem_contract_versions_early_termination_needs_a_term' THEN
+                RAISE EXCEPTION
+                    'CHECK 78 FAILED: a buy-out on a contract with no minimum term was refused by % rather than by '
+                    'mem_contract_versions_early_termination_needs_a_term', offender;
+            END IF;
     END;
 
     BEGIN
