@@ -1632,3 +1632,32 @@ window is already open when seeding finishes, and the grace at the constraint's 
 240 so it stays open for nearly five hours. **The number is a product value at its legitimate
 limit rather than a test hook**, which is the difference between widening a fixture and
 widening a control.
+
+
+**A guard no mutation can trip is usually the weak form of what it meant, and the sweep is
+what tells the two apart.** `design:coverage`'s new `work:` rule asked whether a reason named
+a module that is built — anywhere in the paragraph. Every one of the sixteen satisfied it in
+passing (MOD-013 as the seam a send stops at, MOD-022 as the precedent for refusing to name a
+working week), so swapping the module the work was actually *in* left two more behind and the
+check still passed. Two rounds went into the mutation before the cause was obvious, and the
+cause was not the mutation: "mentions a module" is not "says where the work is", and the
+sentence that says it is the first one. Reading the first sentence instead is both stronger
+and provable, and the same mutation then fails. **So when a mutation will not trip a guard,
+read the guard before rewriting the mutation** — the unprovable form and the weak form are
+usually the same form.
+
+**And a mutation is decisive only against an entry that admits it.** The condition "the first
+sentence names no module" cannot be produced by stripping the module from a reason whose first
+sentence names two: the surviving one satisfies the guard. That is this file's own "a case
+catches a weakening only if the weakened constraint admits the row", applied one level out —
+to *which entry* the mutation picks, not only to which direction it moves. Two of the sixteen
+`work:` entries name exactly one module in their first sentence, and those are the two the
+case has to use.
+
+**A harness must check that the mutation applied, not that the anchor was found.** One
+mutation in this sweep was mangled by shell quoting, so the script died at parse time, the
+file was never written, the check passed against unmutated source, and the harness reported
+UNCAUGHT — a gap it had manufactured, sitting in a list beside a real one. The anchor test
+this file already prescribes does not cover it, because the anchor was present and the write
+never happened. Compare the file's bytes before and after, and classify "unchanged" as NOT
+RUN.

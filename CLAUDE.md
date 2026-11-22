@@ -268,16 +268,34 @@ is an interface with implementations, and writing one that runs here is work rat
 wait. The same reasoning retires "no histogram store" for MOD-011's percentiles: a bucketed
 histogram in the store that already exists is a schema decision, which is delegated.
 
-**The coverage check does not enforce this yet, and that is the next thing to close.**
-`web/src/design/coverage.mjs` admits five cause tokens -- `module:`, `owner-reserved:`,
-`data:`, `store:`, `client:` -- and three of those name this session's own work, so a screen
-can still be recorded as blocked when nothing external is missing. That is how FD-02, FD-05,
-FD-07 and FD-09 came to sit in a blocked list. Tightening the token set to the external causes
-alone is the mechanical form of this rule, and it cannot be done on its own: those four
-screens would then have nowhere to be declared, so the change is a token set **plus** a
-`BACKLOG` list that accounts for an unbuilt screen without excusing it. Until that lands, the
-check is weaker than the rule it should carry, and this paragraph is the record of which one
-wins: the rule.
+**The coverage check enforces this now, and what it found is the size of the mislabelling.**
+`web/src/design/coverage.mjs` admitted five cause tokens -- `module:`, `owner-reserved:`,
+`data:`, `store:`, `client:` -- and three of those named this session's own work, so a screen
+could sit in a blocked list while nothing outside the repository was missing. **Thirty-three
+of the forty-five did.** `BLOCKED` now admits eight causes and seven of them are the list
+above, one token each, so a blocked screen names a thing that has to arrive; `BACKLOG` takes
+the rest and each entry says where the work lives -- `MOD-0NN:` for the module that owns it,
+`work:` for a module that exists and does not yet do what the screen draws, `client:` for the
+one screen that is a service worker. Proven: 14 mutations, every one caught.
+
+Three things fell out of it that are worth more than the count:
+
+- **The two vocabularies are disjoint, which is what makes the distinction hold.** A screen
+  whose work is undone is not blocked by the provider waiting at the end of it, so an external
+  token in a `BACKLOG` reason fails and a `work:` reason in `BLOCKED` fails. FD-05 is the
+  precedent this file already set -- CRM is mine, and its invitation by text is a seam rather
+  than a blocker -- and the check now carries it for all ninety screens.
+- **`MOD-0NN` made "which module owns this screen" checkable for the first time.** The old
+  `module: CRM` named nothing a check could look up; an id is in `module_catalog.json` or it
+  is not, and `PACKAGE` maps it to the `backend/app/` package that exists once it is built --
+  so a backlog entry for a module that has since landed fails, which is the stale-excuse
+  direction. That is also a partial answer to this file's own "nothing maps a screen to a
+  module": 33 unbuilt screens now name theirs, and `screen-contracts.yaml` still names none.
+- **A messaging provider is on no Admin or Front Desk screen's critical path**, which the
+  token set made visible by leaving `messaging:` unused. Every screen here that would send --
+  the staff invitation, the broadcast, the class cancellation, the shift report -- needs work
+  done first. `vault:`, `identity:`, `hardware:` and `retention:` are unused for a different
+  reason: they block modules rather than screens on these two surfaces.
 
 ## State
 
@@ -5120,9 +5138,13 @@ specified V1 screens and leaves `owning_module` null for every one of them -- it
 not a pass. So nothing maps a screen to a module, and any statement of the form "module X's
 frontend is complete" is an assertion about a mapping that does not exist here. What the
 artefacts do support is per *surface*: `design:coverage` reports 39 screens in the inventory
-across Admin and Front Desk with 45 blocked for written reasons, and Member, Coach, Console
-and POS have no implementation at all. **Closing this honestly means resolving the mapping
-before claiming a module is done**, not counting routes.
+across Admin and Front Desk, 12 blocked on something external and 33 in the backlog, and
+Member, Coach, Console and POS have no implementation at all. **Closing this honestly means
+resolving the mapping before claiming a module is done**, not counting routes -- and the
+backlog is now the half of that mapping which exists: every unbuilt screen on those two
+surfaces names the module that owns it, checked against the catalogue, so the modules with
+Admin and Front Desk screens still owed are MOD-026 (3), MOD-027 (8), MOD-055 (3), MOD-058 (1)
+and MOD-059 (1), plus 16 screens that are work inside modules already built.
 
 So "implemented" above is accurate about the server plane and incomplete about the product
 everywhere, and the backlog has two halves.
@@ -5180,15 +5202,15 @@ day-pass half of FD-04 is mine too: `PRODUCT_TYPES` already carries `session_cre
 build next.** That audit is a **check** now rather than a count somebody re-derives, because
 doing it by hand gave a different answer each time: `web/src/design/coverage.mjs`, in
 `design:check` and therefore in CI, requires every specified screen on a covered surface to be
-named in `contracts/ui/design-compliance.md`, mapped to a screen it is a *state* of, or given a
-reason that names one of five causes -- a missing module, a stepped-up financial write, data
-the backend does not hold, an object store, or capability in the client. **"Not built yet" is
-not a cause and there is deliberately no token for it**, which is `GateCoverageTests.UNGATED`'s
-discipline one layer up: adding to the list is meant to be uncomfortable.
+named in `contracts/ui/design-compliance.md`, mapped to a screen it is a *state* of, blocked
+on one of the eight external causes, or put in the backlog under the module whose work it is.
+**"Not built yet" is not a cause and there is deliberately no token for it**, which is
+`GateCoverageTests.UNGATED`'s discipline one layer up: adding to either list is meant to be
+uncomfortable.
 
 It reads **90 specified screens on Admin and Front desk: 39 in the inventory, 6 states of
-those, 45 blocked with a reason**, and it names the five surfaces it does *not* cover with
-their counts. It checks both directions -- a reason for a screen the inventory now argues is a
+those, 12 blocked on something external, 33 in the backlog**, and it names the five surfaces
+it does *not* cover with their counts. It checks both directions -- a reason for a screen the inventory now argues is a
 stale excuse and fails, which is the schedule board's "gap note that outlived its gap" caught
 structurally. My own hand audit had said 43 were missing; the truth was that most were built,
 mislabelled or states, and the number that is genuinely unaccounted for is zero.
