@@ -32,7 +32,7 @@ from psycopg import Connection, errors
 
 from app.commercial import collections, entitlements, invoicing, lifecycle, reporting
 from app.db import Pool, tenant_scope
-from app.errors import Conflict, InvalidRequest, NotFound
+from app.errors import Conflict, InvalidRequest, NotFound, ServiceError
 from app.events import service as events
 from app.ledger import service as ledger
 
@@ -1629,6 +1629,71 @@ def settle_reservation(
         _, balance = _grant_locked(conn, grant_id)
     return {"reservation_id": reservation_id, "grant_id": grant_id, "status": outcome,
             "balance_after": balance}
+
+
+def revoke_grants_of_ended_memberships(
+    pool: Pool, tenant_id: str, *, actor_id: str, correlation_id: str,
+    at: datetime | None = None, limit: int = 200,
+) -> dict[str, Any]:
+    """Revoke the grants of memberships whose end has passed, which nothing did before.
+
+    **This is the half of a future-dated cancellation that never arrived.**
+    `cancel_membership` revokes grants in its own transaction when the date is today or
+    earlier, and deliberately does not when it is later: "the member is still paying for the
+    notice period and still entitled to train". Nothing revoked them when the date came, so a
+    member who cancelled with notice kept drawing on their entitlements afterwards -- which is
+    `_revoke_grants`' own "access the member is no longer paying for", in the path that
+    survived the fix.
+
+    **The door was never wrong and the entitlement was**, which is why this was easy to miss.
+    MOD-022 reads the membership's dates rather than its cached status, and says so in a
+    comment: a row that reads `active` can be a membership that ended last month, so the
+    turnstile refuses. `entitlements.usable` sees only the grant -- its own status and its own
+    `valid_to`, which is optional -- so a perpetual grant from a cancelled membership stayed
+    drawable and a booking took a place somebody paying could have had.
+
+    **No new decision.** The person cancelled, with an effective date, and that decision is a
+    row; this applies it. `ends_on` is what the cancellation wrote and what the door already
+    judges by, so the predicate is the same fact in both places rather than a second rule.
+
+    **A failure on one membership must not stop the rest** -- MOD-010's relay. Each membership
+    is revoked in its own transaction so a grant that cannot be locked leaves the others alone,
+    and the failure is named rather than counted.
+
+    Idempotent by the predicate: `_revoke_grants` selects `status = 'active'`, so a second pass
+    over the same membership finds nothing and writes nothing.
+    """
+    if limit < 1 or limit > 500:
+        raise InvalidRequest("limit_out_of_range")
+    moment = at or _now()
+    today = moment.date()
+    with tenant_scope(pool, tenant_id) as conn:
+        due = conn.execute(
+            """
+            SELECT DISTINCT m.membership_id FROM plt01.mem_memberships m
+            JOIN plt01.mem_entitlement_grants g ON g.membership_id = m.membership_id
+            WHERE m.ends_on IS NOT NULL AND m.ends_on < %s AND g.status = 'active'
+            ORDER BY m.membership_id
+            LIMIT %s
+            """,
+            (today, limit),
+        ).fetchall()
+    memberships = [str(r[0]) for r in due]
+
+    revoked = 0
+    failed: list[dict[str, str]] = []
+    for membership_id in memberships:
+        try:
+            with tenant_scope(pool, tenant_id) as conn:
+                gone = _revoke_grants(
+                    conn, tenant_id, membership_id=membership_id,
+                    reason="the membership ended and its notice period has run out",
+                    actor_id=actor_id, correlation_id=correlation_id, moment=moment)
+            revoked += len(gone)
+        except ServiceError as e:
+            failed.append({"membership_id": membership_id, "reason": str(e)})
+    return {"memberships": len(memberships), "grants_revoked": revoked, "failed": failed,
+            "truncated": len(memberships) == limit}
 
 
 def _revoke_grants(

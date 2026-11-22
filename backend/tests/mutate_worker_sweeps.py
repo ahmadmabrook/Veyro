@@ -34,6 +34,7 @@ SERVICE = pathlib.Path("app/observability/service.py")
 DECIDE = pathlib.Path("app/observability/objectives.py")
 REGISTRY = pathlib.Path("app/worker/registry.py")
 NOTIFY = pathlib.Path("app/notifications/service.py")
+COMMERCIAL = pathlib.Path("app/commercial/service.py")
 
 MUTATIONS = [
     # The dedupe itself. Without the key every evaluation announces, which is 288 rows a day
@@ -78,6 +79,18 @@ MUTATIONS = [
     (NOTIFY, "a digest already closed is closed again",
      "                WHERE state = 'open' AND window_end <= %s",
      "                WHERE window_end <= %s"),
+
+    # MOD-017's ended-membership revocation. The two directions that matter are opposite
+    # harms: revoking a membership still inside its notice takes away training the member has
+    # paid for, and not revoking one whose notice ran out is access nobody is paying for.
+    (COMMERCIAL, "a membership still inside its notice has its grants revoked",
+     "            WHERE m.ends_on IS NOT NULL AND m.ends_on < %s AND g.status = 'active'",
+     "            WHERE m.ends_on IS NOT NULL AND g.status = 'active'",
+     "tests.test_commercial_api.EndedMembershipGrantTests"),
+    (COMMERCIAL, "a membership whose notice ran out keeps its grants",
+     "            WHERE m.ends_on IS NOT NULL AND m.ends_on < %s AND g.status = 'active'",
+     "            WHERE m.ends_on IS NULL AND g.status = 'active'",
+     "tests.test_commercial_api.EndedMembershipGrantTests"),
 ]
 
 #: The suite each mutation is judged by. Most are the worker's integration tests; the window

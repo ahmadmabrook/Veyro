@@ -46,6 +46,7 @@ from uuid import NAMESPACE_URL, uuid5
 
 from app.access import service as access
 from app.booking import service as booking
+from app.commercial import service as commercial
 from app.db import Pool
 from app.devices import service as devices
 from app.events import service as events
@@ -105,6 +106,12 @@ def _people_project_timeline(ctx: JobContext) -> dict[str, Any]:
     return people.project_timeline(ctx.pool, ctx.tenant_id, limit=500)
 
 
+def _memberships_revoke_ended_grants(ctx: JobContext) -> dict[str, Any]:
+    return commercial.revoke_grants_of_ended_memberships(
+        ctx.pool, ctx.tenant_id, actor_id=ctx.actor_id,
+        correlation_id=ctx.correlation_id, at=ctx.at)
+
+
 def _notifications_close_digests(ctx: JobContext) -> dict[str, Any]:
     return notifications.close_elapsed_digests(ctx.pool, ctx.tenant_id, at=ctx.at)
 
@@ -157,6 +164,19 @@ JOBS: tuple[Job, ...] = (
         units="evaluated",
         summary="Evaluate every live objective and announce the breaches once per window",
         run=_observability_evaluate_objectives),
+    # MOD-017, and the one on this list with a member on the other end of it. A future-dated
+    # cancellation deliberately revokes nothing at the time -- the member is still paying for
+    # the notice period -- and nothing revoked the grants when the date came, so somebody who
+    # cancelled with notice kept drawing on their entitlements afterwards. The door was never
+    # wrong (MOD-022 reads the membership's dates, not its cached status); the entitlement was,
+    # because `entitlements.usable` sees only the grant and `valid_to` is optional.
+    # **An hour, not five minutes**: the predicate is a date, so the finest grain that means
+    # anything is a day, and an hour bounds the exposure at the start of one without scanning
+    # the grant table twelve times as often for a predicate that cannot have changed.
+    Job(name="memberships.revoke_ended_grants", every=timedelta(hours=1), role="app",
+        units="grants_revoked",
+        summary="Revoke the entitlements of memberships whose notice period has run out",
+        run=_memberships_revoke_ended_grants),
     # MOD-013, and the second off that list. Its gap note named the digest template format as
     # the blocker, which is the format needed to *render* a batch into one message -- the
     # `sent` state, still unreachable because nothing sends. `closed` needs no format: it

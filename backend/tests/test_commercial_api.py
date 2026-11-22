@@ -21,8 +21,11 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 from app.commercial import service as commercial
+from app.db import tenant_scope
 from app.errors import Conflict
 from tests.support import GatedApiTestCase
+
+ACTOR = "55555555-5555-4555-8555-555555555555"
 
 FROM = "2026-01-01T00:00:00+00:00"
 
@@ -3716,3 +3719,132 @@ class PaymentsLedgerTests(CommercialApiTestCase):
             "/finance/payments?limit=100000",
             headers=self.scoped(tenant_id, ["finance.payment.read"]))
         self.assertEqual(read.status_code, 422, read.text)
+
+
+class EndedMembershipGrantTests(CommercialApiTestCase):
+    """The half of a future-dated cancellation that never arrived.
+
+    `cancel_membership` revokes grants in its own transaction when the date is today or
+    earlier and deliberately does not when it is later -- "the member is still paying for the
+    notice period and still entitled to train". Nothing revoked them when the date came.
+
+    **The door was never wrong and the entitlement was**, which is why this survived a review
+    that found the immediate-cancellation version of it. MOD-022 reads the membership's dates
+    rather than its cached status, so a turnstile refuses a row that calls itself active past
+    its own `ends_on`. `entitlements.usable` sees only the grant -- its own status and its own
+    `valid_to`, which is optional -- so a perpetual grant from a cancelled membership stayed
+    drawable and a booking took a place somebody paying could have had.
+    """
+
+    def _ended_membership_with_a_grant(self, tenant_id: str) -> tuple[str, str]:
+        """A membership whose notice ran out yesterday, still holding a live grant.
+
+        The cancellation is driven through the route so the decision is a real one; `ends_on`
+        is then moved into the past, which is what the clock would have done.
+        """
+        live = self.membership(tenant_id, contract={
+            "notice_days": 30, "cancellation_mode": "end_of_notice"})
+        membership_id = str(live["membership_id"])
+        person_id = str(live["person_id"])
+        grant_id = self.entitlement_grant(
+            tenant_id, self.policy(tenant_id), person_id,
+            source_kind="membership", membership_id=membership_id)
+        cancelled = self.client.post(
+            f"/memberships/{membership_id}/cancel", json={
+                "reason": "moving away", "idempotency_key": f"c-{uuid.uuid4().hex[:8]}",
+                **self.correlation()}, headers=self.headers(tenant_id))
+        self.assertEqual(cancelled.status_code, 200, cancelled.text)
+        self.assertFalse(cancelled.json()["takes_effect_immediately"])
+        # Nothing was revoked, which is the module's own decision and the thing that has to
+        # be undone when the date arrives.
+        self.assertEqual(cancelled.json()["entitlements_revoked"], [])
+        with tenant_scope(self._tenant_pool, tenant_id) as conn:
+            conn.execute(
+                "UPDATE plt01.mem_memberships SET ends_on = current_date - 1,"
+                " version = version + 1 WHERE membership_id = %s", (membership_id,))
+        return membership_id, grant_id
+
+    def _grant_status(self, tenant_id: str, grant_id: str) -> str:
+        with tenant_scope(self._tenant_pool, tenant_id) as conn:
+            row = conn.execute(
+                "SELECT status FROM plt01.mem_entitlement_grants WHERE grant_id = %s",
+                (grant_id,)).fetchone()
+        assert row is not None
+        return str(row[0])
+
+    def test_a_grant_outlives_its_membership_until_the_sweep_runs(self):
+        """The defect, stated as a test: before the sweep the grant is still active, and
+        `entitlements.usable` has nothing to tell it otherwise."""
+        tenant_id = self.tenant()
+        membership_id, grant_id = self._ended_membership_with_a_grant(tenant_id)
+        self.assertEqual(self._grant_status(tenant_id, grant_id), "active")
+        done = commercial.revoke_grants_of_ended_memberships(
+            self._tenant_pool, tenant_id, actor_id=ACTOR, correlation_id=str(uuid.uuid4()))
+        self.assertEqual(done["memberships"], 1)
+        self.assertEqual(done["grants_revoked"], 1)
+        self.assertEqual(done["failed"], [])
+        self.assertEqual(self._grant_status(tenant_id, grant_id), "revoked")
+
+    def test_a_membership_still_inside_its_notice_keeps_its_entitlements(self):
+        """**Which is what a notice period is.** Revoking at the decision rather than at the
+        date would take away training the member has already paid for."""
+        tenant_id = self.tenant()
+        live = self.membership(tenant_id, contract={
+            "notice_days": 30, "cancellation_mode": "end_of_notice"})
+        grant_id = self.entitlement_grant(
+            tenant_id, self.policy(tenant_id), str(live["person_id"]),
+            source_kind="membership", membership_id=str(live["membership_id"]))
+        self.client.post(
+            f"/memberships/{live['membership_id']}/cancel", json={
+                "reason": "moving away", "idempotency_key": "c-inside",
+                **self.correlation()}, headers=self.headers(tenant_id))
+        done = commercial.revoke_grants_of_ended_memberships(
+            self._tenant_pool, tenant_id, actor_id=ACTOR, correlation_id=str(uuid.uuid4()))
+        self.assertEqual(done["memberships"], 0)
+        self.assertEqual(self._grant_status(tenant_id, grant_id), "active")
+
+    def test_a_second_pass_revokes_nothing_because_the_grant_is_no_longer_active(self):
+        """Idempotent by `_revoke_grants`' own predicate rather than by a key, which is what
+        keeps the worker's disposable schedule honest with no new state."""
+        tenant_id = self.tenant()
+        self._ended_membership_with_a_grant(tenant_id)
+        first = commercial.revoke_grants_of_ended_memberships(
+            self._tenant_pool, tenant_id, actor_id=ACTOR, correlation_id=str(uuid.uuid4()))
+        second = commercial.revoke_grants_of_ended_memberships(
+            self._tenant_pool, tenant_id, actor_id=ACTOR, correlation_id=str(uuid.uuid4()))
+        self.assertEqual(first["grants_revoked"], 1)
+        self.assertEqual(second["memberships"], 0)
+        self.assertEqual(second["grants_revoked"], 0)
+
+    def test_the_balance_goes_to_zero_by_arithmetic_rather_than_by_the_status(self):
+        """`_revoke_grants` writes a ledger row for what remained, which is why the balance
+        and the status cannot disagree afterwards."""
+        tenant_id = self.tenant()
+        _, grant_id = self._ended_membership_with_a_grant(tenant_id)
+        commercial.revoke_grants_of_ended_memberships(
+            self._tenant_pool, tenant_id, actor_id=ACTOR, correlation_id=str(uuid.uuid4()))
+        read = self.client.get(
+            f"/member-entitlements/grants/{grant_id}"
+            f"?correlation_id={self.correlation()['correlation_id']}",
+            headers=self.headers(tenant_id))
+        self.assertEqual(read.status_code, 200, read.text)
+        self.assertEqual(read.json()["balance"], 0)
+
+    def test_a_membership_that_simply_ended_is_swept_too_not_only_a_cancelled_one(self):
+        """The predicate is `ends_on`, which is what the door judges by -- so a fixed-term
+        membership that ran out is the same fact as one cancelled with notice. Keying on the
+        cancellation instead would be a second definition of "this membership is over"."""
+        tenant_id = self.tenant()
+        live = self.membership(tenant_id)
+        grant_id = self.entitlement_grant(
+            tenant_id, self.policy(tenant_id), str(live["person_id"]),
+            source_kind="membership", membership_id=str(live["membership_id"]))
+        with tenant_scope(self._tenant_pool, tenant_id) as conn:
+            conn.execute(
+                "UPDATE plt01.mem_memberships SET ends_on = current_date - 1,"
+                " version = version + 1 WHERE membership_id = %s",
+                (str(live["membership_id"]),))
+        done = commercial.revoke_grants_of_ended_memberships(
+            self._tenant_pool, tenant_id, actor_id=ACTOR, correlation_id=str(uuid.uuid4()))
+        self.assertEqual(done["grants_revoked"], 1)
+        self.assertEqual(self._grant_status(tenant_id, grant_id), "revoked")

@@ -1454,6 +1454,19 @@ already decided not to have. So the three questions to ask of a gap note are whe
 blocker it names is in the way, whether the consequence it claims is still true, and whether
 the work it implies exists.
 
+**A fourth reading of the same question found a defect the note had buried, which is the
+opposite failure and the worst of the four.** MOD-017's bullet said nothing applies a
+cancellation when its notice runs out, and named the consequence as a stale status cache --
+true, and the mild half. The consequential half was unnamed: the *grants* were never revoked
+either, so a member who cancelled with notice kept drawing entitlements after their membership
+ended. That is `_revoke_grants`' own "access the member is no longer paying for" in the path
+that survived the review which found it, and it survived because **the door was right**: the
+access evaluator reads the membership's dates rather than its cached status and says so in a
+comment, so every obvious probe of the defect comes back correct. `entitlements.usable` sees
+only the grant. **So a gap note naming the consequence a reader can see is the one to distrust
+most**: the cache is what somebody querying the table notices, and the grant is what a member
+spends.
+
 
 **A class name that styles nothing is invisible to every layer that is not a screenshot.**
 `ds-card` appeared in `globals.css` exactly once, inside a `prefers-reduced-motion` block,

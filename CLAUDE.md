@@ -2401,13 +2401,23 @@ Known gaps, deliberate:
 - **No tax engine.** `issue_invoice` takes a rate per line -- MOD-015's precedent, which MOD-016
   followed. What is enforced is that whatever rate was applied is recorded on the line and in
   the return.
-- **Nothing drives anything on a schedule.** A renewal, a grace-period entry, an expiry, a
-  dunning step, a lapsed-hold sweep and a future-dated cancellation all want a job, and the
-  worker runtime that would run one exists -- none of these is wired, because each needs a
-  product decision the sources do not state. Two of them change the product:
-  nothing renews a membership and nothing applies a cancellation when its notice runs out, so
-  the status cache for a future-dated cancellation stays `active` and `membership_as_of` is the
-  function that tells the truth.
+- **One schedule is driven and the rest are not.**
+  `memberships.revoke_ended_grants` is a worker job at an hour, and it closes the half of a
+  future-dated cancellation that never arrived: `cancel_membership` revokes grants in its own
+  transaction when the date is today or earlier and deliberately does not when it is later --
+  the member is still paying for the notice period -- and nothing revoked them when the date
+  came. **The door was never wrong and the entitlement was**, which is why this survived the
+  review that found the immediate-cancellation version: MOD-022 reads the membership's dates
+  rather than its cached status, so a turnstile refuses a row that calls itself active past
+  its own `ends_on`, while `entitlements.usable` sees only the grant -- its own status and its
+  own `valid_to`, which is optional -- so a perpetual grant from a cancelled membership stayed
+  drawable and a booking took a place somebody paying could have had. The predicate is
+  `ends_on`, the same fact the door judges by, so a fixed-term membership that simply ran out
+  is swept on the same rule rather than on a second definition of "this membership is over".
+  **A renewal, a grace-period entry, a dunning step, a lapsed-hold sweep and applying the
+  cancellation to the status cache are still undriven**, and each needs a product decision the
+  sources do not state. The cache is the mildest of them: `membership_as_of` is the function
+  that tells the truth, and the door does not read the cache.
 - **A freeze cannot be booked ahead**, which is the refusal above rather than an omission.
 - **No installment schedule generation.** `fin_billing_schedules` records the plan and its
   remaining count; nothing walks it.
@@ -3693,9 +3703,10 @@ Known gaps, deliberate:
 `backend/app/worker/` is the thing this file asked for in fourteen places. Every one of those
 bullets named a decision function that was written, tested and reachable from a route, waiting
 for something to call it without a person asking -- and until now the honest answer was that no
-such thing existed. Eight jobs are wired: MOD-010's relay, MOD-011's objective evaluation,
-MOD-013's digest close, MOD-014's timeline projection, MOD-021's offline sweep and command
-expiry, MOD-020's waitlist-offer expiry and MOD-022's replay-cache sweep. `python -m app.worker --once` runs one tick and prints what it did;
+such thing existed. Nine jobs are wired: MOD-010's relay, MOD-011's objective evaluation,
+MOD-013's digest close, MOD-014's timeline projection, MOD-017's ended-membership grant
+revocation, MOD-021's offline sweep and command expiry, MOD-020's waitlist-offer expiry and
+MOD-022's replay-cache sweep. `python -m app.worker --once` runs one tick and prints what it did;
 without `--once` it loops until a signal.
 
 Five decisions carry it, and three of them are refusals:
@@ -3774,7 +3785,8 @@ What is deliberately **not** a job, each for a stated reason:
   calls by design, so scheduling it needs a record of what has already been announced -- the
   durable state the bullet above says comes first.
 - **MOD-009's retention sweep, MOD-017's renewals and dunning, MOD-018's recognition and
-  period close.** Each needs a judgement this registry would have to invent -- which deadline,
+  period close.** (MOD-017's *ended-membership revocation* came off this list; its renewals
+  and dunning did not.) Each needs a judgement this registry would have to invent -- which deadline,
   which period -- and inventing product is the one thing the delegation does not cover.
   **MOD-009's is further out than "needs a decision": retention is owner-reserved policy**,
   named in the isolation rules beside regions and keys, and destroying records on a schedule
@@ -3798,6 +3810,13 @@ What is deliberately **not** a job, each for a stated reason:
   own docstring says it is "for telling a member, not for sweeping". There was nothing to
   drive. A gap note that invents a job costs more than one that omits a job, because the
   omission is found by looking for work and the invention is found only by trying to do it.
+  **And the fourth reading found a defect the note had buried.** MOD-017's bullet said nothing
+  applies a cancellation when its notice runs out and named the consequence as a stale status
+  cache -- which is the mild half. The consequential half was that the *grants* were never
+  revoked either, so a member who cancelled with notice went on drawing entitlements after
+  their membership ended: `_revoke_grants`' own "access the member is no longer paying for",
+  in the path that survived the review which found it. The note mentioned the cache because
+  the cache is what a reader of the table sees; the grant is what a member spends.
 
 Known gaps, deliberate:
 
@@ -5156,12 +5175,12 @@ the user's authenticator, so verifying an assertion needs no secret of ours at a
 exactly why that gap could be closed while this one cannot. A device certificate is the
 opposite shape -- it is a secret this build would have to hold.
 
-**The worker runtime is no longer on that list, and eight of the fourteen schedules are
+**The worker runtime is no longer on that list, and nine of the fourteen schedules are
 driven.**
 `backend/app/worker/` has its own section above. What closing it took is worth the same note
 `Decision.mask` gets below: no new table, because every wired job is idempotent and a durable
 schedule's real cost is a second place where "has this run" is recorded that can disagree with
-the effect the job had. The six schedules still undriven are undriven for a reason each --
+the effect the job had. The five schedules still undriven are undriven for a reason each --
 `iam.challenges` has no DELETE grant for anybody, `deliver_pending` has no handler to drive,
 and the rest need a judgement the registry would have to invent. **MOD-011's objective
 evaluation came off that list by making one**, and the shape is worth knowing before the next:

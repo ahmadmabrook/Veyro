@@ -92,13 +92,13 @@ test.describe("the operations board", () => {
     const jobs = page
       .locator("section")
       .filter({ has: page.getByRole("heading", { name: "Scheduled jobs" }) });
-    // Eight jobs, and the registry is what decides that -- a job added without a declared
-    // name cannot record a metric at all, so a ninth row here means a ninth job was wired.
+    // Nine jobs, and the registry is what decides that -- a job added without a declared
+    // name cannot record a metric at all, so a tenth row here means a tenth job was wired.
     // **The count is a tripwire on purpose**, which is why it is a literal rather than a
     // property: wiring a job should bring somebody to this file. The seventh is MOD-011's
     // objective evaluation, which is also what made the next test's locator fail; the eighth
-    // is MOD-013's digest close.
-    await expect(jobs.locator("tbody tr")).toHaveCount(8);
+    // is MOD-013's digest close and the ninth MOD-017's ended-membership revocation.
+    await expect(jobs.locator("tbody tr")).toHaveCount(9);
     await expect(jobs).toContainText("events.relay");
     await expect(jobs).toContainText("access.replay_sweep");
     // The fixture ran the worker once, so no job may read as never run.
