@@ -2722,12 +2722,21 @@ Known gaps, deliberate:
 - **No wallet refund and no wallet freeze.** Paying money out is the owner-reserved half of
   COM-04-R02; `refundable` tells a member what they could get back and no code acts on it. The
   freeze was deleted rather than left half-built.
-- **Nothing expires wallet value, recognises revenue, closes a period or sweeps a lapsed
-  deposit on a schedule.** `expiring_before` and `recognition_due` decide and a route calls
-  them; no worker job calls either, because which period and which schedule are due is an
-  accountant's judgement rather than a sweep's predicate. The absence changes the product
-  twice: lapsed promotional value is still spendable until somebody calls
-  the expiry, and revenue sits unrecognised until somebody asks.
+- **Nothing recognises revenue, closes a period or sweeps a lapsed deposit on a schedule.**
+  `recognition_due` decides and a route calls it; no worker job does, because which period and
+  which schedule are due is an accountant's judgement rather than a sweep's predicate. The
+  absence changes the product once: revenue sits unrecognised until somebody asks.
+  **Wallet expiry is not on that list and this bullet used to put it there, which was wrong
+  twice over.** Lapsed value is not spendable: `balances` excludes it at read time by design --
+  "expiry is evaluated rather than swept", because a balance that counted lapsed value until a
+  worker removed it would be a balance a member could spend after it expired -- and
+  `plan_debit` goes through `balances`, so no debit can reach it. And `expiring_before` is not
+  a sweep's predicate waiting for a driver; its own docstring says it is "for telling a member,
+  not for sweeping", and there is no expire-the-value command for a job to call. What a sweep
+  *would* add is the posting that turns unredeemed value into revenue, which is breakage and is
+  the accountant's judgement above. **A gap note that invents a job is worse than one that
+  omits a job**: this one would have had somebody wire a sweep against a function that says it
+  is not for sweeping, to fix a defect the module had already decided not to have.
 - **`credit.issued` and `credit.consumed` are declared and deliberately unproduced**: the
   credits COM-04 means are MOD-017's entitlement grants, which already publish their own pair.
 - **`units_delivered` on a recognition run is the caller's word.** The delivery count for an
@@ -3766,8 +3775,11 @@ What is deliberately **not** a job, each for a stated reason:
   durable state the bullet above says comes first.
 - **MOD-009's retention sweep, MOD-017's renewals and dunning, MOD-018's recognition and
   period close.** Each needs a judgement this registry would have to invent -- which deadline,
-  which period -- and inventing product is the one thing the delegation does not cover. They are the next jobs, and each wants its own decision written
-  down first. **MOD-011's objective evaluation and MOD-013's digest close both came off this
+  which period -- and inventing product is the one thing the delegation does not cover.
+  **MOD-009's is further out than "needs a decision": retention is owner-reserved policy**,
+  named in the isolation rules beside regions and keys, and destroying records on a schedule
+  is the one sweep where being wrong is unrecoverable. The other two are the next jobs and
+  each wants its own decision written down first. **MOD-011's objective evaluation and MOD-013's digest close both came off this
   list, and neither by making the decision it was said to need**,
   and the shape of that is the lesson: the judgement it looked like it needed, *which*
   objective is due, turned out not to exist -- every objective carries its own window -- and
@@ -3780,7 +3792,12 @@ What is deliberately **not** a job, each for a stated reason:
   **Ask of each remaining one which judgement it actually needs**, because twice now the
   obvious reading of "this needs a decision" named a decision that was not in the way -- and
   the second time the blocker named was a true sentence about a different half of the feature,
-  which is the harder kind to see past.
+  which is the harder kind to see past. **And the third reading found no job at all**:
+  MOD-018's bullet listed wallet expiry among its undriven sweeps and claimed lapsed value
+  stays spendable, when `balances` excludes it at read time by design and `expiring_before`'s
+  own docstring says it is "for telling a member, not for sweeping". There was nothing to
+  drive. A gap note that invents a job costs more than one that omits a job, because the
+  omission is found by looking for work and the invention is found only by trying to do it.
 
 Known gaps, deliberate:
 

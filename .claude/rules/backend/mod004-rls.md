@@ -1439,6 +1439,21 @@ note names a blocker, check that the blocker is in the way of the thing the note
 note that is right about *why something else* is missing reads exactly like a note that is
 right about this.
 
+**And the third reading of that question found no work at all, which is the cheapest outcome
+and the easiest to miss.** MOD-018's gap bullet listed wallet expiry among its undriven sweeps
+and said lapsed promotional value "is still spendable until somebody calls the expiry".
+`wallet.balances` excludes it at read time on purpose -- its docstring argues that a balance
+counting lapsed value until a worker removed it would be a balance a member could spend after
+it expired -- and `plan_debit` goes through `balances`, so no debit reaches it.
+`expiring_before`'s own docstring says it is "for telling a member, not for sweeping", and
+there is no expire-the-value command for a job to call. **A gap note that invents a job costs
+more than one that omits a job**: an omission is found by anybody looking for work, and an
+invention is found only by somebody trying to do it -- and the shape of trying is to wire a
+sweep against a function that says it is not for sweeping, to fix a defect the module had
+already decided not to have. So the three questions to ask of a gap note are whether the
+blocker it names is in the way, whether the consequence it claims is still true, and whether
+the work it implies exists.
+
 
 **A class name that styles nothing is invisible to every layer that is not a screenshot.**
 `ds-card` appeared in `globals.css` exactly once, inside a `prefers-reduced-motion` block,
