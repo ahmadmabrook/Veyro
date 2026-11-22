@@ -28,6 +28,7 @@ from app.db import make_worker_pool, tenant_scope
 from app.events import service as events
 from app.observability import catalog as metric_catalog
 from app.observability import metrics
+from app.observability import service as observability
 from app.worker import names, registry, runner
 from tests.support import DSN
 from tests.test_access_api import AccessApiTestCase
@@ -71,6 +72,10 @@ class RegistryTests(unittest.TestCase):
                 self.assertGreater(job.every, timedelta(0))
                 self.assertTrue(job.units.strip())
                 self.assertTrue(job.summary.strip())
+
+    def test_no_two_jobs_claim_the_same_cadence_slot_by_sharing_a_name(self):
+        names = [job.name for job in registry.JOBS]
+        self.assertEqual(len(names), len(set(names)))
 
     def test_the_worker_actor_is_stable_and_is_not_a_random_identity(self):
         """Three jobs attribute the rows they write to this. A random id per run would make
@@ -237,6 +242,133 @@ class TimelineJobTests(WorkerTestCase):
                 "SELECT count(*) FROM plt01.ppl_timeline_entries WHERE person_id = %s",
                 (person_id,)).fetchone()[0])
         self.assertGreater(entries, 0)
+
+
+class UnitsKeyTests(WorkerTestCase):
+    def test_every_job_reports_the_count_key_the_registry_says_it_does(self):
+        """**`units` was shape-checked and never compared against anything.**
+        `_units` reads `result[job.units]`, falls back to zero and logs a warning -- so a
+        registry entry naming a key its job does not return makes every run report zero units
+        for ever, which the operations board reads as "the job ran and did nothing". A
+        non-blank string was the only assertion, which is this build's recurring finding:
+        the name is checked and the correspondence is not.
+
+        It needs a tick rather than a static read, because the key is in the registry and the
+        value is in whatever the service function happens to return -- nothing relates them
+        until one runs. `JobOutcome.detail` is the result, so one tick over a seeded tenant
+        compares all of them at once, and a typo in a new entry fails here rather than six
+        months later on a board showing zero.
+        """
+        tenant_id = self.tenant()
+        report = self.tick(tenant_id)
+        self.assertEqual(report.failures, ())
+        seen = {outcome.job for outcome in report.outcomes}
+        self.assertEqual(seen, {job.name for job in registry.JOBS})
+        for outcome in report.outcomes:
+            job = self.job(outcome.job)
+            with self.subTest(job.name):
+                self.assertIsNotNone(outcome.detail)
+                assert outcome.detail is not None
+                self.assertIn(job.units, outcome.detail)
+
+
+class ObjectiveJobTests(WorkerTestCase):
+    """MOD-011's objective evaluation, the first of the undriven schedules to be wired.
+
+    Four remain, and the shape of this one is why they are worth re-reading rather than
+    queueing: the judgement it looked like it needed -- which objective is due -- did not
+    exist, and the one it really needed was how often a breach is announced.
+    """
+
+    def _objective(self, tenant_id: str, *, window_hours: int = 1) -> str:
+        """A performance budget nothing can meet: the relay must average under a microsecond.
+
+        **A breachable objective has to be impossible on purpose**, and the obvious choice --
+        "success at least 100%" -- is the wrong one, because a tick in a test succeeds and the
+        objective is then *met*, which is a green assertion about the wrong thing. A duration
+        budget below any real measurement breaches on the first tick and keeps breaching,
+        which is what the dedupe is about.
+        """
+        defined = observability.define_objective(
+            self._tenant_pool, tenant_id, objective_key="relay_latency",
+            kind="performance_budget", metric_key="worker.job_duration",
+            comparison="at_most", threshold=0.001, window_hours=window_hours,
+            aggregate_as="mean",
+            owner="platform", runbook_ref="runbook://worker", actor_id=ACTOR,
+            correlation_id=str(uuid.uuid4()), dimensions={"job": "events.relay"})
+        return str(defined["objective_id"])
+
+    def _breaches(self, tenant_id: str) -> int:
+        with tenant_scope(self._tenant_pool, tenant_id) as conn:
+            return int(conn.execute(
+                "SELECT count(*) FROM plt01.evt_outbox"
+                " WHERE event_type = 'performance_budget.exceeded'").fetchone()[0])
+
+    def test_the_job_evaluates_every_live_objective_and_announces_a_breach(self):
+        tenant_id = self.tenant()
+        # A tick first, so the series the objective reads has something in it: an empty
+        # window is deliberately not a breach, which is the module's own decision.
+        self.tick(tenant_id, "events.relay")
+        self._objective(tenant_id)
+        report = self.tick(tenant_id, "observability.evaluate_objectives")
+        self.assertEqual(report.failures, ())
+        self.assertGreater(report.units, 0)
+        self.assertEqual(self._breaches(tenant_id), 1)
+
+    def test_a_breach_is_announced_once_per_window_however_often_the_job_runs(self):
+        """**The decision that was missing**, and the reason this was the last job unwired.
+        `evt_outbox` has no DELETE grant for any runtime role, so a job at five-minute
+        cadence publishing per evaluation writes 288 rows a day about one objective that is
+        still breaching -- and nobody is better informed by the 288th."""
+        tenant_id = self.tenant()
+        self.tick(tenant_id, "events.relay")
+        self._objective(tenant_id, window_hours=24)
+        for _ in range(4):
+            report = self.tick(tenant_id, "observability.evaluate_objectives")
+            self.assertEqual(report.failures, ())
+        self.assertEqual(self._breaches(tenant_id), 1)
+
+    def test_the_second_evaluation_says_it_did_not_announce_rather_than_that_it_passed(self):
+        """"Already announced" and "did not breach" are different sentences, and only one of
+        them is a reason to stop looking."""
+        tenant_id = self.tenant()
+        self.tick(tenant_id, "events.relay")
+        objective_id = self._objective(tenant_id, window_hours=24)
+        first = observability.evaluate_objective(
+            self._tenant_pool, tenant_id, objective_id, correlation_id=str(uuid.uuid4()))
+        second = observability.evaluate_objective(
+            self._tenant_pool, tenant_id, objective_id, correlation_id=str(uuid.uuid4()))
+        self.assertFalse(first["met"])
+        self.assertTrue(first["announced"])
+        self.assertFalse(first["already_announced_this_window"])
+        self.assertFalse(second["met"])
+        self.assertFalse(second["announced"])
+        self.assertTrue(second["already_announced_this_window"])
+
+    def test_a_retired_objective_is_skipped_rather_than_failing_the_job(self):
+        """`evaluate_objective` refuses a retired objective with a Conflict, and a job that
+        let that out would stop every objective after it in the list -- MOD-010's relay."""
+        tenant_id = self.tenant()
+        self.tick(tenant_id, "events.relay")
+        objective_id = self._objective(tenant_id)
+        observability.retire_objective(
+            self._tenant_pool, tenant_id, objective_id, actor_id=ACTOR,
+            correlation_id=str(uuid.uuid4()))
+        report = self.tick(tenant_id, "observability.evaluate_objectives")
+        self.assertEqual(report.failures, ())
+        # Retired objectives are not in the live list at all, so this is zero evaluated
+        # rather than one failed.
+        self.assertEqual(report.units, 0)
+
+    def test_an_objective_with_no_data_is_evaluated_and_announces_nothing(self):
+        """An empty window is not a pass and not a breach: a producer that stopped and a
+        system that is failing are different alerts, and conflating them mutes the channel."""
+        tenant_id = self.tenant()
+        self._objective(tenant_id)
+        report = self.tick(tenant_id, "observability.evaluate_objectives")
+        self.assertEqual(report.failures, ())
+        self.assertEqual(report.units, 1)
+        self.assertEqual(self._breaches(tenant_id), 0)
 
 
 class FailureIsolationTests(WorkerTestCase):

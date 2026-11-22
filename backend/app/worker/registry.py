@@ -49,6 +49,7 @@ from app.booking import service as booking
 from app.db import Pool
 from app.devices import service as devices
 from app.events import service as events
+from app.observability import service as observability
 from app.people import service as people
 from app.worker.names import JOB_NAMES
 
@@ -103,6 +104,12 @@ def _people_project_timeline(ctx: JobContext) -> dict[str, Any]:
     return people.project_timeline(ctx.pool, ctx.tenant_id, limit=500)
 
 
+def _observability_evaluate_objectives(ctx: JobContext) -> dict[str, Any]:
+    return observability.evaluate_live_objectives(
+        ctx.pool, ctx.tenant_id, actor_id=ctx.actor_id,
+        correlation_id=ctx.correlation_id, until=ctx.at)
+
+
 def _devices_sweep_offline(ctx: JobContext) -> dict[str, Any]:
     return devices.sweep_offline(ctx.pool, ctx.tenant_id, actor_id=ctx.actor_id,
                                  correlation_id=ctx.correlation_id, at=ctx.at)
@@ -131,6 +138,20 @@ JOBS: tuple[Job, ...] = (
         units="events_dispatched",
         summary="Fan pending outbox events out to their subscribers",
         run=_events_relay),
+    # MOD-011, and the first off this file's own "each needs a judgement this registry would
+    # have to invent" -- four are still on it. The judgement this one looked like it needed did
+    # not exist: every objective carries its own `window_hours`, so there is nothing to choose
+    # about *which* is due. The judgement that was genuinely missing,
+    # how often a breach is announced, is `objectives.announcement_window`, answered by the
+    # objective rather than by the cadence here. **Five minutes is the shortest cadence that
+    # buys anything**: the store's buckets are hourly, so a tighter one re-reads the same
+    # numbers, and a looser one is latency on an alert somebody is waiting for. The
+    # announcement is deduplicated per the objective's window, so this cadence does not decide
+    # how many events get written -- which is exactly what made it safe to wire at all.
+    Job(name="observability.evaluate_objectives", every=timedelta(minutes=5), role="app",
+        units="evaluated",
+        summary="Evaluate every live objective and announce the breaches once per window",
+        run=_observability_evaluate_objectives),
     # MOD-014. The absence changed the product: a timeline nobody projects stays empty, and the
     # Member 360 shows a member with no history.
     Job(name="people.project_timeline", every=timedelta(seconds=60), role="app",

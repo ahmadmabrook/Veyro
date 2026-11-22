@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pathlib
 import unittest
-from datetime import date
+from datetime import UTC, date, datetime
 
 from app.observability import catalog, objectives, ratelimit
 
@@ -192,6 +192,55 @@ class ObjectiveTests(unittest.TestCase):
     def test_a_negative_margin_is_a_real_answer(self) -> None:
         self.assertEqual(objectives.margin_bp(revenue_minor=1000, cost_minor=1500), -5000)
         self.assertEqual(objectives.margin_bp(revenue_minor=1000, cost_minor=250), 7500)
+
+
+class AnnouncementWindowTests(unittest.TestCase):
+    """How often a breach is announced, which is the decision the worker was waiting on."""
+
+    def test_a_window_is_floored_to_its_own_length(self):
+        at = datetime(2026, 11, 22, 13, 37, 42, tzinfo=UTC)
+        self.assertEqual(objectives.announcement_window(at, window_hours=1),
+                         datetime(2026, 11, 22, 13, 0, tzinfo=UTC))
+        self.assertEqual(objectives.announcement_window(at, window_hours=24),
+                         datetime(2026, 11, 22, 0, 0, tzinfo=UTC))
+        self.assertEqual(objectives.announcement_window(at, window_hours=6),
+                         datetime(2026, 11, 22, 12, 0, tzinfo=UTC))
+
+    def test_two_instants_in_one_window_announce_once_and_two_windows_twice(self):
+        """**The property the whole dedupe rests on**, and the one a sweep over a few minutes
+        cannot see: four ticks inside an hour agree whatever the window length is, so only two
+        instants hours apart tell a 24-hour objective from an hourly one. A `span = 3600`
+        mutation passes every integration test in the suite and fails here.
+        """
+        morning = datetime(2026, 11, 22, 2, 15, tzinfo=UTC)
+        evening = datetime(2026, 11, 22, 21, 45, tzinfo=UTC)
+        daily = objectives.announcement_window
+        self.assertEqual(daily(morning, window_hours=24), daily(evening, window_hours=24))
+        self.assertNotEqual(daily(morning, window_hours=1), daily(evening, window_hours=1))
+        # And the next day is a different window, so a breach that is still true is announced
+        # again rather than once for ever.
+        next_day = datetime(2026, 11, 23, 2, 15, tzinfo=UTC)
+        self.assertNotEqual(daily(morning, window_hours=24), daily(next_day, window_hours=24))
+
+    def test_the_key_names_the_objective_and_the_window_and_nothing_else(self):
+        window = objectives.announcement_window(
+            datetime(2026, 11, 22, 13, 37, tzinfo=UTC), window_hours=1)
+        key = objectives.breach_key("7f3a", window)
+        self.assertIn("7f3a", key)
+        self.assertIn("2026-11-22T13:00:00", key)
+        # Two objectives in one window are two keys; one objective in two windows likewise.
+        self.assertNotEqual(key, objectives.breach_key("other", window))
+
+    def test_a_naive_instant_is_refused_rather_than_assumed_to_be_utc(self):
+        """A local instant floored against the epoch gives a window offset by the host's
+        timezone, so two workers in two regions would announce twice. This repository has
+        paid for a naive timestamp three times."""
+        with self.assertRaises(objectives.ObjectiveError):
+            objectives.announcement_window(datetime(2026, 11, 22, 13, 37), window_hours=1)
+
+    def test_a_window_of_zero_hours_is_refused(self):
+        with self.assertRaises(objectives.ObjectiveError):
+            objectives.announcement_window(datetime.now(UTC), window_hours=0)
 
 
 class RateLimitTests(unittest.TestCase):

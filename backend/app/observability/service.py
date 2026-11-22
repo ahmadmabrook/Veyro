@@ -153,7 +153,29 @@ def evaluate_objective(
     outage is the failure this avoids. It does **not** publish a breach, because "the
     measurement is missing" and "the system is failing" are different alerts and conflating them
     is how an alert channel gets muted.
+
+    **A breach is announced once per the objective's own window, for every caller.** This
+    published one event per evaluation, which was tolerable while a route was the only caller
+    and is the reason this was the last of MOD-011's schedules nobody had wired: `evt_outbox`
+    has no DELETE grant for any runtime role, so a job at any useful cadence writes a thousand
+    rows a day about one objective that is still breaching. `objectives.breach_key` is the
+    dedupe and the outbox's own unique index enforces it -- the same choice the budget path
+    makes with `ON CONFLICT DO NOTHING`, by a different mechanism because there is no row here
+    to conflict on.
+
+    **The caller is told which it got**: `announced` is false when this window already carried
+    the announcement, which is a different sentence from "it did not breach" and the one an
+    operator who evaluated twice needs. Making the *route* announce every time and the job
+    announce once would have been a behaviour that differs by who asked, which is the shape
+    this codebase refuses -- the idempotency belongs to the announcement.
+
+    **The append runs in a savepoint**, because a `UniqueViolation` aborts the transaction it
+    happens in and `append_event` turns that into a `Conflict` the caller is meant to handle.
+    Catching it without the savepoint would leave a dead connection, which is MOD-022's "a
+    failure path must not carry on inside a transaction PostgreSQL has aborted".
     """
+    announced = False
+    already_announced = False
     with tenant_scope(pool, tenant_id) as conn:
         row = conn.execute(
             "SELECT objective_key, kind, metric_key, comparison, threshold, window_hours,"
@@ -173,22 +195,90 @@ def evaluate_objective(
         except objectives.ObjectiveError as e:
             raise InvalidRequest(str(e)) from None
         if not verdict.met and verdict.buckets > 0:
-            events.append_event(
-                conn, tenant_id, event_type="performance_budget.exceeded",
-                aggregate_type="objective", aggregate_id=objective_id,
-                payload={"objective_id": objective_id, "objective_key": row[0], "kind": row[1],
-                         "metric_key": row[2], "dimensions": row[10],
-                         "observed": verdict.observed,
-                         "threshold": float(row[4]), "comparison": row[3], "owner": row[7],
-                         "runbook_ref": row[8]},
-                correlation_id=correlation_id, actor_id=actor_id,
-            )
+            window_start = objectives.announcement_window(
+                until or _now(), window_hours=row[5])
+            try:
+                with conn.transaction():
+                    events.append_event(
+                        conn, tenant_id, event_type="performance_budget.exceeded",
+                        aggregate_type="objective", aggregate_id=objective_id,
+                        payload={"objective_id": objective_id, "objective_key": row[0],
+                                 "kind": row[1], "metric_key": row[2], "dimensions": row[10],
+                                 "observed": verdict.observed,
+                                 "threshold": float(row[4]), "comparison": row[3],
+                                 "owner": row[7], "runbook_ref": row[8]},
+                        correlation_id=correlation_id, actor_id=actor_id,
+                        idempotency_key=objectives.breach_key(objective_id, window_start),
+                    )
+                announced = True
+            except Conflict:
+                # This window already carried the announcement. Not a failure, and not
+                # "it did not breach" either -- the caller is told which it got.
+                already_announced = True
     return {"objective_id": objective_id, "objective_key": row[0], "kind": row[1],
             "metric_key": row[2], "dimensions": row[10],
             "met": verdict.met, "observed": verdict.observed,
             "threshold": verdict.threshold, "comparison": verdict.comparison,
             "buckets": verdict.buckets, "reason": verdict.reason, "owner": row[7],
-            "runbook_ref": row[8]}
+            "runbook_ref": row[8],
+            "announced": announced, "already_announced_this_window": already_announced}
+
+
+def evaluate_live_objectives(
+    pool: Pool, tenant_id: str, *, correlation_id: str, actor_id: str | None = None,
+    until: datetime | None = None, limit: int = 200,
+) -> dict[str, Any]:
+    """Evaluate every objective nobody has retired, and announce the breaches.
+
+    **This is the job MOD-011 named and did not have.** The module's own gap note said an
+    objective nobody evaluates raises no alert, and that the missing piece was a judgement
+    rather than a predicate: *which* objective is due. The answer turned out to be all of
+    them -- every objective carries its own `window_hours`, so there is nothing to choose --
+    and the judgement actually missing was how often a breach is announced, which
+    `objectives.announcement_window` now answers from the objective itself.
+
+    **A failure on one objective must not stop the rest**, which is MOD-010's rule and the one
+    the relay shipped wrong: a poison row aborted every healthy delivery behind it.
+
+    **The reachable case is a retirement racing the sweep.** The listing and each evaluation
+    are separate transactions, so an operator who retires an objective in between gets
+    `objective_is_retired` out of `evaluate_objective` -- which without this guard would leave
+    every objective after it in the list unevaluated while the worker still looked like it was
+    running. It has no isolating case in the suite and cannot easily have one, because the
+    window is between two transactions rather than inside either; it is said here rather than
+    claimed as tested. `InvalidRequest` and `NotFound` are caught beside it for the shapes a
+    *catalogue change* would produce -- an objective definable when it was written and not
+    now -- which no input to this build reaches today.
+
+    **Bounded**, like every other listing read in this build: a tenant with ten thousand
+    objectives is a configuration mistake rather than a reason for one tick to take an hour,
+    and the bound being hit is itself reported.
+    """
+    if limit < 1 or limit > 500:
+        raise InvalidRequest("limit_out_of_range")
+    live = list_objectives(pool, tenant_id)
+    truncated = len(live) > limit
+    breached: list[str] = []
+    announced: list[str] = []
+    failed: list[dict[str, str]] = []
+    for objective in live[:limit]:
+        try:
+            verdict = evaluate_objective(
+                pool, tenant_id, objective["objective_id"],
+                correlation_id=correlation_id, actor_id=actor_id, until=until)
+        except (InvalidRequest, Conflict, NotFound) as e:
+            # **Named rather than swallowed.** A count of failures with no reasons is a
+            # dashboard that says something is wrong and nothing about what, which is the
+            # actionability failure paragraph 3504 names.
+            failed.append({"objective_key": objective["objective_key"], "reason": str(e)})
+            continue
+        if verdict["met"] or verdict["buckets"] == 0:
+            continue
+        breached.append(objective["objective_key"])
+        if verdict["announced"]:
+            announced.append(objective["objective_key"])
+    return {"evaluated": len(live[:limit]), "breached": breached, "announced": announced,
+            "failed": failed, "truncated": truncated}
 
 
 # ---------------------------------------------------------------------- synthetic checks

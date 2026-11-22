@@ -27,5 +27,6 @@ JOB_NAMES: tuple[str, ...] = (
     "devices.expire_commands",
     "devices.sweep_offline",
     "events.relay",
+    "observability.evaluate_objectives",
     "people.project_timeline",
 )

@@ -15,7 +15,7 @@ histogram the store does not keep, and the gap is recorded rather than papered o
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import UTC, date, datetime
 
 COMPARISONS = ("at_least", "at_most")
 KINDS = ("slo", "performance_budget")
@@ -233,3 +233,52 @@ def margin_bp(*, revenue_minor: int, cost_minor: int) -> int:
     if cost_minor < 0:
         raise ObjectiveError("cost_cannot_be_negative")
     return (revenue_minor - cost_minor) * 10000 // revenue_minor
+
+
+def announcement_window(at: datetime, *, window_hours: int) -> datetime:
+    """The start of the window a breach at `at` is announced for, so it is announced once.
+
+    **This is the decision the worker was waiting on.** `evaluate_objective` published one
+    `performance_budget.exceeded` per evaluation, which is fine for a route somebody calls and
+    ruinous on a schedule: `evt_outbox` has no DELETE grant for any runtime role, so a job at
+    any useful cadence writes a thousand rows a day about one objective that is still breaching
+    and nobody is any better informed by the nine hundred and ninety-ninth. MOD-011's budget
+    path already made the other choice -- once per period, by a unique index -- so the question
+    was never "should this be deduplicated" but "over what period", and the objective answers
+    it itself.
+
+    **The period is the objective's own window.** An objective measuring the last hour wants an
+    hourly announcement and one measuring the last day wants a daily one: a breach announced
+    more often than the measurement moves is noise, and less often is a breach somebody is not
+    told about while it is true. Nothing has to be stored for this, which is what keeps the
+    worker's "every job is idempotent, so the schedule is disposable" property -- the key is a
+    function of the objective and the clock.
+
+    **Floored against the Unix epoch**, deliberately, rather than counted from the objective's
+    `set_at`: two objectives on the same metric should announce on the same boundary, and an
+    operator reading a breach log should see windows that line up with the hour rather than
+    with whenever somebody happened to define a rule. The cost is that an objective defined
+    mid-window gets a first announcement window shorter than its own length, which is right --
+    it is being evaluated against a window that is itself partly before it existed.
+    """
+    if window_hours <= 0:
+        raise ObjectiveError("window_hours_must_be_positive")
+    if at.tzinfo is None:
+        raise ObjectiveError("announcement_window_needs_an_aware_instant")
+    seconds = int(at.timestamp())
+    span = window_hours * 3600
+    return datetime.fromtimestamp(seconds - seconds % span, tz=UTC)
+
+
+def breach_key(objective_id: str, window_start: datetime) -> str:
+    """The outbox idempotency key for one objective's breach in one announcement window.
+
+    **The outbox's own unique index is the mechanism, so there is no new table.** A breach log
+    is `GET /events/aggregate` for the objective, which already exists and already carries the
+    observed figure, the threshold and the owner -- and `evt_outbox` is insert-only, so the
+    history cannot be rewritten. A dedicated `ops_objective_breaches` table would be a second
+    copy of that with its own grants, its own isolation checks and its own way of disagreeing
+    with the events beside it, which is the argument MOD-011's own catalogue makes against a
+    metric that duplicates a table.
+    """
+    return f"objective-breach:{objective_id}:{window_start.isoformat()}"

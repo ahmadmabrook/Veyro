@@ -511,12 +511,13 @@ const MUTATIONS = [
   },
   {
     id: "ops-objective-honesty",
-    why: "nothing evaluates an objective on a schedule, so an empty list is honest rather "
-      + "than reassuring and the page has to say which",
+    why: "an empty objective list is two different facts -- nobody set a threshold, or "
+      + "nothing is watching -- and the worker turning the second into the first is exactly "
+      + "why the page has to say which it is rather than printing the count alone",
     file: "src/i18n/locale.ts",
-    from: "    \"ops.noObjectives\": \"No objective is defined. Nothing evaluates one on a schedule either, so an objective nobody runs raises no alert — which is why an empty list here is honest rather than reassuring.\",",
+    from: "    \"ops.noObjectives\": \"No objective is defined. The worker now evaluates every live objective every five minutes and announces a breach once per the objective\u2019s own window, so an empty list here means nobody has set a threshold \u2014 not that nothing is watching.\",",
     to: "    \"ops.noObjectives\": \"No objective is defined.\",",
-    grep: "raises no alert",
+    grep: "says an empty objective list means nobody set a threshold",
   },
   {
     id: "schedule-reason-marked",

@@ -1245,14 +1245,44 @@ Known gaps, deliberate:
   logs, metrics and traces; what is built is the metric third plus the correlation id that
   already threads through every module. A trace needs a collector, and `/events/trace` is the
   nearest thing here.
-- **Nothing drives any of it on a schedule.** `evaluate_objective` and `evaluate_budget` are
-  called by a route and by tests, and the worker runtime deliberately does not call either:
-  *which* objective and *which* budget period are due is a judgement a registry would have to
-  invent. The absence still changes the product -- an objective nobody evaluates raises no
-  alert -- which makes this the first of the undriven jobs worth wiring once that judgement is
-  written down. **The runtime does record into this store**: `worker.job_duration` and
-  `worker.job_success` are its two series, so an objective over them is the one case where the
-  wiring is already half done.
+- **Objectives are evaluated on a schedule now; budgets are not.**
+  `observability.evaluate_objectives` is a worker job at five minutes, which closes the gap
+  this bullet used to record -- an objective nobody evaluates raises no alert, and nothing
+  evaluated one. **The judgement that was actually missing was not "which objective".** Every
+  objective carries its own `window_hours`, so there is nothing to choose; what had to be
+  decided was *how often a breach is announced*, because `evaluate_objective` published one
+  event per evaluation and `evt_outbox` has no DELETE grant for any runtime role -- so a job
+  at this cadence would write 288 rows a day about one objective that is still breaching, and
+  nobody is better informed by the 288th. `objectives.announcement_window` floors the instant
+  to the objective's own window and `breach_key` is the outbox idempotency key over it, so the
+  outbox's own unique index is the dedupe and there is no new table: a breach log is
+  `GET /events/aggregate` for the objective, which already carries the observed figure, the
+  threshold and the owner, and is insert-only. **The announcement is deduplicated for every
+  caller, not just the job**: a route that announced every time while the job announced once
+  would be behaviour that differs by who asked, so `evaluate_objective` returns `announced`
+  and `already_announced_this_window` and both callers get the same event. The period is the
+  objective's own window because a breach announced more often than the measurement moves is
+  noise, and less often is a breach somebody is not told about while it is true; it is floored
+  against the Unix epoch rather than counted from `set_at`, so two objectives on one metric
+  announce on the same boundary.
+  **`evaluate_budget` is still undriven**, and for the reason this bullet gave: which period
+  is due is an accountant's judgement rather than a sweep's predicate.
+  Proven: 5 worker integration tests, 5 domain tests over the window with no database, and 5
+  mutations in `tests/mutate_worker_objectives.py`, all caught. Two protections there are
+  deliberately **not** mutated and the harness says why -- the savepoint around the append
+  changes no behaviour today, because PostgreSQL's `COMMIT` after an error rolls back and
+  reports success and nothing follows the append in that transaction; and the sweep's
+  per-objective `except` has no isolating case, its reachable trigger being an operator
+  retiring an objective between the listing transaction and that objective's evaluation.
+- **A job's `units` key was shape-checked and never compared against anything**, which is
+  fixed and is worth carrying as the finding. `_units` reads `result[job.units]`, falls back
+  to zero and logs -- so a registry entry naming a key its job does not return reports zero
+  units for ever, which the operations board reads as "the job ran and did nothing". The only
+  assertion was that the string was non-blank. It needs a tick rather than a static read,
+  because the key is in the registry and the value is in whatever the service function
+  returns and nothing relates them until one runs; `JobOutcome.detail` is the result, so one
+  tick compares every job at once. Every existing entry was correct, which is the good kind
+  of finding: the guard was missing rather than the agreement.
 - **No load tests and no scaling policy** (part of paragraph 3498). The capacity table records a
   forecast somebody made; nothing generates the load that would inform one.
 - **No cost feed.** The ledger, budgets, burn arithmetic and alerts are built and there is no
@@ -3645,9 +3675,9 @@ Known gaps, deliberate:
 `backend/app/worker/` is the thing this file asked for in fourteen places. Every one of those
 bullets named a decision function that was written, tested and reachable from a route, waiting
 for something to call it without a person asking -- and until now the honest answer was that no
-such thing existed. Six jobs are wired: MOD-010's relay, MOD-014's timeline projection,
-MOD-021's offline sweep and command expiry, MOD-020's waitlist-offer expiry and MOD-022's
-replay-cache sweep. `python -m app.worker --once` runs one tick and prints what it did;
+such thing existed. Seven jobs are wired: MOD-010's relay, MOD-011's objective evaluation,
+MOD-014's timeline projection, MOD-021's offline sweep and command expiry, MOD-020's
+waitlist-offer expiry and MOD-022's replay-cache sweep. `python -m app.worker --once` runs one tick and prints what it did;
 without `--once` it loops until a signal.
 
 Five decisions carry it, and three of them are refusals:
@@ -3725,19 +3755,18 @@ What is deliberately **not** a job, each for a stated reason:
 - **MOD-012's credential rotation announcement.** `credentials_due` is not idempotent across
   calls by design, so scheduling it needs a record of what has already been announced -- the
   durable state the bullet above says comes first.
-- **MOD-009's retention sweep, MOD-011's objective evaluation, MOD-013's digest close,
-  MOD-017's renewals and dunning, MOD-018's recognition and period close.** Each needs a
-  judgement this registry would have to invent -- which deadline, which objective, which
-  period -- and inventing product is the one thing the delegation does not cover. They are the
-  next jobs, and each wants its own decision written down first.
-  **MOD-011's is the concrete one and worth the detail**, because it looks like the easiest:
-  every objective carries its own `window_hours`, so "evaluate all of them" needs no judgement
-  at all -- until you look at what a breach does. `evaluate_objective` calls `append_event`
-  with no idempotency key, so a breaching objective publishes one event per evaluation, and a
-  job at any useful cadence writes a thousand a day into a table with no DELETE grant. The
-  module's own budget path already made the other choice -- once per period, by a unique index
-  -- so the missing decision is "how often is a breach announced", and it is MOD-011's to make
-  rather than the runner's.
+- **MOD-009's retention sweep, MOD-013's digest close, MOD-017's renewals and dunning,
+  MOD-018's recognition and period close.** Each needs a judgement this registry would have to
+  invent -- which deadline, which period -- and inventing product is the one thing the
+  delegation does not cover. They are the next jobs, and each wants its own decision written
+  down first. **MOD-011's objective evaluation came off this list by making its decision**,
+  and the shape of that is the lesson: the judgement it looked like it needed, *which*
+  objective is due, turned out not to exist -- every objective carries its own window -- and
+  the one it really needed was *how often a breach is announced*, which is a different
+  question and a smaller one. `objectives.announcement_window` answers it from the objective,
+  so the job's cadence does not decide how many events get written, which is what made it safe
+  to wire at all. **Ask of each remaining one which judgement it actually needs**, because the
+  obvious reading of "this needs a decision" named the wrong decision here.
 
 Known gaps, deliberate:
 
@@ -5096,13 +5125,17 @@ the user's authenticator, so verifying an assertion needs no secret of ours at a
 exactly why that gap could be closed while this one cannot. A device certificate is the
 opposite shape -- it is a secret this build would have to hold.
 
-**The worker runtime is no longer on that list, and six of the fourteen schedules are driven.**
+**The worker runtime is no longer on that list, and seven of the fourteen schedules are
+driven.**
 `backend/app/worker/` has its own section above. What closing it took is worth the same note
 `Decision.mask` gets below: no new table, because every wired job is idempotent and a durable
 schedule's real cost is a second place where "has this run" is recorded that can disagree with
-the effect the job had. The eight schedules still undriven are undriven for a reason each --
+the effect the job had. The seven schedules still undriven are undriven for a reason each --
 `iam.challenges` has no DELETE grant for anybody, `deliver_pending` has no handler to drive,
-and the rest need a judgement the registry would have to invent. Those are the next jobs, and
+and the rest need a judgement the registry would have to invent. **MOD-011's objective
+evaluation came off that list by making one**, and the shape is worth knowing before the next:
+the judgement it looked like it needed (which objective is due) did not exist, and the one it
+really needed (how often a breach is announced) was a different and smaller question. Those are the next jobs, and
 each wants its decision written down before it is wired.
 
 `Decision.mask` is no longer on that list. MOD-014 applies it, which closes the five-module gap

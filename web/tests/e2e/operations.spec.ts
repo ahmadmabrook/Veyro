@@ -143,12 +143,16 @@ test.describe("the operations board", () => {
     await expect(routing).toContainText("member_projection");
   });
 
-  test("says an objective nobody runs raises no alert", async ({ page }) => {
+  test("says an empty objective list means nobody set a threshold", async ({ page }) => {
     const objectives = page.locator("section").filter({ hasText: "Objectives" }).first();
-    // An empty list here is honest rather than reassuring, and the page has to be the one
-    // that says which.
-    await expect(objectives).toContainText(/raises no alert/);
-    await expect(objectives).toContainText(/honest rather than reassuring/);
+    // **This asserted "an objective nobody runs raises no alert"**, which was true for as
+    // long as nothing evaluated one on a schedule and became false the hour the worker
+    // started -- a gap note outliving its gap, in the sentence a reader of an empty list
+    // sees. What still needs saying is which of the two an empty list is, and the answer
+    // moved: it used to be "nothing is watching" and is now "nobody set a threshold".
+    await expect(objectives).toContainText(/every five minutes/);
+    await expect(objectives).toContainText(/nobody has set a threshold/);
+    await expect(objectives).not.toContainText(/raises no alert/);
   });
 
   for (const theme of ["light", "dark"] as const) {
