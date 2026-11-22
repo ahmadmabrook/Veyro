@@ -13,10 +13,12 @@ import {
   needsAttention,
   sessionIsLive,
 } from "@/lib/account";
+import { hasUsableKey, type PasskeyFact } from "@/lib/passkey";
 import type { AuthEvent, DeviceFact, SessionFact } from "@/lib/account";
 
 import { signOut } from "@/app/actions";
 import { issueRecoveryCodes, revokeDevice, revokeSession, trustDevice } from "./actions";
+import { PasskeySection } from "./passkey-section";
 import { IDLE, type AccountState } from "./state";
 
 /**
@@ -45,6 +47,9 @@ export function AccountView({
   sessions,
   devices,
   events,
+  passkeys,
+  displayName,
+  identifier,
 }: {
   locale: Locale;
   identityId: string;
@@ -56,6 +61,10 @@ export function AccountView({
   sessions: SessionFact[];
   devices: DeviceFact[];
   events: AuthEvent[];
+  passkeys: PasskeyFact[];
+  /** For the ceremony: an authenticator shows these when somebody picks a credential later. */
+  displayName: string;
+  identifier: string;
 }) {
   const text = (key: MessageKey) => t(locale, key);
   const [codeState, issueCodes] = useActionState(issueRecoveryCodes, IDLE);
@@ -80,8 +89,8 @@ export function AccountView({
           <dd style={{ margin: 0 }}>
             {assurance === "stepped_up"
               ? text("account.steppedUp")
-              : assurance === "unreachable"
-                ? text("account.unreachableLevel")
+              : assurance === "hardware"
+                ? text("account.hardwareLevel")
                 : text("account.passwordOnly")}
             <div className="muted" style={caption}>
               {text("account.provedWith")}{" "}
@@ -93,9 +102,15 @@ export function AccountView({
             <span className="data" dir="ltr">{expiresAt.slice(0, 16).replace("T", " ")}</span>
             {" UTC"}
             <div className="muted" style={caption}>
+              {/* **Three windows, not two.** `SESSION_LIFETIME` gives level 3 fifteen
+                  minutes -- the shortest of the three, because the strongest credential
+                  opens the narrowest window -- and this branch read the password one for it,
+                  so a passkey session was told it had a fortnight. */}
               {assurance === "stepped_up"
                 ? text("account.shortWindow")
-                : text("account.longWindow")}
+                : assurance === "hardware"
+                  ? text("account.shortestWindow")
+                  : text("account.longWindow")}
             </div>
           </dd>
         </dl>
@@ -114,6 +129,20 @@ export function AccountView({
         <h2 style={{ margin: 0 }}>{text("account.recoveryCodes")}</h2>
         <p className="muted" style={{ margin: 0 }}>
           {text("account.recoveryLead")}
+        </p>
+        {/* **Whether these codes are the only way back, which is now a question with two
+            answers.** The lead used to say a recovery code is the only second factor this
+            build can verify -- true for five modules and false since WebAuthn verification
+            landed, on the same page that now enrols a passkey. What matters to the reader is
+            not which factors exist but whether *they* have one: a member with a passkey
+            cannot be locked out by spending ten codes, and a member without one can, which
+            is the dead end MOD-007 recorded against itself. `hasUsableKey` is the question,
+            asked in one place so this sentence and the section's own banner cannot
+            disagree. */}
+        <p className="muted" style={{ margin: 0 }}>
+          {text(hasUsableKey(passkeys)
+            ? "account.recoveryAndPasskey"
+            : "account.recoveryIsTheOnlyWayBack")}
         </p>
         {!mayIssueRecoveryCodes(aal) ? (
           <Banner severity="info">{text("account.codesNeedStepUp")}</Banner>
@@ -139,6 +168,19 @@ export function AccountView({
           </>
         )}
       </section>
+
+      {/* **Above the sessions, because it is the way back.** A step-up spends a recovery
+          code and reissuing needs a stepped-up session, so a member who spends all ten has
+          no way in from this surface -- which is the dead end MOD-007 recorded against itself.
+          A passkey is the way back that spends nothing, so it is offered before the list of
+          places you are signed in. */}
+      <PasskeySection
+        locale={locale}
+        identityId={identityId}
+        displayName={displayName}
+        identifier={identifier}
+        passkeys={passkeys}
+      />
 
       <section className="page-section">
         <h2 style={{ margin: 0 }}>{text("account.otherSessions")}</h2>

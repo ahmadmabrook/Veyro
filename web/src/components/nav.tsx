@@ -16,7 +16,7 @@ import { t, type Locale, type MessageKey } from "@/i18n/locale";
  *
  * An item the session cannot use is **absent rather than disabled**. A disabled control is a
  * promise that something could be unlocked, and for `privileged` actions in this build
- * nothing can: AAL 3 needs a hardware factor MOD-007 cannot verify.
+ * a step-up cannot: AAL 3 is reached by signing in with a passkey, not by raising a session.
  *
  * **It is a rail, not a strip.** §21 specifies three layers of Admin navigation -- global
  * chrome, a rail of eight composed from role and scope with an "All areas" directory, and a

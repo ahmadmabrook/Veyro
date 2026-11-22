@@ -43,9 +43,21 @@ type ServedForm = {
   hidden: { name: string; value: string }[];
 };
 
-/** The sign-in form's method, action and hidden fields, exactly as served. */
+/**
+ * The sign-in form's method, action and hidden fields, exactly as served.
+ *
+ * **Located by its id, not by its attribute order.** This looked for the literal
+ * `<form noValidate`, so it found the form only while `noValidate` happened to be the first
+ * attribute React emitted -- and adding `id` to the element for the passkey button to read
+ * its fields from moved it, which failed both tests in this file with "the served HTML must
+ * contain the sign-in form" on a page that plainly contained it. That is the positional-cell
+ * locator this repository already records, one layer out: a test coupled to a decision it
+ * does not care about. The id is a handle the page states on purpose, and the page carries
+ * two other forms (the language and theme switches), so matching the wrong one is the failure
+ * worth ruling out.
+ */
 function parseSignInForm(html: string): ServedForm {
-  const start = html.indexOf("<form noValidate");
+  const start = html.indexOf('<form id="sign-in"');
   expect(start, "the served HTML must contain the sign-in form").toBeGreaterThan(-1);
   const open = html.slice(start, html.indexOf(">", start) + 1);
   const block = html.slice(start, html.indexOf("</form>", start));

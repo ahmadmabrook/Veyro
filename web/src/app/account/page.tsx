@@ -5,6 +5,8 @@ import { PageHeader } from "@/components/ds/page-header";
 import { fill, t, type Locale, type MessageKey } from "@/i18n/locale";
 import type { AuthEvent, DeviceFact, SessionFact } from "@/lib/account";
 import { listAuthEvents, listDevices, listSessions } from "@/lib/account-reads";
+import type { PasskeyFact } from "@/lib/passkey";
+import { listPasskeys, readOwnIdentity, type OwnIdentity } from "@/lib/passkey-reads";
 import { currentSession, failureMessage } from "@/lib/api";
 import { presentation } from "@/lib/preferences";
 
@@ -35,11 +37,15 @@ export default async function AccountPage() {
   let sessions: SessionFact[] = [];
   let devices: DeviceFact[] = [];
   let events: AuthEvent[] = [];
+  let passkeys: PasskeyFact[] = [];
+  let me: OwnIdentity | null = null;
   try {
-    [sessions, devices, events] = await Promise.all([
+    [sessions, devices, events, passkeys, me] = await Promise.all([
       listSessions(identityId),
       listDevices(identityId),
       listAuthEvents(),
+      listPasskeys(identityId),
+      readOwnIdentity(identityId),
     ]);
   } catch (error) {
     return (
@@ -79,6 +85,9 @@ export default async function AccountPage() {
         sessions={sessions}
         devices={devices}
         events={events}
+        passkeys={passkeys}
+        displayName={me.display_name}
+        identifier={me.email ?? me.phone ?? me.display_name}
       />
     </Shell>
   );

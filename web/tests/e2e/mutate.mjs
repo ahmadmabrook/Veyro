@@ -152,7 +152,7 @@ const MUTATIONS = [
     file: "src/app/permissions/page.tsx",
     from: '  if (!answer.reachable) return "gate.unreachable";\n  if (answer.step_up_required) return "gate.stepUp";',
     to: '  if (answer.step_up_required) return "gate.stepUp";\n  if (!answer.reachable) return "gate.unreachable";',
-    grep: "says it is unavailable",
+    grep: "names the passkey door rather than offering an impossible step-up",
   },
   {
     id: "bidi-isolation",
@@ -1165,7 +1165,7 @@ const MUTATIONS = [
     from: '  if (permission.required_aal > reachableAal) return "unreachable";',
     to: "",
     runner: "vitest",
-    grep: "nobody in this build can use",
+    grep: "only a passkey sign-in can use",
   },
   {
     id: "rota-shows-both-a-booking-and-its-exception",
@@ -1710,6 +1710,151 @@ const MUTATIONS = [
     to: "                ? fill(locale, \"denial.lastVisit\", { days: 0 })",
     runner: "vitest",
     grep: "is honoured by every call site that passes a literal key",
+  },
+  {
+    id: "passkey-listing-reads-the-flag-the-level-does-not-follow",
+    why: "`BE` at 0x08 is set at creation and never changes, and `factor_for` reads it; `BS` "
+      + "at 0x10 flips the first time a keychain syncs. Nothing updates the column after "
+      + "enrolment, so reading BS lists an eligible-but-unsynced credential as device-bound "
+      + "and reaching level 3 while the sign-in gives level 2",
+    file: "src/lib/passkey.ts",
+    from: "  return data.length > 32 && (data[32]! & 0x08) !== 0;",
+    to: "  return data.length > 32 && (data[32]! & 0x10) !== 0;",
+    runner: "vitest",
+    grep: "reads backup eligibility from bit",
+  },
+  {
+    id: "passkey-discoverable-not-required",
+    why: "the sign-in ceremony deliberately sends no credential list, because allowCredentials "
+      + "would name a person's credential ids to anybody who typed their address -- so a "
+      + "credential that is not discoverable enrols and can never sign in",
+    file: "src/lib/passkey.ts",
+    from: '      residentKey: "required",',
+    to: '      residentKey: "preferred",',
+    runner: "vitest",
+    grep: "requires a discoverable credential",
+  },
+  {
+    id: "passkey-user-verification-not-required",
+    why: "the backend refuses an assertion whose UV flag is unset, there being no factor name "
+      + "for a device that was present with nobody checked -- so asking for it only when "
+      + "convenient enrols a credential that can never sign in",
+    file: "src/lib/passkey.ts",
+    from: '      userVerification: "required",\n    },\n    // No attestation',
+    to: '      userVerification: "preferred",\n    },\n    // No attestation',
+    runner: "vitest",
+    grep: "requires user verification",
+  },
+  {
+    id: "passkey-unverifiable-key-enrolled-anyway",
+    why: "`getPublicKey()` is why no CBOR is parsed anywhere here, so a browser without it "
+      + "cannot produce a key the server can verify -- enrolling regardless stores a "
+      + "credential that fails at every sign-in with nothing saying why",
+    file: "src/lib/passkey.ts",
+    from: "  if (typeof response.getPublicKey !== \"function\") return { unsupported: true };",
+    to: "  if (typeof response.getPublicKey === \"function\" && false) return { unsupported: true };",
+    runner: "vitest",
+    grep: "says a browser cannot help",
+  },
+  {
+    id: "passkey-level-three-called-unreachable",
+    why: "the account page would tell the one session holding the strongest credential in the "
+      + "product that its level is one nothing can reach -- the gap note outliving its gap, "
+      + "in a sentence shown to the reader it is about",
+    file: "src/lib/account.ts",
+    from: '  if (aal >= 3) return "hardware";',
+    to: "",
+    runner: "playwright",
+    grep: "reaches the level nothing else can",
+  },
+  {
+    id: "passkey-session-told-it-has-a-fortnight",
+    why: "SESSION_LIFETIME gives level 3 fifteen minutes, the shortest of the three, and the "
+      + "caption read the password one for it -- so the strongest session was told it had a "
+      + "fortnight",
+    file: "src/app/account/account-view.tsx",
+    from: '                  ? text("account.shortestWindow")',
+    to: '                  ? text("account.longWindow")',
+    runner: "playwright",
+    grep: "reaches the level nothing else can",
+  },
+  {
+    id: "passkey-withdrawal-says-nothing",
+    why: "the row that withdraws itself unmounts the button, so a per-row result is a result "
+      + "nobody sees -- MOD-007's `revokeDevice` shape, where the most consequential control "
+      + "on the surface gave no feedback at all",
+    file: "src/app/account/passkey-section.tsx",
+    from: "      {withdrawn.message !== null ? (",
+    to: "      {false ? (",
+    runner: "playwright",
+    grep: "is withdrawn by its owner",
+  },
+  {
+    id: "passkey-button-offered-where-the-browser-cannot",
+    why: "a control that cannot work is worse than its absence, and here a reader would have "
+      + "no way to tell a missing passkey from a browser that cannot ask for one",
+    file: "src/app/login/passkey-button.tsx",
+    from: "  if (!canCeremony) return null;",
+    to: "",
+    runner: "playwright",
+    grep: "is offered nothing rather than a control",
+  },
+  {
+    id: "passkey-signin-without-an-identifier",
+    why: "two fields are needed and only one is obvious, so pressing with nothing typed has "
+      + "to say which -- a ceremony that ran and failed would read as a broken passkey",
+    file: "src/app/login/passkey-button.tsx",
+    from: '      setProblem("passkey.needIdentifier");',
+    to: '      setProblem("passkey.signInFailed");',
+    runner: "playwright",
+    grep: "says which field it needs",
+  },
+  {
+    id: "step-up-keyed-on-reachable-alone",
+    why: "`reachable` says a factor in this build reaches the level; it does not say this "
+      + "endpoint can. `/auth/step-up` takes a password or a recovery code and neither gets "
+      + "past 2, so keying the page on `reachable` offers a credential prompt whose correct "
+      + "answer is still refused -- which is worse than the refusal it replaced",
+    file: "src/app/step-up/page.tsx",
+    from: '  if (verdict === "needs_a_passkey_sign_in") {',
+    to: "  if (!asked.reachable) {",
+    runner: "playwright",
+    grep: "a level this page cannot raise names the door that can",
+  },
+  {
+    id: "step-up-ceiling-raised-past-what-it-accepts",
+    why: "the ceiling is what `complete_step_up` accepts, so raising it past 2 makes the "
+      + "page offer a field for a level no password and no recovery code can reach",
+    file: "src/lib/step-up.ts",
+    from: "  if (!asked.reachable || needed > STEP_UP_CEILING) return \"needs_a_passkey_sign_in\";",
+    to: "  if (!asked.reachable) return \"needs_a_passkey_sign_in\";",
+    runner: "vitest",
+    grep: "names the passkey door for a level this endpoint cannot reach",
+  },
+  {
+    id: "step-up-missing-level-fails-open",
+    why: "a build that stopped sending `required_aal` would otherwise silently offer the "
+      + "credential prompt for every class, which is the one failure this module exists to "
+      + "prevent -- so an absent level is beyond this page rather than within it",
+    file: "src/lib/step-up.ts",
+    from: '  const needed = typeof asked.required_aal === "number" ? asked.required_aal : Infinity;',
+    to: '  const needed = typeof asked.required_aal === "number" ? asked.required_aal : 0;',
+    runner: "vitest",
+    grep: "treats a missing required level as beyond this page",
+  },
+  {
+    id: "passkey-recovery-sentence-keyed-the-wrong-way-round",
+    why: "the two sentences are opposites -- one says codes are the only way back and one "
+      + "says a passkey already is -- so a reader with no passkey would be told they cannot "
+      + "be locked out, which is the one reading that makes spending the last code safe. "
+      + "**A `passkeys.length > 0` mutation would not do**: the reader has none at all, so "
+      + "both expressions agree and nothing would be proved, which is this file's own rule "
+      + "that a weakening is caught only if it admits the row",
+    file: "src/app/account/account-view.tsx",
+    from: "          {text(hasUsableKey(passkeys)",
+    to: "          {text(!hasUsableKey(passkeys)",
+    runner: "playwright",
+    grep: "say they are the only way back, which the lead used to get wrong",
   },
 ];
 

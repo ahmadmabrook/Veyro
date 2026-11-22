@@ -67,10 +67,10 @@ CLASS_PERMISSIONS: dict[str, str] = {
 #:
 #: What this tuple is for is still worth having: it names the classes whose readers must have
 #: presented a hardware factor, so a later change mapping health to something cheaper is a
-#: change to a named constant rather than a quiet remapping. **No surface in this build enrols
-#: a passkey**, so in practice every session a person can open today still masks these -- and
-#: that is the surface's gap rather than the product's, which is a different sentence from the
-#: one this comment used to carry.
+#: change to a named constant rather than a quiet remapping. **The web app enrols a passkey
+#: now**, on the account page, so a reader who has one and holds the permission reads these --
+#: the name of this tuple is older than the capability and is kept because what it names is
+#: still the set of classes a cheaper credential may not open.
 UNREACHABLE_CLASSES = ("health", "biometric")
 
 

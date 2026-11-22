@@ -92,12 +92,12 @@ class AssuranceTests(PeopleApiTestCase):
     def test_an_aal_1_session_cannot_read_a_health_class_field_even_holding_the_grant(self):
         """**The build's strongest class, on a password.**
 
-        `member.health.read` is `biometric_sensitive`, which maps to AAL 3, which needs a
-        hardware authenticator MOD-007 cannot verify. The catalogue, `visibility` and CLAUDE.md
-        all say that makes health unreadable in this build -- and the permission set the masking
-        consulted came from the role assignments alone, with nothing looking at the session's
-        assurance, so a grant the catalogue presents as inert opened medical notes at the front
-        desk.
+        `member.health.read` is `biometric_sensitive`, which maps to AAL 3, reached only by
+        signing in with a device-bound passkey -- so a password session must not read it
+        whatever it holds. The permission set the masking consulted came from the role
+        assignments alone, with nothing looking at the session's assurance, so a grant that
+        needs the strongest credential in the product opened medical notes at the front desk
+        on a password.
         """
         tenant_id = self.tenant()
         person_id = self.subject(tenant_id)

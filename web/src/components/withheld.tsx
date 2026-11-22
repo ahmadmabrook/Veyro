@@ -12,11 +12,12 @@ import { t, type Locale, type MessageKey } from "@/i18n/locale";
  * reading that is always wrong.
  *
  * The reason is part of the rendering, because the two reasons a field is withheld here have
- * different remedies and one of them has none: an identity field needs a stronger sign-in,
- * and a health field needs a level this surface cannot reach -- `member.health.read` is
- * `biometric_sensitive`, which maps to assurance level 3, which needs a hardware authenticator
- * MOD-007 cannot verify. Offering a step-up for the second would send somebody looking for a
- * key the product cannot check.
+ * different remedies and they are different doors: an identity field needs a stronger
+ * sign-in, which a step-up gives, and a health field needs assurance level 3 --
+ * `member.health.read` is `biometric_sensitive` -- which `/auth/step-up` cannot reach at all,
+ * because it takes a password or a recovery code and neither gets past 2. Level 3 is reached
+ * by signing in with a passkey, so the second reason names that rather than offering a
+ * step-up whose correct answer is still refused.
  */
 export function Withheld({ locale, reason }: { locale: Locale; reason: MessageKey }) {
   return (

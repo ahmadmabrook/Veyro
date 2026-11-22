@@ -103,6 +103,14 @@ const child = spawn(
       VEYRO_API_REQUEST_BUDGET: "20000",
       ...process.env,
       VEYRO_DATABASE_URL: dsn,
+      // **The relying party, without which every passkey sign-in answers 422.** The browser
+      // derives the RP id from the page's own domain -- this app sends none, deliberately --
+      // so for a suite served from `localhost:3000` it is `localhost`, and the origin is the
+      // exact string the page is loaded from. A plaintext origin is admitted in `local` only,
+      // which is what `VEYRO_ENV` above is.
+      VEYRO_WEBAUTHN_RP_ID: process.env.VEYRO_WEBAUTHN_RP_ID ?? "localhost",
+      VEYRO_WEBAUTHN_ORIGINS:
+        process.env.VEYRO_WEBAUTHN_ORIGINS ?? "http://localhost:3000",
     },
   },
 );

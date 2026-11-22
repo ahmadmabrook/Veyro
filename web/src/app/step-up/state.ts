@@ -7,7 +7,8 @@ import type { MessageKey } from "@/i18n/locale";
  */
 export type StepUpError = Extract<
   MessageKey,
-  "stepUp.failed" | "stepUp.tooMany" | "stepUp.unreachable" | "error.network" | "error.unexpected"
+  "stepUp.failed" | "stepUp.tooMany" | "stepUp.needsPasskey"
+  | "error.network" | "error.unexpected"
 >;
 
 /** The second factor this session can actually present. Derived from the server, never guessed. */

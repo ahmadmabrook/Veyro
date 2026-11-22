@@ -79,7 +79,14 @@ class Authenticator:
 
 
 @unittest.skipUnless(DSN, "VEYRO_DATABASE_URL is not set")
-class PasskeyLoginTests(unittest.TestCase):
+class PasskeyTestCase(unittest.TestCase):
+    """The harness, split from the suite so a sibling class does not re-run it.
+
+    **This repository has made that mistake before**: a new class extended the suite it sat
+    beside and silently re-ran fifteen of its tests, which is minutes of wall clock proving
+    nothing twice. Both classes below extend this.
+    """
+
     PASSWORD = "a-long-enough-password"
 
     @classmethod
@@ -163,6 +170,28 @@ class PasskeyLoginTests(unittest.TestCase):
             "device_fingerprint": "device-a", **self.correlation(), **extra},
             headers=self.headers(tenant_id))
 
+    def refused(self, response) -> None:
+        """Every refusal is the same 401 with the same body. That is the control."""
+        self.assertEqual(response.status_code, 401, response.text)
+        self.assertEqual(response.json()["error"], "authentication_failed")
+
+    def token_for(self, tenant_id: str, email: str, key: Authenticator) -> str:
+        challenge = self.challenge(tenant_id, email)
+        response = self.sign_in(tenant_id, email, key.assert_(challenge), challenge)
+        self.assertEqual(response.status_code, 200, response.text)
+        return str(response.json()["token"])
+
+    def only_passkey(self, tenant_id: str, identity_id: str, token: str) -> str:
+        listed = self.client.get(f"/identities/{identity_id}/passkeys",
+                                 headers=self.headers(tenant_id, token)).json()
+        self.assertEqual(len(listed), 1, listed)
+        return str(listed[0]["passkey_id"])
+
+
+@unittest.skipUnless(DSN, "VEYRO_DATABASE_URL is not set")
+class PasskeyLoginTests(PasskeyTestCase):
+    """Signing in, and every way it is refused."""
+
     # ------------------------------------------------------------------ the happy path
 
     def test_a_device_bound_passkey_opens_a_level_three_session(self) -> None:
@@ -212,11 +241,6 @@ class PasskeyLoginTests(unittest.TestCase):
         self.assertEqual(key.sign_count, 3)
 
     # ------------------------------------------------------------------ the refusals
-
-    def refused(self, response) -> None:
-        """Every refusal is the same 401 with the same body. That is the control."""
-        self.assertEqual(response.status_code, 401, response.text)
-        self.assertEqual(response.json()["error"], "authentication_failed")
 
     def test_a_challenge_is_single_use(self) -> None:
         # Replaying an assertion is the attack a nonce exists to stop, and the nonce is
@@ -374,6 +398,124 @@ class PasskeyLoginTests(unittest.TestCase):
             headers=self.headers(tenant_id, token))
         self.assertEqual(response.status_code, 422, response.text)
         self.assertEqual(response.json()["error"], "public_key_unusable")
+
+
+@unittest.skipUnless(DSN, "VEYRO_DATABASE_URL is not set")
+class RevocationTests(PasskeyTestCase):
+    """Withdrawing a passkey, which until now only clone detection could do.
+
+    **A write form needs its remedy before it needs its button.** Enrolling is routine and
+    self-scoped, and the only writer of `revoked_at` was the clone check -- so a lost
+    authenticator left a credential that could open a level-3 session for ever. These are the
+    tests for the remedy, written before the screen that offers to enrol one.
+    """
+
+    def revoke(self, tenant_id: str, passkey_id: str, token: str):
+        return self.client.post(f"/passkeys/{passkey_id}/revoke",
+                                json=self.correlation(),
+                                headers=self.headers(tenant_id, token))
+
+    def test_a_revoked_passkey_cannot_sign_in(self) -> None:
+        tenant_id, identity_id, email, key = self.enrolled()
+        token = self.token_for(tenant_id, email, key)
+        passkey_id = self.only_passkey(tenant_id, identity_id, token)
+        self.assertEqual(self.revoke(tenant_id, passkey_id, token).status_code, 200)
+        again = self.challenge(tenant_id, email)
+        self.refused(self.sign_in(tenant_id, email, key.assert_(again), again))
+
+    def test_revoking_leaves_the_session_the_owner_is_sitting_in(self) -> None:
+        # **Deliberately unlike the clone path**, which revokes every session for the identity.
+        # A clone means the credential exists in two places; a lost phone means this credential
+        # should open nothing *new*, and signing the owner out while they are telling the
+        # product about it is a worse answer than the problem.
+        tenant_id, identity_id, email, key = self.enrolled()
+        token = self.token_for(tenant_id, email, key)
+        self.revoke(tenant_id, self.only_passkey(tenant_id, identity_id, token), token)
+        self.assertEqual(self.client.get("/auth/session",
+                                         headers=self.headers(tenant_id, token)).status_code, 200)
+
+    def test_revoking_twice_is_idempotent_rather_than_a_conflict(self) -> None:
+        # A reader who pressed twice wanted the credential gone, and it is.
+        tenant_id, identity_id, email, key = self.enrolled()
+        token = self.token_for(tenant_id, email, key)
+        passkey_id = self.only_passkey(tenant_id, identity_id, token)
+        first = self.revoke(tenant_id, passkey_id, token)
+        second = self.revoke(tenant_id, passkey_id, token)
+        self.assertEqual(second.status_code, 200, second.text)
+        self.assertTrue(second.json()["repeated"])
+        self.assertEqual(second.json()["revoked_at"], first.json()["revoked_at"])
+
+    def test_nobody_else_can_revoke_this_passkey(self) -> None:
+        # The same 404 as "no such passkey", because a different answer would say whether a
+        # passkey id exists in somebody else's account. Two strangers: one in the same tenant,
+        # which is the realistic case, and one in another, which RLS answers first.
+        tenant_id, identity_id, email, key = self.enrolled()
+        token = self.token_for(tenant_id, email, key)
+        passkey_id = self.only_passkey(tenant_id, identity_id, token)
+
+        stranger = f"user-{uuid.uuid4().hex[:10]}@acme.test"
+        created = self.client.post("/identities", json={
+            "display_name": "Stranger", "email": stranger, "password": self.PASSWORD,
+            **self.correlation()}, headers=self.headers(tenant_id))
+        self.assertEqual(created.status_code, 201, created.text)
+        stranger_token = self.client.post("/auth/login", json={
+            "identifier": stranger, "password": self.PASSWORD, **self.correlation()},
+            headers=self.headers(tenant_id)).json()["token"]
+        self.assertEqual(self.revoke(tenant_id, passkey_id, stranger_token).status_code, 404)
+
+        other_tenant, _, other_email, other_key = self.enrolled()
+        other_token = self.token_for(other_tenant, other_email, other_key)
+        self.assertEqual(self.revoke(other_tenant, passkey_id, other_token).status_code, 404)
+        # And it still works for its owner, so none of that revoked it by accident.
+        self.assertEqual(self.revoke(tenant_id, passkey_id, token).status_code, 200)
+
+    def test_the_revocation_says_a_person_did_it_rather_than_a_clone_check(self) -> None:
+        # The same event kind the clone path writes, and the reason is what tells them apart --
+        # one is somebody tidying up and the other is a security incident.
+        tenant_id, identity_id, email, key = self.enrolled()
+        token = self.token_for(tenant_id, email, key)
+        passkey_id = self.only_passkey(tenant_id, identity_id, token)
+        self.revoke(tenant_id, passkey_id, token)
+        events = self.client.get("/auth/events",
+                                 headers=self.headers(tenant_id, token)).json()
+        revoked = [e for e in events if e["kind"] == "passkey.revoked"]
+        self.assertEqual(len(revoked), 1, events)
+        self.assertEqual(revoked[0]["reason"], "withdrawn_by_owner")
+        self.assertEqual(revoked[0]["outcome"], "succeeded")
+
+
+@unittest.skipUnless(DSN, "VEYRO_DATABASE_URL is not set")
+class OwnIdentityTests(PasskeyTestCase):
+    """`GET /identities/{id}`, which exists because a ceremony has to name the account.
+
+    The browser shows `user.name` when somebody picks between credentials later, and nothing
+    returned the signed-in person's own display name -- so an authenticator would have offered
+    a uuid.
+    """
+
+    def test_a_session_reads_its_own_identity(self) -> None:
+        tenant_id, identity_id, email, key = self.enrolled()
+        token = self.token_for(tenant_id, email, key)
+        response = self.client.get(f"/identities/{identity_id}",
+                                   headers=self.headers(tenant_id, token))
+        self.assertEqual(response.status_code, 200, response.text)
+        body = response.json()
+        self.assertEqual(body["display_name"], "Staff Member")
+        self.assertEqual(body["email"], email)
+        self.assertEqual(body["status"], "active")
+
+    def test_it_reads_nobody_else(self) -> None:
+        # `owned` refuses any subject that is not the session's own with a 404, which is why
+        # this route asks for no permission at all.
+        tenant_id, identity_id, email, key = self.enrolled()
+        token = self.token_for(tenant_id, email, key)
+        _, other_id, _, _ = self.enrolled()
+        self.assertEqual(
+            self.client.get(f"/identities/{other_id}",
+                            headers=self.headers(tenant_id, token)).status_code, 404)
+        self.assertEqual(
+            self.client.get(f"/identities/{identity_id}",
+                            headers=self.headers(tenant_id)).status_code, 422)
 
 
 @unittest.skipUnless(DSN, "VEYRO_DATABASE_URL is not set")

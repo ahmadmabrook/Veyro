@@ -3,13 +3,16 @@
 A verifier that accepted the signature it generated and refused nothing else would pass the
 acceptance tests; these are what say the refusals bite. Every mutation is one line.
 """
-import pathlib, subprocess, sys
+import pathlib
+import subprocess
+import sys
 
 SRC = pathlib.Path("app/identity/webauthn.py")
 MUTATIONS = [
     ("type check removed", '    if client.type != "webauthn.get":',
      '    if False:'),
-    ("challenge compared by length", "    if not hmac.compare_digest(client.challenge, expected_challenge):",
+    ("challenge compared by length",
+     "    if not hmac.compare_digest(client.challenge, expected_challenge):",
      "    if len(client.challenge) != len(expected_challenge):"),
     ("origin allow-list widened to a suffix", "    if client.origin not in allowed_origins:",
      "    if not any(client.origin.endswith(o.split('//')[-1]) for o in allowed_origins):"),
@@ -22,10 +25,14 @@ MUTATIONS = [
     ("signature not verified", "    verify_signature(public_key=key, algorithm=algorithm,",
      "    _ = key; _unused = ("),
     ("short authenticator data sliced", "    if len(raw) < _MINIMUM_AUTH_DATA:", "    if False:"),
-    ("factor from BS rather than BE", '    return "passkey_synced" if backup_eligible else "passkey_hardware"',
+    ("factor from BS rather than BE",
+     '    return "passkey_synced" if backup_eligible else "passkey_hardware"',
      '    return "passkey_hardware"'),
-    ("algorithm not matched to the key", "    if algorithm == ES256:\n        if not isinstance(key, ec.EllipticCurvePublicKey) or not isinstance(",
-     "    if False:\n        if not isinstance(key, ec.EllipticCurvePublicKey) or not isinstance("),
+    ("algorithm not matched to the key",
+     "    if algorithm == ES256:\n        if not isinstance(key, ec.EllipticCurvePublicKey)"
+     " or not isinstance(",
+     "    if False:\n        if not isinstance(key, ec.EllipticCurvePublicKey)"
+     " or not isinstance("),
     ("lenient base64url", '    if value.strip("=") != value or any(c in value for c in "+/"):',
      "    if False:"),
 ]

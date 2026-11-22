@@ -8,8 +8,9 @@ import { assuranceLevel, useOwnerSession } from "./sign-in";
  * MOD-008 returns four distinguishable facts and the page must render them as four different
  * things. The one that is easy to get wrong is `reachable: false`: the gate sets
  * `step_up_required` *and* `reachable: false` for an AAL-3 action, so reading them in the wrong
- * order offers a step-up to a level this build cannot reach, and sends somebody looking for a
- * hardware key MOD-007 cannot verify.
+ * order offers a step-up to a level that endpoint cannot reach -- `/auth/step-up` takes a
+ * password or a recovery code and neither gets past 2 -- instead of naming the door that does,
+ * which is a passkey sign-in.
  *
  * These assertions are against the **live** evaluator with the fixture's `tenant_admin` role, so
  * they would change if the catalogue's action classes changed -- which is the intent. A test
@@ -52,17 +53,25 @@ test.describe("gate-driven rendering", () => {
       aal >= 2 ? "Allowed" : "Needs a stronger sign-in",
     );
     // And the control that does not move: `support.session.start` is privileged, which maps
-    // to level 3, which needs a hardware factor MOD-007 cannot verify at any assurance.
+    // to level 3, which no step-up reaches at any assurance -- so the cell names the door
+    // rather than inviting a step-up that would be refused.
     await expect(verdictFor(page, "support.session.start")).toHaveText(
-      "Not available in this build",
+      "Needs a passkey sign-in",
     );
   });
 
-  test("an AAL-3 action says it is unavailable rather than offering an impossible step-up", async ({
+  test("an AAL-3 action names the passkey door rather than offering an impossible step-up", async ({
     page,
   }) => {
+    // **This used to assert the level was unavailable**, which was true while MOD-007 could
+    // not verify a hardware factor and is a gap note outliving its gap now. The property
+    // that still holds: `/auth/step-up` cannot reach level 3, so a step-up is not what this
+    // cell offers.
     await expect(verdictFor(page, "support.session.start")).toHaveText(
-      "Not available in this build",
+      "Needs a passkey sign-in",
+    );
+    await expect(verdictFor(page, "support.session.start")).not.toHaveText(
+      "Needs a stronger sign-in",
     );
   });
 

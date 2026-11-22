@@ -636,6 +636,16 @@ nothing to do with the discreet line. Filter the cell by what it contains, or by
 association; the index is a coincidence of the current layout and it is exactly what a design
 migration changes.
 
+**And an attribute's *order* is the same coincidence, in a test that reads served HTML.**
+`no-js.spec.ts` found the sign-in form with `html.indexOf("<form noValidate")`, which worked
+only while `noValidate` was the first attribute React emitted -- adding `id` to the element so
+a sibling button could read its fields moved it, and both tests in the file failed with "the
+served HTML must contain the sign-in form" against a page that plainly contained it. The
+message is the worst part: it names a product defect the app does not have, which costs the
+same trust as missing one. Locate by something the page states on purpose -- an id, a role, a
+name -- and remember the page has other forms, so matching the wrong one is the failure worth
+ruling out rather than the one worth risking.
+
 **And the same migration can add a defect the ad-hoc one did not have, on every screen at
 once.** The hand-rolled tables all named themselves with `aria-labelledby` pointing at the
 heading above them, with a comment on one of them explaining why: a caption that repeats the
@@ -1347,6 +1357,45 @@ report and the exit code -- and the sweep then exited 0 with no output, which re
 like "nothing to do". The tell was an empty log from a command that always prints; `wc -l`
 before and after would have caught it in a second. Anchor on the *array's* end, not the file's.
 
+**And the quieter version of that is landing in a sibling array.** The same splice, run again
+against a file whose last `];` had since become `const notRun = [];`, put nine mutations into
+the harness's own *diagnostics* list rather than into `MUTATIONS`: the file parsed, the runner
+ran, the sweep reported `0/0 mutations caught` and exited 1 with nine lines under `NOT RUN`
+describing mutations it had never attempted. Truncation at least produces an empty log;
+this produces a plausible report about work that did not happen, which is the false green
+this whole discipline is against, wearing the harness's own colours. The fix is the same
+anchor and the check is `node -e` on the file counting `id:` keys **inside** the array the
+splice claims to have edited -- so it is the array that is counted, not the file.
+
+**And never `import` the sweep module to inspect it, which is the third time this session.**
+`mutate.mjs` is a script: the mutation loop is top-level code, so `import("./tests/e2e/mutate.mjs")`
+*runs it*, and a `2>/dev/null >/dev/null &` wrapper hides that completely while it edits
+source files in the background. One of those left a mutation in a page and another in a
+library, each found only by reading the diff **hunks**. Read it with `cat`, parse it with a
+regex, count it with `node -e` on a string -- anything but `import`.
+
+**And `tail -F` on a log a previous run wrote replays that run's tally as a current event.**
+A watcher armed on two log paths, one of which did not exist yet and one of which was eleven
+hours old from the morning's run, reported `521 passed (4.4m)` within seconds of a suite that
+had been going for under a minute -- a complete, plausible, *wrong* result for the run in
+hand, and the sort that would have been written into a commit message. The tells were that
+the number did not match the test count the change should produce and that the live log had
+fifty lines in it. The fix is a per-run filename, or truncating before watching; the habit is
+to check the log's mtime before believing its last line, which `stat -f "%Sm"` answers in one
+call. **A stale artefact read as current is the same failure as a stale fixture or a server
+started before the change** -- this file records both -- and a watcher makes it quieter,
+because the number arrives as a notification rather than as something you went and looked at.
+
+**An unscoped `getByText` on a phrase is a test coupled to that phrase being unique in the
+document.** The account page asserted "the highest assurance this product has" at page level;
+adding a sentence elsewhere on the same page about the same level made it match twice, and
+Playwright's strict mode reported it as a failure *of the level assertion* -- a defect in the
+thing under test, which it was not. Two lessons and both are cheap: scope the assertion to the
+block whose claim it is, and treat the duplicate phrase as the finding, because the same
+sentence twice on one page is the repetition the field shell's message-slot rule already bans
+in the small. It is the positional-cell and attribute-order trap again, with text as the
+coincidence.
+
 
 **A class name that styles nothing is invisible to every layer that is not a screenshot.**
 `ds-card` appeared in `globals.css` exactly once, inside a `prefers-reduced-motion` block,
@@ -1484,6 +1533,20 @@ two real credentials, correctly presented, still refused for a privileged action
 its own docstring why the other assertion went. **Ask of any test that fails when a gap
 closes: was it asserting the finding, or a consequence of the gap?** Deleting it loses the
 finding; leaving it insists on a limitation the product no longer has.
+
+**And the same question has to be asked of every *reader* of the field the gap was expressed
+in, which is the half that reached CI.** `reachable` answered whether any factor in the build
+meets a level; `/auth/step-up` can only ever reach 2. While level 3 was unreachable by
+anybody those were the same sentence, so a page keyed on `reachable` alone was right by
+coincidence -- and the hour WebAuthn verification made it true, that page started offering a
+credential field whose correct answer is still refused, which is strictly worse than the
+honest "nobody can do this here" it replaced. **One boolean answering two questions is right
+only while the two agree, and closing a gap is exactly what pulls them apart**: so when a
+capability lands, grep every reader of the flag that used to stand for its absence, not only
+the tests that asserted it. The repair is a second fact rather than a cleverer branch -- here
+a ceiling derived from what the endpoint accepts -- and the honest long-term shape is for the
+endpoint to state its own reach, because a constant in one client is a fact that cannot be
+checked against the server that owns it.
 
 **And a window measured from when the fixture ran is a green that depends on how long ago that
 was.** FD-06's check-in window opens an hour before a class and closes `checkin_grace_minutes`

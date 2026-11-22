@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 
 import { ApiError, SESSION_COOKIE, api, correlationId } from "@/lib/api";
 import { safeNext } from "@/lib/navigation";
+import { stepUpVerdict } from "@/lib/step-up";
 
 import type { SecondFactor, StepUpState } from "./state";
 
@@ -51,6 +52,7 @@ export async function stepUp(
     const asked = await api<{
       step_up_required: boolean;
       reachable: boolean;
+      required_aal?: number;
       challenge?: string;
     }>(`/auth/require/${actionClass}`);
 
@@ -59,10 +61,15 @@ export async function stepUp(
       // and spending a recovery code to discover that would be the wrong answer.
       token = undefined;
       state = null;
-    } else if (!asked.reachable || !asked.challenge) {
-      // Level 3 needs a hardware authenticator MOD-007 cannot verify. The page says so before
-      // rendering a field; this is the race where somebody posts anyway.
-      state = { error: "stepUp.unreachable", missing: false };
+    } else if (stepUpVerdict(asked) !== "can_raise" || !asked.challenge) {
+      // **A level this endpoint cannot reach, which is no longer the same as a level nobody
+      // can reach.** `/auth/step-up` takes a password or a recovery code and neither gets
+      // past 2; level 3 is reached by signing in with a passkey. The page says so before
+      // rendering a field, and this is the race where somebody posts anyway -- so it must
+      // refuse *before* spending the credential, because a recovery code burnt on a level
+      // this route can never reach is MOD-007's "verify, decide, then consume" from the
+      // surface's side.
+      state = { error: "stepUp.needsPasskey", missing: false };
     } else {
       const stepped = await api<{ token?: string }>("/auth/step-up", {
         method: "POST",

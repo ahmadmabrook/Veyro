@@ -8,8 +8,13 @@
  */
 export type AccountState = {
   /** A message key, so the result is translated like everything else on these surfaces. */
-  message: "account.revoked" | "account.trusted" | "account.codesIssued" | null;
-  error: "account.refused" | "account.needsStepUp" | "error.network" | "error.tooMany" | null;
+  message: "account.revoked" | "account.trusted" | "account.codesIssued"
+    | "passkey.added" | "passkey.withdrawn" | null;
+  error: "account.refused" | "account.needsStepUp" | "error.network" | "error.tooMany"
+    /** The browser refused or the reader cancelled, which is not a server refusal. */
+    | "passkey.ceremonyFailed"
+    /** This browser cannot produce a key the backend can verify -- see `enrolmentPayload`. */
+    | "passkey.unsupported" | null;
   /** Rendered once, then gone. Never persisted anywhere by this app. */
   codes: string[];
   /**

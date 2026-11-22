@@ -45,9 +45,14 @@ class VisibilityTests(unittest.TestCase):
         self.assertNotEqual(opens["contact"], opens["identity"])
         self.assertNotEqual(opens["identity"], opens["financial"])
 
-    def test_health_is_unreachable_in_this_build_and_says_so(self):
-        """`member.health.read` is biometric_sensitive, which needs AAL 3, which needs a
-        hardware authenticator MOD-007 cannot verify."""
+    def test_health_needs_the_strongest_credential_and_says_so(self):
+        """`member.health.read` is biometric_sensitive, which needs AAL 3 -- reached by
+        signing in with a device-bound passkey and by nothing cheaper.
+
+        The tuple's name is older than the capability: for five modules nothing could verify
+        an assertion, so these classes were unreadable by anybody. What it names now is the
+        set a cheaper credential may not open, which is what the classification always meant.
+        """
         self.assertEqual(visibility.UNREACHABLE_CLASSES, ("health", "biometric"))
         readable = visibility.readable_classes({"member.health.read"})
         # The permission opens the class in this module's own terms; the gate is what refuses

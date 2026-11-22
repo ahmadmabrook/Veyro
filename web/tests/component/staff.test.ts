@@ -254,10 +254,11 @@ describe("what somebody can do that is dangerous", () => {
     expect(grants[0]!.carriers).toEqual([]);
   });
 
-  it("marks a permission nobody in this build can use, rather than drawing it as held", () => {
-    // AAL 3 needs a hardware authenticator MOD-007 cannot verify, so break-glass support
-    // access is granted, recorded and exercisable by nobody. Drawing it as held would say
-    // somebody can do something no session can.
+  it("marks a permission only a passkey sign-in can use, rather than drawing it as held", () => {
+    // AAL 3 is reached by signing in with a passkey and by nothing else -- a step-up takes a
+    // password or a recovery code and neither gets past 2 -- so break-glass support access is
+    // granted, recorded, and unusable by the session reading this page. Drawing it as plainly
+    // held would say somebody can do something this session cannot.
     const grants = sensitiveGrants(
       [{ scope: TENANT, permissions: ["support.breakglass.use"] }], catalog, 2,
       [assignment({ role_key: "support", display_name: "Support" })], roles);

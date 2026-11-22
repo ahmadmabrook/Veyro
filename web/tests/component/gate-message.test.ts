@@ -33,10 +33,10 @@ describe("gateVerdict", () => {
     expect(gateVerdict(answer({ reason: "forbidden" }))).toBe("denied");
   });
 
-  it("separates a level nobody can reach from one a step-up would reach", () => {
-    // `member.health.read` is `biometric_sensitive`, which maps to AAL 3, which needs a
-    // hardware factor MOD-007 cannot verify. Offering a step-up there would send somebody
-    // looking for a key that changes nothing.
+  it("separates a level a step-up cannot reach from one it would", () => {
+    // `member.health.read` is `biometric_sensitive`, which maps to AAL 3, and `/auth/step-up`
+    // takes a password or a recovery code: neither gets past 2. MOD-008 computes `reachable`
+    // from those two factors, so this verdict means "a different door", not "no door".
     expect(gateVerdict(answer({ reachable: false, required_aal: 3 })))
       .toBe("unreachable_level");
     expect(gateVerdict(answer({ step_up_required: true, required_aal: 2 })))

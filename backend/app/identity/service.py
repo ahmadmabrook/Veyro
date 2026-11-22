@@ -1950,6 +1950,81 @@ def _assertion_in_tx(
     return {"passkey_id": passkey_id, "sign_count": sign_count, "accepted": True}, None
 
 
+def read_own_identity(pool: Pool, tenant_id: str, *, identity_id: str) -> dict[str, Any]:
+    """Who this session is, for a screen that has to say so.
+
+    **Added because a WebAuthn ceremony has to name the account to the authenticator.** The
+    browser shows `user.name` when somebody later picks between credentials, and with no route
+    returning the signed-in person's own display name the only value available was the identity
+    uuid -- so an authenticator would offer "veyro: 3f7c…" and a member would have to guess.
+    Every other page in this app knew who it was reading about; the account page is the one
+    that reads about *you* and had nothing to say it.
+
+    Self-scoped rather than gated, like every other read behind `owned`: there is nothing to
+    authorize when the only readable subject is the caller. **The contact identifiers are the
+    caller's own**, which is why they are returned unmasked here and by nothing else -- MOD-014
+    masks a *member's* identity fields from a staff reader, and this is neither.
+    """
+    with tenant_scope(pool, tenant_id) as conn:
+        row = conn.execute(
+            "SELECT display_name, email_normalized, phone_normalized, status, created_at"
+            " FROM iam.identities WHERE identity_id = %s", (identity_id,)).fetchone()
+        if row is None:
+            raise NotFound("identity_not_found")
+    return {"identity_id": identity_id, "display_name": str(row[0]),
+            "email": row[1], "phone": row[2], "status": str(row[3]),
+            "created_at": row[4].isoformat()}
+
+
+def revoke_passkey(
+    pool: Pool, tenant_id: str, *, passkey_id: str, identity_id: str, correlation_id: str,
+) -> dict[str, Any]:
+    """Withdraw a passkey, which until now nothing but clone detection could do.
+
+    **A write form needs its remedy before it needs its button**, and this is the remedy.
+    Enrolling a passkey is a routine, self-scoped act -- `owned(session, identity_id)` refuses
+    any subject but the caller's own -- and the only writer of `revoked_at` was the clone
+    check, so a lost authenticator left a credential that could open a level-3 session for
+    ever and a stolen one could not be withdrawn at all. That is MOD-013's rule ("an
+    irreversible act must not be declarable on a routine permission") from the side this
+    repository has paid for once already, in MOD-019's insert-only rota.
+
+    **A revocation, not a delete**, because `veyro_iam_app` holds DELETE on nothing in `iam`
+    by design: revocation here is a status change that leaves evidence. The evidence is the
+    `passkey.revoked` row on the insert-only log with this identity and a reason that says a
+    person did it -- which is what distinguishes it from the same event the clone path writes,
+    and the difference matters because that one is a security incident.
+
+    **Sessions already opened with it are left alone**, deliberately and unlike the clone path.
+    A clone means the credential exists in two places, so every session for the identity is
+    suspect; losing a phone means this credential should not open another session, and ending
+    the one the owner is sitting in to tell them so would be a worse answer than the problem.
+    Revoking a session is a separate act on the same screen.
+    """
+    _require_uuid(correlation_id, "correlation_id")
+    now = _now()
+    with tenant_scope(pool, tenant_id) as conn:
+        row = conn.execute(
+            "SELECT identity_id, revoked_at FROM iam.passkeys WHERE passkey_id = %s",
+            (passkey_id,),
+        ).fetchone()
+        if row is None or str(row[0]) != identity_id:
+            # The same 404 for "no such passkey" and "not yours", which is `owned`'s rule: a
+            # different answer would say whether a passkey id exists in another account.
+            raise NotFound("passkey_not_found")
+        if row[1] is not None:
+            # Idempotent rather than a conflict: a reader who pressed twice, or whose request
+            # timed out after the commit, wanted this credential gone and it is.
+            return {"passkey_id": passkey_id, "revoked_at": row[1].isoformat(),
+                    "repeated": True}
+        conn.execute("UPDATE iam.passkeys SET revoked_at = %s WHERE passkey_id = %s",
+                     (now, passkey_id))
+        _event(conn, tenant_id, kind="passkey.revoked", outcome="succeeded",
+               identity_id=identity_id, factor="passkey", reason="withdrawn_by_owner",
+               correlation_id=correlation_id)
+    return {"passkey_id": passkey_id, "revoked_at": now.isoformat(), "repeated": False}
+
+
 def list_passkeys(pool: Pool, tenant_id: str, *, identity_id: str) -> list[dict[str, Any]]:
     with tenant_scope(pool, tenant_id) as conn:
         _require_identity(conn, identity_id)

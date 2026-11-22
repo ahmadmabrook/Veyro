@@ -8,6 +8,7 @@ import { t, type Locale, type MessageKey } from "@/i18n/locale";
 import { api, currentSession, failureMessage } from "@/lib/api";
 import { safeNext } from "@/lib/navigation";
 import { presentation } from "@/lib/preferences";
+import { stepUpVerdict } from "@/lib/step-up";
 
 import { StepUpForm } from "./step-up-form";
 import type { SecondFactor } from "./state";
@@ -72,9 +73,9 @@ export default async function StepUpPage({
       ? "recovery_code"
       : "password";
 
-  let asked: { step_up_required: boolean; reachable: boolean };
+  let asked: { step_up_required: boolean; reachable: boolean; required_aal?: number };
   try {
-    asked = await api<{ step_up_required: boolean; reachable: boolean }>(
+    asked = await api<{ step_up_required: boolean; reachable: boolean; required_aal?: number }>(
       `/auth/require/${actionClass}`,
     );
   } catch (error) {
@@ -87,7 +88,9 @@ export default async function StepUpPage({
     );
   }
 
-  if (!asked.step_up_required) {
+  const verdict = stepUpVerdict(asked);
+
+  if (verdict === "already_enough") {
     return (
       <Shell locale={locale} next={next}>
         <Banner severity="info">{text("stepUp.alreadyDone")}</Banner>
@@ -95,12 +98,19 @@ export default async function StepUpPage({
     );
   }
 
-  if (!asked.reachable) {
-    // Level 3 needs a hardware authenticator MOD-007 cannot verify. Offering a field here
-    // would send somebody looking for a key the product cannot check.
+  if (verdict === "needs_a_passkey_sign_in") {
+    // **This used to say nobody can do it here, and that stopped being true.** AAL 3 is
+    // reachable now -- `/auth/passkey/login` verifies an assertion and opens a session at
+    // the level its factor reaches -- but `/auth/step-up` takes a password or a recovery
+    // code and neither gets past 2, so a field here is a prompt whose correct answer is
+    // still refused. Say which door it is and link to it: `/login` redirects a reader who
+    // already has a session, so the route is Sign out on the account page, which is also
+    // where a passkey is enrolled if they have none.
     return (
       <Shell locale={locale} next={next}>
-        <Banner severity="info">{text("stepUp.unreachable")}</Banner>
+        <Banner severity="info">{text("stepUp.needsPasskey")}</Banner>
+        <p className="muted">{text("stepUp.needsPasskeyWhere")}</p>
+        <Link href="/account">{text("stepUp.toAccount")}</Link>
       </Shell>
     );
   }

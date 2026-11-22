@@ -74,7 +74,7 @@ import { dayLabel, timeOfDay, utcStamp } from "@/lib/time";
  * stronger sign-in, which the step-up link offers; a health field needs a level this screen
  * cannot reach -- a passkey on a hardware authenticator, which no page here enrols -- in
  * this build, because `member.health.read` is `biometric_sensitive`, which maps to assurance
- * level 3, which needs a hardware authenticator MOD-007 cannot verify.
+ * level 3, which is reached by signing in with a passkey and not by a step-up.
  */
 
 const TABS =

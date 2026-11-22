@@ -363,7 +363,7 @@ exist are listed here as `implemented, functionally tested` and **not** design-c
 | **Command Center (ADM-CC-01…05)** | `/` | implemented, functionally tested, **spec verified in part** — see below |
 | Sign-in | `/login` | implemented, functionally tested |
 | Step-up | `/step-up` | implemented, functionally tested |
-| Account | `/account` | implemented, functionally tested. Now also the home of the session facts the old landing page printed, and of Sign out — §21 puts it in the account chrome |
+| Account | `/account` | implemented, functionally tested. Now also the home of the session facts the old landing page printed, and of Sign out — §21 puts it in the account chrome. **Enrols and withdraws a passkey**, the first WebAuthn ceremony on any surface here: `navigator.credentials.create`, the SPKI public key the server verifies assertions against, and the withdrawal that had to exist before the button that creates one. Proven against a real Chromium virtual authenticator |
 | Members (ADM-MEM-05) | `/members` | implemented, functionally tested, **spec verified in part** — 4 of 7 columns, the two-number footer, Compact density; the search, quick filters, saved views, bulk bar and export are named as blocked with the product's reason |
 | Overview | `/` | implemented, functionally tested |
 | Organization | `/organization` | implemented, functionally tested |

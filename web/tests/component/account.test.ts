@@ -70,10 +70,14 @@ describe("assuranceMeans", () => {
     expect(assuranceMeans(2)).toBe("stepped_up");
   });
 
-  it("calls level three unreachable, because nothing here reaches it", () => {
-    // It needs a hardware authenticator MOD-007 cannot verify. Rendering it as a level a
-    // reader might aim for would send them looking for a key the product cannot check.
-    expect(assuranceMeans(3)).toBe("unreachable");
+  it("calls level three what it is, now that something reaches it", () => {
+    // **This asserted `"unreachable"` and the page rendered "a level nothing in this build
+    // can reach"** -- so the one session holding the strongest credential in the product
+    // would have been told its own level does not exist. WebAuthn verification is what
+    // changed; the assertion had to change with it, which is the gap note outliving its gap
+    // caught by a test rather than by a reader.
+    expect(assuranceMeans(3)).toBe("hardware");
+    expect(assuranceMeans(9)).toBe("hardware");
   });
 });
 

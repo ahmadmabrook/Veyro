@@ -560,7 +560,7 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
   // **A person with something to show, and something to withhold.** MOD-014's masking is the
   // one place in the build where `Decision.mask` reaches a read path, and a surface cannot be
   // shown to apply it against a record with nothing classified: `health` maps to AAL 3, which
-  // needs a hardware factor MOD-007 cannot verify, so a health note and a health custom field
+  // is reached only by a passkey sign-in, so a health note and a health custom field
   // are masked for *every* caller. Both are seeded, beside an ordinary note and an ordinary
   // tag, so a test can tell "withheld" from "absent".
   await call(`/people/${person.person_id}/member-profile`, {

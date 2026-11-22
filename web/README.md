@@ -103,9 +103,12 @@ looking at a render.
 
 **The gate's four answers render as four things, and the order of the checks matters.**
 `reachable: false` is tested before `step_up_required`, because MOD-008 sets both for an AAL-3
-action: it is true that a stronger sign-in is required and false that one is available. Reading
-them the other way round offers a step-up that can never succeed and sends somebody looking for
-a hardware key MOD-007 cannot verify.
+action: it is true that a stronger sign-in is required and false that `/auth/step-up` can give
+one, since that endpoint takes a password or a recovery code and neither gets past level 2.
+Reading them the other way round offers a step-up that can never succeed instead of naming the
+door that does work, which is signing in with a passkey. **MOD-008's `reachable` is narrower
+than the word**: `identity.require_assurance` has a field of the same name computed from every
+verifiable factor, and the two stopped agreeing the hour WebAuthn verification landed.
 
 **The browser never holds a bearer token.** MOD-007 stores a session only as a SHA-256 digest so
 a stolen database cannot replay one; putting the token in client JavaScript would undo that by
@@ -284,9 +287,11 @@ Three more things the page gets from the server rather than assuming:
   passwords are one factor: a password session is raised by a recovery code and a
   recovery-code session by the password. The page reads `factors` off `/auth/session` and asks
   for the one that would work.
-- **whether the level is reachable at all.** `biometric_sensitive` is level 3, which needs a
-  hardware authenticator MOD-007 cannot verify, so the page says so instead of rendering a
-  field. Offering one would send somebody looking for a key the product cannot check.
+- **whether this endpoint can reach the level.** `biometric_sensitive` is level 3, which a
+  step-up cannot reach at all, so the page names the door that does -- signing in with a
+  passkey -- instead of rendering a field whose correct answer is still refused. The page
+  shipped keyed on `reachable` alone for one commit and CI caught it; `src/lib/step-up.ts` is
+  the distinction.
 - **the challenge, fetched immediately before the post rather than rendered into a hidden
   field.** A nonce is one-use and bound to the session; a page that handed one to the reader
   would hand them a token that goes stale while they look for their recovery codes, and the
@@ -306,10 +311,11 @@ not read with `"***"` at every depth. Its own rule is that a redacted record sti
 telling a coach a member has no health notes when they have three is worse than telling them
 there are three they cannot read -- so the surface renders withheld rather than blank, with a
 dashed border rather than a colour (WCAG 1.4.1), and names the reason: an identity field needs
-a stronger sign-in, and a health field **cannot be read by anybody in this build**, because
-`member.health.read` is `biometric_sensitive`, which is assurance level 3, which needs a
-hardware authenticator MOD-007 cannot verify. Offering a step-up for the second would send
-somebody looking for a key the product cannot check.
+a stronger sign-in, and a health field needs **a different door**: `member.health.read` is
+`biometric_sensitive`, which is assurance level 3, which `/auth/step-up` cannot reach -- it is
+opened by signing in with a passkey on a hardware authenticator, which `/account` now enrols.
+Offering a step-up for the second would send somebody to a prompt whose correct answer is still
+refused.
 
 The fixture signs in with a password, so the session is assurance level 1 -- which is the
 useful level to test at: `contact` opens on a routine permission and `identity` needs a

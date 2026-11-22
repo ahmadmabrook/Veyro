@@ -398,6 +398,14 @@ Known gaps, deliberate:
   recovery code, so a step-up reaches level 2 and no higher; level 3 is reached by signing in
   at `/auth/passkey/login` with a device-bound credential. Verifying an assertion inside the
   step-up path is the next piece and is deliberately not half-built.
+  **And this gap is what `reachable` stopped being able to express.** That field answers
+  whether any factor in this build reaches a level, which is now true of all three -- so a
+  caller keyed on it alone concludes a step-up can get there and offers a credential prompt
+  whose correct answer is still refused. The step-up surface shipped exactly that for one
+  commit and CI caught it; `web/src/lib/step-up.ts` is the client's half of the distinction.
+  **A route-specific ceiling is not derivable from `reachable` and nothing on the wire states
+  it**, so the honest fix on the server side is for this endpoint to say what it can reach --
+  which is the shape to prefer over a constant in a client the day a second caller appears.
 - **No TOTP enrolment.** The algorithm is implemented and RFC-tested; storing a reversible shared
   secret needs a vault this repository does not have.
 - **No OIDC/SAML federation and no SCIM** (IAM-01-R04).
@@ -544,10 +552,19 @@ Known gaps, deliberate:
   specifies "SSO with hardware-key MFA, and it is not optional" -- two halves. The hardware
   half is built; the SSO half is IAM-01-R04's OIDC/SAML federation, which is unbuilt, so
   MOD-015's Console screens remain blocked on federation rather than on WebAuthn.
-- **No `/auth/passkey/*` surface in the web app.** The ceremony is a browser API and this app
-  has no client component that calls it, so the only caller is the test suite. That is the
-  "a writer with no reader" shape and it is named rather than hidden: the next piece on the
-  surface is the account page offering to enrol one.
+- **The surface exists now, and building it needed a remedy first.** `/account` enrols a
+  passkey and `/login` signs in with one -- see "The web app" -- which closes the "a writer
+  with no reader" gap this bullet used to record. What it needed before the button was
+  `revoke_passkey`: the only writer of `iam.passkeys.revoked_at` was the clone check, so a
+  lost authenticator left a credential that could open a level-3 session for ever, and a
+  routine self-scoped permission whose every act is uncorrectable is MOD-013's "an
+  irreversible act must not be declarable on a routine permission" from the other side. A
+  withdrawal is a status change rather than a delete, because `veyro_iam_app` holds DELETE on
+  nothing and "was this credential ever enrolled" is asked precisely when somebody lost a
+  device.
+- **A passkey still cannot raise an existing session from the surface**, as from the service:
+  the account page offers no step-up by passkey, because `complete_step_up` takes a password
+  or a recovery code. Signing in afresh is the only route to level 3.
 
 **MOD-008 (IAM-03 authorization, roles, approvals and audit) — implemented, and reviewed.**
 Eleven more tables in `iam`. Working: roles with explicit permission lists, assignments scoped to
@@ -1783,8 +1800,10 @@ Things worth knowing before extending it:
   session that signed in with one and holds the permission reads a health note -- which is
   what the classification always meant. The masking was never keyed on
   `visibility.UNREACHABLE_CLASSES`: `held_permissions` filters by the session's own assurance,
-  so the level decides. **No surface here enrols a passkey**, so every session a person can
-  open today still masks these, which is the surface's gap rather than the product's.
+  so the level decides. **The surface enrols one now**, on the account page, so a staff member
+  who holds the permission and signs in with their passkey reads a health note -- the first
+  time in this build that a `biometric_sensitive` read has been exercisable by anybody at all.
+  Every other session still masks them, which is the classification working rather than a gap.
 - **A redacted record still exists.** Telling a coach that a member has no health notes when
   they have three is worse than telling them there are three they cannot read; paragraph 10280's
   "minimum necessary" is not zero knowledge that the context exists.
@@ -4712,6 +4731,135 @@ a recovery code, and five wrong ones lock the recovery path with nothing in the 
 reset it. So the reissue test signs in as an identity nobody else touches. **The rule is the
 one already written down**: a test that consumes a product budget provisions its own.
 
+**The passkey is the fifth write on that page and the first ceremony in this app**, and it is
+why `/account` stops being a dead end for a member who runs out of recovery codes. The server
+half landed first -- `webauthn.py` verifies an assertion, so a passkey is an authentication
+factor and AAL 3 is reachable -- and for one commit the only caller was a test suite, which is
+this build's "a writer with no reader" shape in the module whose subject is signing in.
+`/account` enrols one and `/login` signs in with one.
+
+Six decisions carry it:
+
+- **The remedy came before the button.** `revoke_passkey` is new, because the only writer of
+  `iam.passkeys.revoked_at` was the clone check: a lost authenticator left a credential good
+  for a level-3 session for ever, and `passkeys.write` is routine and self-scoped, so the form
+  would have written a permanent uncorrectable row on the cheapest permission in the module.
+  That is MOD-013's "an irreversible act must not be declarable on a routine permission" and
+  ADM-SCH-04's rota withdrawal, met a third time: **the question to ask before building any
+  form is what undoes this, and does it exist.** The row stays and recedes rather than
+  disappearing, for the reason a redacted field is marked rather than dropped.
+- **No CBOR reaches the client either.** `enrolmentPayload` sends what
+  `AuthenticatorAttestationResponse.getPublicKey()` returns -- SPKI DER, which `cryptography`
+  loads directly -- so a browser without that method is told to use a current one rather than
+  enrolling a credential that could never sign in. A client that parsed COSE to be helpful
+  would be the attack surface the service refused on purpose.
+- **The cookie is written by a server action, which is the whole shape of the sign-in.** The
+  session cookie is httpOnly precisely so page JavaScript cannot hold a bearer token, so the
+  client runs the ceremony and hands four base64url fields across the boundary.
+  `finishPasskeySignIn` writes the cookie and calls `revalidatePath`; the push then fetches a
+  layout that knows about it, because a router cache populated before the action ran renders
+  the signed-out page with a live session in the jar.
+- **The control is absent where the browser cannot ask**, not disabled. `PublicKeyCredential`
+  is the feature test and `navigator.credentials` deliberately is not: the latter carries the
+  password-manager API too, so checking it reports a browser as capable and then throws at the
+  ceremony. It is read through `useSyncExternalStore` so a server render and the first client
+  render agree.
+- **The listing reads `BE` at 0x08, which is the flag the level follows**, and reading `BS`
+  at 0x10 instead was a defect I shipped and then found by reading the two together. Backup
+  *eligibility* is set when the credential is created and never changes, and `factor_for` reads
+  it; `BS` says whether the credential currently *is* backed up and flips the first time a
+  keychain syncs. Nothing updates the column after enrolment, so an eligible-but-unsynced
+  credential -- the ordinary state of a platform passkey for its first few seconds -- was listed
+  as "Stays on this device, reaches assurance level 3" and then signed in as `passkey_synced` at
+  level 2. **The listing's own words are about the level, so the flag behind them has to be the
+  one the level is decided by**; the label is "can be synced" rather than "is synced" for the
+  same reason, because eligibility is a capability and the present tense would go stale in the
+  other direction.
+- **Not a `StatusBadge`, and the reason is the design rather than convenience.** Its
+  vocabulary is closed over membership, payment, booking and access, and a credential is none
+  of them: the nearest word, `Cancelled`, is a membership state, and putting a membership word
+  on a passkey is how two screens come to spell one thing two ways. Adding to the vocabulary
+  would mean editing the design source to suit the implementation, which is the one thing this
+  project forbids outright -- so the state is marked text with its own three words and the gap
+  is recorded.
+
+**Its own tests found two defects, and both are shapes this file already records.** The
+withdrawal rendered `state.error` and nothing else, so the most consequential control in the
+section said nothing when it worked; and once it did say something, the row that withdraws
+itself unmounted the button **and the `useActionState` holding the message it had just
+produced** -- verbatim MOD-007's `revokeDevice`, which "returned a success message into a page
+that no longer had a session to render it on". The state lives at the section now. Nothing
+else could have seen it: the row visibly changes state either way, so an assertion about the
+row passes with the sentence missing. And the account page told the one session holding the
+strongest credential in the product that its level is one nothing can reach, and called its
+fifteen minutes "the long window" -- `assuranceMeans` had no branch above 2 and the caption
+read the password one. **A gap note outliving its gap, in a sentence shown to the reader it is
+about**, which is the schedule board's finding in the module that closed the gap.
+
+**The ceremony is proven against a real authenticator, which is the only honest way.**
+`tests/e2e/passkey.spec.ts` drives Chromium's virtual authenticator over CDP -- `ctap2`,
+`internal`, resident key, user verification, backup eligibility left false so the credential
+is device-bound and reaches level 3 -- so a real key pair signs a real challenge and
+`cryptography` verifies it. 9 browser tests, 21 component tests for the options and the
+encoding (`navigator.credentials` does not exist in jsdom and faking it would be asserting a
+fake), and 10 mutations. **Both halves of the factor distinction are rendered**, because the
+authenticator's `defaultBackupEligibility` is a parameter: one test enrols a device-bound
+credential and reaches level 3, another enrols a synced one and reaches 2, and until the
+second existed "can be synced" was a branch no fixture could reach. The spec signs in for itself rather than adopting the shared cookie,
+because it signs out and `playwright/.auth/owner.json` is a file every other spec reads --
+and its label carries a per-run suffix, because a credential enrolled here stays enrolled and
+asserting on a fixed label resolved to five rows on the fifth local run.
+
+**There is no TestSprite journey for it**, and that is a bound on the layer rather than a gap
+in the product: an outside tester cannot be handed a credential that signs, since the only
+second factor this surface offers is a single-use recovery code and giving it one would spend
+it on the first run. Said rather than fabricated.
+
+**And `tests/setup.ts` gained an app-router stub**, because a client component calling
+`useRouter` throws in jsdom -- in the *component*, so three login-form tests went red the hour
+the sign-in page grew a passkey button, for a reason that has nothing to do with what they
+assert. It is a stub and not a fake: `push` navigates nowhere, because a component test
+asserting a navigation would be asserting Next's behaviour, and the one place that is worth
+proving is a browser against a real server.
+
+**And closing the gap made eight reader-facing sentences false, which CI found one of.** The
+step-up page keyed on `reachable`, and that field answers two different questions in two
+different modules: `/auth/require/*` computes it from every verifiable factor, so it went true
+for level 3, while MOD-008's gate computes it from the two factors `/auth/step-up` accepts, so
+it stayed false. The page read the first and started offering a credential prompt whose correct
+answer is still refused -- strictly worse than the honest "nobody can do this here" it replaced.
+`src/lib/step-up.ts` is the distinction, with a ceiling derived from what the endpoint accepts,
+and the action refuses *before* spending the credential, because a recovery code burnt on a
+level this route can never reach is "verify, decide, then consume" from the surface's side.
+
+The other eight were sentences, and six of them said the same wrong thing -- **"nothing here
+enrols a passkey"**, which `/account` had just falsified. The ninth was on the account page
+itself: the recovery-codes lead called a recovery code "the only second factor this build can
+verify", directly above the section that enrols one. Correcting it is where `hasUsableKey`
+found its reader -- a function I had written and nothing called, which is this change's own
+subject in its own new code. What a reader needs there is not which factors exist but whether
+*they* have one, because a member with a passkey cannot be locked out by spending ten codes
+and a member without one can, so the page asks that question and the section's own banner asks
+it through the same function rather than a second copy. The permissions legend told a reader
+that break-glass support access is "held by nobody who can use it"; the matrix cell read "Not
+available in this build"; the staff record said no session anybody can open holds a level-3
+permission; the Member 360's withheld-health marker said the level cannot be reached and that
+nothing enrols one. Each is now the honest form: held, and only a passkey sign-in can use it.
+**A gap list is a claim about the product, so closing a gap means deleting its note in the same
+change** -- and the reach of that is wider than the module's own gap bullets, because the same
+claim had been copied into a legend, a table cell, a mask marker, four module docstrings, a
+README and five test names.
+
+**The lesson worth carrying is the one boolean.** `reachable` was right in both modules for as
+long as level 3 was unreachable by anybody, so every reader of it was right by coincidence. One
+field answering two questions is right only while the two agree, and closing a gap is exactly
+what pulls them apart: when a capability lands, grep every *reader* of the flag that stood for
+its absence, not only the tests that asserted it. MOD-008's field is now narrower than its own
+name, which is recorded where it is defined rather than renamed across the gate, the matrix,
+the surface and their tests -- and the honest long-term shape is for the endpoint to state its
+own reach, since a constant in one client is a fact nothing can check against the server that
+owns it.
+
 **The design canvases render, so the comparison is mechanical.** `support.js` is a design
 runtime: it resolves every `{{ }}` placeholder and `sc-for` loop against React 18, so a
 canvas can be opened in a browser and a screen put beside its own approved drawing.
@@ -4784,13 +4932,12 @@ has and for the same reason: every one of those writes is stepped-up; the staff 
 read-only too, and `End access` is the one control there whose server half now exists --
 `set_identity_status` is built and tested, and revoking an assignment takes a written reason,
 so a form that collects one is a different piece of work from a button;
-a step-up still spends a recovery code, and the account page's reissue needs a stepped-up
-session, so the batch that runs out pays for the step-up that mints the next one with its own
-last code -- a member who spends all ten without reissuing has no way back from this surface.
-**That is the surface's dead end rather than the build's now**: `/auth/passkey/login` verifies
-an assertion and opens a level-3 session, and nothing in this app calls
-`navigator.credentials`, so enrolling a passkey on the account page is the piece that would
-close it;
+a step-up spends a recovery code, and the account page's reissue needs a stepped-up session,
+so the batch that runs out pays for the step-up that mints the next one with its own last
+code -- **and the way out of that is now built rather than named**: a member who enrols a
+passkey signs in at level 3 directly, which needs no code at all, and `/account` is where
+they enrol it. What is still a dead end is a member who has spent all ten codes *and* has no
+passkey, which is the case the section's own warning is about;
 every `tenancy.*.write` is a stepped-up
 financial permission and none of those forms is built, so the hierarchy and the people surfaces
 are read-only; there is no mobile client and no edge agent; and nothing here is deployed

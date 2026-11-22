@@ -83,13 +83,26 @@ test.describe("the step-up surface", () => {
     await expect(page.getByText("Enter it to continue.")).toBeVisible();
   });
 
-  test("a level nobody can reach is said, not offered", async ({ page }) => {
+  test("a level this page cannot raise names the door that can", async ({ page }) => {
+    // **This test used to assert that nobody can reach level 3**, which was a consequence of
+    // MOD-007's WebAuthn gap rather than the property worth keeping: `/auth/require/*`
+    // answered `reachable: false` because a privileged action needs a hardware authenticator
+    // and nothing checked a signature. It does now, so that assertion was a gap note
+    // outliving its gap -- and the page kept keying on `reachable`, so it began offering a
+    // credential field whose correct answer is still refused, because `/auth/step-up` takes
+    // a password or a recovery code and neither gets past 2.
+    //
+    // What still holds, and is the thing worth asserting: this page does not pretend it can
+    // raise a session that far, and it says which door does.
     await page.goto("/step-up?for=biometric_sensitive&next=/");
-    // AAL 3 needs a hardware authenticator MOD-007 cannot verify, so there is no field.
     await expect(page.locator("main").getByRole("status")).toContainText(
-      /hardware security key/,
+      /passkey on a hardware authenticator/,
     );
+    // No field, because a prompt that cannot succeed is worse than the refusal it replaced.
     await expect(page.getByLabel("Recovery code")).toHaveCount(0);
+    await expect(page.getByLabel("Password")).toHaveCount(0);
+    // **Never a locked control with no route** -- FD-03's rule, applied to a level.
+    await expect(page.getByRole("link", { name: "Go to your account" })).toBeVisible();
   });
 
 

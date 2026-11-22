@@ -181,10 +181,11 @@ export type GateAnswer = {
  * The gate's whole answer, because the three refusals are three different interfaces.
  *
  * `allowed: false` with `step_up_required` is a prompt for a second factor; without it the
- * control is simply hidden. `reachable: false` means the action needs AAL 3, which needs a
- * hardware factor MOD-007 cannot verify -- so the honest interface says the capability is not
- * available in this build rather than inviting a step-up that can never succeed. Collapsing
- * all three to a boolean is how a UI ends up with a button that can never work.
+ * control is simply hidden. `reachable: false` means `/auth/step-up` cannot reach the level
+ * the action needs -- MOD-008 computes it from the two factors that endpoint accepts -- so
+ * the honest interface names the door that does reach it, a passkey sign-in, rather than
+ * inviting a step-up that can never succeed. Collapsing all three to a boolean is how a UI
+ * ends up with a button that can never work.
  */
 /**
  * The gate's answer for several actions, in one request.
@@ -266,10 +267,11 @@ export const UNREACHED: ReadonlySet<string> = new Set([
  *
  * - `gate_failed` — the request did not get an answer. **This is the one that was missing**,
  *   and it is not about the reader's access at all.
- * - `unreachable_level` — the action needs an assurance nobody can reach in this build.
- *   `member.health.read` is `biometric_sensitive`, which maps to AAL 3, which needs a
- *   hardware factor MOD-007 cannot verify. Offering a step-up would send somebody looking
- *   for a key that changes nothing.
+ * - `unreachable_level` — the action needs an assurance a step-up cannot reach.
+ *   `member.health.read` is `biometric_sensitive`, which maps to AAL 3, and `/auth/step-up`
+ *   takes a password or a recovery code: neither gets past 2. Signing in with a passkey does
+ *   reach it, so the page names that door instead of offering a step-up that would be
+ *   refused. The name of this verdict is older than the capability.
  * - `needs_step_up` — a stronger sign-in would open it, and the page can offer one.
  * - `denied` — the gate said no. Only this one is about what the reader holds.
  */

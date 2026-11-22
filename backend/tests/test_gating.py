@@ -926,6 +926,11 @@ class GateCoverageTests(unittest.TestCase):
         # Scoped to the caller in the service rather than by a permission: each passes the
         # session's own identity_id into a WHERE clause, so another identity's device or
         # session is not found rather than refused.
+        # **The remedy that had to exist before any screen could offer to enrol a passkey.**
+        # Scoped rather than gated for the reason its siblings are: it refuses a passkey that
+        # is not this identity's with the same 404 it gives for one that does not exist, so
+        # there is nothing to authorize.
+        ("POST", "/passkeys/{passkey_id}/revoke"): "scoped to the caller's own passkey",
         ("POST", "/devices/{device_id}/revoke"): "scoped to the caller's own device",
         ("POST", "/devices/{device_id}/trust"): "scoped to the caller's own device",
         ("POST", "/sessions/{session_id}/revoke"): "scoped to the caller's own session",

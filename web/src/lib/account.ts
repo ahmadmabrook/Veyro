@@ -70,12 +70,14 @@ export function sessionIsLive(session: SessionFact, nowIso: string): boolean {
  * How much a session can do, said as the thing it decides rather than as a number.
  *
  * Level 1 is a password; level 2 is a second factor and is what every financial action needs;
- * level 3 needs a hardware authenticator MOD-007 cannot verify, so nothing in this build
- * reaches it. Rendering "3" as an option a reader might aim for would send them looking for a
- * key the product cannot check.
+ * level 3 is a device-bound passkey, and it is **reachable now** -- which this function said
+ * it was not until WebAuthn verification landed. It returned `"unreachable"` and the page
+ * rendered "a level nothing in this build can reach", so the one session holding the
+ * strongest credential in the product would have been told its own level does not exist.
+ * That is the gap note outliving its gap, in a sentence shown to the reader it is about.
  */
-export function assuranceMeans(aal: number): "password" | "stepped_up" | "unreachable" {
-  if (aal >= 3) return "unreachable";
+export function assuranceMeans(aal: number): "password" | "stepped_up" | "hardware" {
+  if (aal >= 3) return "hardware";
   if (aal >= 2) return "stepped_up";
   return "password";
 }

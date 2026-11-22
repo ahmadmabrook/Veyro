@@ -35,8 +35,16 @@ class Gate:
     required_action_class: str | None = None
     required_aal: int | None = None
     reachable: bool = True
-    """False when the required level cannot be reached in this build at all -- a privileged
-    action needs a hardware authenticator and MOD-007 cannot verify one."""
+    """False when `/auth/step-up` cannot reach the required level -- it is computed from the
+    two factors that endpoint accepts, so it is narrower than the word.
+
+    **It is not "nobody can do this".** It said so until WebAuthn verification landed, when a
+    privileged action needed a hardware authenticator this build could not check; a passkey
+    is a verifiable factor now, so level 3 is reached by signing in at `/auth/passkey/login`.
+    `identity.require_assurance` has a field of the same name computed from *every* verifiable
+    factor, which answers the other question -- one word, two meanings, and a surface keyed on
+    the wrong one offers a credential prompt whose correct answer is still refused. Say which
+    door it is."""
     masked_fields: tuple[str, ...] = ()
     decision: authz.Decision | None = None
 

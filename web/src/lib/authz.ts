@@ -192,7 +192,7 @@ export type Mark = "yes" | "partial" | "stepUp" | "no" | "unreachable";
  *   per-role fact; this is the real third state here, and it is just as surprising: holding
  *   the permission is not enough.
  * - **unreachable** — the role holds it and *nobody* in this build can exercise it, because
- *   it needs assurance level 3 and MOD-007 cannot verify a hardware authenticator. Break-glass
+ *   it needs assurance level 3, which a step-up cannot reach -- only a passkey sign-in. Break-glass
  *   support access and AI acting for a member are both this, deliberately. Collapsing it into
  *   `stepUp` would tell a reader to sign in more strongly for a door that does not open.
  * - **no** — the role does not hold it, "and is absent from their UI entirely", which is the

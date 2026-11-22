@@ -9,6 +9,7 @@ import { Banner } from "@/components/ds/banner";
 import { t, type Locale, type MessageKey } from "@/i18n/locale";
 
 import { signIn } from "./actions";
+import { PasskeySignIn } from "./passkey-button";
 import { SIGN_IN_IDLE, type SignInState } from "./state";
 
 /**
@@ -25,6 +26,9 @@ import { SIGN_IN_IDLE, type SignInState } from "./state";
  * `aria-busy`), field-empty (a per-field message associated by `aria-describedby`), and refused
  * (one `role="alert"`, announced without stealing focus).
  */
+/** The form's own id, so the passkey button can read the two fields it needs at press time. */
+const FORM_ID = "sign-in";
+
 export function LoginForm({ locale }: { locale: Locale }) {
   const text = (key: MessageKey) => t(locale, key);
   const [state, formAction] = useActionState<SignInState, FormData>(signIn, SIGN_IN_IDLE);
@@ -37,7 +41,13 @@ export function LoginForm({ locale }: { locale: Locale }) {
         padding: "var(--space-10) var(--space-4)",
       }}
     >
-      <form action={formAction} noValidate className="page-section" style={{ width: "100%", maxWidth: "420px" }}>
+      <form
+        id={FORM_ID}
+        action={formAction}
+        noValidate
+        className="page-section"
+        style={{ width: "100%", maxWidth: "420px" }}
+      >
         {/* **The brand lockup, which ADM-AUTH-01 puts above the heading.** A sign-in page is
             the one screen with no chrome around it, so the mark is what says which product
             this is -- and without it the form reads as any form on any host, which is the
@@ -125,6 +135,14 @@ export function LoginForm({ locale }: { locale: Locale }) {
             **And there is no "Forgotten your password?".** MOD-007 has a recovery path and
             no form for it in this build; a link to a page that does not exist is worse than
             the gap it hides, which is ADM-MEM-05's rule. */}
+        {/* **Beside the password, not instead of it**, and only while no challenge is in
+            flight: a challenge is the second act of a password sign-in, and offering a
+            different credential in the middle of one would abandon a ceremony the server is
+            already holding a nonce for. It is the only second factor on this surface that
+            spends nothing -- a step-up burns a recovery code and there are ten -- and the
+            only one that reaches level 3. */}
+        {state.challenge ? null : <PasskeySignIn locale={locale} formId={FORM_ID} />}
+
         <p className="ds-login-note">{text("login.sameMessage")}</p>
         <p className="ds-login-note">{text("login.tenantIsNotResolved")}</p>
       </form>

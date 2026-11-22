@@ -3723,12 +3723,43 @@ def create_app(
             transports=body.transports, backed_up=body.backed_up,
         )
 
+    @app.get("/identities/{identity_id}")
+    def read_identity(
+        tenant_id: TenantId, session: Session, identity_id: str
+    ) -> dict[str, Any]:
+        """The caller's own identity. Scoped by `owned`, so there is nothing to authorize.
+
+        It exists because a WebAuthn ceremony names the account to the authenticator, and
+        nothing here returned the signed-in person's own display name -- so the browser would
+        offer a uuid when somebody later picks between credentials.
+        """
+        return identity.read_own_identity(
+            identity_pool, tenant_id, identity_id=owned(session, identity_id))
+
     @app.get("/identities/{identity_id}/passkeys")
     def identity_passkeys(
         tenant_id: TenantId, session: Session, identity_id: str
     ) -> list[dict[str, Any]]:
         return identity.list_passkeys(
             identity_pool, tenant_id, identity_id=owned(session, identity_id)
+        )
+
+    @app.post("/passkeys/{passkey_id}/revoke")
+    def revoke_passkey(
+        tenant_id: TenantId, session: Session, passkey_id: str, body: CorrelationBody
+    ) -> dict[str, Any]:
+        """Withdraw one of the caller's own passkeys.
+
+        Scoped to the caller rather than gated: `revoke_passkey` refuses a passkey that is not
+        this identity's with the same 404 it gives for one that does not exist, so there is
+        nothing to authorize. **This is the remedy that had to exist before any screen could
+        offer to enrol one** -- the only writer of `revoked_at` was clone detection, so a lost
+        authenticator could not be withdrawn.
+        """
+        return identity.revoke_passkey(
+            identity_pool, tenant_id,
+            passkey_id=require_uuid(passkey_id, "passkey_id"),
+            identity_id=session["identity_id"], correlation_id=body.correlation_id,
         )
 
     @app.post("/passkeys/{passkey_id}/assertion")

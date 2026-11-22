@@ -30,6 +30,7 @@
  */
 
 
+import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
@@ -40,7 +41,7 @@ import { ApiError, SESSION_COOKIE, TENANT_COOKIE, api, correlationId } from "@/l
 // what that cost.
 import { browserFingerprint } from "@/lib/device";
 
-import type { SignInState } from "./state";
+import type { SignInError, SignInState } from "./state";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -167,4 +168,90 @@ export async function signIn(
   // Outside the try: `redirect` signals by throwing, and catching it here would turn a
   // successful sign-in into `error.unexpected`.
   redirect("/");
+}
+
+
+/**
+ * Ask for the challenge a passkey sign-in will be verified against.
+ *
+ * **Returns the same shape whatever the identifier is**, which is the server's design and
+ * worth not undoing here: a ceremony that said "no passkey is enrolled for this address"
+ * would be a directory of which addresses exist and which have a credential. So this passes
+ * the answer through and the ceremony either works or is refused at the second call.
+ *
+ * It is `null` only when the request itself failed -- a network problem or the limiter -- which
+ * is a different sentence from a refusal and the page says so.
+ */
+export async function beginPasskeySignIn(
+  tenantId: string, identifier: string,
+): Promise<{ challenge: string } | null> {
+  if (!UUID.test(tenantId.trim()) || !identifier.trim()) return null;
+  try {
+    const issued = await api<{ challenge: string }>("/auth/passkey/challenge", {
+      method: "POST",
+      authenticated: false,
+      tenantId: tenantId.trim(),
+      body: { identifier: identifier.trim(), correlation_id: correlationId() },
+    });
+    return { challenge: issued.challenge };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Finish a passkey sign-in: verify the assertion and open the session.
+ *
+ * **The cookie is written here and nowhere else**, which is the reason the ceremony's result
+ * crosses back into a server action rather than being POSTed from the browser. The session
+ * cookie is httpOnly precisely so page JavaScript cannot read or write it, and a client that
+ * held a bearer token would be the thing that property exists to prevent.
+ *
+ * **Every refusal is `login.failed`.** The backend answers one 401 for an unknown address, a
+ * revoked credential, a used challenge and a signature that does not verify; passing a
+ * distinction through here would hand back exactly what MOD-007's timing fix removed.
+ */
+export async function finishPasskeySignIn(
+  tenantId: string, payload: Record<string, string>,
+): Promise<SignInError | null> {
+  const tenant = tenantId.trim();
+  if (!UUID.test(tenant)) return "login.failed";
+  let token: string;
+  try {
+    const result = await api<{ token?: string }>("/auth/passkey/login", {
+      method: "POST",
+      authenticated: false,
+      tenantId: tenant,
+      body: {
+        ...payload,
+        device_fingerprint: browserFingerprint(tenant, String(payload.identifier ?? "")),
+        device_label: "Veyro web",
+        correlation_id: correlationId(),
+      },
+    });
+    if (!result.token) return "login.failed";
+    token = result.token;
+  } catch (error) {
+    if (error instanceof ApiError) {
+      return error.status === 429
+        ? "login.tooMany"
+        : error.status === 503
+          ? "error.network"
+          : error.status === 401 || error.status === 403
+            ? "login.failed"
+            : "error.unexpected";
+    }
+    throw error;
+  }
+  const jar = await cookies();
+  const secure = process.env.NODE_ENV === "production";
+  jar.set(SESSION_COOKIE, token, { httpOnly: true, sameSite: "strict", secure, path: "/" });
+  jar.set(TENANT_COOKIE, tenant, { httpOnly: true, sameSite: "strict", secure, path: "/" });
+  // **The caller navigates, so the cache it navigates into has to be invalid.** Every page
+  // here reads the session from the cookie on the server, and a client-side push into a
+  // router cache populated before this action ran would render the signed-out page with a
+  // live session sitting in the jar. `signIn` above has no such problem because it is a form
+  // action that ends in `redirect`, and this one is called from an event handler.
+  revalidatePath("/", "layout");
+  return null;
 }

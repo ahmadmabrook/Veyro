@@ -151,3 +151,76 @@ export async function issueRecoveryCodes(
     return { ...IDLE, message: "account.codesIssued", codes: issued.codes ?? [] };
   });
 }
+
+
+/**
+ * Store a credential the browser has just created.
+ *
+ * **The ceremony happens in the client and only its result crosses this boundary**, because
+ * `navigator.credentials` exists nowhere else. What arrives is the credential id, the SPKI
+ * public key and the backup flag, all base64url; the server loads the key and refuses one it
+ * cannot verify, which is what keeps "a passkey is enrolled" and "a passkey can be used" the
+ * same statement.
+ *
+ * **No challenge is sent, and `iam.challenges` has a `passkey_registration` kind nothing
+ * writes.** A registration challenge is checked by verifying the attestation, which this build
+ * deliberately does not do -- so issuing one and consuming it here would be a ceremony-shaped
+ * control that checks nothing. What makes this safe is that it is authenticated and
+ * self-scoped; what makes the credential trustworthy afterwards is that every assertion is
+ * verified.
+ */
+export async function addPasskey(
+  _previous: AccountState,
+  form: FormData,
+): Promise<AccountState> {
+  const credentialId = String(form.get("webauthn_credential_id") ?? "");
+  const publicKey = String(form.get("public_key") ?? "");
+  const backedUp = String(form.get("backed_up") ?? "") === "true";
+  const label = String(form.get("label") ?? "").trim();
+  if (!credentialId || !publicKey) return { ...IDLE, error: "passkey.ceremonyFailed" };
+  const session = await currentSession();
+  if (!session) redirect("/login?reason=expired");
+  return act(async () => {
+    await api(`/identities/${encodeURIComponent(String(session.identity_id))}/passkeys`, {
+      method: "POST",
+      body: {
+        webauthn_credential_id: credentialId,
+        public_key: publicKey,
+        backed_up: backedUp,
+        label: label || null,
+        correlation_id: correlationId(),
+      },
+    });
+    revalidatePath("/account");
+    return { ...IDLE, message: "passkey.added" };
+  });
+}
+
+/**
+ * Withdraw a passkey.
+ *
+ * **The remedy that had to exist before the button that creates one.** Enrolling is routine
+ * and self-scoped, and until `revoke_passkey` existed the only writer of `revoked_at` was the
+ * clone check -- so a lost authenticator left a credential that could open a level-3 session
+ * for ever. MOD-013's rule, from the side this repository has already paid for once in
+ * MOD-019's insert-only rota: a write form needs its remedy before it needs its button.
+ *
+ * It does **not** end the session the reader is in, deliberately and unlike the clone path:
+ * a clone means the credential exists in two places, a lost phone means it should open
+ * nothing new, and signing somebody out while they are telling the product about it is a
+ * worse answer than the problem.
+ */
+export async function withdrawPasskey(
+  _previous: AccountState,
+  form: FormData,
+): Promise<AccountState> {
+  const passkeyId = String(form.get("passkey_id") ?? "");
+  return act(async () => {
+    await api(`/passkeys/${encodeURIComponent(passkeyId)}/revoke`, {
+      method: "POST",
+      body: { correlation_id: correlationId() },
+    });
+    revalidatePath("/account");
+    return { ...IDLE, message: "passkey.withdrawn" };
+  });
+}

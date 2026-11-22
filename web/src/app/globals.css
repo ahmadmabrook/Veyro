@@ -3370,3 +3370,77 @@ a {
   min-block-size: 44px;
   cursor: pointer;
 }
+
+/* ---------------------------------------------------------------- passkeys (account page)
+ *
+ * **The state is text rather than a badge**, which the component explains: the design's status
+ * vocabulary is closed over membership, payment, booking and access, and a credential is none
+ * of those -- so there is no word in it for "withdrawn" and borrowing a membership one would
+ * have two screens spelling one thing two ways. It is marked with a hairline and the secondary
+ * ink, never a colour alone.
+ */
+/* The section itself needs no box -- `page-section` is the box -- but the class has to exist,
+ * because a `ds-` prefix is a promise that the component does. An undefined one is invisible
+ * to every layer that is not a screenshot, which is why the sweep refuses it. */
+.ds-passkeys {
+  container-type: inline-size;
+}
+.ds-passkey-list {
+  list-style: none;
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.ds-passkey {
+  padding: var(--space-3);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-card);
+  background: var(--color-surface-raised);
+}
+/* A withdrawn credential stays on the list -- the record that it existed is the point -- and
+ * recedes rather than disappearing, for the reason a redacted field is marked rather than
+ * dropped: an absent row and a withdrawn one are different facts. */
+.ds-passkey[data-state="withdrawn"] {
+  background: var(--color-surface-sunken);
+}
+.ds-passkey-what {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+.ds-passkey-label {
+  font-size: var(--type-body-size);
+  font-weight: 500;
+}
+.ds-passkey-state {
+  font-size: var(--type-label-size);
+  letter-spacing: var(--type-label-tracking);
+  color: var(--color-text-secondary);
+  padding-inline: var(--space-2);
+  padding-block: var(--space-05);
+  border-inline-start: 2px solid var(--color-border-default);
+}
+.ds-passkey[data-state="withdrawn"] .ds-passkey-state {
+  border-inline-start-color: var(--color-semantic-warning);
+}
+.ds-passkey-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  align-items: flex-start;
+  margin-block-start: var(--space-4);
+}
+.ds-passkey-withdraw {
+  margin-block-start: var(--space-2);
+}
+
+/* The passkey button on the sign-in page: its own block so the banner it may render sits
+ * under it rather than beside the form's own notes. */
+.ds-passkey-signin {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
