@@ -5026,8 +5026,32 @@ anywhere, which is deliberate while the platform plane is unauthenticated.
 **Next.** The standard for a finished module is now the whole stack, not the backend: owner
 directive of 2026-11-18, which says in as many words that a module is not complete because its
 backend tests pass, and that every applicable frontend, integration and end-to-end requirement
-is part of it. So "implemented" above is accurate about the server plane and incomplete about
-the product for every module except MOD-022, and the backlog has two halves.
+is part of it. (It is cited here in prose and has no file in `knowledge/00-Decisions/`, unlike
+the delegation record this file's Authority line names.)
+
+**By that standard no module is finished, and this paragraph used to say MOD-022 was the
+exception.** It is not. Every one of the eighteen with a backend implementation carries its own
+"Known gaps, deliberate" list -- unmet requirements on the *server* plane, before the frontend
+question arises -- and MOD-022's runs to nine entries: nothing opens a door, occupancy cannot
+enforce a capacity policy, no anti-tailgating, no video, no visitor management, no mobile
+credential, an offline decision is judged rather than prevented, eleven free-text columns are
+beyond any erasure, and the member timeline knows none of it. What was true of MOD-022 is
+narrower and worth keeping: it is the one module whose *surface* was built in the same stretch
+as its backend, which is why it reads as finished to anybody counting screens.
+
+**And the per-module frontend verdict is not derivable from this repository at all**, which is
+why the claim went unchallenged for so long. `contracts/ui/screen-contracts.yaml` carries 170
+specified V1 screens and leaves `owning_module` null for every one of them -- its own
+`unresolved_policy` says no owning implementation module has been inferred, and that null is
+not a pass. So nothing maps a screen to a module, and any statement of the form "module X's
+frontend is complete" is an assertion about a mapping that does not exist here. What the
+artefacts do support is per *surface*: `design:coverage` reports 39 screens in the inventory
+across Admin and Front Desk with 45 blocked for written reasons, and Member, Coach, Console
+and POS have no implementation at all. **Closing this honestly means resolving the mapping
+before claiming a module is done**, not counting routes.
+
+So "implemented" above is accurate about the server plane and incomplete about the product
+everywhere, and the backlog has two halves.
 
 The first is the screens the eighteen built modules do not have. `web/` covers the sign-in, the
 step-up, the account page, MOD-004, MOD-005, MOD-007, MOD-008, MOD-009, MOD-010, MOD-011,
