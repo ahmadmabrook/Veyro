@@ -4704,31 +4704,52 @@ FD-08's device strip are MOD-022's and MOD-021's, FD-06 class check-in is MOD-02
 are not: FD-01 live check-in is MOD-022's, FD-02 member lookup is MOD-014's (and now its
 contact-match read), FD-04 day pass and FD-05 walk-in trial are sales, FD-07 shift open and
 close is MOD-018's cash sessions, which `/payments/cash` already answers from the Admin
-side. **And `design:coverage` does not hold this surface to the Admin one's standard**: it
-filters on `surface === "Admin"`, so no Front Desk screen needs a row or a reason, which is
-the one place in this repository where a gap list is not a claim about the product. Closing
-that is the next piece of work on the surface, because it is what makes the remaining six
-honest rather than merely absent. Two of them want something the backend does not hold -- FD-02
-draws a 44px photo ("a receptionist confirming identity at a busy desk needs a face they can
-actually recognise") and there is no object store, and FD-07's handover note has no column --
-so each needs the same judgement every Admin screen got: build what the product can answer
-and name the rest on the screen.
+side. **`design:coverage` holds this surface to the Admin one's standard now**, so each of
+those six carries a written reason naming what is missing rather than its position in a
+queue: FD-01 and FD-04 are payments at the door, FD-02 is the search MOD-014 deliberately
+does not have plus the 44px photo an object store would hold, FD-05 is CRM's pipeline, FD-07
+is the handover note no table keeps ("part of the shift, not a WhatsApp message that leaves
+with the person who wrote it"), and FD-09 is the first screen in this repository blocked on
+the *client* rather than the backend.
 
 **Of the specified Admin screens with no route, the ones with reads behind them are what to
 build next.** That audit is a **check** now rather than a count somebody re-derives, because
 doing it by hand gave a different answer each time: `web/src/design/coverage.mjs`, in
-`design:check` and therefore in CI, requires every one of the 81 specified Admin screens to be
+`design:check` and therefore in CI, requires every specified screen on a covered surface to be
 named in `contracts/ui/design-compliance.md`, mapped to a screen it is a *state* of, or given a
-reason that names one of four causes -- a missing module, a stepped-up financial write, data
-the backend does not hold, or an object store. **"Not built yet" is not a cause and there is
-deliberately no token for it**, which is `GateCoverageTests.UNGATED`'s discipline one layer up:
-adding to the list is meant to be uncomfortable.
+reason that names one of five causes -- a missing module, a stepped-up financial write, data
+the backend does not hold, an object store, or capability in the client. **"Not built yet" is
+not a cause and there is deliberately no token for it**, which is `GateCoverageTests.UNGATED`'s
+discipline one layer up: adding to the list is meant to be uncomfortable.
 
-It reads **43 in the inventory, 6 states of those, 32 blocked with a reason**, and it checks
-both directions -- a reason for a screen the inventory now argues is a stale excuse and fails,
-which is the schedule board's "gap note that outlived its gap" caught structurally. My own hand
-audit had said 43 were missing; the truth was that most were built, mislabelled or states, and
-the number that is genuinely unaccounted for is zero. **ADM-SCH-04 came off the list by writing the read it needed**, and the
+It reads **90 specified screens on Admin and Front desk: 39 in the inventory, 6 states of
+those, 45 blocked with a reason**, and it names the five surfaces it does *not* cover with
+their counts. It checks both directions -- a reason for a screen the inventory now argues is a
+stale excuse and fails, which is the schedule board's "gap note that outlived its gap" caught
+structurally. My own hand audit had said 43 were missing; the truth was that most were built,
+mislabelled or states, and the number that is genuinely unaccounted for is zero.
+
+**It covered one surface of eight, and it counted a mention as a claim.** Two findings about
+the check itself, both of shapes this file records one layer down. `surface === "Admin"` left
+the nine Front Desk screens needing no row and no reason -- a prefix-scoped sweep, in the one
+place here where a gap list was not a claim about the product. And `named` asked whether the
+inventory *contained* the id anywhere, so a design-sources row (`| `Veyro HF Front Desk and
+POS` | FD-01, POS-01 |`), a cross-reference in another screen's "still open" list, and a bold
+paragraph arguing a screen is **not** built all read as coverage. **Thirteen screens were
+accounted for that way** -- seven Admin and six Front Desk -- including `ADM-SCH-06`, which
+this check's own docstring calls the worked example of `data:` and which had no reason in it
+at all. A claim is now one of the three shapes the document actually commits in: a fidelity
+table row, a section heading, or a per-screen bullet carrying its route. A prose paragraph is
+deliberately not one, because "we wrote about why this is missing" must stay distinguishable
+from "we built it".
+
+Two smaller things came out of tightening it, and the first is the trap this file warns about
+in the other direction: the id pattern allowed three letters in the middle segment, so
+`ADM-AUTH-01` and `ADM-AUTH-02` -- both built, both in the table -- were reported missing, and
+**a check that reports a defect the app does not have costs the same trust as one that misses a
+defect it does**. And narrowing `COVERED` back to Admin now *fails*, because the Front Desk
+reasons would be orphaned: the both-directions rule applied to the check's own scope, which is
+what stops the scope being quietly narrowed again. **ADM-SCH-04 came off the list by writing the read it needed**, and the
 read was the finding: `set_availability` had had a writer and no reader since MOD-019 was
 built, so a rota could be set and the only way to learn what it said was to publish a template
 against it and read the refusal. `/rota` is also where the standing claim that every form here
