@@ -209,6 +209,76 @@ are never rewritten.
 expenditure, production deployment, real member data, and anything needing the owner's personal
 authentication. `governance/registry.json` `reserved_actions` keeps the four names.
 
+**A blocker is external or it is not a blocker.** Owner instruction of 2026-11-23. The only
+thing that may stop this session is something it cannot obtain: the four reserved actions
+above, an account or a credential with a third party, a physical device, or a policy that is
+the owner's to set. **Everything else is work.** A missing module is work. A missing table is
+work. A decision nobody has written down is a decision to make, because the delegation hands
+over ordinary engineering, product, architecture and infrastructure decisions -- so "this needs
+a judgement the sources do not state" is not a reason to stop, it is the next thing to decide
+and record. "No search index", "no CRM", "no handover note column", "no service worker", "no
+trial state", "which period is due" and "which objective is due" were all written in this file
+as though they were blockers; none of them is.
+
+The distinction is not about size. A service worker and a write queue for the Front Desk is
+weeks and is still work; a card charge is one line and is still external. The test is only
+whether anything outside this repository has to arrive first.
+
+**What that means for how a gap is written.** A gap note says what is not built and why it is
+not built *yet* -- which is a priority, a cost, or a dependency on other work. It may name an
+external blocker, and then it says which one and what would clear it. It may not name a
+judgement as the obstacle. This session found three notes doing exactly that and one that had
+buried a defect behind an accurate sentence; the rules file records all four readings.
+
+### The external blockers, in full
+
+Seven, and nothing else in this repository is one. Each says what has to arrive and what it
+would clear. **Everything built up to the seam is this session's work and is not waiting on
+any of them**: an adapter with a local implementation, a recorded claim where a provider would
+answer, and the half that must be correct whatever the provider turns out to be.
+
+1. **A payment provider, in test mode.** Which provider, and its test keys placed in a file by
+   the owner -- this session does not type payment credentials. Clears FD-01 and FD-04 at the
+   door, the sales half of the Admin surface, MOD-015's and MOD-017's stored payment methods,
+   and MOD-016's till. Real charges stay reserved; test mode is the thing to ask for.
+2. **A messaging provider** for email and SMS, test credentials likewise. Clears the dispatcher
+   MOD-013 was built around, FD-05's invitation by text, FD-07's shift report, MOD-017's
+   dunning messages and MOD-020's waitlist notification. **MOD-013 is otherwise complete**:
+   it authors, claims and settles a message and sends nothing.
+3. **An object store, and the residency decision that goes with it.** Residency is owner policy
+   in the isolation rules. Clears member photos (FD-01's 40px row, FD-02's 44px confirmation),
+   MOD-009's data export, MOD-014's progress media, MOD-021's diagnostics bundle and MOD-010's
+   event archive. A local store for development needs nobody; a deployed one needs the region.
+4. **A key vault.** Clears MOD-007's TOTP seeds, MOD-009's crypto-shred, MOD-012's inbound
+   webhook signatures and MOD-021's device certificates -- which is also MOD-022 opening doors
+   on an identity nothing verifies. **The seam is this session's work**: an interface with a
+   local backend, so only the managed instance is external.
+5. **An identity provider** for IAM-01-R04's OIDC/SAML federation. Clears CON-16's sign-in and
+   therefore MOD-015's Console screens, the only implemented module with no surface. The
+   protocol work is this session's; the tenancy at Okta, Entra or Google Workspace is not.
+6. **Door hardware and readers.** Clears MOD-021's gateway and MOD-022's "nothing opens a
+   door", plus the anti-tailgating that would let an occupancy count be enforced rather than
+   advisory. Physical, so no amount of code substitutes.
+7. **Retention policy.** Owner policy, named in the isolation rules beside regions and keys.
+   Clears MOD-009's retention sweep, the one sweep where being wrong is unrecoverable.
+
+**An event transport is deliberately not on this list.** MOD-010 names EventBridge, SNS,
+per-consumer SQS and an S3 archive, and a managed one would need an account -- but a transport
+is an interface with implementations, and writing one that runs here is work rather than a
+wait. The same reasoning retires "no histogram store" for MOD-011's percentiles: a bucketed
+histogram in the store that already exists is a schema decision, which is delegated.
+
+**The coverage check does not enforce this yet, and that is the next thing to close.**
+`web/src/design/coverage.mjs` admits five cause tokens -- `module:`, `owner-reserved:`,
+`data:`, `store:`, `client:` -- and three of those name this session's own work, so a screen
+can still be recorded as blocked when nothing external is missing. That is how FD-02, FD-05,
+FD-07 and FD-09 came to sit in a blocked list. Tightening the token set to the external causes
+alone is the mechanical form of this rule, and it cannot be done on its own: those four
+screens would then have nowhere to be declared, so the change is a token set **plus** a
+`BACKLOG` list that accounts for an unbuilt screen without excusing it. Until that lands, the
+check is weaker than the rule it should carry, and this paragraph is the record of which one
+wins: the rule.
+
 ## State
 
 Module ids come from `tools/mission_runner/module_catalog.json`, and they are **not** the
@@ -3779,19 +3849,23 @@ What is deliberately **not** a job, each for a stated reason:
 - **MOD-010's `deliver_pending`.** It refuses a consumer with no handler, and this process
   registers none. A relay driving an empty registry would read as a control and do nothing.
 - **MOD-020's session settlement.** It decides whether somebody was absent, and
-  `settle_session_bookings` deliberately takes no caller-supplied instant. Driving it needs a
-  decision about which sessions are due that the sources do not state.
+  `settle_session_bookings` deliberately takes no caller-supplied instant. **Which sessions are
+  due is a decision to make here, not a blocker** -- a session whose check-in grace has run out
+  is the obvious predicate and the function already computes that window. It is unwired because
+  it has not been done, which is a priority rather than an obstacle.
 - **MOD-012's credential rotation announcement.** `credentials_due` is not idempotent across
-  calls by design, so scheduling it needs a record of what has already been announced -- the
-  durable state the bullet above says comes first.
-- **MOD-009's retention sweep, MOD-017's renewals and dunning, MOD-018's recognition and
-  period close.** (MOD-017's *ended-membership revocation* came off this list; its renewals
-  and dunning did not.) Each needs a judgement this registry would have to invent -- which deadline,
-  which period -- and inventing product is the one thing the delegation does not cover.
-  **MOD-009's is further out than "needs a decision": retention is owner-reserved policy**,
-  named in the isolation rules beside regions and keys, and destroying records on a schedule
-  is the one sweep where being wrong is unrecoverable. The other two are the next jobs and
-  each wants its own decision written down first. **MOD-011's objective evaluation and MOD-013's digest close both came off this
+  calls by design, so scheduling it needs a record of what has already been announced. That
+  record is a table and an idempotency key -- work, and the same shape MOD-011's breach
+  announcement turned out to need. Unwired, not blocked.
+- **MOD-009's retention sweep is the one external entry here**: retention is owner policy,
+  named in the isolation rules beside regions and keys, and destroying records on a schedule is
+  the one sweep where being wrong is unrecoverable.
+- **MOD-017's renewals and dunning, and MOD-018's recognition and period close, are work.**
+  This list used to say each "needs a judgement this registry would have to invent", and that
+  was wrong twice over: the delegation hands over product decisions as well as engineering
+  ones, so a recognition cadence and a dunning step are mine to decide and record -- and
+  dunning's *message* is the only part that waits on anything, which is the messaging provider
+  above. They are unwired because nothing has written the decision down yet. **MOD-011's objective evaluation and MOD-013's digest close both came off this
   list, and neither by making the decision it was said to need**,
   and the shape of that is the lesson: the judgement it looked like it needed, *which*
   objective is due, turned out not to exist -- every objective carries its own window -- and
@@ -5082,19 +5156,25 @@ the most on this surface. MOD-021's device identity is a separate wall and unmov
 certificate is mTLS and a signature nothing here makes, which is the vault rather than
 WebAuthn, and MOD-022 still opens doors on an identity nothing verifies.
 
-**The unblocked surface work is the Front desk**, nine screens whose modules are all built
-and all on the authenticated tenant plane. Three are built: FD-03 denial resolution and
+**The Front desk is where the reclassification bites hardest**, nine screens whose modules
+are all built and all on the authenticated tenant plane. Three are built: FD-03 denial resolution and
 FD-08's device strip are MOD-022's and MOD-021's, FD-06 class check-in is MOD-020's. Six
 are not: FD-01 live check-in is MOD-022's, FD-02 member lookup is MOD-014's (and now its
 contact-match read), FD-04 day pass and FD-05 walk-in trial are sales, FD-07 shift open and
 close is MOD-018's cash sessions, which `/payments/cash` already answers from the Admin
 side. **`design:coverage` holds this surface to the Admin one's standard now**, so each of
-those six carries a written reason naming what is missing rather than its position in a
-queue: FD-01 and FD-04 are payments at the door, FD-02 is the search MOD-014 deliberately
-does not have plus the 44px photo an object store would hold, FD-05 is CRM's pipeline, FD-07
-is the handover note no table keeps ("part of the shift, not a WhatsApp message that leaves
-with the person who wrote it"), and FD-09 is the first screen in this repository blocked on
-the *client* rather than the backend.
+those six carries a written reason -- and under the external-blocker rule only two of them
+are blockers. **FD-01 and FD-04 are payments at the door**, which is the provider the owner
+supplies. The other four are this session's work and were mislabelled: FD-02's search is a
+gated, masked read over `ppl_contact_points_by_value`, and calling it ENG-01's was an
+architecture decision of mine rather than a constraint (only its 44px photo wants the object
+store); FD-05 is CRM, and building CRM is delegated, though it does need a trial state
+`mem_memberships` has no value for and its invitation waits on the messaging provider; **FD-07
+needs nothing from anybody** -- the count, the expected figure and the variance are already
+`/payments/cash`, and the handover note the canvas calls the point of the screen is a migration
+and a form; and FD-09's service worker and write queue are weeks of work and still work. The
+day-pass half of FD-04 is mine too: `PRODUCT_TYPES` already carries `session_credit` and
+`service`, so "there is no day-pass product" described configuration as a capability gap.
 
 **Of the specified Admin screens with no route, the ones with reads behind them are what to
 build next.** That audit is a **check** now rather than a count somebody re-derives, because
@@ -5204,13 +5284,15 @@ driven.**
 `backend/app/worker/` has its own section above. What closing it took is worth the same note
 `Decision.mask` gets below: no new table, because every wired job is idempotent and a durable
 schedule's real cost is a second place where "has this run" is recorded that can disagree with
-the effect the job had. The five schedules still undriven are undriven for a reason each --
-`iam.challenges` has no DELETE grant for anybody, `deliver_pending` has no handler to drive,
-and the rest need a judgement the registry would have to invent. **MOD-011's objective
-evaluation came off that list by making one**, and the shape is worth knowing before the next:
+the effect the job had. The five schedules still undriven are undriven for a reason each, and
+**exactly one of those reasons is a blocker**: MOD-009's retention sweep waits on the owner's
+retention policy. The rest are work. `iam.challenges` has no DELETE grant for anybody, which
+is a grant decision to make here rather than an obstacle; `deliver_pending` has no handler to
+drive, which is a handler to write; and MOD-017's renewals and MOD-018's recognition want a
+cadence decided and recorded, which the delegation covers. **MOD-011's objective evaluation
+came off that list by making its decision**, and the shape is worth knowing before the next:
 the judgement it looked like it needed (which objective is due) did not exist, and the one it
-really needed (how often a breach is announced) was a different and smaller question. Those are the next jobs, and
-each wants its decision written down before it is wired.
+really needed (how often a breach is announced) was a different and smaller question.
 
 `Decision.mask` is no longer on that list. MOD-014 applies it, which closes the five-module gap
 -- and note what closing it took: `permit` had to return the gate rather than the session, and
