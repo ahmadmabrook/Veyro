@@ -13,7 +13,7 @@ import { t, type Locale, type MessageKey } from "@/i18n/locale";
  *
  * The reason is part of the rendering, because the two reasons a field is withheld here have
  * different remedies and one of them has none: an identity field needs a stronger sign-in,
- * and a health field cannot be read by anybody in this build -- `member.health.read` is
+ * and a health field needs a level this surface cannot reach -- `member.health.read` is
  * `biometric_sensitive`, which maps to assurance level 3, which needs a hardware authenticator
  * MOD-007 cannot verify. Offering a step-up for the second would send somebody looking for a
  * key the product cannot check.

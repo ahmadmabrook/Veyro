@@ -94,7 +94,7 @@ test.describe("the member record", () => {
     await expect(marker).toHaveAttribute("title", /hardware authenticator/);
   });
 
-  test("says a health field cannot be read by anybody, not that a step-up would help", async ({
+  test("says a health field needs a level this screen cannot reach, not a step-up", async ({
     page,
   }) => {
     // **Scoped to the custom fields' own list, not to the panel.** The first version scoped

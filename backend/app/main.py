@@ -60,6 +60,7 @@ from app.errors import InvalidRequest, NotFound, ServiceError, TooManyRequests
 from app.events import service as events
 from app.identity import policy as identity_policy
 from app.identity import service as identity
+from app.identity import webauthn as identity_webauthn
 from app.integrations import service as integrations
 from app.ledger import service as ledger
 from app.notifications import service as notifications
@@ -397,6 +398,30 @@ class AssertionBody(BaseModel):
     correlation_id: str
 
 
+class PasskeyChallengeBody(BaseModel):
+    identifier: str
+    correlation_id: str
+
+
+class PasskeyLoginBody(BaseModel):
+    """One assertion, as the browser hands it over.
+
+    Every binary field is base64url, which is what `PublicKeyCredential.toJSON()` produces --
+    and `_b64` is strict about it, so a value written with the standard alphabet is a 422
+    rather than a signature that verifies over different bytes.
+    """
+
+    identifier: str
+    challenge: str
+    credential_id: str
+    client_data_json: str
+    authenticator_data: str
+    signature: str
+    correlation_id: str
+    device_fingerprint: str | None = None
+    device_label: str | None = None
+
+
 def bearer_token(authorization: Annotated[str | None, Header()] = None) -> str:
     """Read the session token from an Authorization header and nothing else.
 
@@ -418,6 +443,23 @@ def _b64(value: str, field: str) -> bytes:
     try:
         return base64.b64decode(value, validate=True)
     except (binascii.Error, ValueError):
+        raise InvalidRequest(f"bad_{field}") from None
+
+
+def _b64url(value: str, field: str) -> bytes:
+    """Strict unpadded base64url, which is the only encoding WebAuthn speaks.
+
+    **Every binary field in a WebAuthn ceremony is base64url** -- that is what
+    `PublicKeyCredential.toJSON()` produces and what `clientDataJSON` carries its challenge
+    as. `_b64` above is *standard* base64, and the two alphabets agree on most byte strings
+    and differ on the rest, so accepting either would mean one value decoding to two
+    different byte strings depending on which decoder saw it. In a challenge comparison that
+    is a replay window, which is why `webauthn.b64url_decode` is strict and why this wraps it
+    rather than reimplementing the leniency.
+    """
+    try:
+        return identity_webauthn.b64url_decode(value)
+    except identity_webauthn.WebAuthnError:
         raise InvalidRequest(f"bad_{field}") from None
 
 
@@ -3671,8 +3713,12 @@ def create_app(
     ) -> dict[str, Any]:
         return identity.enroll_passkey(
             identity_pool, tenant_id, identity_id=owned(session, identity_id),
-            webauthn_credential_id=_b64(body.webauthn_credential_id, "credential_id"),
-            public_key=_b64(body.public_key, "public_key"),
+            # **base64url here too, which is a change.** These two were standard base64,
+            # so one surface of the same ceremony spoke a different alphabet from the other --
+            # and a credential id written one way at enrolment and the other at sign-in is a
+            # credential nothing can find.
+            webauthn_credential_id=_b64url(body.webauthn_credential_id, "credential_id"),
+            public_key=_b64url(body.public_key, "public_key"),
             correlation_id=body.correlation_id, label=body.label, aaguid=body.aaguid,
             transports=body.transports, backed_up=body.backed_up,
         )
@@ -3694,6 +3740,46 @@ def create_app(
             passkey_id=require_uuid(passkey_id, "passkey_id"),
             identity_id=session["identity_id"], sign_count=body.sign_count,
             correlation_id=body.correlation_id,
+        )
+
+    @app.post("/auth/passkey/challenge")
+    def begin_passkey_login(
+        tenant_id: TenantId, body: PasskeyChallengeBody
+    ) -> dict[str, Any]:
+        """The challenge a passkey sign-in is verified against. Open, like `/auth/login`.
+
+        **The response is identical for every identifier**, including one nobody has
+        registered: a ceremony that said "no passkey here" would be a directory of which
+        addresses exist. Rate-limited on the `auth.login` budget and keyed the same way,
+        because this is the unauthenticated front door's other half.
+        """
+        rate_limit(limit_key="auth.login", tenant_id=tenant_id,
+                   subject=limit_subject(body.identifier))
+        return identity.begin_passkey_assertion(
+            identity_pool, tenant_id, identifier=body.identifier,
+            correlation_id=body.correlation_id,
+        )
+
+    @app.post("/auth/passkey/login")
+    def login_with_passkey(tenant_id: TenantId, body: PasskeyLoginBody) -> dict[str, Any]:
+        """Sign in with a verified WebAuthn assertion, which is how AAL 3 is reached.
+
+        The relying party id and the origins come from configuration and are passed in rather
+        than read inside the service: they are deployment facts, so the service stays free of
+        the environment like every other function here, and a build that has not stated them
+        answers 422 naming that rather than 401 naming a credential.
+        """
+        rate_limit(limit_key="auth.login", tenant_id=tenant_id,
+                   subject=limit_subject(body.identifier))
+        return identity.authenticate_with_passkey(
+            identity_pool, tenant_id, identifier=body.identifier, challenge=body.challenge,
+            credential_id=_b64url(body.credential_id, "credential_id"),
+            client_data_json=_b64url(body.client_data_json, "client_data_json"),
+            authenticator_data=_b64url(body.authenticator_data, "authenticator_data"),
+            signature=_b64url(body.signature, "signature"),
+            rp_id=cfg.webauthn_rp_id, allowed_origins=cfg.webauthn_origins,
+            correlation_id=body.correlation_id,
+            device_fingerprint=body.device_fingerprint, device_label=body.device_label,
         )
 
     @app.get("/auth/events")
@@ -3778,10 +3864,15 @@ def create_app(
                  "required_aal": identity_policy.required_aal(one.action_class)}
                 for name, one in sorted(authz_catalog.PERMISSIONS.items())],
             "count": len(authz_catalog.PERMISSIONS),
-            # The highest level any session in this build can reach. Level 3 needs a hardware
-            # authenticator MOD-007 cannot verify, so a `privileged` permission is held by
-            # nobody who can use it -- which a matrix has to be able to say.
-            "reachable_aal": 2,
+            # **The highest level any session in this build can reach, derived rather than
+            # written down.** It was the literal `2`, with a comment explaining that level 3
+            # needed a hardware authenticator nothing could verify -- and the day WebAuthn
+            # verification landed, this response went on telling a permissions matrix that a
+            # `privileged` permission was held by nobody who could use it. A ceiling computed
+            # from `VERIFIABLE_FACTORS` moves when the factors do; a number in a response
+            # moves when somebody remembers.
+            "reachable_aal": identity_policy.assurance_for(
+                list(identity.VERIFIABLE_FACTORS)),
             "a_permission_is_a_fact_about_the_software":
                 "Permissions are code, not rows, so every tenant sees this same list. A "
                 "per-tenant registry would let two tenants disagree about which exist.",
@@ -5359,10 +5450,11 @@ def create_app(
         for AAL 2 or 3, and the catalogue, `visibility` and CLAUDE.md all said so; the claim was
         false until this filter existed. Found by review.
 
-        `member.health.read` is `biometric_sensitive`, so it needs AAL 3, which needs a hardware
-        authenticator MOD-007 cannot verify -- which means this filter removes it from every
-        session in this build. That is the deliberate dead end `visibility.UNREACHABLE_CLASSES`
-        names, and it is now enforced rather than asserted.
+        `member.health.read` is `biometric_sensitive`, so it needs AAL 3 -- **which is
+        reachable now**, by signing in with a device-bound passkey. This filter removed it from
+        every session in the build for as long as nothing could verify a WebAuthn assertion,
+        and that was the dead end `visibility.UNREACHABLE_CLASSES` named; what it does now is
+        the thing it was always written to do, which is to let the level decide.
         """
         answer = authz.effective_permissions(
             identity_pool, session["tenant_id"], identity_id=session["identity_id"])

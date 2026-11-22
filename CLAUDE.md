@@ -152,6 +152,20 @@ It prints a JSON report and exits non-zero if any run failed. Drop `--once` to l
 `--job events.relay` or `--tenant <id>` to narrow it. The e2e fixture runs exactly this
 command as its last step, so the browser suite asserts against rows a scheduled job wrote.
 
+Passkey authentication needs two settings and refuses without them, which is deliberate: the
+relying party id binds a credential to a domain and guessing it would either break every
+credential or accept one made for a domain nobody controls.
+
+```bash
+export VEYRO_WEBAUTHN_RP_ID=veyro.test VEYRO_WEBAUTHN_ORIGINS=https://veyro.test
+```
+
+`config.load_settings` demands both or neither, refuses an origin carrying a path or a
+trailing slash, and refuses a plaintext origin outside `local`. With neither set, enrolment
+still works -- storing a credential is not authenticating with one -- and
+`/auth/passkey/login` answers 422 naming the configuration rather than 401 naming a
+credential.
+
 Dependencies are declared in `backend/requirements.txt` and hash-pinned in
 `backend/requirements.lock`; regenerate with
 `uv pip compile backend/requirements.txt --universal --python-version 3.13 --generate-hashes -o backend/requirements.lock`.
@@ -362,8 +376,10 @@ Things to know before extending it:
   raise inside the block on purpose, where nothing should survive the refusal.
 - **Recovery has its own lockout budget**, separate from the password one. Honouring the password
   lock here would shut the only door left, and sharing one counter could not do both jobs.
-- **AAL-3 is unreachable today**, and `/auth/require/*` says so in a `reachable` field rather than
-  implying otherwise. It needs a hardware authenticator, which needs WebAuthn verification.
+- **AAL-3 is reachable now**, and `/auth/require/*` says so in a `reachable` field computed from
+  `VERIFIABLE_FACTORS` rather than written down. It needs a device-bound passkey, which needs
+  the WebAuthn verification this module refused to fake and now does for real. No surface in
+  this build enrols one, so the route is the only way there.
 - **The session listing is bounded and filterable**, which it was not until something rendered
   it: `list_sessions` takes `limit` (default `SESSION_PAGE = 50`, refused above it) and
   `live_only`, because an unbounded read of every session an identity ever opened is a page
@@ -372,11 +388,16 @@ Things to know before extending it:
 
 Known gaps, deliberate:
 
-- **Passkeys are not an authentication factor.** Enrolment stores the credential, the public key
-  and the signature counter, and the clone check on that counter is real and revokes on sight. The
-  WebAuthn signature is not verified — CBOR, COSE and ECDSA, and hand-rolling it is how
-  authentication bypasses get written. `VERIFIABLE_FACTORS` is the list of what any path accepts
-  as proof, and a passkey is not in it.
+- **WebAuthn attestation is not verified, which is a different claim from the signature.** The
+  assertion *is* verified now -- see below -- so a passkey is an authentication factor and
+  `VERIFIABLE_FACTORS` contains both of them. What is not checked is which *model* of
+  authenticator a credential came from, which would need an AAGUID metadata service and a
+  tenant policy about which keys are accepted; neither exists, and neither is needed to know
+  that whoever signed in holds the private key for the public one on file.
+- **A passkey cannot raise an existing session.** `complete_step_up` takes a password or a
+  recovery code, so a step-up reaches level 2 and no higher; level 3 is reached by signing in
+  at `/auth/passkey/login` with a device-bound credential. Verifying an assertion inside the
+  step-up path is the next piece and is deliberately not half-built.
 - **No TOTP enrolment.** The algorithm is implemented and RFC-tested; storing a reversible shared
   secret needs a vault this repository does not have.
 - **No OIDC/SAML federation and no SCIM** (IAM-01-R04).
@@ -428,6 +449,105 @@ Known gaps, deliberate:
 - **The identity plane is a schema, not a separate database.** TSD paragraph 1151 says "Product
   PostgreSQL"; this repository provisions one cluster. The privilege boundary is real and checked
   in both directions; the physical separation is not there.
+
+**WebAuthn assertion verification — implemented, and it is the gap this file said cost the
+most.** `backend/app/identity/webauthn.py` verifies a signed assertion, so a passkey is an
+authentication factor and **AAL 3 is reachable for the first time**: for five modules
+`/auth/require/privileged` answered `reachable: false`, because a privileged action needs a
+hardware authenticator and nothing checked a signature. `POST /auth/passkey/challenge` issues
+the nonce and `POST /auth/passkey/login` verifies the assertion and opens a session at the
+level its factor reaches. Proven: 33 unit tests with no database and **12 mutations against
+the verifier, every one caught** by the case that names it; 20 integration tests against a
+real signature and a real PostgreSQL.
+
+**It needed the first new dependency this repository has taken.** `cryptography` is in
+`requirements.txt` and both locks, because verifying an assertion is ECDSA over P-256 and the
+standard library has no elliptic-curve arithmetic -- so MOD-007's standing note that
+hand-rolling CBOR, COSE and ECDSA "is how authentication bypasses get written" was correct and
+the answer was a library rather than a refusal. The signature check is `cryptography`'s; the
+parsing is of two binary shapes the specification pins byte for byte.
+
+Seven decisions carry it, and three of them remove something:
+
+- **No CBOR is parsed anywhere.** A COSE_Key is CBOR and this never sees one: enrolment takes
+  the SPKI DER that `AuthenticatorAttestationResponse.getPublicKey()` returns, which
+  `cryptography` loads directly. A CBOR decoder in the authentication path is a larger attack
+  surface than the key it decodes, and the signature proves possession either way -- a client
+  that substituted a public key could only enrol a credential it holds, which is what the
+  endpoint is for.
+- **No migration, and no column.** Within a closed set of three algorithms there is one key
+  type each, so `algorithm_for_key` derives the algorithm from the stored key: a request field
+  naming it would be a caller choosing how their own signature is checked. The day a second
+  algorithm over the same key type is admitted -- PS256 beside RS256 -- this stops being
+  derivable and needs the column, which is why the closed set is stated where the derivation
+  happens. And `iam.challenges.kind` has admitted `passkey_assertion` since MOD-007 was built:
+  **two declared values nothing wrote**, this build's own recurring finding in the schema of
+  the module whose subject is signing in, so the ceremony needed no table.
+- **`BE`, not `BS`, decides the factor.** Backup *eligibility* is set at creation and never
+  changes; `BS` says whether a credential currently is backed up, which flips the first time
+  somebody turns a keychain on -- so a credential that reached level 3 on Monday would reach
+  it again on Tuesday having been synced in between. The flag is signed over, so a caller
+  cannot ask for the hardware factor.
+- **A passkey with no user verification is refused rather than counted as something weaker.**
+  It proves possession of a device and says nothing about who holds it, and this build has no
+  factor name for that -- counting it would be inventing a level.
+- **The challenge is consumed on any attempt, which is the opposite of "verify, decide, then
+  consume".** That rule is about not destroying a credential the owner cannot replace; a nonce
+  is replaceable by one round trip, and one that survived a failed attempt is a replay window.
+- **The ceremony answers the same for every identifier.** A challenge is minted and returned
+  whatever was typed, and a row is stored only where there is an identity to store it against;
+  no credential list is returned either, because `allowCredentials` would name a person's
+  credential ids to anybody who knew their address. An assertion against an unstored challenge
+  is refused like any other, which is what makes the uniform answer safe -- and the uniformity
+  is MOD-007's own rule, which cost it a blocking defect when a locked identity answered 423
+  in two milliseconds while everything else answered 401 in fifty.
+- **The relying party id and the origins come from configuration with no default.** They are
+  deployment facts: the RP id is what binds a credential to a domain, which is the whole
+  anti-phishing property, and guessing it would either break every credential or accept one
+  made for a domain nobody controls. `config.load_settings` demands both or neither, refuses a
+  plaintext origin outside `local`, and refuses an origin carrying a path -- and a build that
+  has stated neither answers **422 naming the configuration** rather than 401 naming a
+  credential, because "wrong credential" is what the one person who could fix it would read.
+
+Two things to know before extending it:
+
+- **Every WebAuthn field is strict unpadded base64url**, and the enrolment route's two fields
+  were standard base64 until now. The alphabets agree on most byte strings and differ on the
+  rest, so one surface of the same ceremony spoke a different alphabet from the other -- and a
+  credential id written one way at enrolment and the other at sign-in is a credential nothing
+  can find. `b64url_decode` refuses `+`, `/` and padding outright, because a lenient decoder
+  in a nonce comparison is how a replay gets in.
+- **Every refusal is one `authentication_failed`.** `webauthn.REASONS` has twelve codes and
+  the caller is told none of them: saying whether the address, the credential or the signature
+  was wrong is the oracle MOD-022's public/private split is about. The code lands on the
+  insert-only auth log. `check_split` runs at import and requires the declared set and the
+  raised set to agree in both directions.
+
+**And a test that asserted the gap had to be rewritten, which is the rule working.**
+`test_finding_1b_the_highest_level_is_not_reachable_without_hardware` asserted
+`reachable: false`; that was a *consequence* of the gap rather than the finding, which was that
+a step-up cannot be had by naming a factor. It now asserts the property that still holds -- two
+real credentials, correctly presented, still refused for a privileged action -- and says why
+the other assertion is gone. A test insisting on a gap the product no longer has is the gap
+note outliving its gap, caught by the suite rather than by a reader.
+
+Known gaps, deliberate:
+
+- **No passkey step-up**, named above: level 3 is reached by signing in, not by raising a
+  session.
+- **No attestation, so no "only these certified keys" policy.** It needs the AAGUID metadata
+  service and a tenant-level decision about which authenticators are acceptable.
+- **MOD-021's device identity is not this.** A device certificate is mTLS and a signature this
+  build never made; WebAuthn verifies a *person's* authenticator. The vault that gap waits on
+  is unmoved, and MOD-022 still opens doors on an identity nothing verifies.
+- **CON-16 is still blocked, and this is the correction to this file's own "Next".** It
+  specifies "SSO with hardware-key MFA, and it is not optional" -- two halves. The hardware
+  half is built; the SSO half is IAM-01-R04's OIDC/SAML federation, which is unbuilt, so
+  MOD-015's Console screens remain blocked on federation rather than on WebAuthn.
+- **No `/auth/passkey/*` surface in the web app.** The ceremony is a browser API and this app
+  has no client component that calls it, so the only caller is the test suite. That is the
+  "a writer with no reader" shape and it is named rather than hidden: the next piece on the
+  surface is the account page offering to enrol one.
 
 **MOD-008 (IAM-03 authorization, roles, approvals and audit) — implemented, and reviewed.**
 Eleven more tables in `iam`. Working: roles with explicit permission lists, assignments scoped to
@@ -481,8 +601,12 @@ The design decisions worth knowing:
 - **`catalog.action_class` decides what needs a stepped-up session**, written per permission
   rather than derived, because each one is a judgement. A wrong `routine` is a real defect: a
   test caught `config.flag.write` classified too low against TSD paragraph 1020. `privileged`
-  means level 3, which needs a hardware factor MOD-007 cannot verify, so break-glass support
-  access and AI acting for a member **cannot be exercised in this build at all** — deliberately.
+  means level 3, which needs a device-bound passkey -- **which is reachable now**, so
+  break-glass support access and AI acting for a member are exercisable for the first time.
+  They were a deliberate dead end for five modules and the catalogue said so; what changed is
+  WebAuthn verification rather than the classification. The matrix's own `reachable_aal` is
+  derived from `VERIFIABLE_FACTORS` now, because it was the literal `2` and went stale the
+  hour the gap closed.
 - **The audit chain detects editing, not truncation.** It catches any change to an entry, a
   deletion from the middle, a rewritten anchor or link, and a deletion from the end that forgets
   the head. It does **not** catch truncation from the end by somebody who also moves the head,
@@ -1555,8 +1679,8 @@ forward as rules, because each is a shape that has now recurred:
   for every masked read. So every permission the masking consulted was effectively routine-class
   however the catalogue declared it: a password-only session holding `member.health.read` read
   medical notes in full, in the build whose own code says health is unreachable because AAL 3
-  needs a hardware factor MOD-007 cannot verify. The catalogue, `visibility.py` and this file all
-  stated the opposite. **An action class is decorative on any path that reads the permission
+  needed a hardware factor MOD-007 could not verify then. The catalogue, `visibility.py` and
+  this file all stated the opposite. **An action class is decorative on any path that reads the permission
   rather than gating on it.**
 - **A control consulted on one path and not its sibling** -- the fourth module. Guardianship was
   on `GET /people/{id}` and the 360; `/notes` and `/timeline` served a minor's data to the same
@@ -1653,12 +1777,14 @@ Things worth knowing before extending it:
   before anybody could read the record of a member who never gave a birthday, which is most
   leads. The threshold is eighteen, stated in `visibility.is_minor` rather than configured,
   because the sources name minors four times and give no age.
-- **`health` and `biometric` are unreadable in this build, by anybody.**
-  `member.health.read` is `biometric_sensitive`, which maps to AAL 3, which needs a hardware
-  authenticator MOD-007 cannot verify. So a health-classified note or custom field is stored,
-  counted and masked for every caller -- the same deliberate dead end MOD-008 records for
-  break-glass support access. `visibility.UNREACHABLE_CLASSES` names it rather than leaving it
-  to be discovered.
+- **`health` and `biometric` need the highest assurance this product has**, and that was
+  unreachable until WebAuthn verification landed. `member.health.read` is
+  `biometric_sensitive`, which maps to AAL 3; a device-bound passkey reaches it now, so a
+  session that signed in with one and holds the permission reads a health note -- which is
+  what the classification always meant. The masking was never keyed on
+  `visibility.UNREACHABLE_CLASSES`: `held_permissions` filters by the session's own assurance,
+  so the level decides. **No surface here enrols a passkey**, so every session a person can
+  open today still masks these, which is the surface's gap rather than the product's.
 - **A redacted record still exists.** Telling a coach that a member has no health notes when
   they have three is worse than telling them there are three they cannot read; paragraph 10280's
   "minimum necessary" is not zero knowledge that the context exists.
@@ -4616,10 +4742,10 @@ letters in the middle of an Arabic line. `MESSAGE_KEYS` cannot see any of them: 
 the two catalogues against each other and is blind to a string that never became a key.
 
 **TestSprite cannot see anything behind a step-up, and that bounds the layer rather than
-the product.** This build's only verifiable second factor is a single-use recovery code --
-TOTP and passkeys are implemented and unverifiable here -- so an outside reader can be given
-no credential that would raise a session, and handing one to a stored test would spend it on
-the first run. ADM-MSH-03's journey established the bound by hitting it: it verified the
+the product.** The only second factor *this surface* offers is a single-use recovery code: a
+passkey is verifiable on the server now and no page calls the browser API, and TOTP has no
+enrolment for want of a vault. So an outside reader can be given no credential that would
+raise a session, and handing one to a stored test would spend it on the first run. ADM-MSH-03's journey established the bound by hitting it: it verified the
 figure that bounds a freeze reads *without* a step-up, offered to go further, and stopped
 exactly where a real reader without a code would. Everything past that wall is the browser
 suite's, which holds the password and mints a fresh code per run.
@@ -4660,8 +4786,11 @@ read-only too, and `End access` is the one control there whose server half now e
 so a form that collects one is a different piece of work from a button;
 a step-up still spends a recovery code, and the account page's reissue needs a stepped-up
 session, so the batch that runs out pays for the step-up that mints the next one with its own
-last code -- a member who spends all ten without reissuing has no way back from this surface,
-because TOTP and passkeys are implemented and unverifiable here;
+last code -- a member who spends all ten without reissuing has no way back from this surface.
+**That is the surface's dead end rather than the build's now**: `/auth/passkey/login` verifies
+an assertion and opens a level-3 session, and nothing in this app calls
+`navigator.credentials`, so enrolling a passkey on the account page is the piece that would
+close it;
 every `tenancy.*.write` is a stepped-up
 financial permission and none of those forms is built, so the hierarchy and the people surfaces
 are read-only; there is no mobile client and no edge agent; and nothing here is deployed
@@ -4693,10 +4822,15 @@ every customer's data -- it gets the strongest door in the product." Both halves
 -- IAM-01-R04's OIDC/SAML federation, and the hardware factor AAL 3 needs, which needs the
 WebAuthn verification MOD-007 refuses to hand-roll. A console sign-in with a password would
 be substituting a weaker screen for the one the design draws, on the one account the design
-says must have the strongest door. So MOD-015's surface is blocked on WebAuthn, and that
-makes WebAuthn verification the piece whose absence now costs the most: it is the same
-missing capability behind AAL 3 everywhere, break-glass support access, AI acting for a
-member, and MOD-021's unverifiable device identity that MOD-022 opens doors on.
+says must have the strongest door.
+
+**WebAuthn verification is built now, and it was half of that wall.** `passkey_hardware` is a
+verifiable factor, AAL 3 is reachable, and break-glass support access and AI acting for a
+member are exercisable for the first time -- so what blocks the Console is the *other* half:
+IAM-01-R04's OIDC/SAML federation, which is unbuilt. That is the piece whose absence now costs
+the most on this surface. MOD-021's device identity is a separate wall and unmoved: a device
+certificate is mTLS and a signature nothing here makes, which is the vault rather than
+WebAuthn, and MOD-022 still opens doors on an identity nothing verifies.
 
 **The unblocked surface work is the Front desk**, nine screens whose modules are all built
 and all on the authenticated tenant plane. Three are built: FD-03 denial resolution and
@@ -4809,7 +4943,11 @@ MOD-009's crypto-shred, MOD-007's TOTP seeds, MOD-012's inbound webhook signatur
 MOD-021's device certificates are all waiting on. **The vault is the one that has moved from
 inconvenient to load-bearing**: MOD-021 enrols a credential it cannot verify a signature
 against, so a device's identity is a fingerprint somebody recorded rather than a key anything
-checks -- and MOD-022 now opens doors on that identity.
+checks -- and MOD-022 now opens doors on that identity. **WebAuthn verification does not touch
+this**, and the distinction is worth keeping straight: a passkey's private key never leaves
+the user's authenticator, so verifying an assertion needs no secret of ours at all, which is
+exactly why that gap could be closed while this one cannot. A device certificate is the
+opposite shape -- it is a secret this build would have to hold.
 
 **The worker runtime is no longer on that list, and six of the fourteen schedules are driven.**
 `backend/app/worker/` has its own section above. What closing it took is worth the same note

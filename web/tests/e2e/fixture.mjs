@@ -993,6 +993,20 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
     method: "POST", ...as(token),
     body: { policy_key: "CLASSES", display_name: "Class bookings",
             cancellation_hours: 12, max_concurrent: 5, quota: 10,
+            // **The widest grace the module allows, so the suite survives being re-run
+            // hours later.** FD-06's check-in window opens an hour before a class and closes
+            // `checkin_grace_minutes` after it starts, so the default fifteen gave the two
+            // tests that press the button a 75-minute life from seeding -- green in CI, which
+            // provisions immediately before the run, and red on a local re-run for a reason
+            // that looks exactly like a product regression. It took two of them.
+            //
+            // Four hours is the constraint's own ceiling (`0 <= grace <= 240`), it is a
+            // legitimate figure for a gym that lets people drift in, and it changes nothing
+            // the tests are about: the window still refuses tomorrow's class, which is what
+            // the sibling test asserts. **The freshness cannot be made by the spec** -- moving
+            // a session is a stepped-up scheduling write and a browser session is AAL 1 --
+            // so the fixture is the only place it can come from.
+            checkin_grace_minutes: 240,
             quota_period: "rolling_7_days", correlation_id: cid() },
   });
   // **The second occurrence, not the first.** The rule starts today, so the first occurrence
@@ -1018,11 +1032,16 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
   // against that session. Without this seed the one write on the Front Desk surface is
   // unreachable from a browser.
   //
-  // **Half an hour out, in the location's own zone**, which is why the local time is
+  // **Forty-five minutes out, in the location's own zone**, which is why the local time is
   // computed rather than typed: MOD-019 takes a local time and the site's zone and converts
   // each occurrence separately, so a UTC time here would be the wrong hour at the site and
   // the generated occurrence would land outside the window again.
-  const soon = new Date(Date.now() + 30 * 60_000);
+  //
+  // **Forty-five rather than thirty**, because the check-in window opens an hour before the
+  // class: at forty-five minutes it is already open when the fixture finishes, and with the
+  // grace above it stays open for nearly five hours. At thirty it was open too, and closed
+  // seventy-five minutes later.
+  const soon = new Date(Date.now() + 45 * 60_000);
   const localSoon = new Intl.DateTimeFormat("en-GB", {
     timeZone: "Asia/Amman", hour: "2-digit", minute: "2-digit", hourCycle: "h23",
   }).format(soon);

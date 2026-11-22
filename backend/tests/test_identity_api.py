@@ -459,32 +459,69 @@ class PasswordTests(IdentityTestCase):
 
 
 class PasskeyTests(IdentityTestCase):
+    @staticmethod
+    def b64url(raw: bytes) -> str:
+        """**Every WebAuthn field is base64url now**, which these tests used to send as
+        standard base64. The two alphabets agree on most byte strings and differ on the rest,
+        so one credential id could decode two ways depending on which decoder saw it -- and
+        `_b64url` is strict, so a standard-alphabet value is a 422 rather than a silent
+        difference."""
+        return base64.urlsafe_b64encode(raw).rstrip(b"=").decode("ascii")
+
+    @staticmethod
+    def spki() -> bytes:
+        """A real P-256 public key, because enrolment loads what it is given now.
+
+        It used to store any 48 bytes. A key that cannot be parsed is refused here -- where
+        somebody can read the reason -- rather than at the moment they are trying to sign in,
+        which is the only thing standing between "a passkey is enrolled" and "a passkey can be
+        used"."""
+        from cryptography.hazmat.primitives import serialization
+        from cryptography.hazmat.primitives.asymmetric import ec
+        return ec.generate_private_key(ec.SECP256R1()).public_key().public_bytes(
+            encoding=serialization.Encoding.DER,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo)
+
     def enroll(self, tenant_id: str, identity_id: str, token: str, *, cred: str | None = None):
         return self.client.post(f"/identities/{identity_id}/passkeys", json={
-            "webauthn_credential_id": cred or base64.b64encode(
-                uuid.uuid4().bytes).decode("ascii"),
-            "public_key": base64.b64encode(b"k" * 48).decode("ascii"),
+            "webauthn_credential_id": cred or self.b64url(uuid.uuid4().bytes * 2),
+            "public_key": self.b64url(self.spki()),
             **self.correlation(), "label": "YubiKey"},
             headers=self.headers(tenant_id, token))
 
-    def test_a_passkey_enrols_and_says_plainly_that_it_is_not_a_factor(self):
+    def test_a_passkey_enrols_and_says_which_algorithm_it_can_be_verified_with(self):
+        # **This test asserted the opposite until an hour ago**, and the assertion was right
+        # then: with no signature verification a passkey was not a factor, and the response
+        # said so. It is one now, so what the response says changed -- which is the shape this
+        # repository records as a gap note outliving its gap, caught here by the test failing.
         tenant_id, identity_id, _, token = self.signed_in()
         response = self.enroll(tenant_id, identity_id, token)
         self.assertEqual(response.status_code, 201, response.text)
-        self.assertFalse(response.json()["verified"])
-        self.assertIn("not an auth factor", response.json()["note"])
+        self.assertTrue(response.json()["verifiable"])
+        self.assertEqual(response.json()["cose_algorithm"], -7)
+        # And which factor it presents is not knowable here: the flag that decides it is
+        # signed over per assertion.
+        self.assertIn("per assertion", response.json()["factor"])
+
+    def test_a_public_key_that_cannot_be_loaded_is_refused_at_enrolment(self):
+        tenant_id, identity_id, _, token = self.signed_in()
+        response = self.client.post(f"/identities/{identity_id}/passkeys", json={
+            "webauthn_credential_id": self.b64url(uuid.uuid4().bytes * 2),
+            "public_key": self.b64url(b"\x30" + b"\x01" * 48), **self.correlation()},
+            headers=self.headers(tenant_id, token))
+        self.assertEqual(response.status_code, 422, response.text)
 
     def test_the_same_credential_cannot_be_enrolled_twice(self):
         tenant_id, identity_id, _, token = self.signed_in()
-        cred = base64.b64encode(uuid.uuid4().bytes).decode("ascii")
+        cred = self.b64url(uuid.uuid4().bytes * 2)
         self.assertEqual(self.enroll(tenant_id, identity_id, token, cred=cred).status_code, 201)
         self.assertEqual(self.enroll(tenant_id, identity_id, token, cred=cred).status_code, 409)
 
     def test_short_passkey_material_is_refused(self):
         tenant_id, identity_id, _, token = self.signed_in()
         response = self.client.post(f"/identities/{identity_id}/passkeys", json={
-            "webauthn_credential_id": base64.b64encode(b"short").decode("ascii"),
-            "public_key": base64.b64encode(b"k" * 48).decode("ascii"), **self.correlation()},
+            "webauthn_credential_id": self.b64url(b"short"),
+            "public_key": self.b64url(self.spki()), **self.correlation()},
             headers=self.headers(tenant_id, token))
         self.assertEqual(response.status_code, 422)
 
@@ -545,14 +582,27 @@ class ReviewRegressionTests(IdentityTestCase):
             self.assertIn(response.status_code, (403, 422), claimed)
         self.assertEqual(self.client.get("/auth/session", headers=head).json()["aal"], 1)
 
-    def test_finding_1b_the_highest_level_is_not_reachable_without_hardware(self):
-        """AAL-3 needs a verified hardware authenticator, and nothing can verify one yet."""
+    def test_finding_1b_the_highest_level_is_not_had_by_presenting_weaker_factors(self):
+        """A password and a recovery code are two kinds of thing and still not level 3.
+
+        **This test asserted `reachable: False` and that assertion is gone**, because WebAuthn
+        verification closed the gap behind it: `passkey_hardware` is a verifiable factor now,
+        so the honest answer is that the bar *can* be met -- by signing in with a device-bound
+        passkey, which `test_passkey_login.py` proves.
+
+        The finding it was written for is untouched and is what is asserted here: a step-up
+        cannot reach a level its factors do not. The original defect handed out AAL 3 for a
+        list of factor *names*; this presents two real credentials, correctly, and is still
+        refused. Keeping the `reachable` assertion would have been a test insisting on a gap
+        the product no longer has -- the shape this repository calls a gap note outliving its
+        gap, which is why it failed the moment the gap closed.
+        """
         tenant_id, identity_id, _, token = self.signed_in()
         codes = self.codes(tenant_id, identity_id, token)
         head = self.headers(tenant_id, token)
         asked = self.client.get("/auth/require/privileged", headers=head).json()
         self.assertTrue(asked["step_up_required"])
-        self.assertFalse(asked["reachable"], "the API must say so rather than imply otherwise")
+        self.assertTrue(asked["reachable"], "a hardware passkey reaches it now")
         response = self.client.post("/auth/step-up", json={
             "challenge": asked["challenge"], "recovery_code": codes[0], "password": self.PASSWORD,
             **self.correlation()}, headers=head)

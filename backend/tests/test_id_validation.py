@@ -29,7 +29,12 @@ from tests.support import GatedApiTestCase
 #:
 #: * `require_uuid` and `optional_uuid` are the shape check.
 #: * `consent_subject` derives MOD-009's subject and calls `optional_uuid` itself.
-#: * `_b64` is for a WebAuthn credential id, which is base64 rather than a uuid.
+#: * `_b64` and `_b64url` are for a WebAuthn credential id, which is base64 rather than a uuid.
+#:   **`_b64url` is the strict one and is what every WebAuthn field now uses**: the two
+#:   alphabets agree on most byte strings and differ on the rest, so accepting either would
+#:   mean one credential id decoding to two different byte strings depending on which decoder
+#:   saw it. Adding it here rather than widening the pattern is the point -- a validator is
+#:   named, not inferred.
 #: * **`owned` is not a shape check and is still enough.** It refuses anything that is not the
 #:   session's own identity id with a 404, so a malformed value -- which can never equal a real
 #:   uuid -- stops there. A second check behind it would be a second spelling of the same rule.
@@ -40,7 +45,8 @@ from tests.support import GatedApiTestCase
 #:   and it bounds the count as well, because an unbounded repeated parameter is a request
 #:   whose cost the caller chooses.
 VALIDATORS = frozenset({
-    "require_uuid", "optional_uuid", "require_uuids", "_b64", "consent_subject", "owned"})
+    "require_uuid", "optional_uuid", "require_uuids", "_b64", "_b64url", "consent_subject",
+    "owned"})
 
 #: Parameter names that are never an entity id. `tenant_id` is the header, validated by its own
 #: dependency; `correlation_id` is a trace handle that every route carries.

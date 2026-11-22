@@ -1,3 +1,17 @@
 fastapi>=0.115,<1
 uvicorn>=0.30,<1
 psycopg[binary,pool]>=3.2,<4
+# **The one dependency MOD-007 refused to add until it was the thing costing the most.**
+# Verifying a WebAuthn assertion is ECDSA over P-256 (and Ed25519), and the standard library
+# has no elliptic-curve arithmetic -- so the module's standing note that hand-rolling CBOR,
+# COSE and ECDSA "is how authentication bypasses get written" left the signature unchecked,
+# which left AAL 3 unreachable, break-glass support unexercisable, MOD-021's device identity
+# a fingerprint nothing verifies and the Console surface blocked behind CON-16's
+# hardware-key sign-in. This is the library, not a hand-rolled verifier.
+#
+# **No CBOR, deliberately.** A COSE_Key is CBOR and this never parses one: enrolment takes
+# the SPKI DER that `AuthenticatorAttestationResponse.getPublicKey()` returns, which
+# `cryptography` loads directly. A client that cannot produce it cannot enrol a verifiable
+# passkey, and the response says so -- which is a smaller surface than a CBOR parser in the
+# authentication path, and the signature is what proves possession either way.
+cryptography>=46,<48

@@ -54,17 +54,23 @@ CLASS_PERMISSIONS: dict[str, str] = {
     "biometric": "member.health.read",
 }
 
-#: **`health` and `biometric` are unreadable in this build, by anybody.**
+#: **`health` and `biometric` need the highest assurance this product has**, and until WebAuthn
+#: verification landed that meant no session could read them at all.
 #:
-#: `member.health.read` is `biometric_sensitive`, which MOD-007's policy maps to AAL 3, which
-#: needs a hardware authenticator MOD-007 cannot verify -- so the permission can be granted and
-#: can never be exercised. That is the same deliberate dead end MOD-008 records for break-glass
-#: support access, and the consequence here is that a health-classified note or custom field is
-#: stored, counted and masked for every caller.
+#: `member.health.read` is `biometric_sensitive`, which MOD-007's policy maps to AAL 3. For
+#: five modules nothing could verify a hardware authenticator, so the permission could be
+#: granted and never exercised and a health-classified note was masked for every caller. **A
+#: device-bound passkey reaches level 3 now**, so a session that signed in with one and holds
+#: the permission reads it -- which is what the classification always meant and is why the
+#: masking was never keyed on this tuple: `held_permissions` filters by the session's own
+#: assurance, so the level decides rather than a list here.
 #:
-#: Named rather than left to be discovered, because the alternative -- quietly mapping health to
-#: something reachable -- is how a field somebody collected as medical information becomes
-#: readable at the front desk.
+#: What this tuple is for is still worth having: it names the classes whose readers must have
+#: presented a hardware factor, so a later change mapping health to something cheaper is a
+#: change to a named constant rather than a quiet remapping. **No surface in this build enrols
+#: a passkey**, so in practice every session a person can open today still masks these -- and
+#: that is the surface's gap rather than the product's, which is a different sentence from the
+#: one this comment used to carry.
 UNREACHABLE_CLASSES = ("health", "biometric")
 
 

@@ -71,7 +71,8 @@ import { dayLabel, timeOfDay, utcStamp } from "@/lib/time";
  * the rendering is still the point: a withheld value is marked with its reason, because an
  * empty cell is indistinguishable from "there was nothing here", which is the one reading that
  * is always wrong. The two reasons have different remedies -- an identity field needs a
- * stronger sign-in, which the step-up link offers; a health field cannot be read by anybody in
+ * stronger sign-in, which the step-up link offers; a health field needs a level this screen
+ * cannot reach -- a passkey on a hardware authenticator, which no page here enrols -- in
  * this build, because `member.health.read` is `biometric_sensitive`, which maps to assurance
  * level 3, which needs a hardware authenticator MOD-007 cannot verify.
  */

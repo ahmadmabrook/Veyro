@@ -28,9 +28,15 @@ stated with the mistake it exists to prevent:
 
 Not implemented, and named rather than left to be discovered:
 
-* **WebAuthn signature verification.** Enrolment keeps the credential, the public key and the
-  signature counter, and the counter check is real clone detection. The signature is not verified,
-  so **a passkey is not an authentication factor** and no code path accepts one as proof.
+* **WebAuthn attestation**, which is a different claim from the signature: the assertion is
+  verified now (`app/identity/webauthn.py`), so a passkey is a factor and AAL 3 is reachable.
+  What is not checked is *which model* of authenticator a credential came from, which would
+  need an AAGUID metadata service and a policy about which keys a tenant accepts -- neither
+  exists here, and neither is needed to know that whoever signed in holds the private key.
+* **Passkey step-up.** `complete_step_up` takes a password or a recovery code, so a session is
+  raised to level 2 and no higher; level 3 is reached by signing in with a device-bound
+  passkey rather than by raising an existing session. Verifying an assertion inside the
+  step-up path is the next piece and is deliberately not half-built.
 * **AAL-3 is unreachable.** It requires a hardware authenticator, which needs the verification
   above. `required_aal("privileged")` is 3, so a privileged action cannot be stepped up to today;
   that is the honest state rather than a level handed out on request.
@@ -57,7 +63,7 @@ from psycopg.types.json import Jsonb
 
 from app.db import Pool, tenant_scope
 from app.errors import Conflict, InvalidRequest, NotFound, ServiceError
-from app.identity import policy, secrets
+from app.identity import policy, secrets, webauthn
 
 _EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", re.ASCII)
 _PHONE = re.compile(r"^\+[1-9]\d{6,14}$", re.ASCII)
@@ -73,9 +79,18 @@ _DUMMY = secrets.hash_secret("dummy-credential-for-constant-time-failure")
 
 PASSWORD = "password"
 RECOVERY_CODE = "recovery_code"
-VERIFIABLE_FACTORS = (PASSWORD, RECOVERY_CODE)
-"""The only factors any code path accepts as proof. A passkey is not here, and saying its name
-does not add it: `complete_step_up` takes credentials, never factor names."""
+PASSKEY_HARDWARE = "passkey_hardware"
+PASSKEY_SYNCED = "passkey_synced"
+VERIFIABLE_FACTORS = (PASSWORD, RECOVERY_CODE, PASSKEY_HARDWARE, PASSKEY_SYNCED)
+"""The only factors any code path accepts as proof, and saying a factor's name does not add it:
+`complete_step_up` takes credentials, never factor names.
+
+**The two passkey factors are here now, and nothing but `app.identity.webauthn` puts one in a
+session.** They arrived with signature verification and not before: for as long as the
+signature was unchecked, a passkey proved nothing, so this tuple held two entries and
+`require_assurance` answered that AAL 3 was unreachable by anybody. Which of the two an
+assertion presents is decided by the `BE` flag the authenticator signed over -- never by a
+request field -- so a caller cannot ask for the hardware one."""
 
 
 class AuthenticationFailed(ServiceError):
@@ -1333,10 +1348,18 @@ def require_assurance(
     with `step_up_required` true, because a 403 carrying no challenge tells a client to step up
     while withholding the one value it needs.
 
-    `reachable` says whether stepping up can actually succeed. A privileged action needs level 3,
-    which needs a hardware authenticator, which needs the WebAuthn verification this module does
-    not have -- so the honest answer is that the bar cannot be met today, not a level issued on
-    request.
+    `reachable` says whether stepping up can actually succeed, computed from
+    `VERIFIABLE_FACTORS` rather than written down. **It answers true for level 3 now**, and for
+    five modules it answered false: a privileged action needs a hardware authenticator, which
+    needed the WebAuthn signature verification this module deliberately did not have. It does
+    now, so `passkey_hardware` is a verifiable factor and the bar can be met.
+
+    **What that does not mean is that `/auth/step-up` can raise a session to it.** Step-up
+    takes a password or a recovery code, neither of which reaches level 3, so the way to a
+    level-3 session is signing in with a device-bound passkey at `/auth/passkey/login`. A
+    stepped-up *passkey* assertion is the obvious next piece and is named as a gap rather than
+    half-built -- and `reachable` is honest either way, because it is about whether any factor
+    in this build reaches the level rather than about which route gets there.
     """
     _now_ = _now()
     session = resolve_session(pool, tenant_id, token=token)
@@ -1630,16 +1653,29 @@ def enroll_passkey(
     transports: list[str] | None = None,
     backed_up: bool = False,
 ) -> dict[str, Any]:
-    """EnrollPasskey (IAM-01-R02), storing what a verifier would later need.
+    """EnrollPasskey (IAM-01-R02), keeping a key this build can actually verify against.
 
-    **The attestation is not verified**, so an enrolled passkey is not an authentication factor:
-    no code path accepts one as proof and `VERIFIABLE_FACTORS` does not contain it. What is kept
-    is the credential id, the public key and the starting signature counter -- the inputs a
-    WebAuthn library needs. Pretending to verify would be worse than not verifying.
+    **`public_key` is SPKI DER**, which is what `AuthenticatorAttestationResponse.getPublicKey()`
+    returns, and it is loaded here rather than stored as opaque bytes: a key that cannot be
+    parsed, or is of a type this build does not verify, is refused at enrolment -- where
+    somebody can read the reason -- rather than at the moment they are trying to sign in. That
+    is the only thing standing between "a passkey is enrolled" and "a passkey can be used",
+    and the first version of this function stored whatever it was handed.
+
+    **The attestation is still not verified**, and that is a different claim from the signature.
+    Attestation says *which model of authenticator* this is, which matters for a policy like
+    "only these certified keys"; this build has no such policy and no metadata service to
+    resolve an AAGUID against. What is verified is the assertion -- that whoever is signing
+    in holds the private key for this public one -- which is what makes a passkey a factor.
     """
     _require_uuid(correlation_id, "correlation_id")
     if len(webauthn_credential_id) < 16 or len(public_key) < 32:
         raise InvalidRequest("bad_passkey_material")
+    try:
+        algorithm = webauthn.algorithm_for_key(public_key)
+        webauthn.load_public_key(public_key, algorithm)
+    except webauthn.WebAuthnError as exc:
+        raise InvalidRequest(exc.code) from None
     with tenant_scope(pool, tenant_id) as conn:
         _require_identity(conn, identity_id)
         try:
@@ -1659,8 +1695,206 @@ def enroll_passkey(
         _event(conn, tenant_id, kind="passkey.registered", outcome="succeeded",
                identity_id=identity_id, factor="passkey", correlation_id=correlation_id)
     return {"passkey_id": str(row[0]), "identity_id": identity_id, "label": label,
-            "verified": False,
-            "note": "signature verification is not implemented; this is not an auth factor"}
+            "cose_algorithm": algorithm, "verifiable": True,
+            # **Which factor this will present is not knowable here.** The `BE` flag comes
+            # from an assertion the authenticator signs, and enrolment sees no assertion -- so
+            # whether this credential reaches level 2 or level 3 is answered the first time
+            # somebody signs in with it, by the flag rather than by anything stored.
+            "factor": "decided per assertion by the backup-eligibility flag"}
+
+
+def begin_passkey_assertion(
+    pool: Pool, tenant_id: str, *, identifier: str, correlation_id: str,
+) -> dict[str, Any]:
+    """Issue the challenge a passkey sign-in will be verified against.
+
+    **The response is the same shape for every identifier, and that is the whole design.** A
+    ceremony that answered "no passkey is enrolled for this address" would be a directory of
+    which addresses exist and which have a passkey -- MOD-007's own rule, which cost this
+    module a blocking defect when a locked identity answered 423 in two milliseconds while
+    everything else answered 401 in fifty. So a challenge is minted and returned whatever the
+    identifier is; a row is stored only when there is an identity to store it against, and an
+    assertion against an unstored challenge is refused at verification like any other.
+
+    **No credential list is returned either.** WebAuthn's `allowCredentials` would name this
+    person's credential ids to anybody who typed their address. Every passkey this build can
+    verify is discoverable -- the browser finds it from the relying party id -- so the list is
+    not needed, and leaving it out is what keeps the response uniform.
+
+    Nothing is spent by calling this: an unstored nonce is a random string, and a stored one
+    expires. The route is rate-limited because the path is unauthenticated, which is the bound
+    that matters here.
+    """
+    _require_uuid(correlation_id, "correlation_id")
+    now = _now()
+    nonce = secrets.mint_nonce()
+    with tenant_scope(pool, tenant_id) as conn:
+        found = _find_identity(conn, identifier)
+        if found is not None and found[1] == "active":
+            conn.execute(
+                """
+                INSERT INTO iam.challenges
+                    (tenant_id, identity_id, kind, nonce_hash, required_aal, expires_at)
+                VALUES (%s, %s, 'passkey_assertion', %s, NULL, %s)
+                """,
+                (tenant_id, str(found[0]), nonce.digest, policy.challenge_expiry(now)),
+            )
+    return {"challenge": nonce.token, "expires_in_seconds": int(
+        (policy.challenge_expiry(now) - now).total_seconds())}
+
+
+def authenticate_with_passkey(
+    pool: Pool,
+    tenant_id: str,
+    *,
+    identifier: str,
+    challenge: str,
+    credential_id: bytes,
+    client_data_json: bytes,
+    authenticator_data: bytes,
+    signature: bytes,
+    rp_id: str | None,
+    allowed_origins: tuple[str, ...],
+    correlation_id: str,
+    device_fingerprint: str | None = None,
+    device_label: str | None = None,
+) -> dict[str, Any]:
+    """Sign in with a passkey, verifying the signature (IAM-01-R02).
+
+    **This is the function MOD-007 refused to write until it could write it honestly**, and
+    what it buys is the whole of AAL 3: a device-bound credential with user verification opens
+    a level-3 session, so break-glass support access and the actions MOD-008 classifies
+    `privileged` stop being a deliberate dead end.
+
+    The order is: resolve the identity, find the challenge, **consume it**, find the credential,
+    verify, then advance the counter and open the session.
+
+    **The challenge is consumed before the signature is checked, and that is deliberate** --
+    the opposite of MOD-007's "verify, decide, then consume", because a nonce is not a
+    credential. A recovery code destroyed by a refusal is a credential the honest owner has
+    lost; a challenge destroyed by a refusal costs one more round trip, and a challenge that
+    survived a failed attempt is a replay window. The rule is about not spending what the user
+    cannot replace.
+
+    **Every refusal is one `AuthenticationFailed`.** `webauthn.REASONS` has twelve codes and
+    the caller is told none of them: which part was wrong is exactly the oracle paragraph
+    1944's sibling rule in MOD-022 is about, and here it would say whether an address, a
+    credential or a signature was the problem. The reason lands on the insert-only auth log,
+    where somebody holding the permission can read it.
+    """
+    _require_uuid(correlation_id, "correlation_id")
+    if rp_id is None or not allowed_origins:
+        # **Not an authentication failure.** A deployment that has not stated its relying party
+        # cannot verify anything, and answering 401 would read as "wrong credential" to the one
+        # person who could fix it.
+        raise InvalidRequest("webauthn_not_configured")
+    now = _now()
+    with tenant_scope(pool, tenant_id) as conn:
+        outcome, error = _passkey_login_in_tx(
+            conn, tenant_id, identifier=identifier, challenge=challenge,
+            credential_id=credential_id, client_data_json=client_data_json,
+            authenticator_data=authenticator_data, signature=signature, rp_id=rp_id,
+            allowed_origins=allowed_origins, device_fingerprint=device_fingerprint,
+            device_label=device_label, now=now, correlation_id=correlation_id)
+    return _settled((outcome, error))
+
+
+def _passkey_login_in_tx(
+    conn: Connection[Any], tenant_id: str, *, identifier: str, challenge: str,
+    credential_id: bytes, client_data_json: bytes, authenticator_data: bytes,
+    signature: bytes, rp_id: str, allowed_origins: tuple[str, ...],
+    device_fingerprint: str | None, device_label: str | None, now: datetime,
+    correlation_id: str,
+) -> tuple[dict[str, Any], ServiceError | None]:
+    """The transaction, so every refusal commits its own evidence before it is raised.
+
+    `tenant_scope` rolls back when the block raises, which is why this returns the error for
+    `_settled` to raise outside -- MOD-007's and MOD-008's standing rule, and the reason three
+    denial paths in this module once wrote an audit row and threw it away.
+    """
+    failed: dict[str, Any] = {}
+    refused = AuthenticationFailed("authentication_failed")
+
+    def refuse(reason: str, identity_id: str | None) -> tuple[dict[str, Any], ServiceError]:
+        _event(conn, tenant_id, kind="authentication.failed", outcome="failed",
+               identity_id=identity_id, factor="passkey", reason=reason,
+               correlation_id=correlation_id)
+        return failed, refused
+
+    found = _find_identity(conn, identifier)
+    if found is None or found[1] != "active":
+        # No identity to attribute an event to, and `iam.auth_events` requires one -- so the
+        # refusal is silent here, exactly as the password path's unknown-identifier branch is.
+        return failed, refused
+    identity_id = str(found[0])
+
+    pending = _pending_challenge(conn, identity_id, challenge, "passkey_assertion", now)
+    if pending is None:
+        return refuse("challenge_invalid", identity_id)
+    conn.execute("UPDATE iam.challenges SET consumed_at = %s WHERE challenge_id = %s",
+                 (now, pending[0]))
+
+    row = conn.execute(
+        "SELECT passkey_id, public_key, revoked_at FROM iam.passkeys"
+        " WHERE identity_id = %s AND webauthn_credential_id = %s",
+        (identity_id, credential_id),
+    ).fetchone()
+    if row is None:
+        return refuse("credential_unknown", identity_id)
+    passkey_id, public_key = str(row[0]), bytes(row[1])
+    if row[2] is not None:
+        return refuse("credential_revoked", identity_id)
+
+    try:
+        verified = webauthn.check_assertion(
+            client_data_json=client_data_json, authenticator_data=authenticator_data,
+            # **The bytes the browser signed are this token's own base64url decoding.**
+            # `mint_nonce` returns `token_urlsafe`, which is unpadded base64url with no
+            # `+` or `/`, so the client decodes the string it was handed and signs those
+            # bytes -- and the strict decoder here produces the same ones. A lenient one
+            # would let a single challenge be written two ways.
+            signature=signature, expected_challenge=webauthn.b64url_decode(challenge),
+            rp_id=rp_id, allowed_origins=allowed_origins, public_key_spki=public_key,
+            algorithm=webauthn.algorithm_for_key(public_key))
+    except webauthn.WebAuthnError as exc:
+        return refuse(exc.code, identity_id)
+
+    # The clone check, and the revocation it causes, are `record_passkey_assertion`'s -- one
+    # implementation, because two counters compared in two places drift and the day they
+    # disagree nobody can say which one is the policy.
+    advanced, counter_error = _assertion_in_tx(
+        conn, tenant_id, passkey_id=passkey_id, identity_id=identity_id,
+        sign_count=verified.sign_count, correlation_id=correlation_id)
+    if counter_error is not None:
+        # A clone has already revoked the passkey and every session for this identity inside
+        # `_assertion_in_tx`; the caller is told the same thing as every other refusal.
+        return failed, refused
+    assert advanced
+
+    device = _touch_device(conn, tenant_id, identity_id, device_fingerprint, device_label, now)
+    if device.revoked:
+        return refuse("device_revoked", identity_id)
+    # **A verified passkey confirms the device**, for the reason a password login that needed
+    # no challenge does: the assertion is stronger evidence than anything a risk challenge
+    # could ask for, and leaving the device unconfirmed would challenge the next password
+    # login of somebody who just proved possession of a hardware authenticator.
+    _confirm_device(conn, device.device_id, now)
+    cleared = policy.after_success(policy.LockoutState(
+        failed_attempts=int(found[2]), locked_until=found[3]))
+    conn.execute(
+        "UPDATE iam.identities SET failed_attempts = %s, locked_until = NULL,"
+        " version = version + 1 WHERE identity_id = %s",
+        (cleared.failed_attempts, identity_id),
+    )
+    session = _open_session(conn, tenant_id, identity_id, device.device_id,
+                            [verified.factor], now)
+    _event(conn, tenant_id, kind="authentication.succeeded", outcome="succeeded",
+           identity_id=identity_id, factor=verified.factor, device_id=device.device_id,
+           session_id=session["session_id"], reason="passkey_verified",
+           correlation_id=correlation_id)
+    return ({"authenticated": True, "challenge_required": False, **session,
+             "identity_id": identity_id, "device_id": device.device_id,
+             "passkey_id": passkey_id, "backed_up": verified.backed_up}, None)
 
 
 def record_passkey_assertion(

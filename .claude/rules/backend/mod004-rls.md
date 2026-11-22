@@ -1466,3 +1466,35 @@ names a fallback. The first attempt "fixed" the board's test to match the strip,
 the wrong direction: the board was right. The resolution is a comment on each side naming the
 other, because a reader who sees two screens disagree deserves to know it was deliberate.
 
+
+**A test that asserts a gap has to be rewritten the day the gap closes, and that is the rule
+working rather than the test being wrong.** WebAuthn verification made `AAL 3` reachable, and
+three things in the tree said it was not: `test_finding_1b_the_highest_level_is_not_reachable
+_without_hardware` asserted `reachable: false`, `GET /authz/permissions` returned the **literal**
+`"reachable_aal": 2`, and `visibility.UNREACHABLE_CLASSES`' comment said health was "unreadable
+in this build, by anybody". Only the first failed. The second is the one worth the paragraph: a
+ceiling written down as a number goes stale the hour the factors change, and a ceiling derived
+from `VERIFIABLE_FACTORS` cannot -- so the response computes it now, and the comment explaining
+why the number was 2 is gone with it. The third was a comment on a constant nothing reads, which
+no test can see at all.
+
+The finding behind that regression test was never "level 3 is unreachable"; it was that a
+step-up cannot be had by naming a factor. So the test keeps the assertion that still holds --
+two real credentials, correctly presented, still refused for a privileged action -- and says in
+its own docstring why the other assertion went. **Ask of any test that fails when a gap
+closes: was it asserting the finding, or a consequence of the gap?** Deleting it loses the
+finding; leaving it insists on a limitation the product no longer has.
+
+**And a window measured from when the fixture ran is a green that depends on how long ago that
+was.** FD-06's check-in window opens an hour before a class and closes `checkin_grace_minutes`
+after it starts, and the fixture seeded the class thirty minutes out with the default fifteen
+minutes of grace -- so the two tests that press the button had a seventy-five minute life.
+**CI never sees it**, because CI provisions immediately before the suite; a local re-run two
+hours later fails in a way that reads exactly like a product regression, and it did, twice.
+This is the sibling of "a test that asserts a freshness has to create it", with the twist that
+here the spec *cannot* create it: moving a session is a stepped-up scheduling write and a
+browser session is AAL 1. So the fixture carries it -- the class forty-five minutes out so the
+window is already open when seeding finishes, and the grace at the constraint's own ceiling of
+240 so it stays open for nearly five hours. **The number is a product value at its legitimate
+limit rather than a test hook**, which is the difference between widening a fixture and
+widening a control.

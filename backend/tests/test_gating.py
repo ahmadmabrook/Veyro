@@ -897,6 +897,13 @@ class GateCoverageTests(unittest.TestCase):
         # needing a session to get a session.
         ("POST", "/auth/login"): "authentication",
         ("POST", "/auth/challenge"): "authentication",
+        # The passkey half of the same front door. **Both are deliberately uniform for every
+        # identifier**: the challenge route stores a row only where there is an identity to
+        # store it against and returns the same shape either way, so neither says which
+        # addresses exist or which have a credential. Both are rate-limited on the
+        # `auth.login` budget, which is what bounds an open path here.
+        ("POST", "/auth/passkey/challenge"): "authentication",
+        ("POST", "/auth/passkey/login"): "authentication",
         ("POST", "/auth/rotate"): "authentication",
         ("POST", "/auth/step-up"): "authentication",
         ("POST", "/auth/recover"): "authentication",

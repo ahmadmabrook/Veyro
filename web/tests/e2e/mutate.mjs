@@ -316,7 +316,7 @@ const MUTATIONS = [
     // Repointed: the anchor went stale when the code around it moved.
     from: "                        ? \"member.withheldHealth\"\n                        : \"member.withheldIdentity\"",
     to: "                        ? \"member.withheldIdentity\"\n                        : \"member.withheldIdentity\"",
-    grep: "cannot be read by anybody",
+    grep: "needs a level this screen cannot reach",
   },
   {
     id: "note-health-remedy",
@@ -373,7 +373,7 @@ const MUTATIONS = [
   },
   {
     id: "stepup-unreachable",
-    why: "level 3 needs a hardware authenticator this build cannot verify, so offering a field "
+    why: "level 3 needs a passkey no page here enrols, so offering a field "
       + "sends somebody looking for a key the product cannot check",
     file: "src/app/step-up/page.tsx",
     from: "  if (!asked.reachable) {",
