@@ -92,9 +92,12 @@ test.describe("the operations board", () => {
     const jobs = page
       .locator("section")
       .filter({ has: page.getByRole("heading", { name: "Scheduled jobs" }) });
-    // Six jobs, and the registry is what decides that -- a job added without a declared name
-    // cannot record a metric at all, so a seventh row here means a seventh job was wired.
-    await expect(jobs.locator("tbody tr")).toHaveCount(6);
+    // Seven jobs, and the registry is what decides that -- a job added without a declared
+    // name cannot record a metric at all, so an eighth row here means an eighth job was
+    // wired. **The count is a tripwire on purpose**, which is why it is a literal rather
+    // than a property: wiring a job should bring somebody to this file. The seventh is
+    // MOD-011's objective evaluation, which is also what made the next test's locator fail.
+    await expect(jobs.locator("tbody tr")).toHaveCount(7);
     await expect(jobs).toContainText("events.relay");
     await expect(jobs).toContainText("access.replay_sweep");
     // The fixture ran the worker once, so no job may read as never run.
@@ -144,7 +147,16 @@ test.describe("the operations board", () => {
   });
 
   test("says an empty objective list means nobody set a threshold", async ({ page }) => {
-    const objectives = page.locator("section").filter({ hasText: "Objectives" }).first();
+    // **Scoped by the heading, not by the text**, for the fourth time in this file -- and
+    // this one was predicted by the comment two tests up. `hasText: "Objectives"` matched the
+    // *Scheduled jobs* section the hour `observability.evaluate_objectives` was wired, so a
+    // test about the objectives block began asserting against the jobs block and failed on a
+    // sentence that was rendered correctly a few hundred pixels below. A section filter on a
+    // word is coupled to that word appearing in one section, and a job name is exactly the
+    // sort of thing that puts it in another.
+    const objectives = page
+      .locator("section")
+      .filter({ has: page.getByRole("heading", { name: "Objectives" }) });
     // **This asserted "an objective nobody runs raises no alert"**, which was true for as
     // long as nothing evaluated one on a schedule and became false the hour the worker
     // started -- a gap note outliving its gap, in the sentence a reader of an empty list

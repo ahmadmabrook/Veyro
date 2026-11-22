@@ -1396,6 +1396,36 @@ sentence twice on one page is the repetition the field shell's message-slot rule
 in the small. It is the positional-cell and attribute-order trap again, with text as the
 coincidence.
 
+**And a `section` filtered by a word is coupled to that word appearing in one section**, which
+is the same trap one container out and the one that got past a suite whose own comment
+predicted it. `operations.spec.ts` carries three notes saying to scope by the heading because
+"two things answer the same locator"; the objectives test still used
+`filter({ hasText: "Objectives" })`, and wiring a worker job called
+`observability.evaluate_objectives` put that word in the *Scheduled jobs* section -- which
+sorts first, so a test about the objectives block began asserting against the jobs block and
+failed on a sentence rendered correctly a few hundred pixels below. **A job name, a row label
+and a gap note are all things that put a section's word into a sibling**, so the heading is
+the only stable handle. Scope by `filter({ has: getByRole("heading", { name }) })` and treat a
+`hasText` section filter as a defect waiting for the next feature.
+
+**And run the whole suite, not the test you wrote.** Both of those failures were mine and both
+were found by CI rather than locally, because I ran the one grep'd test and its mutation and
+pushed. The grep'd test passed for a reason that made it worse than useless: the new job had
+recorded no run against the local fixture yet, so its row -- the row carrying the word that
+broke the locator -- was not rendered at all. **A single-test run against a fixture that has
+not seen the change is the weakest evidence available**, and it reads exactly like the
+strongest.
+
+**And a backend started before a *registry* change serves the old set, which looks like a
+product defect in the new code.** This file records the route version of it -- a 404 the
+surface renders as a permission problem -- and the registry version is quieter: `/ops/worker`
+iterates `worker_registry.JOBS`, so a uvicorn started before a job was wired returns six where
+seven are declared, and the board's own count test fails *against the correct expectation*.
+**The tell is the direction**: CI saw seven and the local run saw six, which is a stale process
+rather than a wrong test, because CI starts the backend from the commit. When a count differs
+between CI and local in the direction of the change you just made, restart the process before
+touching the assertion.
+
 
 **A class name that styles nothing is invisible to every layer that is not a screenshot.**
 `ds-card` appeared in `globals.css` exactly once, inside a `prefers-reduced-motion` block,
