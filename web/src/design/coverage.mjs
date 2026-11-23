@@ -156,8 +156,10 @@ const BLOCKED = {
   "ADM-MSH-04": "payments: the canvas's action is 'Resume, take 30.19' -- a pro-rata charge. "
     + "The resume itself is built and the unused freeze days do return to the allowance; the "
     + "charge is the act the button names",
-  "ADM-MSH-05": "payments: an upgrade is priced and charged on the spot, and the proration "
-    + "MOD-017 computes ends in a payment nothing here can take",
+  "ADM-MSH-05": "payments: the canvas's primary action is 'Upgrade and charge 8.43'. MOD-017 "
+    + "prices and records the upgrade now -- `plan_change` produces the canvas's own three "
+    + "figures and the change row carries the one that was disclosed -- so what is left at "
+    + "the button is the charge, and there is no provider here to take it",
   "ADM-PAY-02": "payments: approving a refund pays money out. The two-party approval is "
     + "built and MOD-017 requires that the approver is not the requester; what is missing is "
     + "the provider that would settle it",
@@ -270,11 +272,17 @@ const BACKLOG = {
     + "get -- moving all eighteen to another session, or crediting each of them -- and "
     + "neither bulk remedy is a built operation in MOD-019 or MOD-020. MOD-013's dispatcher "
     + "is the seam the notification stops at, behind both",
-  "ADM-MSH-06": "work: MOD-017's `change_plan` applies now, and the canvas takes effect on a "
-    + "future date -- 'from 1 September, not today, she has paid for August at the higher "
-    + "rate and keeps it'. A booked change needs a row and a job to apply it, which is the "
-    + "same shape as the future-dated freeze MOD-017 refuses, and the worker runtime that "
-    + "refusal was written without now exists",
+  "ADM-MSH-06": "work: MOD-017 prices and records a downgrade now and cannot draw the half "
+    + "of this canvas that matters -- the panel 'leads with what they lose (all-clubs access, "
+    + "PT sessions)', and nothing in that module maps a product to its entitlement policies, "
+    + "so it cannot say which entitlements the plan being left gave. "
+    + "The future date needs no job: the superseding agreement carries its own "
+    + "`starts_on` and the chain walk compares "
+    + "it against the day it is asked, so the plan moves when the date arrives. This reason "
+    + "used to name MOD-015's `change_plan`, which is the SaaS subscription a tenant buys "
+    + "from Veyro, and to claim a sweep was needed. What is owed is the screen, and the "
+    + "canvas's 'what they lose' list needs the product-to-entitlement-policy mapping MOD-017 "
+    + "does not have",
   "ADM-MSH-09": "work: MOD-016 holds the plan and MOD-017 the agreements, and nothing counts "
     + "members per plan or splits them by commitment -- which is the canvas's whole argument: "
     + "'2,140 members are on this plan, 890 are inside a fixed-term commitment and keep "

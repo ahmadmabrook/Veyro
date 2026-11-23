@@ -374,6 +374,17 @@ EVENT_TYPES: dict[tuple[str, int], EventType] = dict([
     _e("membership.cancelled", 1, "MOD-017", "confidential",
        ("membership_id", "effective_on", "change_id"),
        "A membership was cancelled, effective on the date in the payload"),
+    # **The TSD's own name for a plan change**, in COM-01's published-event list beside
+    # `membership.created` and the rest: "membership.created, membership.activated,
+    # membership.frozen, membership.changed, membership.renewed, membership.cancelled".
+    # Declared rather than invented, which is MOD-012's rule about `integration.disconnected`
+    # met from the other side -- and it carries both agreement ids rather than the amounts,
+    # because what a plan costs is a question the agreement answers under a permission and
+    # `evt_outbox` is the one store no erasure reaches.
+    _e("membership.changed", 1, "MOD-017", "confidential",
+       ("membership_id", "change_id", "change_kind", "from_agreement_id",
+        "to_agreement_id", "effective_on"),
+       "A membership was upgraded or downgraded onto a superseding agreement"),
     # **No quantity on a grant event and no balance on any of them.** How much a member has
     # left is a question the ledger answers under a permission; an event that carried it would
     # put every member's entitlement history in the one store nothing can erase from.

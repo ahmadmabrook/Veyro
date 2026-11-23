@@ -1469,6 +1469,33 @@ class ResumeBody(BaseModel):
     correlation_id: str
 
 
+class PlanChangeBody(BaseModel):
+    """COM-01-R04's upgrade or downgrade, confirmed against what was disclosed.
+
+    **There is no `kind` field, and that is the point.** `lifecycle.plan_change` derives the
+    direction from the two prices, because the two acts differ in when they take effect *and*
+    in what is charged -- so a caller able to declare `downgrade` on a dearer plan would take
+    the rest of the period on the better plan for nothing. This build has shipped that shape
+    in six modules.
+
+    `acknowledged_due_minor` is the figure the preview showed. The service recomputes it and
+    refuses a mismatch, so the number on the button and the number recorded are provably one.
+    """
+
+    to_agreement_id: str
+    reason: str = Field(min_length=1, max_length=500)
+    # The member signs the new agreement as part of the act, and this command is the only
+    # signer of it: a successor signed beforehand would already govern, so there would be
+    # nothing left for the change to record.
+    signature_kind: str = Field(min_length=1, max_length=40)
+    signature_evidence_ref: str = Field(min_length=1, max_length=500)
+    acknowledged_due_minor: int | None = Field(default=None, ge=-10**12, le=10**12)
+    requested_by_person_id: str | None = None
+    expected_version: int | None = Field(default=None, ge=1)
+    idempotency_key: str = Field(min_length=1, max_length=200)
+    correlation_id: str
+
+
 class CancelMembershipBody(BaseModel):
     """COM-01-R06's disclosure, confirmed.
 
@@ -6877,6 +6904,45 @@ def create_app(
         return commercial.cancel_membership(
             tenant_pool, tenant_id, require_uuid(membership_id, "membership_id"),
             reason=body.reason, acknowledged_fee_minor=body.acknowledged_fee_minor,
+            requested_by_person_id=optional_uuid(
+                body.requested_by_person_id, "requested_by_person_id"),
+            expected_version=body.expected_version,
+            idempotency_key=body.idempotency_key,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.get("/memberships/{membership_id}/plan-change-preview")
+    def preview_plan_change(
+        tenant_id: TenantId, session: Session, membership_id: str, to_agreement_id: str
+    ) -> dict[str, Any]:
+        """ADM-MSH-05's and ADM-MSH-06's two figures, as a read with no side effect.
+
+        Gated on the *read* permission for the same reason the cancellation preview is: a
+        front desk that could change a plan but not quote what it costs would be a desk
+        guessing at the one number the member is about to agree to.
+
+        It takes a drafted agreement rather than an amount, so the figures come from a row
+        somebody wrote -- and it answers which of the two acts this is, which no client can
+        work out for itself.
+        """
+        permit(session, "membership.record.read")
+        return commercial.preview_plan_change(
+            tenant_pool, tenant_id, require_uuid(membership_id, "membership_id"),
+            require_uuid(to_agreement_id, "to_agreement_id"))
+
+    @app.post("/memberships/{membership_id}/plan-change")
+    def change_membership_plan(
+        tenant_id: TenantId, session: Session, membership_id: str, body: PlanChangeBody
+    ) -> dict[str, Any]:
+        """UpgradeMembership and DowngradeMembership, which were two declared change kinds
+        with no writer at all. COM-01-R04."""
+        permit(session, "membership.lifecycle.change", body.correlation_id)
+        return commercial.change_membership_plan(
+            tenant_pool, tenant_id, require_uuid(membership_id, "membership_id"),
+            to_agreement_id=require_uuid(body.to_agreement_id, "to_agreement_id"),
+            reason=body.reason, signature_kind=body.signature_kind,
+            signature_evidence_ref=body.signature_evidence_ref,
+            acknowledged_due_minor=body.acknowledged_due_minor,
             requested_by_person_id=optional_uuid(
                 body.requested_by_person_id, "requested_by_person_id"),
             expected_version=body.expected_version,

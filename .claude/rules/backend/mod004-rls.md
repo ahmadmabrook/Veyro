@@ -2303,3 +2303,41 @@ added for those cases carried `status = 'active'` with no signature columns, whi
 `mem_agreements_signed_is_signed` refuses -- so the fixture died before the block ran, and in the
 quieter version the case would have been answered by that sibling. `GET STACKED DIAGNOSTICS` is
 what distinguishes them, and it is as necessary for `unique_violation` as for `check_violation`.
+
+
+**"Not void" is not "in force", and a chain walk that stops at the first lets a draft govern.**
+MOD-017's supersession walk filtered `status <> 'void'`, which is the predicate `0025`'s index
+carries and is right for *that* index -- it stops a fork. It is wrong for the walk: a **draft**
+successor, written by one route call with nobody's signature, became the agreement every
+disclosed figure answered from, which is strictly worse than the root it replaced because at
+least the root was signed. A successor governs when the member has signed it **and** its own
+start date has arrived, which are two facts the table already carries. **An index's predicate
+and a reader's predicate answer different questions**, so sharing one between them is only safe
+where the questions coincide, and "which row is the live successor" is not "may this row exist".
+
+**And the start date is what lets a future-dated change need no job.** Once the walk compares
+the successor's `starts_on` against the day it is asked, a downgrade effective at the next
+renewal is invisible today and governing then, with nothing to catch it up -- MOD-018's "expiry
+is evaluated rather than swept" and MOD-016's window read at resolution time, applied to which
+contract a member is held to. The cost is that every reader has to take an as-of date; the
+benefit is that the one lifecycle act this module used to refuse outright (a future-dated
+freeze, refused because "a booked freeze that never takes effect is worse than one that cannot
+be booked") becomes expressible for plan changes without a sweep.
+
+**A command that derives its own kind cannot find its own retry by that kind.** `_recorded_change`
+compares the recorded `change_kind` against the caller's, which is what stops a key reused
+across two commands returning the other one's work. A plan change derives `upgrade` or
+`downgrade` from the two prices, so it has nothing to compare until it has read them -- and by
+then the agreement it signed on the first call is the live one, so deriving first refuses the
+retry as "already on that agreement". The ordering has to be retry-first, which means the
+lookup takes the *set* of kinds the command can produce and the discriminator moves to a field
+that distinguishes two of them: here `to_agreement_id`, added by `0026` for this and for the
+history, which could not say what an upgrade moved onto.
+
+**A new column breaks three pins and that is the pins working.** `0026` added one nullable
+column and a foreign key, and the module's foreign-key set, its column-list pin and its
+NOT NULL pin are all compared as sets in both directions -- so the migration was refused three
+times before it was accepted, each time naming exactly what had changed. Budget for that when
+adding a column: the refusals are the cheap half, and the expensive half is the constraint
+cases, because a biconditional needs one per side and only the side the weakened constraint
+*admits* catches a weakening.

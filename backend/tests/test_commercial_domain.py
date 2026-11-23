@@ -1187,5 +1187,124 @@ class RecoveryTreatmentTests(unittest.TestCase):
                 "card_expired", attempts=1, membership_status="paused")
 
 
+class PlanChangeTests(unittest.TestCase):
+    """ADM-MSH-05's and ADM-MSH-06's arithmetic, and the direction nobody may declare.
+
+    The canvas states its own figures -- "Club, 11 days remaining -20.17 / Club+, 11 days
+    28.60 / Pay today JOD 8.43" -- so those are the assertions rather than a restatement of
+    the formula, which would pass against any proration rule.
+    """
+
+    #: A thirty-day period with eleven days left, which is the shape the canvas's numbers come
+    #: out of: 5500 * 11/30 rounds to 2017 and 7800 * 11/30 is exactly 2860.
+    PERIOD = (date(2026, 8, 2), date(2026, 8, 31))
+    DECIDED = date(2026, 8, 21)
+
+    def test_the_canvas_figures_come_out_of_the_module(self) -> None:
+        change, steps = lifecycle.plan_change(
+            decided_on=self.DECIDED, period_start=self.PERIOD[0],
+            period_end=self.PERIOD[1], from_amount_minor=5500, to_amount_minor=7800,
+            billing_period="monthly")
+        self.assertEqual(change.kind, "upgrade")
+        self.assertEqual(change.credit_minor, 2017)
+        self.assertEqual(change.charge_minor, 2860)
+        self.assertEqual(change.due_minor, 843)
+        # "From 1 Sep her monthly becomes JOD 78.00, up from 55.00."
+        self.assertEqual(change.recurring_from, date(2026, 9, 1))
+        self.assertEqual(change.to_amount_minor, 7800)
+        self.assertEqual(change.effective_on, self.DECIDED)
+        self.assertTrue(any("due today: 843" in s for s in steps))
+
+    def test_an_upgrade_is_effective_immediately_and_a_downgrade_at_the_renewal(self) -> None:
+        """The two acts differ in *both* of the things that matter, which is why the direction
+        cannot be a caller's word."""
+        up, _ = lifecycle.plan_change(
+            decided_on=self.DECIDED, period_start=self.PERIOD[0],
+            period_end=self.PERIOD[1], from_amount_minor=5500, to_amount_minor=7800,
+            billing_period="monthly")
+        down, _ = lifecycle.plan_change(
+            decided_on=self.DECIDED, period_start=self.PERIOD[0],
+            period_end=self.PERIOD[1], from_amount_minor=7800, to_amount_minor=5500,
+            billing_period="monthly")
+        self.assertEqual(up.effective_on, self.DECIDED)
+        self.assertEqual(down.effective_on, date(2026, 9, 1))
+        self.assertGreater(up.due_minor, 0)
+        self.assertEqual(down.due_minor, 0)
+        self.assertEqual((down.credit_minor, down.charge_minor), (0, 0))
+
+    def test_the_direction_follows_the_price_in_both_directions(self) -> None:
+        for frm, to, kind in ((100, 200, "upgrade"), (200, 100, "downgrade")):
+            change, _ = lifecycle.plan_change(
+                decided_on=self.DECIDED, period_start=self.PERIOD[0],
+                period_end=self.PERIOD[1], from_amount_minor=frm, to_amount_minor=to,
+                billing_period="monthly")
+            self.assertEqual(change.kind, kind)
+
+    def test_the_same_price_is_a_transfer_and_is_refused(self) -> None:
+        """Neither act, and guessing either would be a different product: a downgrade delays a
+        change the member asked for, an upgrade moves them today for nothing."""
+        with self.assertRaises(lifecycle.LifecycleError) as caught:
+            lifecycle.plan_change(
+                decided_on=self.DECIDED, period_start=self.PERIOD[0],
+                period_end=self.PERIOD[1], from_amount_minor=5500, to_amount_minor=5500,
+                billing_period="monthly")
+        self.assertIn("transfer", str(caught.exception))
+
+    def test_an_upgrade_outside_the_current_period_is_refused(self) -> None:
+        """An upgrade is effective immediately, so "immediately" has to fall in the period
+        being prorated -- outside it the two figures are the whole period or nothing, neither
+        of which is what the sheet discloses."""
+        for day in (date(2026, 8, 1), date(2026, 9, 1)):
+            with self.assertRaises(lifecycle.LifecycleError):
+                lifecycle.plan_change(
+                    decided_on=day, period_start=self.PERIOD[0],
+                    period_end=self.PERIOD[1], from_amount_minor=5500,
+                    to_amount_minor=7800, billing_period="monthly")
+
+    def test_a_downgrade_outside_the_period_is_not_refused(self) -> None:
+        """The bound belongs to the upgrade alone: a downgrade prorates nothing, so the day it
+        was decided on does not have to be inside the period it moves at the end of."""
+        change, _ = lifecycle.plan_change(
+            decided_on=date(2026, 7, 1), period_start=self.PERIOD[0],
+            period_end=self.PERIOD[1], from_amount_minor=7800, to_amount_minor=5500,
+            billing_period="monthly")
+        self.assertEqual(change.effective_on, date(2026, 9, 1))
+
+    def test_the_credit_and_the_charge_cover_the_same_days(self) -> None:
+        """The two figures are the same proration on two amounts, which is what makes the
+        difference the right number -- a credit over a different span would be arithmetic
+        nobody can reconcile against the days they were told about."""
+        change, _ = lifecycle.plan_change(
+            decided_on=self.DECIDED, period_start=self.PERIOD[0],
+            period_end=self.PERIOD[1], from_amount_minor=5500, to_amount_minor=7800,
+            billing_period="monthly")
+        days, _ = lifecycle.prorated_amount(
+            full_amount_minor=3000, period_start=self.PERIOD[0],
+            period_end=self.PERIOD[1], effective_on=self.DECIDED)
+        self.assertEqual(days, 1100)  # 3000 * 11/30, so eleven days of thirty
+        self.assertEqual(change.due_minor, change.charge_minor - change.credit_minor)
+
+    def test_an_unrenewable_billing_period_is_refused(self) -> None:
+        """A plan change needs to say when the new figure starts, and that is the next period
+        -- so a billing period nothing renews cannot answer it."""
+        with self.assertRaises(lifecycle.LifecycleError):
+            lifecycle.plan_change(
+                decided_on=self.DECIDED, period_start=self.PERIOD[0],
+                period_end=self.PERIOD[1], from_amount_minor=5500, to_amount_minor=7800,
+                billing_period="one_off")
+
+    def test_a_negative_amount_and_a_backwards_period_are_refused(self) -> None:
+        with self.assertRaises(lifecycle.LifecycleError):
+            lifecycle.plan_change(
+                decided_on=self.DECIDED, period_start=self.PERIOD[0],
+                period_end=self.PERIOD[1], from_amount_minor=-1, to_amount_minor=7800,
+                billing_period="monthly")
+        with self.assertRaises(lifecycle.LifecycleError):
+            lifecycle.plan_change(
+                decided_on=self.DECIDED, period_start=self.PERIOD[1],
+                period_end=self.PERIOD[0], from_amount_minor=5500, to_amount_minor=7800,
+                billing_period="monthly")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -18,7 +18,7 @@ from __future__ import annotations
 import json
 import unittest
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 from app.commercial import service as commercial
 from app.db import tenant_scope
@@ -227,6 +227,45 @@ class CommercialApiTestCase(GatedApiTestCase):
                 "contract_key": contract_key,
                 "current_period_start": active.json()["current_period_start"],
                 "current_period_end": active.json()["current_period_end"]}
+
+    def supersede(self, tenant_id: str, base: dict, *, amount_minor: int,
+                  contract: dict | None = None, starts_on: str = "",
+                  currency: str = "JOD", sign: bool = True) -> str:
+        """A superseding agreement on the same membership, signed unless asked otherwise.
+
+        **A different contract where the test asks for one**, because the point of an upgrade
+        is usually that the terms move -- and a superseding agreement on the same contract
+        would prove the amount travelled and say nothing about the terms.
+
+        `starts_on` defaults to the original's, which is what a chain test wants; a plan
+        change needs it to be the day the change takes effect, and `change_membership_plan`
+        refuses the pair when they disagree.
+        """
+        owner = self.headers(tenant_id)
+        terms_id = base["terms_id"]
+        if contract is not None:
+            contract_key = self.contract(tenant_id, **contract)
+            product_id, _ = self.membership_product(tenant_id)
+            terms_id = self.terms(tenant_id, contract_key, product_id)
+        made = self.client.post("/memberships/agreements", json={
+            "person_id": base["person_id"], "membership_terms_id": terms_id,
+            "variant_id": base["variant_id"], "amount_minor": amount_minor,
+            "currency": currency,
+            "starts_on": starts_on or MEMBERSHIP_START.isoformat(),
+            "supersedes_agreement_id": base["agreement_id"], **self.correlation()},
+            headers=owner)
+        self.assertEqual(made.status_code, 201, made.text)
+        agreement_id = str(made.json()["agreement_id"])
+        if not sign:
+            return agreement_id
+        signed = self.client.post(
+            f"/memberships/agreements/{agreement_id}/sign", json={
+                "signature_kind": "click_through",
+                "signature_evidence_ref": f"s3://signatures/{agreement_id}",
+                "signed_by_person_id": base["person_id"], **self.correlation()},
+            headers=owner)
+        self.assertEqual(signed.status_code, 200, signed.text)
+        return agreement_id
 
     def policy(self, tenant_id: str, **kwargs) -> str:
         body = {"policy_key": f"p{uuid.uuid4().hex[:8]}", "display_name": "Classes",
@@ -4110,6 +4149,392 @@ class EndedMembershipGrantTests(CommercialApiTestCase):
         self.assertEqual(self._grant_status(tenant_id, grant_id), "revoked")
 
 
+class PlanChangeTests(CommercialApiTestCase):
+    """ADM-MSH-05 and ADM-MSH-06: the two change kinds that had no writer in this build.
+
+    `lifecycle.EDGES` has admitted `upgrade` and `downgrade` since MOD-017 was built and
+    nothing anywhere wrote either, so `mem_lifecycle_changes.change_kind` carried two values
+    the product could not produce -- in the module that records what a member agreed to.
+
+    The membership starts ten days ago so that today falls inside its current billing period,
+    which is what an upgrade prorates. The fixture's own `MEMBERSHIP_START` is ninety days
+    back and nothing in this build rolls a period forward, so a membership made the usual way
+    is a month past its only period and an upgrade is correctly refused.
+    """
+
+    def live(self, tenant_id: str, **kwargs) -> dict:
+        starts = (TODAY - timedelta(days=10)).isoformat()
+        return self.membership(tenant_id, starts_on=starts, **kwargs)
+
+    def preview(self, tenant_id: str, membership_id: str, to_agreement_id: str):
+        return self.client.get(
+            f"/memberships/{membership_id}/plan-change-preview"
+            f"?to_agreement_id={to_agreement_id}",
+            headers=self.headers(tenant_id))
+
+    def test_an_upgrade_is_priced_recorded_and_effective_today(self):
+        """The whole act, end to end: the preview discloses, the command records, and the
+        history carries `upgrade` -- a value nothing in this build could write before."""
+        tenant_id = self.tenant()
+        owner = self.headers(tenant_id)
+        base = self.live(tenant_id)
+        target = self.supersede(
+            tenant_id, base, amount_minor=9000, starts_on=TODAY.isoformat(), sign=False)
+        quote = self.preview(tenant_id, base["membership_id"], target)
+        self.assertEqual(quote.status_code, 200, quote.text)
+        body = quote.json()
+        self.assertEqual(body["kind"], "upgrade")
+        self.assertEqual(body["effective_on"], TODAY.isoformat())
+        self.assertTrue(body["takes_effect_immediately"])
+        self.assertEqual(body["from_amount_minor"], 4500)
+        self.assertEqual(body["to_amount_minor"], 9000)
+        # The design's own pair of figures: what the member paid for and will not use, and
+        # the same days on the plan they are taking.
+        self.assertGreater(body["credit_minor"], 0)
+        self.assertEqual(body["due_minor"], body["charge_minor"] - body["credit_minor"])
+        self.assertGreater(body["due_minor"], 0)
+
+        done = self.client.post(
+            f"/memberships/{base['membership_id']}/plan-change", json={
+                "to_agreement_id": target, "reason": "wants all clubs",
+                "signature_kind": "click_through",
+                "signature_evidence_ref": "s3://signatures/upgrade",
+                "acknowledged_due_minor": body["due_minor"],
+                "expected_version": body["version"],
+                "idempotency_key": f"up-{uuid.uuid4().hex[:8]}", **self.correlation()},
+            headers=owner)
+        self.assertEqual(done.status_code, 200, done.text)
+        self.assertEqual(done.json()["kind"], "upgrade")
+        self.assertEqual(done.json()["due_minor"], body["due_minor"])
+
+        detail = self.client.get(f"/memberships/{base['membership_id']}", headers=owner)
+        kinds = [c["change_kind"] for c in detail.json()["history"]]
+        self.assertIn("upgrade", kinds)
+        # And the chain moved, which is what "the member is on the new plan" means here.
+        self.assertEqual(detail.json()["agreement"]["agreement_id"], target)
+        self.assertEqual(detail.json()["agreement"]["amount_minor"], 9000)
+
+    def test_a_downgrade_takes_effect_at_the_next_renewal_and_charges_nothing(self):
+        """ADM-MSH-06: "the change takes effect at the next renewal rather than today" -- so
+        nothing is prorated, because a period boundary has nothing to prorate."""
+        tenant_id = self.tenant()
+        owner = self.headers(tenant_id)
+        base = self.live(tenant_id)
+        next_start = date.fromisoformat(base["current_period_end"]) + timedelta(days=1)
+        target = self.supersede(
+            tenant_id, base, amount_minor=2000, starts_on=next_start.isoformat(), sign=False)
+        body = self.preview(tenant_id, base["membership_id"], target).json()
+        self.assertEqual(body["kind"], "downgrade")
+        self.assertEqual(body["effective_on"], next_start.isoformat())
+        self.assertFalse(body["takes_effect_immediately"])
+        self.assertEqual((body["credit_minor"], body["charge_minor"]), (0, 0))
+        self.assertEqual(body["due_minor"], 0)
+        done = self.client.post(
+            f"/memberships/{base['membership_id']}/plan-change", json={
+                "to_agreement_id": target, "reason": "too expensive",
+                "signature_kind": "click_through",
+                "signature_evidence_ref": "s3://signatures/upgrade",
+                "acknowledged_due_minor": 0,
+                "idempotency_key": f"down-{uuid.uuid4().hex[:8]}", **self.correlation()},
+            headers=owner)
+        self.assertEqual(done.status_code, 200, done.text)
+        self.assertEqual(done.json()["kind"], "downgrade")
+
+    def test_the_direction_cannot_be_declared_and_follows_the_price(self):
+        """**The finding this command is designed against.** The two acts differ in when they
+        take effect *and* in what is charged, so a caller able to say `downgrade` on a dearer
+        plan would take the rest of the period on the better plan for nothing. There is no
+        such field; a body carrying one changes nothing, and the price decides."""
+        tenant_id = self.tenant()
+        owner = self.headers(tenant_id)
+        base = self.live(tenant_id)
+        target = self.supersede(
+            tenant_id, base, amount_minor=9000, starts_on=TODAY.isoformat(), sign=False)
+        done = self.client.post(
+            f"/memberships/{base['membership_id']}/plan-change", json={
+                "to_agreement_id": target, "reason": "wants all clubs",
+                "signature_kind": "click_through",
+                "signature_evidence_ref": "s3://signatures/upgrade",
+                "kind": "downgrade", "change_kind": "downgrade",
+                "idempotency_key": f"up-{uuid.uuid4().hex[:8]}", **self.correlation()},
+            headers=owner)
+        self.assertEqual(done.status_code, 200, done.text)
+        self.assertEqual(done.json()["kind"], "upgrade")
+        self.assertEqual(done.json()["effective_on"], TODAY.isoformat())
+        self.assertGreater(done.json()["due_minor"], 0)
+
+    def test_the_disclosed_figure_is_compared_not_echoed(self):
+        tenant_id = self.tenant()
+        owner = self.headers(tenant_id)
+        base = self.live(tenant_id)
+        target = self.supersede(
+            tenant_id, base, amount_minor=9000, starts_on=TODAY.isoformat(), sign=False)
+        refused = self.client.post(
+            f"/memberships/{base['membership_id']}/plan-change", json={
+                "to_agreement_id": target, "reason": "wants all clubs",
+                "signature_kind": "click_through",
+                "signature_evidence_ref": "s3://signatures/upgrade",
+                "acknowledged_due_minor": 1,
+                "idempotency_key": f"up-{uuid.uuid4().hex[:8]}", **self.correlation()},
+            headers=owner)
+        self.assertEqual(refused.status_code, 409, refused.text)
+        self.assertIn("the_disclosed_amount_is", refused.json()["error"])
+
+    def test_an_agreement_that_does_not_supersede_the_live_one_is_refused(self):
+        """The chain link is `create_agreement`'s to write and this command's to check: an
+        agreement that superseded something else would move the member onto a plan whose place
+        in their own history nothing can state."""
+        tenant_id = self.tenant()
+        owner = self.headers(tenant_id)
+        base = self.live(tenant_id)
+        other = self.live(tenant_id)
+        stray = self.supersede(
+            tenant_id, other, amount_minor=9000, starts_on=TODAY.isoformat(), sign=False)
+        refused = self.preview(tenant_id, base["membership_id"], stray)
+        self.assertEqual(refused.status_code, 409, refused.text)
+        self.assertEqual(
+            refused.json()["error"], "this_agreement_does_not_supersede_the_live_one")
+        post = self.client.post(
+            f"/memberships/{base['membership_id']}/plan-change", json={
+                "to_agreement_id": stray, "reason": "x",
+                "signature_kind": "click_through",
+                "signature_evidence_ref": "s3://signatures/upgrade",
+                "idempotency_key": f"up-{uuid.uuid4().hex[:8]}", **self.correlation()},
+            headers=owner)
+        self.assertEqual(post.status_code, 409, post.text)
+
+    def test_a_draft_successor_does_not_govern_and_a_signed_one_does(self):
+        """**The defect the first version of the walk shipped.** "Not void" is not "in force":
+        a draft successor -- one route call, nobody's signature -- became the agreement every
+        disclosed figure answered from, which is worse than the root it replaced, because at
+        least the root was signed."""
+        tenant_id = self.tenant()
+        owner = self.headers(tenant_id)
+        base = self.live(tenant_id)
+        target = self.supersede(
+            tenant_id, base, amount_minor=9000, starts_on=TODAY.isoformat(), sign=False)
+        while_drafted = self.client.get(
+            f"/memberships/{base['membership_id']}", headers=owner)
+        self.assertEqual(while_drafted.json()["agreement"]["agreement_id"],
+                         base["agreement_id"])
+        self.assertEqual(while_drafted.json()["agreement"]["amount_minor"], 4500)
+
+        self.client.post(
+            f"/memberships/{base['membership_id']}/plan-change", json={
+                "to_agreement_id": target, "reason": "wants all clubs",
+                "signature_kind": "click_through",
+                "signature_evidence_ref": "s3://signatures/upgrade",
+                "idempotency_key": f"up-{uuid.uuid4().hex[:8]}", **self.correlation()},
+            headers=owner)
+        after = self.client.get(f"/memberships/{base['membership_id']}", headers=owner)
+        self.assertEqual(after.json()["agreement"]["agreement_id"], target)
+
+    def test_a_signed_successor_is_refused_because_it_already_governs(self):
+        """Signing is the command's own act. A successor signed beforehand is already the live
+        agreement, so there is nothing left for a change to record -- and the refusal says
+        that rather than reporting a puzzle about which plan the member is on."""
+        tenant_id = self.tenant()
+        base = self.live(tenant_id)
+        signed = self.supersede(
+            tenant_id, base, amount_minor=9000, starts_on=TODAY.isoformat())
+        refused = self.preview(tenant_id, base["membership_id"], signed)
+        self.assertEqual(refused.status_code, 409, refused.text)
+        self.assertEqual(
+            refused.json()["error"], "this_membership_is_already_on_that_agreement")
+
+    def test_a_future_dated_downgrade_governs_when_its_date_arrives(self):
+        """**No job catches this up, and none is needed.** The walk compares the successor's
+        own start date against the day it is asked, so a downgrade effective at the next
+        renewal is invisible today and governing then -- evaluated rather than swept, which is
+        MOD-018's wallet-expiry discipline and MOD-016's window read at resolution time."""
+        tenant_id = self.tenant()
+        owner = self.headers(tenant_id)
+        base = self.live(tenant_id)
+        next_start = date.fromisoformat(base["current_period_end"]) + timedelta(days=1)
+        target = self.supersede(
+            tenant_id, base, amount_minor=2000, starts_on=next_start.isoformat(),
+            sign=False)
+        self.client.post(
+            f"/memberships/{base['membership_id']}/plan-change", json={
+                "to_agreement_id": target, "reason": "too expensive",
+                "signature_kind": "click_through",
+                "signature_evidence_ref": "s3://signatures/downgrade",
+                "idempotency_key": f"down-{uuid.uuid4().hex[:8]}", **self.correlation()},
+            headers=owner)
+        today_still = self.client.get(
+            f"/memberships/{base['membership_id']}", headers=owner)
+        self.assertEqual(today_still.json()["agreement"]["amount_minor"], 4500)
+        # Read as of the day it starts, which is the same walk with a different date.
+        then = commercial.get_membership(
+            self._tenant_pool, tenant_id, base["membership_id"], at=next_start)
+        self.assertEqual(then["agreement"]["amount_minor"], 2000)
+        self.assertEqual(then["agreement"]["agreement_id"], target)
+
+    def test_the_new_agreement_starts_when_the_change_takes_effect(self):
+        """`minimum_term_ends_on` is computed from `starts_on` when the agreement is drawn up,
+        so a downgrade agreement starting today while the change lands at the next renewal
+        would hold the member to a term that began before their plan did. The refusal names
+        both dates, because a date mismatch with no dates in it is a puzzle."""
+        tenant_id = self.tenant()
+        base = self.live(tenant_id)
+        wrong = self.supersede(
+            tenant_id, base, amount_minor=2000, starts_on=TODAY.isoformat(), sign=False)
+        refused = self.preview(tenant_id, base["membership_id"], wrong)
+        self.assertEqual(refused.status_code, 409, refused.text)
+        self.assertIn("takes_effect_on", refused.json()["error"])
+        self.assertIn(TODAY.isoformat(), refused.json()["error"])
+
+    def test_a_plan_change_does_not_cross_currencies(self):
+        """Minor units are not comparable across two currencies, and here the credit is in one
+        and the charge in the other -- MOD-016's approval that authorised JOD and admitted the
+        same counts in USD, with a member's money on both sides."""
+        tenant_id = self.tenant()
+        base = self.live(tenant_id)
+        target = self.supersede(
+            tenant_id, base, amount_minor=9000, starts_on=TODAY.isoformat(),
+            currency="USD", sign=False)
+        refused = self.preview(tenant_id, base["membership_id"], target)
+        self.assertEqual(refused.status_code, 409, refused.text)
+        self.assertEqual(
+            refused.json()["error"], "a_plan_change_does_not_cross_currencies")
+
+    def test_a_retry_gets_the_recorded_figure_back(self):
+        """A retried command answers from the row. `cancel_membership` echoed the caller's
+        acknowledged figure, so a second call sending a different number was told it had been
+        accepted -- the disclosure check bypassed by retrying with the figure you wanted."""
+        tenant_id = self.tenant()
+        owner = self.headers(tenant_id)
+        base = self.live(tenant_id)
+        target = self.supersede(
+            tenant_id, base, amount_minor=9000, starts_on=TODAY.isoformat(), sign=False)
+        key = f"up-{uuid.uuid4().hex[:8]}"
+        first = self.client.post(
+            f"/memberships/{base['membership_id']}/plan-change", json={
+                "to_agreement_id": target, "reason": "wants all clubs",
+                "signature_kind": "click_through",
+                "signature_evidence_ref": "s3://signatures/upgrade",
+                "idempotency_key": key, **self.correlation()}, headers=owner)
+        self.assertEqual(first.status_code, 200, first.text)
+        again = self.client.post(
+            f"/memberships/{base['membership_id']}/plan-change", json={
+                "to_agreement_id": target, "reason": "wants all clubs",
+                "signature_kind": "click_through",
+                "signature_evidence_ref": "s3://signatures/upgrade",
+                "acknowledged_due_minor": 1,
+                "idempotency_key": key, **self.correlation()}, headers=owner)
+        self.assertEqual(again.status_code, 200, again.text)
+        self.assertTrue(again.json()["repeated"])
+        self.assertEqual(again.json()["due_minor"], first.json()["due_minor"])
+
+    def test_a_key_reused_against_another_plan_is_refused(self):
+        """**The kind cannot tell two plan changes apart**, because it is derived and both
+        kinds satisfy the idempotency lookup -- so without the target on the change row this
+        would be a key compared on fewer fields than the command takes, which is the defect
+        this build has shipped in six modules. The realistic input is a till reusing a
+        per-shift counter."""
+        tenant_id = self.tenant()
+        owner = self.headers(tenant_id)
+        base = self.live(tenant_id)
+        first_target = self.supersede(
+            tenant_id, base, amount_minor=9000, starts_on=TODAY.isoformat(), sign=False)
+        key = f"up-{uuid.uuid4().hex[:8]}"
+        done = self.client.post(
+            f"/memberships/{base['membership_id']}/plan-change", json={
+                "to_agreement_id": first_target, "reason": "wants all clubs",
+                "signature_kind": "click_through",
+                "signature_evidence_ref": "s3://signatures/upgrade",
+                "idempotency_key": key, **self.correlation()}, headers=owner)
+        self.assertEqual(done.status_code, 200, done.text)
+        second_target = self.supersede(
+            tenant_id, {**base, "agreement_id": first_target}, amount_minor=12000,
+            starts_on=TODAY.isoformat(), sign=False)
+        refused = self.client.post(
+            f"/memberships/{base['membership_id']}/plan-change", json={
+                "to_agreement_id": second_target, "reason": "wants more",
+                "signature_kind": "click_through",
+                "signature_evidence_ref": "s3://signatures/upgrade",
+                "idempotency_key": key, **self.correlation()}, headers=owner)
+        self.assertEqual(refused.status_code, 409, refused.text)
+        self.assertEqual(
+            refused.json()["error"],
+            "this_idempotency_key_moved_this_membership_to_another_plan")
+
+    def test_the_history_says_which_agreement_the_change_moved_onto(self):
+        """`0026`'s column. COM-01-R07's as-of reconstruction is "for disputes and audits", and
+        an `upgrade` row that said the kind, the date and the price but not what the member
+        moved onto could not answer the first question anybody asks about an upgrade."""
+        tenant_id = self.tenant()
+        owner = self.headers(tenant_id)
+        base = self.live(tenant_id)
+        target = self.supersede(
+            tenant_id, base, amount_minor=9000, starts_on=TODAY.isoformat(), sign=False)
+        self.client.post(
+            f"/memberships/{base['membership_id']}/plan-change", json={
+                "to_agreement_id": target, "reason": "wants all clubs",
+                "signature_kind": "click_through",
+                "signature_evidence_ref": "s3://signatures/upgrade",
+                "idempotency_key": f"up-{uuid.uuid4().hex[:8]}", **self.correlation()},
+            headers=owner)
+        with tenant_scope(self._tenant_pool, tenant_id) as conn:
+            row = conn.execute(
+                "SELECT change_kind, to_agreement_id FROM plt01.mem_lifecycle_changes"
+                " WHERE membership_id = %s AND change_kind IN ('upgrade', 'downgrade')",
+                (base["membership_id"],)).fetchone()
+        self.assertIsNotNone(row)
+        self.assertEqual((str(row[0]), str(row[1])), ("upgrade", target))
+
+    def test_the_same_plan_twice_is_refused(self):
+        tenant_id = self.tenant()
+        base = self.live(tenant_id)
+        refused = self.preview(
+            tenant_id, base["membership_id"], base["agreement_id"])
+        self.assertEqual(refused.status_code, 409, refused.text)
+        self.assertEqual(
+            refused.json()["error"], "this_membership_is_already_on_that_agreement")
+
+    def test_the_change_publishes_membership_changed(self):
+        """The TSD names `membership.changed` in COM-01's published-event list, so it is
+        declared rather than invented -- and it carries both agreement ids rather than the
+        amounts, because `evt_outbox` is the one store no erasure reaches."""
+        tenant_id = self.tenant()
+        owner = self.headers(tenant_id)
+        base = self.live(tenant_id)
+        target = self.supersede(
+            tenant_id, base, amount_minor=9000, starts_on=TODAY.isoformat(), sign=False)
+        self.client.post(
+            f"/memberships/{base['membership_id']}/plan-change", json={
+                "to_agreement_id": target, "reason": "wants all clubs",
+                "signature_kind": "click_through",
+                "signature_evidence_ref": "s3://signatures/upgrade",
+                "idempotency_key": f"up-{uuid.uuid4().hex[:8]}", **self.correlation()},
+            headers=owner)
+        with tenant_scope(self._tenant_pool, tenant_id) as conn:
+            row = conn.execute(
+                "SELECT payload FROM plt01.evt_outbox"
+                " WHERE event_type = 'membership.changed'"
+                " ORDER BY occurred_at DESC LIMIT 1").fetchone()
+        self.assertIsNotNone(row)
+        payload = row[0]
+        self.assertEqual(payload["change_kind"], "upgrade")
+        self.assertEqual(payload["to_agreement_id"], target)
+        self.assertEqual(payload["from_agreement_id"], base["agreement_id"])
+        self.assertNotIn("due_minor", payload)
+        self.assertNotIn("amount_minor", payload)
+
+    def test_an_upgrade_outside_the_current_period_is_refused(self):
+        """The fixture's ordinary membership is ninety days old and nothing rolls a period
+        forward in this build, so it sits a month past its only period: an upgrade there would
+        prorate a span that has nothing to do with today, and it is refused instead."""
+        tenant_id = self.tenant()
+        base = self.membership(tenant_id)
+        target = self.supersede(
+            tenant_id, base, amount_minor=9000, starts_on=TODAY.isoformat(), sign=False)
+        refused = self.preview(tenant_id, base["membership_id"], target)
+        self.assertEqual(refused.status_code, 409, refused.text)
+        self.assertEqual(
+            refused.json()["error"], "an_upgrade_takes_effect_inside_the_current_period")
+
+
 class SupersessionChainTests(CommercialApiTestCase):
     """The upgrade that was half-built: the chain was writable and nothing read it.
 
@@ -4129,37 +4554,6 @@ class SupersessionChainTests(CommercialApiTestCase):
     These are the assertions that the readers follow the chain now, and the one that says the
     walk cannot fork.
     """
-
-    def supersede(self, tenant_id: str, base: dict, *, amount_minor: int,
-                  contract: dict | None = None) -> str:
-        """A superseding agreement on the same membership, signed.
-
-        **A different contract where the test asks for one**, because the point of an upgrade
-        is usually that the terms move -- and a superseding agreement on the same contract
-        would prove the amount travelled and say nothing about the terms.
-        """
-        owner = self.headers(tenant_id)
-        terms_id = base["terms_id"]
-        if contract is not None:
-            contract_key = self.contract(tenant_id, **contract)
-            product_id, _ = self.membership_product(tenant_id)
-            terms_id = self.terms(tenant_id, contract_key, product_id)
-        made = self.client.post("/memberships/agreements", json={
-            "person_id": base["person_id"], "membership_terms_id": terms_id,
-            "variant_id": base["variant_id"], "amount_minor": amount_minor,
-            "currency": "JOD", "starts_on": MEMBERSHIP_START.isoformat(),
-            "supersedes_agreement_id": base["agreement_id"], **self.correlation()},
-            headers=owner)
-        self.assertEqual(made.status_code, 201, made.text)
-        agreement_id = str(made.json()["agreement_id"])
-        signed = self.client.post(
-            f"/memberships/agreements/{agreement_id}/sign", json={
-                "signature_kind": "click_through",
-                "signature_evidence_ref": f"s3://signatures/{agreement_id}",
-                "signed_by_person_id": base["person_id"], **self.correlation()},
-            headers=owner)
-        self.assertEqual(signed.status_code, 200, signed.text)
-        return agreement_id
 
     def test_the_cancellation_fee_follows_the_chain_rather_than_the_root(self):
         """**The figure a member disputes.** The buy-out is months of the agreement amount, so

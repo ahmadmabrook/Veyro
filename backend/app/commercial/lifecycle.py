@@ -412,6 +412,108 @@ def prorated_amount(
     )
 
 
+@dataclass(frozen=True)
+class PlanChange:
+    """What COM-01-R04's upgrade or downgrade costs, and when it takes effect.
+
+    Every amount is a non-negative integer count of minor units except `due_minor`, which is
+    signed because a downgrade priced mid-period would be money going the other way -- and
+    which is zero for every downgrade this module writes, because a downgrade takes effect at
+    the next renewal and a period boundary has nothing to prorate.
+    """
+
+    kind: str
+    effective_on: date
+    #: The unused part of the current period on the plan being left.
+    credit_minor: int
+    #: The same days on the plan being taken.
+    charge_minor: int
+    #: `charge_minor - credit_minor`: what the design's sheet calls "pay today".
+    due_minor: int
+    from_amount_minor: int
+    to_amount_minor: int
+    #: When the new recurring figure starts, which is the next period either way.
+    recurring_from: date
+
+
+def plan_change(
+    *, decided_on: date, period_start: date, period_end: date, from_amount_minor: int,
+    to_amount_minor: int, billing_period: str,
+) -> tuple[PlanChange, tuple[str, ...]]:
+    """Which way a plan change goes, when it takes effect and what it costs today.
+
+    **The direction is derived from the price, never accepted from the caller.** ADM-MSH-05
+    and ADM-MSH-06 differ in both of the things that matter: an upgrade is "effective
+    immediately" and charges the difference for the rest of the period, a downgrade "takes
+    effect at the next renewal rather than today" and charges nothing. So a caller that could
+    declare `downgrade` on a dearer plan would get the next-renewal timing *and* no charge --
+    the rest of the period on the better plan for free, and the design's own disclosure
+    defeated by a body field. This build has shipped that shape in six modules and
+    `CLAUDE.md` records each one; the price is the fact and the word follows it.
+
+    **Equal prices are refused rather than guessed at.** A move between two plans at one
+    price is a real thing -- different entitlements, same money -- and it is neither of these
+    two acts: COM-01-R04 calls it a transfer, which is a declared change kind with no writer
+    in this build. Treating it as a downgrade would delay a change the member asked for to
+    the next renewal for no reason, and as an upgrade would charge them nothing and move them
+    today, which is a different product from either.
+
+    **The arithmetic is `prorated_amount` on both plans over the same days**, which is the
+    design's own sum: "Club, 11 days remaining -20.17 / Club+, 11 days 28.60 / Pay today
+    8.43". A second proration rule here would be a pair of numbers that disagree on an
+    invoice, which MOD-016 shipped once and a reviewer found.
+    """
+    if period_end < period_start:
+        raise LifecycleError("a_period_does_not_end_before_it_starts")
+    if from_amount_minor < 0 or to_amount_minor < 0:
+        raise LifecycleError("a_plan_amount_is_not_negative")
+    if to_amount_minor == from_amount_minor:
+        raise LifecycleError(
+            "a_plan_change_at_the_same_price_is_a_transfer_which_has_no_writer")
+    kind = "upgrade" if to_amount_minor > from_amount_minor else "downgrade"
+    next_start, _ = renewal_period(current_end=period_end, billing_period=billing_period)
+    if kind == "downgrade":
+        # **At the next renewal, which is a period boundary**, so nothing is prorated: the
+        # member keeps the plan they are paying for until the period they paid for ends. The
+        # design says so in as many words, and it is also the only honest answer -- prorating
+        # a downgrade mid-period would owe the member money, and paying money out is the
+        # owner-reserved half of COM-04-R02.
+        change = PlanChange(
+            kind=kind, effective_on=next_start, credit_minor=0, charge_minor=0,
+            due_minor=0, from_amount_minor=from_amount_minor,
+            to_amount_minor=to_amount_minor, recurring_from=next_start)
+        return change, (
+            f"downgrade: {from_amount_minor} -> {to_amount_minor} minor units",
+            f"effective at the next renewal: {next_start.isoformat()}",
+            "nothing is due today: a period boundary has nothing to prorate",
+        )
+    if not (period_start <= decided_on <= period_end):
+        # An upgrade is effective immediately, so "immediately" has to fall inside the period
+        # being prorated. Outside it the two figures would be the whole period or nothing,
+        # neither of which is what the sheet discloses.
+        raise LifecycleError("an_upgrade_takes_effect_inside_the_current_period")
+    credit, credit_steps = prorated_amount(
+        full_amount_minor=from_amount_minor, period_start=period_start,
+        period_end=period_end, effective_on=decided_on)
+    charge, charge_steps = prorated_amount(
+        full_amount_minor=to_amount_minor, period_start=period_start,
+        period_end=period_end, effective_on=decided_on)
+    change = PlanChange(
+        kind=kind, effective_on=decided_on, credit_minor=credit, charge_minor=charge,
+        due_minor=charge - credit, from_amount_minor=from_amount_minor,
+        to_amount_minor=to_amount_minor, recurring_from=next_start)
+    return change, (
+        f"upgrade: {from_amount_minor} -> {to_amount_minor} minor units",
+        f"effective immediately: {decided_on.isoformat()}",
+        f"credit for the plan being left: {credit}",
+        *(f"  leaving: {s}" for s in credit_steps),
+        f"charge for the plan being taken: {charge}",
+        *(f"  taking: {s}" for s in charge_steps),
+        f"due today: {charge - credit}",
+        f"recurring {to_amount_minor} from {next_start.isoformat()}",
+    )
+
+
 def grace_ends_on(*, entered_on: date, terms: Terms) -> date:
     """When the grace period runs out.
 

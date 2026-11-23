@@ -12583,6 +12583,7 @@ BEGIN
         ('plt01.mem_lifecycle_changes: tenant_id,invoice_id -> plt01.fin_invoices'),
         ('plt01.mem_lifecycle_changes: tenant_id,membership_id -> plt01.mem_memberships'),
         ('plt01.mem_lifecycle_changes: tenant_id,requested_by_person_id -> plt01.ppl_persons'),
+        ('plt01.mem_lifecycle_changes: tenant_id,to_agreement_id -> plt01.mem_agreements'),
         ('plt01.mem_membership_terms: tenant_id -> plt01_platform.tenants'),
         ('plt01.mem_membership_terms: tenant_id,product_id -> plt01.cat_products'),
         ('plt01.mem_memberships: tenant_id -> plt01_platform.tenants'),
@@ -12748,7 +12749,7 @@ BEGIN
          'change_id,change_kind,correlation_id,decided_at,decided_by,'
          'disclosed_fee_currency,disclosed_fee_minor,effective_on,'
          'from_status,idempotency_key,invoice_id,membership_id,reason,'
-         'requested_by_person_id,tenant_id,to_status'),
+         'requested_by_person_id,tenant_id,to_agreement_id,to_status'),
         ('plt01.mem_membership_terms',
          'billing_period,contract_key,correlation_id,created_at,created_by,'
          'installment_count,is_off_peak,membership_kind,membership_terms_id,'
@@ -15090,6 +15091,52 @@ BEGIN
         RAISE EXCEPTION 'CHECK 78 FAILED: a lifecycle change from an unknown status';
     EXCEPTION
         WHEN check_violation THEN NULL;
+    END;
+
+    -- **`0026`'s biconditional, one case per side.** A plan change that names no agreement is
+    -- an upgrade nobody can trace in the one record COM-01-R07 says a dispute is argued from;
+    -- a freeze that names one is a reference nothing reads. Both sides are needed because an
+    -- implication in either direction would admit one of them, which is this suite's own
+    -- "a case catches a weakening only if the weakened constraint admits the row".
+    BEGIN
+        INSERT INTO plt01.mem_lifecycle_changes
+            (tenant_id, membership_id, change_kind, from_status, to_status, effective_on,
+             decided_by, reason, idempotency_key, correlation_id, to_agreement_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'dddddddd-1000-4000-8000-000000000006', 'upgrade', 'active', 'active',
+                DATE '2026-03-01', '33333333-3333-4333-8333-333333333333',
+                'moved up', 'plan-change-no-target',
+                '33333333-3333-4333-8333-333333333333', NULL);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a plan change that names no agreement';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender <> 'mem_lifecycle_changes_plan_change_names_its_agreement' THEN
+                RAISE EXCEPTION
+                    'CHECK 78 FAILED: a targetless plan change was refused by % instead',
+                    offender;
+            END IF;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_lifecycle_changes
+            (tenant_id, membership_id, change_kind, from_status, to_status, effective_on,
+             decided_by, reason, idempotency_key, correlation_id, to_agreement_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'dddddddd-1000-4000-8000-000000000006', 'freeze', 'active', 'frozen',
+                DATE '2026-03-01', '33333333-3333-4333-8333-333333333333',
+                'holiday', 'freeze-with-a-target',
+                '33333333-3333-4333-8333-333333333333',
+                'dddddddd-1000-4000-8000-000000000005');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a freeze that names an agreement';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender <> 'mem_lifecycle_changes_plan_change_names_its_agreement' THEN
+                RAISE EXCEPTION
+                    'CHECK 78 FAILED: a freeze naming an agreement was refused by % instead',
+                    offender;
+            END IF;
     END;
 
     BEGIN

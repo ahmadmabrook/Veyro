@@ -2598,6 +2598,18 @@ which is worse, because the write path exists and every reader disagrees with it
 - **The root stays immutable, and what governs is derived.** What the member originally agreed
   to does not move, which is what makes "what did they sign in March" answerable from the row
   rather than from a history; what they are on *now* is the chain's live end.
+- **"Not void" is not "in force", and the first version of this stopped at the first.** A
+  *draft* successor -- one route call, nobody's signature -- became the agreement every
+  disclosed figure answered from, which is strictly worse than the root it replaced, because at
+  least the root was signed. A successor governs once the member has signed it **and** its own
+  start date has arrived, which are the two facts `mem_agreements` already carries. Found one
+  commit later, by writing the command that creates successors.
+- **That start date is what makes a downgrade need no job behind it.** ADM-MSH-06 takes effect
+  "at the next renewal rather than today", so the agreement is written with that date and
+  begins to govern when it arrives -- evaluated at read time, which is MOD-018's "expiry is
+  evaluated rather than swept" and MOD-016's window read at resolution. Every reader therefore
+  takes an as-of date, defaulted to today, and `get_membership(..., at=...)` answers "what was
+  this member on then" without a history replay.
 - **A fork is refused by the database.** `0025`'s `mem_agreements_one_live_supersession` is
   partial on `status <> 'void'`, because with two live successors of one predecessor the answer
   depends on which row the planner returns -- MOD-018's unordered-lookup finding on the figure a
@@ -2633,6 +2645,60 @@ as a mismatch, which is the disclosure requirement defeated by the pair of funct
 to serve it. And nothing had voided a successor, which is the next bullet. Plus two isolation
 cases in check 78, one per direction of `0025`'s index, each mutation-tested.
 
+**ADM-MSH-05 and ADM-MSH-06 are built on the server: the upgrade and the downgrade, which
+were two declared change kinds with no writer at all.** `GET /memberships/{id}/plan-change-
+preview` discloses and `POST /memberships/{id}/plan-change` acts. The canvas states its own
+arithmetic -- "Club, 11 days remaining -20.17 / Club+, 11 days 28.60 / Pay today JOD 8.43" --
+and those are the figures `lifecycle.plan_change` produces, from `prorated_amount` on both
+plans over the same days rather than from a second proration rule.
+
+Six decisions carry it:
+
+- **The direction is derived from the price and there is no `kind` field.** The two acts differ
+  in *both* things that matter: an upgrade is effective immediately and charges the difference,
+  a downgrade "takes effect at the next renewal rather than today" and charges nothing. So a
+  caller able to declare `downgrade` on a dearer plan would get the next-renewal timing *and*
+  no charge -- the rest of the period on the better plan for free, the design's own disclosure
+  defeated by a body field. This build has shipped that shape in six modules.
+- **A same-price move is refused rather than guessed at.** It is a real thing -- different
+  entitlements, same money -- and it is neither act: COM-01-R04 calls it a transfer, which has
+  no writer here. Treating it as a downgrade would delay a change the member asked for; as an
+  upgrade it would move them today for nothing.
+- **The command is the signer, and that is what makes it one act.** A successor governs once it
+  is signed and started, so signing beforehand would move the member before anything recorded
+  the price -- and the command would then refuse its own work as "already on that agreement".
+  `_sign_on` takes a connection so the signature and the change row commit together, which is
+  MOD-010's argument applied to the act that makes a contract binding.
+- **The retry is answered before anything is derived**, for the same reason, and compared on
+  `to_agreement_id` rather than on the kind -- which is derived, so both kinds satisfy the
+  lookup. `0026` adds that column, and it earns its place twice: a key compared on fewer fields
+  than the command takes is this build's most-repeated idempotency defect, and an `upgrade` row
+  that named the kind, the date and the price but not what the member moved onto could not
+  answer the first question anybody asks about an upgrade -- in the one record COM-01-R07 says
+  a dispute is argued from.
+- **`membership.changed` is the TSD's own name** for this event, in COM-01's published list
+  beside `membership.created` and the rest, so it is declared rather than invented -- MOD-012's
+  rule about `integration.disconnected` from the other side. It carries both agreement ids and
+  neither amount, because `evt_outbox` is the one store no erasure reaches.
+- **The new agreement must start on the day the change takes effect**, and the refusal names
+  both dates. `minimum_term_ends_on` is computed from `starts_on` when the agreement is drawn
+  up, so a downgrade agreement starting today while the change lands at the next renewal would
+  hold the member to a term that began before their plan did.
+
+Proven: 16 HTTP tests, 9 domain tests with no database, 12 mutations in
+`tests/mutate_plan_change.py` (all caught), two isolation cases for `0026`'s biconditional --
+one per side -- and four schema mutations against it, every one caught by the case that names
+it.
+
+**Two things the design asks for and this does not do**, both named rather than implied. The
+canvas's button is "Upgrade and charge 8.43": the figure is disclosed and recorded against the
+change and **no invoice is issued and no payment taken**, which is the payment provider at the
+door. And "She gains all-clubs access and 2 PT sessions monthly" does not happen -- a grant is
+explicit everywhere in this module (activation grants nothing either) and **nothing maps a
+product to its entitlement policies**, so the command cannot know which grants the plan being
+left gave. That is a structural gap rather than a choice, and both reads say so in their own
+response.
+
 Known gaps, deliberate:
 
 - **No payment provider and no stored payment methods.** Taking a card is real money and the
@@ -2666,36 +2732,37 @@ Known gaps, deliberate:
   disclosed on the read and on the screen rather than resolved, because resolving them means
   deciding what "owed" means across an invoice, its payments and a credit note -- which is a
   figure MOD-018 owns and this module would be inventing a second definition of.
-- **Nothing invoices the cancellation fee.** It is disclosed and recorded against the change,
-  and no invoice is issued and no payment taken, which is why ADM-MSH-07 is buildable while
-  ADM-MSH-01, 02, 04 and 05 are not: their buttons take money and this one does not.
-- **Eight of thirteen declared lifecycle change kinds have no writer, and this note is the
-  first thing in the repository to say so.** `lifecycle.EDGES` admits `activation`, `freeze`,
-  `medical_hold`, `resume`, `grace_entry`, `suspension`, `renewal`, `upgrade`, `downgrade`,
-  `transfer`, `cancellation`, `expiry` and `reinstatement`; the service writes five --
-  activation, both freezes, resume and cancellation -- and nothing anywhere writes the other
-  eight. So `mem_lifecycle_changes.change_kind` has eight values the product cannot produce,
-  which is this build's most-repeated finding sitting in the module that records what a member
-  agreed to. **Found by checking MOD-027's design record against the code**, which needed an
-  upgrade to convert a trial and discovered there is none.
-  Each of the eight is writable with the grants that exist -- a renewal, a grace entry and an
-  expiry are what the undriven sweeps above would write; a suspension, a reinstatement, a
-  transfer, an upgrade and a downgrade are commands -- so each is work rather than a blocker:
-  `_record_change` takes the kind already and `check_transition` knows the statuses.
-- **`superseded`, `ended` and `void` are three declared agreement statuses nothing writes**,
-  found by the mutation sweep reporting the walk's `status <> 'void'` clause uncaught. The
-  column is in the UPDATE grant and `mem_agreements_status` admits all six; the service writes
-  `signed` and `active` and nothing else. So **after an upgrade the superseded agreement still
-  reads `active`**, and `mem_agreements` holds two active agreements for one membership -- the
-  reads are correct because they follow the chain rather than the status, which is the right
-  dependency and leaves the status wrong. Writing `superseded` belongs to the upgrade command
-  rather than to `create_agreement`, because the successor is a `draft` when it is created. The
-  `void` clause stays: the grant admits the write, a successor somebody voided must not go on
-  governing the member, and the index carries the same predicate so the two cannot drift -- its
-  probe is the writer the service is not, which is why that test writes the status directly.
-- **The upgrade command itself is still unwritten**, and the chain is what it needs. With the
-  readers following it, `upgrade` and `downgrade` are `_record_change` plus a superseding
-  agreement plus `superseded` on the predecessor -- the small part this note used to promise.
+- **Nothing invoices the cancellation fee, and nothing invoices a plan change either.** Both
+  are disclosed and recorded against the change, and no invoice is issued and no payment
+  taken -- which is why ADM-MSH-07 is buildable while ADM-MSH-01, 02, 04 and 05 are not: their
+  buttons take money and this one does not. **ADM-MSH-05's server half is built now**, so what
+  is left at that button is the charge rather than the arithmetic.
+- **Six of thirteen declared lifecycle change kinds have no writer**, down from eight.
+  `lifecycle.EDGES` admits `activation`, `freeze`, `medical_hold`, `resume`, `grace_entry`,
+  `suspension`, `renewal`, `upgrade`, `downgrade`, `transfer`, `cancellation`, `expiry` and
+  `reinstatement`; the service writes seven -- activation, both freezes, resume, cancellation
+  and now both halves of a plan change -- and nothing writes the other six. **Found by
+  checking MOD-027's design record against the code**, which needed an upgrade to convert a
+  trial and discovered there was none. A renewal, a grace entry and an expiry are what the
+  undriven sweeps above would write; a suspension, a reinstatement and a transfer are
+  commands, so each is work rather than a blocker: `_record_change` takes the kind already and
+  `check_transition` knows the statuses. **`transfer` is the one with a decision in front of
+  it**, because `plan_change` refuses a same-price move by naming it as a transfer and
+  COM-01-R04 does not say whether a transfer is between people, between clubs, or both.
+- **`superseded` and `ended` are declared agreement statuses nothing writes**, and that is
+  now a deliberate absence rather than an oversight: both are facts the chain and `ends_on`
+  already state, so a column holding either would be a second definition able to disagree with
+  the first -- this build's most-repeated finding, created on purpose. The reads derive what
+  they need (`get_membership` returns `supersedes_an_earlier_agreement` from the walk's own
+  depth), and the honest remedy is for the two values to come out of
+  `mem_agreements_status`, which is a migration this slice did not make. **`void` is
+  different and is written by nothing yet**: it is not derivable -- somebody decides to void a
+  row -- and the walk reads it, so it stays, and its probe writes the status directly because
+  a route-level test cannot reach it.
+- **After an upgrade the superseded agreement still reads `active`**, so `mem_agreements`
+  holds two active agreements for one membership. The reads are right because they follow the
+  chain rather than the status, which is the correct dependency and leaves the status wrong;
+  closing it means deleting the two values rather than writing them.
 - **No installment schedule generation.** `fin_billing_schedules` records the plan and its
   remaining count; nothing walks it.
 - **Nothing reverses a payment inside the module.** A payment has no UPDATE grant at all, so a
@@ -6241,9 +6308,11 @@ settles, because the canvas is unusually explicit about them:
   rights" is only true if the ordinary readers treat it as live, and a `trial` status would be
   a new value MOD-022, MOD-020 and MOD-017's own lifecycle would all have to learn.
 - **Converting it is MOD-017's `upgrade`**, which is where checking the record against the
-  code found the gap two sections up: eight of thirteen declared change kinds have no writer,
-  `upgrade` among them. So the conversion is MOD-017's work and MOD-027's slice 2 depends on
-  it.
+  code found the gap two sections up: eight of thirteen declared change kinds had no writer,
+  `upgrade` among them. **That one is built now** -- `change_membership_plan`, which signs the
+  superseding agreement and records the change in one transaction -- so MOD-027's slice 2 is
+  unblocked and what it has to decide is which end of the conversion is the trial product's
+  price, since a trial priced at nothing makes every conversion an upgrade by construction.
 - **Lost is reversible, which is the opposite of MOD-026's case.** A case moves forward only
   and a problem that returns is a new case; a lost lead is re-contacted on the same record,
   because a new one would defeat the first point.

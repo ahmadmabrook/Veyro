@@ -230,7 +230,9 @@ def define_membership_terms(
 
 # ------------------------------------------------------------------ agreements
 
-def current_agreement(conn: Connection[Any], membership: dict[str, Any]) -> str:
+def current_agreement(
+    conn: Connection[Any], membership: dict[str, Any], *, at: date | None = None,
+) -> str:
     """The agreement this membership is on **now**, which is not the one it points at.
 
     **`mem_memberships.agreement_id` is the chain's root and is immutable by grant.** That is
@@ -264,7 +266,7 @@ def current_agreement(conn: Connection[Any], membership: dict[str, Any]) -> str:
     row = conn.execute(
         f"WITH RECURSIVE {_WALK_FROM_ONE} SELECT agreement_id, depth FROM walk"
         " ORDER BY depth DESC LIMIT 1",
-        (membership["agreement_id"],),
+        (membership["agreement_id"], at or _today()),
     ).fetchone()
     assert row is not None  # the seed row is the agreement itself
     if int(row[1]) >= _AGREEMENT_CHAIN:
@@ -288,9 +290,23 @@ _AGREEMENT_CHAIN = 30
 #: matched every row and a voided upgrade would still have governed. `0025`'s partial unique
 #: index carries the same predicate, so the index and the walk agree about which successor is
 #: live.
+#:
+#: **And "not void" is not the same as "in force", which cost a draft governing a member.**
+#: The first version of this step stopped there, so a *draft* successor -- one route call,
+#: nobody's signature -- became the agreement every disclosed figure answered from, which is
+#: strictly worse than the root it replaced: at least the root was signed. A successor governs
+#: when the member has signed it and its own start date has arrived, which are exactly the two
+#: facts `mem_agreements` already carries.
+#:
+#: **The start date is what makes a downgrade work with no job behind it.** ADM-MSH-06 takes
+#: effect "at the next renewal rather than today", so the superseding agreement is written
+#: with that date and begins to govern when it arrives -- evaluated at read time, which is
+#: MOD-018's "expiry is evaluated rather than swept" and MOD-016's window read at resolution.
+#: A build that cached it would need the sweep this one does not have.
 _SUPERSESSION_STEP = (
     " JOIN plt01.mem_agreements a"
     "   ON a.supersedes_agreement_id = w.agreement_id AND a.status <> 'void'"
+    "  AND a.signed_at IS NOT NULL AND a.starts_on <= %s"
     f" WHERE w.depth < {_AGREEMENT_CHAIN}")
 
 #: One membership's chain, seeded from the root agreement id the caller passes.
@@ -539,31 +555,53 @@ def sign_agreement(
     only record there could be. Fifth module to ship that shape.
     """
     moment = at or _now()
-    if not signature_evidence_ref.strip():
-        raise InvalidRequest("a_signature_cites_its_evidence")
     with tenant_scope(pool, tenant_id) as conn:
-        try:
-            updated = conn.execute(
-                "UPDATE plt01.mem_agreements SET status = 'signed', signed_at = %s,"
-                " signed_by_person_id = %s, signed_by = %s, sign_correlation_id = %s,"
-                " signature_kind = %s, signature_evidence_ref = %s"
-                " WHERE agreement_id = %s AND status = 'draft'"
-                " RETURNING person_id",
-                (moment, signed_by_person_id, actor_id, correlation_id, signature_kind,
-                 signature_evidence_ref.strip(), agreement_id),
-            ).fetchone()
-        except errors.ForeignKeyViolation as e:
-            raise NotFound(_fk_subject(e)) from None
-        except errors.CheckViolation as e:
-            raise InvalidRequest(_check_name(e)) from None
-        if updated is None:
-            raise Conflict("this_agreement_is_unknown_or_not_a_draft")
-        _append(conn, tenant_id, "membership.agreement_signed", "agreement", agreement_id,
-                {"agreement_id": agreement_id, "person_id": str(updated[0]),
-                 "signature_kind": signature_kind, "signed_at": moment.isoformat()},
-                correlation_id=correlation_id, actor_id=actor_id)
+        _sign_on(conn, tenant_id, agreement_id, signature_kind=signature_kind,
+                 signature_evidence_ref=signature_evidence_ref,
+                 signed_by_person_id=signed_by_person_id, actor_id=actor_id,
+                 correlation_id=correlation_id, moment=moment)
     return {"agreement_id": agreement_id, "status": "signed",
             "signed_at": moment.isoformat()}
+
+
+def _sign_on(
+    conn: Connection[Any], tenant_id: str, agreement_id: str, *, signature_kind: str,
+    signature_evidence_ref: str, signed_by_person_id: str, actor_id: str,
+    correlation_id: str, moment: datetime,
+) -> str:
+    """Sign one agreement on the caller's connection. Returns the person it belongs to.
+
+    **Connection-taking, because a plan change signs and records in one transaction.** An
+    upgrade is a new agreement the member agrees to *and* a lifecycle change recording what it
+    cost; a signed agreement with no change row, or a change row against an unsigned
+    agreement, are both states nothing can reconcile -- which is MOD-010's `append_event`
+    argument applied to a signature. And it is one signer rather than two: a second UPDATE
+    with the same intent would drift, and this one carries the `status = 'draft'` guard that
+    stops two concurrent signings overwriting each other's evidence.
+    """
+    if not signature_evidence_ref.strip():
+        raise InvalidRequest("a_signature_cites_its_evidence")
+    try:
+        updated = conn.execute(
+            "UPDATE plt01.mem_agreements SET status = 'signed', signed_at = %s,"
+            " signed_by_person_id = %s, signed_by = %s, sign_correlation_id = %s,"
+            " signature_kind = %s, signature_evidence_ref = %s"
+            " WHERE agreement_id = %s AND status = 'draft'"
+            " RETURNING person_id",
+            (moment, signed_by_person_id, actor_id, correlation_id, signature_kind,
+             signature_evidence_ref.strip(), agreement_id),
+        ).fetchone()
+    except errors.ForeignKeyViolation as e:
+        raise NotFound(_fk_subject(e)) from None
+    except errors.CheckViolation as e:
+        raise InvalidRequest(_check_name(e)) from None
+    if updated is None:
+        raise Conflict("this_agreement_is_unknown_or_not_a_draft")
+    _append(conn, tenant_id, "membership.agreement_signed", "agreement", agreement_id,
+            {"agreement_id": agreement_id, "person_id": str(updated[0]),
+             "signature_kind": signature_kind, "signed_at": moment.isoformat()},
+            correlation_id=correlation_id, actor_id=actor_id)
+    return str(updated[0])
 
 
 # ------------------------------------------------------------------ the membership lifecycle
@@ -589,7 +627,8 @@ def _membership(conn: Connection[Any], membership_id: str) -> dict[str, Any]:
 
 
 def _recorded_change(
-    conn: Connection[Any], membership_id: str, idempotency_key: str, change_kind: str,
+    conn: Connection[Any], membership_id: str, idempotency_key: str,
+    change_kind: str | tuple[str, ...],
 ) -> dict[str, Any] | None:
     """The change this key already produced, or None.
 
@@ -602,7 +641,7 @@ def _recorded_change(
     """
     row = conn.execute(
         "SELECT change_id, membership_id, change_kind, from_status, to_status,"
-        " effective_on, disclosed_fee_minor"
+        " effective_on, disclosed_fee_minor, to_agreement_id"
         " FROM plt01.mem_lifecycle_changes WHERE idempotency_key = %s",
         (idempotency_key,),
     ).fetchone()
@@ -616,9 +655,17 @@ def _recorded_change(
     # own had already happened. A `cancel` answered with the `freeze` that key recorded reads
     # as a cancellation that took effect, and nothing cancelled anything. Same shape as the
     # membership check above and as MOD-016's key reused across two coupon codes.
-    if str(row[2]) != change_kind:
+    # **A set of kinds, for the one command that derives its own.** `change_membership_plan`
+    # works out `upgrade` or `downgrade` from the two prices, so it cannot name the kind before
+    # it has read them -- and reading them first means refusing a retry, because by then the
+    # agreement it already moved onto is the live one. Either plan-change kind satisfies this
+    # caller and the target is compared instead, which is the field that actually distinguishes
+    # two plan changes on one membership.
+    kinds = (change_kind,) if isinstance(change_kind, str) else change_kind
+    if str(row[2]) not in kinds:
         raise Conflict("this_idempotency_key_belongs_to_another_command")
     return {"change_id": str(row[0]), "change_kind": str(row[2]),
+            "to_agreement_id": (None if row[7] is None else str(row[7])),
             "from_status": str(row[3]), "to_status": str(row[4]),
             "effective_on": row[5],
             "disclosed_fee_minor": int(row[6]) if row[6] is not None else None}
@@ -630,7 +677,7 @@ def _record_change(
     idempotency_key: str, actor_id: str, correlation_id: str,
     requested_by_person_id: str | None = None,
     disclosed_fee_minor: int | None = None, disclosed_fee_currency: str | None = None,
-    invoice_id: str | None = None,
+    invoice_id: str | None = None, to_agreement_id: str | None = None,
 ) -> tuple[str, bool]:
     """Insert one lifecycle change, idempotently. Returns `(change_id, repeated)`.
 
@@ -644,14 +691,15 @@ def _record_change(
         INSERT INTO plt01.mem_lifecycle_changes
             (tenant_id, membership_id, change_kind, from_status, to_status, effective_on,
              decided_by, requested_by_person_id, disclosed_fee_minor,
-             disclosed_fee_currency, invoice_id, reason, idempotency_key, correlation_id)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+             disclosed_fee_currency, invoice_id, reason, idempotency_key, correlation_id,
+             to_agreement_id)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (tenant_id, idempotency_key) DO NOTHING
         RETURNING change_id
         """,
         (tenant_id, membership_id, change_kind, from_status, to_status, effective_on,
          actor_id, requested_by_person_id, disclosed_fee_minor, disclosed_fee_currency,
-         invoice_id, reason, idempotency_key, correlation_id),
+         invoice_id, reason, idempotency_key, correlation_id, to_agreement_id),
     ).fetchone()
     if row is not None:
         return str(row[0]), False
@@ -1395,6 +1443,273 @@ def cancel_membership(
             # here the reason was written down beside the value that implements it.
             "reasoning": list(reasoning) + list(fee_steps),
             "entitlements_revoked": revoked, "repeated": repeated}
+
+
+def _plan_change_facts(
+    conn: Connection[Any], membership: dict[str, Any], to_agreement_id: str,
+    *, today: date,
+) -> tuple[lifecycle.PlanChange, tuple[str, ...], str, str]:
+    """The decision behind both halves of a plan change, read once and shared.
+
+    Returns `(change, steps, currency, from_agreement_id)`. The preview and the command read
+    this, because a disclosure that computed its own figures would be MOD-017's own
+    cancellation-fee finding one act over: two expressions, identical, agreeing for as long as
+    nobody edits one of them -- and the one that gets edited is the one the command compares an
+    acknowledged figure against.
+    """
+    from_agreement_id = current_agreement(conn, membership)
+    if from_agreement_id == to_agreement_id:
+        raise Conflict("this_membership_is_already_on_that_agreement")
+    row = conn.execute(
+        "SELECT a.person_id, a.amount_minor, a.currency, a.starts_on, a.signed_at,"
+        " a.status, a.supersedes_agreement_id, t.billing_period"
+        " FROM plt01.mem_agreements a"
+        " JOIN plt01.mem_membership_terms t"
+        "   ON t.membership_terms_id = a.membership_terms_id"
+        " WHERE a.agreement_id = %s",
+        (to_agreement_id,),
+    ).fetchone()
+    if row is None:
+        raise NotFound("agreement_not_found")
+    # **The chain link is validated, never written here.** `create_agreement` is the one
+    # writer of `supersedes_agreement_id` and `0025`'s index is what keeps it a chain; this
+    # command's job is to refuse an agreement that is not the live one's successor. An
+    # agreement that superseded something else would move the member onto a plan whose place
+    # in their own history nothing can state.
+    if row[6] is None or str(row[6]) != from_agreement_id:
+        raise Conflict("this_agreement_does_not_supersede_the_live_one")
+    if str(row[0]) != membership["person_id"]:
+        raise Conflict("this_agreement_belongs_to_another_person")
+    # **A draft, because the command is what signs it.** A successor only governs once it is
+    # signed and its start date has arrived -- `_SUPERSESSION_STEP` says so -- so signing it
+    # first would move the member onto the new plan *before* anything recorded what the change
+    # cost, and this command would then refuse its own work as "already on that agreement".
+    # Signing here is also what makes the pair atomic.
+    if str(row[5]) != "draft" or row[4] is not None:
+        raise Conflict("a_plan_change_signs_a_draft_agreement")
+    from_row = conn.execute(
+        "SELECT a.amount_minor, a.currency, t.billing_period"
+        " FROM plt01.mem_agreements a"
+        " JOIN plt01.mem_membership_terms t"
+        "   ON t.membership_terms_id = a.membership_terms_id"
+        " WHERE a.agreement_id = %s",
+        (from_agreement_id,),
+    ).fetchone()
+    assert from_row is not None
+    # **One currency, because minor units are not comparable across two.** MOD-016 shipped an
+    # approval that authorised "100.00 JOD down to 1.00" and then admitted the same counts in
+    # USD; a credit in one currency against a charge in another is the same mistake with a
+    # member's money on both sides.
+    if str(row[2]).upper() != str(from_row[1]).upper():
+        raise Conflict("a_plan_change_does_not_cross_currencies")
+    if membership["current_period_start"] is None or membership["current_period_end"] is None:
+        raise Conflict("this_membership_has_no_billing_period_to_prorate")
+    # **The billing period is the one being left.** The period under proration is the current
+    # one, which was opened on the old plan's cadence, so taking the new agreement's cadence
+    # here would compute the next period's start from a length that period never had.
+    try:
+        change, steps = lifecycle.plan_change(
+            decided_on=today, period_start=membership["current_period_start"],
+            period_end=membership["current_period_end"],
+            from_amount_minor=int(from_row[0]), to_amount_minor=int(row[1]),
+            billing_period=str(from_row[2]))
+    except lifecycle.LifecycleError as e:
+        raise Conflict(str(e)) from None
+    # **The new agreement starts when the change takes effect, and the two are checked against
+    # each other.** `minimum_term_ends_on` was computed from `starts_on` when the agreement was
+    # drawn up, so a downgrade agreement starting today while the change takes effect at the
+    # next renewal would hold the member to a term that began before their plan did. The
+    # preview says which date it should be, which is what makes this refusal actionable rather
+    # than a puzzle.
+    if row[3] != change.effective_on:
+        raise Conflict(
+            "this_agreement_starts_on_"
+            f"{row[3].isoformat()}_and_the_change_takes_effect_on_"
+            f"{change.effective_on.isoformat()}")
+    return change, steps, str(row[2]).upper(), from_agreement_id
+
+
+def preview_plan_change(
+    pool: Pool, tenant_id: str, membership_id: str, to_agreement_id: str,
+    *, at: date | None = None,
+) -> dict[str, Any]:
+    """What ADM-MSH-05 and ADM-MSH-06 disclose before the button.
+
+    **Both figures, because they are different numbers.** The canvas's own note on the sale
+    sheet says confusing the pro-rata amount with the recurring amount "is the most common
+    membership-sale complaint in the industry", and a plan change has the same pair: what is
+    due today for the rest of this period, and what the member pays from the next one.
+
+    **It takes a drafted agreement rather than an amount**, so the figures come from a row
+    somebody wrote and not from a number a caller typed -- which is the same reason
+    `create_agreement` takes a price resolution rather than an amount. A *draft*, because a
+    signed successor whose date has arrived already governs: the command is the signer, so
+    until it runs the member is still on the plan this read is comparing against.
+    """
+    today = at or _today()
+    with tenant_scope(pool, tenant_id) as conn:
+        membership = _membership(conn, membership_id)
+        change, steps, currency, from_agreement_id = _plan_change_facts(
+            conn, membership, to_agreement_id, today=today)
+        may_change, refused_because = True, None
+        try:
+            lifecycle.check_transition(
+                change.kind, membership["status"], membership["status"])
+        except lifecycle.LifecycleError as e:
+            may_change, refused_because = False, str(e)
+    return {
+        "membership_id": membership_id,
+        "from_agreement_id": from_agreement_id,
+        "to_agreement_id": to_agreement_id,
+        # **Derived, and the whole reason this read exists.** A screen cannot work out which
+        # of the two acts it is drawing: ADM-MSH-05 leads with what the member gains and
+        # charges today, ADM-MSH-06 "leads with what they lose" and charges nothing.
+        "kind": change.kind,
+        "version": membership["version"],
+        "may_change": may_change,
+        "refused_because": refused_because,
+        "effective_on": change.effective_on.isoformat(),
+        "takes_effect_immediately": change.effective_on <= today,
+        "credit_minor": change.credit_minor,
+        "charge_minor": change.charge_minor,
+        "due_minor": change.due_minor,
+        "currency": currency,
+        "from_amount_minor": change.from_amount_minor,
+        "to_amount_minor": change.to_amount_minor,
+        "recurring_from": change.recurring_from.isoformat(),
+        "explanation": list(steps),
+        "nothing_is_charged": (
+            "due_minor is disclosed and recorded against the change. No invoice is issued "
+            "and no payment is taken: taking a card is real money and the owner reserves "
+            "it, so the figure is the half that must be correct whatever the provider "
+            "turns out to be"),
+        "the_entitlements_do_not_move": (
+            "a grant is explicit in this module -- activation grants nothing either -- and "
+            "nothing maps a product to its entitlement policies, so this command cannot "
+            "know which grants the plan being left gave. Changing them is "
+            "member-entitlements/grants and member-entitlements/{id}/revoke"),
+    }
+
+
+def change_membership_plan(
+    pool: Pool, tenant_id: str, membership_id: str, *, to_agreement_id: str, reason: str,
+    signature_kind: str, signature_evidence_ref: str, idempotency_key: str, actor_id: str,
+    correlation_id: str, acknowledged_due_minor: int | None = None,
+    expected_version: int | None = None, requested_by_person_id: str | None = None,
+    at: date | None = None,
+) -> dict[str, Any]:
+    """COM-01-R04's upgrade and downgrade, which were two declared change kinds with no writer.
+
+    **The kind is derived from the price**, in `lifecycle.plan_change` and not here -- see
+    that function for why a caller who could declare it would get the rest of the period on a
+    dearer plan for nothing.
+
+    **The agreement moves because the chain moves, and the status does not.**
+    `lifecycle.EDGES` has both kinds as `active -> active`, so there is nothing for
+    `mem_memberships.status` to cache: what the member is on is `current_agreement`, which
+    walks `supersedes_agreement_id`. The version is bumped so a cancellation that read the
+    membership before the change is refused rather than deciding on the plan it has left.
+
+    **This command signs the agreement**, which is what makes it one act. A successor governs
+    once it is signed and started, so signing it beforehand would move the member before
+    anything recorded the price -- and the signature and the change row commit together, which
+    is MOD-010's argument applied to the act that makes a contract binding.
+
+    **A downgrade needs nothing to catch it up.** Its agreement starts at the next renewal and
+    the walk compares that date against the day it is asked, so the plan moves when the date
+    arrives rather than when a job runs. There is no job here and this is why none is needed.
+    """
+    if not idempotency_key.strip():
+        raise InvalidRequest("an_idempotency_key_cannot_be_blank")
+    today = at or _today()
+    with tenant_scope(pool, tenant_id) as conn:
+        membership = _membership(conn, membership_id)
+        # **The retry is answered before anything is derived**, because by the time this
+        # command has succeeded once the agreement it signed is the live one -- so deriving
+        # first would refuse a retried command as "already on that agreement". That is
+        # MOD-017's own blocking review finding: an idempotent command has to be idempotent to
+        # the caller and not only in the table, and a client whose request timed out after the
+        # commit must not be told the work failed.
+        prior = _recorded_change(
+            conn, membership_id, idempotency_key.strip(), ("upgrade", "downgrade"))
+        if prior is not None:
+            # **Compared on the target, which is the field that tells two plan changes
+            # apart.** The kind cannot do it -- it is derived, and both kinds satisfy the
+            # lookup above -- so without `to_agreement_id` on the row this would be a key
+            # compared on fewer fields than the command takes, which is the defect this build
+            # has shipped in six modules.
+            if prior["to_agreement_id"] != to_agreement_id:
+                raise Conflict("this_idempotency_key_moved_this_membership_to_another_plan")
+            # **The repeat is answered from the row, not from what the retry carried.**
+            # `cancel_membership` echoed the caller's acknowledged figure straight back, so a
+            # second call sending a different number was told it had been accepted -- the
+            # disclosure check bypassed by retrying with the figure you wanted.
+            return {"membership_id": membership_id, "change_id": prior["change_id"],
+                    "kind": prior["change_kind"],
+                    "effective_on": prior["effective_on"].isoformat(),
+                    "due_minor": prior["disclosed_fee_minor"],
+                    "to_agreement_id": to_agreement_id, "repeated": True}
+        change, steps, currency, from_agreement_id = _plan_change_facts(
+            conn, membership, to_agreement_id, today=today)
+        if expected_version is not None and membership["version"] != expected_version:
+            raise Conflict("this_membership_changed_since_it_was_read")
+        try:
+            lifecycle.check_transition(
+                change.kind, membership["status"], membership["status"])
+        except lifecycle.LifecycleError as e:
+            raise Conflict(str(e)) from None
+        # **The disclosed figure is compared, not echoed.** COM-01-R06 wants the member to
+        # understand the consequence before confirming, and a command that accepted any
+        # number would make the preview advisory.
+        if (acknowledged_due_minor is not None
+                and acknowledged_due_minor != change.due_minor):
+            raise Conflict(
+                f"the_disclosed_amount_is_{change.due_minor}_not_{acknowledged_due_minor}")
+        _sign_on(
+            conn, tenant_id, to_agreement_id, signature_kind=signature_kind,
+            signature_evidence_ref=signature_evidence_ref,
+            signed_by_person_id=membership["person_id"], actor_id=actor_id,
+            correlation_id=correlation_id, moment=_now())
+        change_id, repeated = _record_change(
+            conn, tenant_id, membership_id=membership_id, change_kind=change.kind,
+            from_status=membership["status"], to_status=membership["status"],
+            effective_on=change.effective_on, reason=reason,
+            idempotency_key=idempotency_key.strip(), actor_id=actor_id,
+            correlation_id=correlation_id,
+            requested_by_person_id=requested_by_person_id,
+            disclosed_fee_minor=change.due_minor, disclosed_fee_currency=currency,
+            to_agreement_id=to_agreement_id)
+        # **The version moves and the status does not.** `mem_memberships` is a cache of the
+        # latest effective *status* change and this act changes no status, so writing one
+        # would be caching a move that did not happen -- the shape `freeze_membership` paid
+        # for when it wrote `frozen` for a freeze that had not started.
+        conn.execute(
+            "UPDATE plt01.mem_memberships SET version = version + 1"
+            " WHERE membership_id = %s",
+            (membership_id,))
+        # `membership.changed` is the TSD's own name for this event in COM-01's published
+        # list, which is why it is declared rather than invented -- MOD-012's rule about
+        # `integration.disconnected`, met from the other side.
+        _append(conn, tenant_id, "membership.changed", "membership", membership_id,
+                {"membership_id": membership_id, "change_id": change_id,
+                 "change_kind": change.kind,
+                 "from_agreement_id": from_agreement_id,
+                 "to_agreement_id": to_agreement_id,
+                 "effective_on": change.effective_on.isoformat()},
+                correlation_id=correlation_id, actor_id=actor_id)
+    return {"membership_id": membership_id, "change_id": change_id, "kind": change.kind,
+            "from_agreement_id": from_agreement_id, "to_agreement_id": to_agreement_id,
+            "effective_on": change.effective_on.isoformat(),
+            "takes_effect_immediately": change.effective_on <= today,
+            "credit_minor": change.credit_minor, "charge_minor": change.charge_minor,
+            "due_minor": change.due_minor, "currency": currency,
+            "recurring_from": change.recurring_from.isoformat(),
+            "reasoning": list(steps), "repeated": repeated,
+            "nothing_is_charged": (
+                "the figure is recorded against the change and no invoice is issued"),
+            "the_entitlements_do_not_move": (
+                "nothing maps a product to its entitlement policies, so a grant is still "
+                "explicit")}
 
 
 #: The change kinds whose reason is health data, so the prose is masked rather than returned.
@@ -3736,7 +4051,7 @@ def _one_of(value: str | None, allowed: frozenset[str], error: str) -> str | Non
 
 def list_memberships(
     pool: Pool, tenant_id: str, *, person_id: str | None = None,
-    status: str | None = None, limit: int = 50,
+    status: str | None = None, limit: int = 50, at: date | None = None,
 ) -> dict[str, Any]:
     """The memberships in this tenant, newest first, optionally one person's.
 
@@ -3759,7 +4074,7 @@ def list_memberships(
     # one person's chains rather than every chain in the tenant. The filters are on `m.`
     # columns the seed has, so the predicate is reused rather than written twice; its
     # parameters go first because the CTE is first in the statement.
-    seed = list(params)
+    seed = [*params, at or _today()]
     params.append(limit)
     with tenant_scope(pool, tenant_id) as conn:
         rows = conn.execute(
@@ -3806,7 +4121,9 @@ def list_memberships(
     }
 
 
-def get_membership(pool: Pool, tenant_id: str, membership_id: str) -> dict[str, Any]:
+def get_membership(
+    pool: Pool, tenant_id: str, membership_id: str, *, at: date | None = None,
+) -> dict[str, Any]:
     """One membership with the agreement it was sold on and the terms that agreement cites.
 
     The figures come from the agreement rather than from the product, because an agreement
@@ -3831,7 +4148,7 @@ def get_membership(pool: Pool, tenant_id: str, membership_id: str) -> dict[str, 
             " JOIN plt01.mem_membership_terms t"
             "   ON t.membership_terms_id = a.membership_terms_id"
             " WHERE m.membership_id = %s",
-            (membership_id, membership_id),
+            (membership_id, at or _today(), membership_id),
         ).fetchone()
         if row is None:
             raise NotFound("membership_not_found")
@@ -4683,7 +5000,7 @@ def membership_summary(
             "   AND coalesce(m.ends_on, m.current_period_end) <= %s"
             " ORDER BY coalesce(m.ends_on, m.current_period_end), m.membership_id"
             " LIMIT %s",
-            (as_of, until, LIST_LIMIT),
+            (as_of, as_of, until, LIST_LIMIT),
         ).fetchall()
     _refuse_a_truncated_chain(expiring, 10)
     counts = {str(r[0]): int(r[1]) for r in by_status}
