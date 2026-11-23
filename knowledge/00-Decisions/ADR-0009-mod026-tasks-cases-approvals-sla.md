@@ -60,6 +60,19 @@ precedent. **Writing it is the first job of slice 2**, because MOD-026 is the mo
 named invariant that rule is, and a module cannot claim an invariant whose only enforcement is
 a layer it does not own.
 
+**And the trigger must be conditional, which is the part that would have been got wrong.**
+`approval.py:106` reads `if policy.separation_of_duties and decided_by == requested_by`, so a
+policy may legitimately permit self-approval -- which is also what INV-AUT-02's own "unless
+explicit emergency policy applies" provides for. A trigger refusing it outright would make the
+database and the service disagree, which is this build's MOD-020 waitlist shape; a trigger
+*re-deriving* the policy would reintroduce MOD-008's own blocking defect, where somebody
+holding `authz.policy.write` switched separation of duties off for a request already in flight
+and then approved it. So the trigger reads the **snapshotted** `separation_of_duties` on the
+`approval_requests` row -- the column is already there for exactly this reason -- and takes
+`FOR UPDATE` on it, because a trigger that reads a parent row to decide whether a child may be
+written has to lock it: MOD-019 shipped `FOR SHARE` and MOD-021 shipped three with no lock at
+all.
+
 **So MOD-026 does not build a second one.** Two approval engines in one product is this
 repository's own "one module, two definitions of the same balance" at its worst: two tables
 able to disagree about whether a refund was approved, with nothing able to say which is the
