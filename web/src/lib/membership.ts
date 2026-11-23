@@ -36,8 +36,19 @@ export type MembershipRow = {
   current_period_start: string | null;
   current_period_end: string | null;
   status_effective_on: string;
+  /** The agreement that governs this membership today, which is the chain's live end. */
   agreement_id: string;
-  /** From the agreement, which snapshots what was sold -- not today's price. */
+  /**
+   * The immutable link `mem_memberships` carries, which is what the member first signed.
+   * It differs from `agreement_id` once an upgrade, downgrade or transfer has superseded
+   * it -- and the figures on this row are the *current* agreement's, so a screen printing
+   * this one beside them would be an id that does not explain its own numbers.
+   */
+  original_agreement_id: string;
+  /**
+   * From the agreement that governs today, which snapshots what was sold under it -- not
+   * today's price, and not the superseded agreement's either.
+   */
   amount_minor: number;
   currency: string;
   minimum_term_ends_on: string | null;
@@ -65,11 +76,14 @@ export type LifecycleChange = {
 export type MembershipDetail = Omit<
   MembershipRow,
   "amount_minor" | "currency" | "minimum_term_ends_on" | "membership_kind"
-  | "billing_period" | "is_off_peak" | "agreement_id"
+  | "billing_period" | "is_off_peak" | "agreement_id" | "original_agreement_id"
 > & {
   version: number;
   agreement: {
     agreement_id: string;
+    original_agreement_id: string;
+    /** Derived from the supersession walk's own depth, not from comparing the two ids. */
+    supersedes_an_earlier_agreement: boolean;
     amount_minor: number;
     currency: string;
     starts_on: string;

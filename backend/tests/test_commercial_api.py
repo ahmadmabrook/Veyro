@@ -4108,3 +4108,275 @@ class EndedMembershipGrantTests(CommercialApiTestCase):
             self._tenant_pool, tenant_id, actor_id=ACTOR, correlation_id=str(uuid.uuid4()))
         self.assertEqual(done["grants_revoked"], 1)
         self.assertEqual(self._grant_status(tenant_id, grant_id), "revoked")
+
+
+class SupersessionChainTests(CommercialApiTestCase):
+    """The upgrade that was half-built: the chain was writable and nothing read it.
+
+    `mem_agreements.supersedes_agreement_id` has existed since `0011` -- its comment says it is
+    "for an upgrade, downgrade or transfer ... so the chain answers what did this member have
+    in March" -- `create_agreement` takes it and `POST /memberships/agreements` exposes it. All
+    five readers of a membership's terms went to `mem_memberships.agreement_id`, which is the
+    chain's **root** and immutable by grant, because what the member originally agreed to does
+    not move.
+
+    **So a superseding agreement written through a route that exists left every figure this
+    module discloses answering from the agreement the member had left**: the freeze allowance
+    against the original contract's `freeze_days_per_year`, the cancellation fee against the
+    original `amount_minor` and `minimum_term_ends_on`, the notice period and the buy-out
+    against a contract version they had moved off. No adversary, one route call.
+
+    These are the assertions that the readers follow the chain now, and the one that says the
+    walk cannot fork.
+    """
+
+    def supersede(self, tenant_id: str, base: dict, *, amount_minor: int,
+                  contract: dict | None = None) -> str:
+        """A superseding agreement on the same membership, signed.
+
+        **A different contract where the test asks for one**, because the point of an upgrade
+        is usually that the terms move -- and a superseding agreement on the same contract
+        would prove the amount travelled and say nothing about the terms.
+        """
+        owner = self.headers(tenant_id)
+        terms_id = base["terms_id"]
+        if contract is not None:
+            contract_key = self.contract(tenant_id, **contract)
+            product_id, _ = self.membership_product(tenant_id)
+            terms_id = self.terms(tenant_id, contract_key, product_id)
+        made = self.client.post("/memberships/agreements", json={
+            "person_id": base["person_id"], "membership_terms_id": terms_id,
+            "variant_id": base["variant_id"], "amount_minor": amount_minor,
+            "currency": "JOD", "starts_on": MEMBERSHIP_START.isoformat(),
+            "supersedes_agreement_id": base["agreement_id"], **self.correlation()},
+            headers=owner)
+        self.assertEqual(made.status_code, 201, made.text)
+        agreement_id = str(made.json()["agreement_id"])
+        signed = self.client.post(
+            f"/memberships/agreements/{agreement_id}/sign", json={
+                "signature_kind": "click_through",
+                "signature_evidence_ref": f"s3://signatures/{agreement_id}",
+                "signed_by_person_id": base["person_id"], **self.correlation()},
+            headers=owner)
+        self.assertEqual(signed.status_code, 200, signed.text)
+        return agreement_id
+
+    def test_the_cancellation_fee_follows_the_chain_rather_than_the_root(self):
+        """**The figure a member disputes.** The buy-out is months of the agreement amount, so
+        an upgraded member quoted the price they used to pay is quoted the wrong fee -- and the
+        disclosure requirement COM-01-R06 exists for is the one thing that has to be right."""
+        tenant_id = self.tenant()
+        owner = self.headers(tenant_id)
+        base = self.membership(tenant_id, contract={
+            "minimum_term_months": 12, "early_termination_months": 2, "notice_days": 0})
+        before = self.client.get(
+            f"/memberships/{base['membership_id']}/cancellation-preview", headers=owner)
+        self.assertEqual(before.status_code, 200, before.text)
+        self.assertEqual(before.json()["fee_parts"]["early_termination_minor"], 9000)
+
+        self.supersede(tenant_id, base, amount_minor=9000)
+        after = self.client.get(
+            f"/memberships/{base['membership_id']}/cancellation-preview", headers=owner)
+        self.assertEqual(after.status_code, 200, after.text)
+        self.assertEqual(after.json()["fee_parts"]["early_termination_minor"], 18000)
+
+    def test_the_freeze_allowance_follows_the_chain_rather_than_the_root(self):
+        """The other disclosed figure: an upgraded member's allowance is the one on the
+        contract they are on, not the one they signed first."""
+        tenant_id = self.tenant()
+        owner = self.headers(tenant_id)
+        base = self.membership(tenant_id, contract={"freeze_days_per_year": 30})
+        before = self.client.get(
+            f"/memberships/{base['membership_id']}/freeze-allowance", headers=owner)
+        self.assertEqual(before.status_code, 200, before.text)
+        self.assertEqual(before.json()["allowance_days"], 30)
+
+        self.supersede(tenant_id, base, amount_minor=4500,
+                       contract={"freeze_days_per_year": 60})
+        after = self.client.get(
+            f"/memberships/{base['membership_id']}/freeze-allowance", headers=owner)
+        self.assertEqual(after.status_code, 200, after.text)
+        self.assertEqual(after.json()["allowance_days"], 60)
+
+    def test_an_unsuperseded_membership_reads_its_own_agreement(self):
+        """The permission probe: a walk that always moved would be as wrong as one that never
+        did, and every membership in this suite is unsuperseded."""
+        tenant_id = self.tenant()
+        owner = self.headers(tenant_id)
+        base = self.membership(tenant_id, contract={
+            "minimum_term_months": 12, "early_termination_months": 2, "notice_days": 0})
+        preview = self.client.get(
+            f"/memberships/{base['membership_id']}/cancellation-preview", headers=owner)
+        self.assertEqual(preview.json()["fee_parts"]["early_termination_minor"], 9000)
+
+    def test_two_agreements_cannot_supersede_one(self):
+        """**A fork makes the answer depend on which row the planner returns**, which is
+        MOD-018's `chart_for` finding on the figure a member disputes. `0025`'s partial unique
+        index refuses it."""
+        tenant_id = self.tenant()
+        base = self.membership(tenant_id)
+        self.supersede(tenant_id, base, amount_minor=9000)
+        owner = self.headers(tenant_id)
+        forked = self.client.post("/memberships/agreements", json={
+            "person_id": base["person_id"], "membership_terms_id": base["terms_id"],
+            "variant_id": base["variant_id"], "amount_minor": 5500, "currency": "JOD",
+            "starts_on": MEMBERSHIP_START.isoformat(),
+            "supersedes_agreement_id": base["agreement_id"], **self.correlation()},
+            headers=owner)
+        self.assertEqual(forked.status_code, 409, forked.text)
+
+    def test_the_chain_carries_two_links(self):
+        """Two upgrades in a row, because a walk that stopped after one step would pass every
+        assertion above."""
+        tenant_id = self.tenant()
+        owner = self.headers(tenant_id)
+        base = self.membership(tenant_id, contract={
+            "minimum_term_months": 12, "early_termination_months": 2, "notice_days": 0})
+        second = self.supersede(tenant_id, base, amount_minor=9000)
+        self.supersede(
+            tenant_id, {**base, "agreement_id": second}, amount_minor=13500)
+        preview = self.client.get(
+            f"/memberships/{base['membership_id']}/cancellation-preview", headers=owner)
+        self.assertEqual(preview.json()["fee_parts"]["early_termination_minor"], 27000)
+
+    def test_the_cancel_command_charges_what_the_preview_disclosed(self):
+        """**The command, not only the read.** `preview_cancellation` and `cancel_membership`
+        resolve the agreement separately, and the command is where the figure is recorded --
+        so a command still on the root would refuse the preview's own disclosed figure as a
+        mismatch, which is the disclosure requirement defeated by the pair of functions that
+        exist to serve it. The sweep found this: every assertion above was about the read."""
+        tenant_id = self.tenant()
+        owner = self.headers(tenant_id)
+        base = self.membership(tenant_id, contract={
+            "minimum_term_months": 12, "early_termination_months": 2, "notice_days": 0})
+        self.supersede(tenant_id, base, amount_minor=9000)
+        preview = self.client.get(
+            f"/memberships/{base['membership_id']}/cancellation-preview", headers=owner)
+        self.assertEqual(preview.json()["fee_parts"]["early_termination_minor"], 18000)
+        cancelled = self.client.post(
+            f"/memberships/{base['membership_id']}/cancel", json={
+                "reason": "moving abroad",
+                "acknowledged_fee_minor": preview.json()["disclosed_fee_minor"],
+                "expected_version": preview.json()["version"],
+                "idempotency_key": f"cancel-{uuid.uuid4().hex[:8]}", **self.correlation()},
+            headers=owner)
+        self.assertEqual(cancelled.status_code, 200, cancelled.text)
+        self.assertEqual(
+            cancelled.json()["fee_parts"]["early_termination_minor"], 18000)
+        self.assertEqual(
+            cancelled.json()["fee_due_minor"], preview.json()["disclosed_fee_minor"])
+
+    def test_a_voided_successor_does_not_govern(self):
+        """**The probe is the writer the service is not**, which is why it writes the status
+        directly. `void` is in `mem_agreements_status` and in the UPDATE grant, and no service
+        function writes it -- so the clause the walk and `0025`'s index both carry is a guard
+        against a state no route can reach, and a route-level test cannot exercise it. The
+        guard stays: the grant admits the write, and a successor somebody voided must not go
+        on governing the member. Found by the mutation sweep reporting it uncaught.
+
+        `superseded` and `ended` have no writer either; that is recorded as the gap it is --
+        an agreement that has been superseded still reads `active`, which is the upgrade
+        command's job rather than this walk's."""
+        tenant_id = self.tenant()
+        owner = self.headers(tenant_id)
+        base = self.membership(tenant_id)
+        second = self.supersede(tenant_id, base, amount_minor=9000)
+        listed = self.client.get(
+            f"/memberships?person_id={base['person_id']}", headers=owner)
+        self.assertEqual(listed.json()["memberships"][0]["amount_minor"], 9000)
+
+        with tenant_scope(self._tenant_pool, tenant_id) as conn:
+            conn.execute(
+                "UPDATE plt01.mem_agreements SET status = 'void' WHERE agreement_id = %s",
+                (second,))
+        after = self.client.get(
+            f"/memberships?person_id={base['person_id']}", headers=owner)
+        row = after.json()["memberships"][0]
+        self.assertEqual(row["amount_minor"], 4500)
+        self.assertEqual(row["agreement_id"], base["agreement_id"])
+        preview = self.client.get(
+            f"/memberships/{base['membership_id']}/cancellation-preview", headers=owner)
+        self.assertEqual(preview.json()["amount_minor"], 4500)
+
+    def test_the_listing_shows_the_live_agreement_and_names_the_root(self):
+        """**The reads a person actually opens.** `GET /memberships` carried `m.agreement_id`
+        and joined the agreement on it, so after an upgrade the amount, currency and term on
+        the row were the superseded contract's -- the figures a manager reads the business by.
+        The root is still answerable and is named as what it is."""
+        tenant_id = self.tenant()
+        owner = self.headers(tenant_id)
+        base = self.membership(tenant_id)
+        listed = self.client.get(
+            f"/memberships?person_id={base['person_id']}", headers=owner)
+        self.assertEqual(listed.status_code, 200, listed.text)
+        row = listed.json()["memberships"][0]
+        self.assertEqual(row["amount_minor"], 4500)
+        self.assertEqual(row["agreement_id"], base["agreement_id"])
+        self.assertEqual(row["original_agreement_id"], base["agreement_id"])
+
+        second = self.supersede(tenant_id, base, amount_minor=9000)
+        after = self.client.get(
+            f"/memberships?person_id={base['person_id']}", headers=owner)
+        row = after.json()["memberships"][0]
+        self.assertEqual(row["amount_minor"], 9000)
+        self.assertEqual(row["agreement_id"], second)
+        # The immutable link is still there, under the name that says which it is: a row whose
+        # id did not explain its own numbers is what the first fix for this would have left.
+        self.assertEqual(row["original_agreement_id"], base["agreement_id"])
+
+    def test_the_detail_read_shows_the_live_agreement_and_says_it_superseded_one(self):
+        """`GET /memberships/{id}` is the member's own billing tab, and its whole `agreement`
+        block -- the amount, the term end, the signature, the contract version -- was the
+        agreement they had left. `supersedes_an_earlier_agreement` is derived from the walk's
+        own depth rather than from a client comparing two ids."""
+        tenant_id = self.tenant()
+        owner = self.headers(tenant_id)
+        base = self.membership(tenant_id, contract={"minimum_term_months": 12})
+        before = self.client.get(
+            f"/memberships/{base['membership_id']}", headers=owner)
+        self.assertEqual(before.status_code, 200, before.text)
+        self.assertFalse(before.json()["agreement"]["supersedes_an_earlier_agreement"])
+        self.assertEqual(before.json()["agreement"]["amount_minor"], 4500)
+
+        second = self.supersede(tenant_id, base, amount_minor=9000, contract={
+            "minimum_term_months": 24, "freeze_days_per_year": 45})
+        after = self.client.get(f"/memberships/{base['membership_id']}", headers=owner)
+        block = after.json()["agreement"]
+        self.assertEqual(block["agreement_id"], second)
+        self.assertEqual(block["original_agreement_id"], base["agreement_id"])
+        self.assertTrue(block["supersedes_an_earlier_agreement"])
+        self.assertEqual(block["amount_minor"], 9000)
+        # The *terms* moved too, which is the point of an upgrade and the half a test that
+        # only checked the amount would miss: the terms row and the contract version behind
+        # this block are the new agreement's, so the freeze allowance moves with them.
+        self.assertNotEqual(
+            after.json()["terms"]["membership_terms_id"],
+            before.json()["terms"]["membership_terms_id"])
+        allowance = self.client.get(
+            f"/memberships/{base['membership_id']}/freeze-allowance", headers=owner)
+        self.assertEqual(allowance.json()["allowance_days"], 45)
+
+    def test_the_expiring_value_sums_the_live_amount(self):
+        """ADM-CC-01's RETENTION figure *adds up* `amount_minor`, so a superseded one is wrong
+        in a total nothing else in the build can check against -- which is why this read
+        follows the chain rather than being left as a gap note about a listing."""
+        tenant_id = self.tenant()
+        owner = self.headers(tenant_id)
+        base = self.membership(tenant_id)
+        # **`as_of` back at the membership's own start**, because the fixture's first billing
+        # period closed a month ago: a window anchored on today contains no expiry at all and
+        # the assertion would pass on an empty list, which is the vacuous-evidence shape this
+        # repository keeps finding one layer in.
+        window = f"as_of={MEMBERSHIP_START.isoformat()}&expiring_within_days=365"
+        before = self.client.get(f"/memberships/summary?{window}", headers=owner)
+        self.assertEqual(before.status_code, 200, before.text)
+        self.assertEqual(before.json()["expiring"]["count"], 1, before.text)
+        self.assertEqual(
+            before.json()["expiring"]["renewal_value"],
+            [{"currency": "JOD", "amount_minor": 4500}])
+
+        self.supersede(tenant_id, base, amount_minor=9000)
+        after = self.client.get(f"/memberships/summary?{window}", headers=owner)
+        self.assertEqual(
+            after.json()["expiring"]["renewal_value"],
+            [{"currency": "JOD", "amount_minor": 9000}])

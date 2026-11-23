@@ -13298,11 +13298,97 @@ VALUES ('11111111-1111-4111-8111-111111111111', 'dddddddd-2000-4000-8000-0000000
         'bbbbbbbb-1000-4000-8000-000000000001', 'dddddddd-1000-4000-8000-000000000009',
         'goodwill', true, 5, now(), '33333333-3333-4333-8333-333333333333',
         '33333333-3333-4333-8333-333333333333');
+-- A live successor of the seeded agreement, so the case that names
+-- `mem_agreements_one_live_supersession` has something to collide with. `0025` added that
+-- index because `current_agreement` walks `supersedes_agreement_id` forward to decide which
+-- contract a member is held to: a fork makes the answer depend on which row the planner
+-- returns, which is MOD-018's unordered-lookup finding on the figures a member disputes.
+INSERT INTO plt01.mem_agreements
+    (tenant_id, agreement_id, person_id, membership_terms_id, contract_version_id,
+     variant_id, amount_minor, currency, starts_on, supersedes_agreement_id,
+     signature_kind, signature_evidence_ref, signed_at, signed_by_person_id, signed_by,
+     sign_correlation_id, status, created_by, correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', 'dddddddd-2000-4000-8000-0000000000b1',
+        'bbbbbbbb-1000-4000-8000-000000000001', 'dddddddd-1000-4000-8000-000000000004',
+        'dddddddd-1000-4000-8000-000000000003', 'dddddddd-1000-4000-8000-000000000002',
+        9000, 'JOD', DATE '2026-06-01', 'dddddddd-1000-4000-8000-000000000005',
+        'click_through', 's3://signatures/up1', now(),
+        'bbbbbbbb-1000-4000-8000-000000000001',
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333', 'active',
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333');
 
 DO $$
 DECLARE
     offender text;
 BEGIN
+    -- **The fork, refused.** Two live agreements superseding one predecessor.
+    BEGIN
+        INSERT INTO plt01.mem_agreements
+            (tenant_id, agreement_id, person_id, membership_terms_id,
+             contract_version_id, variant_id, amount_minor, currency, starts_on,
+             supersedes_agreement_id, signature_kind, signature_evidence_ref,
+             signed_at, signed_by_person_id, signed_by, sign_correlation_id, status,
+             created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'dddddddd-2000-4000-8000-0000000000b2',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                'dddddddd-1000-4000-8000-000000000004',
+                'dddddddd-1000-4000-8000-000000000003',
+                'dddddddd-1000-4000-8000-000000000002',
+                5500, 'JOD', DATE '2026-07-01',
+                'dddddddd-1000-4000-8000-000000000005',
+                'click_through', 's3://signatures/up2', now(),
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333', 'active',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION
+            'CHECK 78 FAILED: two live agreements superseded one predecessor';
+    EXCEPTION
+        WHEN unique_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender <> 'mem_agreements_one_live_supersession' THEN
+                RAISE EXCEPTION
+                    'CHECK 78 FAILED: the fork was refused by % instead', offender;
+            END IF;
+    END;
+
+    -- **A permission, which the refusal above cannot see.** The index is partial on
+    -- `status <> 'void'` and the walk carries the same predicate, so a successor somebody
+    -- voided must leave the slot free -- otherwise a voided upgrade would permanently block
+    -- the correct one. Dropping the partial clause makes this insert fail, which is the
+    -- weakening a drop-only case is blind to.
+    BEGIN
+        INSERT INTO plt01.mem_agreements
+            (tenant_id, agreement_id, person_id, membership_terms_id,
+             contract_version_id, variant_id, amount_minor, currency, starts_on,
+             supersedes_agreement_id, signature_kind, signature_evidence_ref,
+             signed_at, signed_by_person_id, signed_by, sign_correlation_id, status,
+             created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'dddddddd-2000-4000-8000-0000000000b3',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                'dddddddd-1000-4000-8000-000000000004',
+                'dddddddd-1000-4000-8000-000000000003',
+                'dddddddd-1000-4000-8000-000000000002',
+                5500, 'JOD', DATE '2026-07-01',
+                'dddddddd-1000-4000-8000-000000000005',
+                'click_through', 's3://signatures/up3', now(),
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333', 'void',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+    EXCEPTION
+        WHEN unique_violation THEN
+            RAISE EXCEPTION
+                'CHECK 78 FAILED: a voided successor was counted as live by the '
+                'one-live-supersession index, so a voided upgrade blocks the real one';
+    END;
+
     BEGIN
         INSERT INTO plt01.mem_contract_versions
             (body, cancellation_mode, contract_key, correlation_id,

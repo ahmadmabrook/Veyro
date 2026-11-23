@@ -25,6 +25,7 @@ This module holds the transactions, and four things about it are load-bearing:
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
@@ -229,6 +230,121 @@ def define_membership_terms(
 
 # ------------------------------------------------------------------ agreements
 
+def current_agreement(conn: Connection[Any], membership: dict[str, Any]) -> str:
+    """The agreement this membership is on **now**, which is not the one it points at.
+
+    **`mem_memberships.agreement_id` is the chain's root and is immutable by grant.** That is
+    deliberate: what the member originally agreed to does not move, which is what makes "what
+    did they agree to in March" answerable from the row rather than from a history. What they
+    are on *now* is derived by walking `mem_agreements.supersedes_agreement_id` forward --
+    the column whose own comment says it is "for an upgrade, downgrade or transfer ... so the
+    chain answers what did this member have in March".
+
+    **This function exists because nothing followed that chain and the write path already
+    did.** `create_agreement` takes `supersedes_agreement_id` and
+    `POST /memberships/agreements` exposes it, so a superseding agreement was writable today
+    -- and all five readers of a membership's terms went straight to the root. After an
+    upgrade the freeze allowance was counted against the original contract's
+    `freeze_days_per_year`, the cancellation fee against the original `amount_minor` and
+    `minimum_term_ends_on`, and the notice period and the buy-out against a contract version
+    the member had moved off. Every figure this module discloses, answering from the agreement
+    they left, with no adversary and one route call.
+
+    **One definition, read by every caller**, because two would be MOD-018's
+    one-module-two-definitions finding on the figure a member disputes.
+
+    **Bounded, and a cycle cannot hang it.** `mem_agreements_not_self` refuses a one-step
+    loop and `mem_agreements_one_live_supersession` refuses a fork, and neither can see a
+    two-step cycle -- A superseded by B and B superseded by A are two rows with distinct
+    predecessors, so both are writable. The walk therefore stops at `_AGREEMENT_CHAIN` and
+    **refuses rather than quoting whichever link it had reached**: a figure from the middle of
+    a chain is a figure nobody agreed to, which is worse than an error on the one read a
+    member disputes. A listing read refuses on the same condition, through the same depth.
+    """
+    row = conn.execute(
+        f"WITH RECURSIVE {_WALK_FROM_ONE} SELECT agreement_id, depth FROM walk"
+        " ORDER BY depth DESC LIMIT 1",
+        (membership["agreement_id"],),
+    ).fetchone()
+    assert row is not None  # the seed row is the agreement itself
+    if int(row[1]) >= _AGREEMENT_CHAIN:
+        raise Conflict("agreement_chain_too_long")
+    return str(row[0])
+
+
+#: How far a supersession walk goes before it refuses. Thirty is more product changes than any
+#: membership has, and the bound is what keeps a chain a caller writes link by link from
+#: becoming a loop nobody can read past. It is interpolated into the SQL below rather than
+#: written there, because a bound in two places is a bound that can disagree with itself.
+_AGREEMENT_CHAIN = 30
+
+#: **The one recursive step, read by both walks.** Which row comes next is the whole rule, and
+#: two copies of it would be MOD-018's one-module-two-definitions finding on the figures a
+#: member disputes -- so the single-membership walk and the listing walk are built from this
+#: string rather than each spelling it out.
+#:
+#: **`void` is the agreement domain's own word.** The first version filtered
+#: `status <> 'cancelled'` -- a *membership* status, not an agreement one, so the filter
+#: matched every row and a voided upgrade would still have governed. `0025`'s partial unique
+#: index carries the same predicate, so the index and the walk agree about which successor is
+#: live.
+_SUPERSESSION_STEP = (
+    " JOIN plt01.mem_agreements a"
+    "   ON a.supersedes_agreement_id = w.agreement_id AND a.status <> 'void'"
+    f" WHERE w.depth < {_AGREEMENT_CHAIN}")
+
+#: One membership's chain, seeded from the root agreement id the caller passes.
+_WALK_FROM_ONE = (
+    "walk AS ("
+    " SELECT %s::uuid AS agreement_id, 0 AS depth"
+    " UNION ALL"
+    " SELECT a.agreement_id, w.depth + 1 FROM walk w"
+    + _SUPERSESSION_STEP + ")")
+
+def _walk_from(seed_where: str) -> str:
+    """Several memberships' chains at once, for a read that joins the live agreement per row.
+
+    **Resolving per row would be one query per membership**, and a list is the one place that
+    cost is not payable -- so this is a recursive CTE and `DISTINCT ON ... depth DESC` takes
+    each chain's deepest link. `depth` is carried out so a listing can refuse a truncated
+    chain on the same condition the single read does.
+
+    **The seed is bounded by the caller's own predicate**, not left as every membership in the
+    tenant. An unbounded seed is a full scan of `mem_memberships` plus a recursive join on
+    every page view of the member list, which is the busiest read in the module -- and the
+    predicate is already written, because each caller filters on the same columns. The seed's
+    parameters therefore come *first* in the tuple, before the outer query's.
+    """
+    return (
+        "walk AS ("
+        " SELECT m.membership_id, m.agreement_id, 0 AS depth"
+        " FROM plt01.mem_memberships m"
+        f" WHERE {seed_where}"
+        " UNION ALL"
+        " SELECT w.membership_id, a.agreement_id, w.depth + 1 FROM walk w"
+        + _SUPERSESSION_STEP + "),"
+        " live AS (SELECT DISTINCT ON (membership_id) membership_id, agreement_id, depth"
+        " FROM walk ORDER BY membership_id, depth DESC)")
+
+
+def _refuse_a_truncated_chain(rows: Sequence[Any], depth_at: int) -> None:
+    """Refuse a listing whose data contains a supersession chain longer than the walk.
+
+    **The same condition and the same error as the single read**, because a rule with two
+    behaviours is a rule two callers can disagree about. The only way to reach the bound is a
+    cycle -- two agreements superseding each other, which `mem_agreements_not_self` and
+    `mem_agreements_one_live_supersession` both admit -- so this is a data defect somebody has
+    to fix, and quoting the thirtieth link's amount as the current one would be this build's
+    fabricated-figure shape in the place a manager reads the business.
+
+    It withholds correct rows along with the bad one, which is deliberate: a list that refuses
+    says the figures cannot be trusted, and a list that marks one row asks every surface to
+    learn a field it will not read.
+    """
+    if any(int(r[depth_at]) >= _AGREEMENT_CHAIN for r in rows):
+        raise Conflict("agreement_chain_too_long")
+
+
 def _terms_of(conn: Connection[Any], agreement_id: str) -> lifecycle.Terms:
     """The contract terms this agreement was signed under.
 
@@ -341,6 +457,15 @@ def create_agreement(
             raise NotFound(_fk_subject(e)) from None
         except errors.CheckViolation as e:
             raise InvalidRequest(_check_name(e)) from None
+        except errors.UniqueViolation:
+            # **`mem_agreements_one_live_supersession`, which is what makes the chain a
+            # chain.** Two live agreements superseding one predecessor is a fork, and
+            # `current_agreement` would then answer whichever the planner returned first --
+            # which is MOD-018's unordered-lookup finding on the figures a member disputes.
+            # Caught here rather than left to psycopg, because an uncaught unique violation
+            # is a 500 telling the caller to try again when the answer is that an upgrade of
+            # that agreement already exists.
+            raise Conflict("this_agreement_is_already_superseded") from None
         assert row is not None
         agreement_id = str(row[0])
         _append(conn, tenant_id, "membership.created", "agreement", agreement_id,
@@ -682,7 +807,7 @@ def freeze_allowance(
     today = at or _today()
     with tenant_scope(pool, tenant_id) as conn:
         membership = _membership(conn, membership_id)
-        terms = _terms_of(conn, membership["agreement_id"])
+        terms = _terms_of(conn, current_agreement(conn, membership))
         year_start, year_end = _contract_year(membership["starts_on"], today)
         windows = [
             lifecycle.FreezeWindow(
@@ -797,7 +922,7 @@ def freeze_membership(
                     "repeated": True}
         if expected_version is not None and membership["version"] != expected_version:
             raise Conflict("this_membership_changed_since_it_was_read")
-        terms = _terms_of(conn, membership["agreement_id"])
+        terms = _terms_of(conn, current_agreement(conn, membership))
         try:
             lifecycle.check_transition(change_kind, membership["status"], "frozen")
         except lifecycle.LifecycleError as e:
@@ -980,7 +1105,7 @@ def resume_membership(
                 conn.execute(
                     "UPDATE plt01.mem_agreements SET ends_on = ends_on + %s"
                     " WHERE agreement_id = %s AND ends_on IS NOT NULL",
-                    (frozen_days, membership["agreement_id"]))
+                    (frozen_days, current_agreement(conn, membership)))
         change_id, repeated = _record_change(
             conn, tenant_id, membership_id=membership_id, change_kind="resume",
             from_status=membership["status"], to_status="active", effective_on=today,
@@ -1028,50 +1153,64 @@ def preview_cancellation(
     today = at or _today()
     with tenant_scope(pool, tenant_id) as conn:
         membership = conn.execute(
-            "SELECT m.agreement_id, m.status, m.current_period_start, m.current_period_end,"
-            " a.minimum_term_ends_on, a.amount_minor, a.currency, m.version"
-            " FROM plt01.mem_memberships m"
-            " JOIN plt01.mem_agreements a ON a.agreement_id = m.agreement_id"
-            " WHERE m.membership_id = %s",
+            "SELECT m.agreement_id, m.status, m.current_period_start,"
+            " m.current_period_end, m.version"
+            " FROM plt01.mem_memberships m WHERE m.membership_id = %s",
             (membership_id,),
         ).fetchone()
         if membership is None:
             raise NotFound("membership_not_found")
-        terms = _terms_of(conn, str(membership[0]))
+        # **The agreement is resolved, never joined on `m.agreement_id`.** That column is the
+        # chain's root, so the obvious one-query join answers from the contract the member has
+        # moved off -- every figure below it (the term end, the amount the buy-out is a
+        # multiple of, the currency, and the terms themselves) would be the superseded one's.
+        # This is the whole of `current_agreement`'s reason for existing, and this read is
+        # where it costs the most: the fee is the figure a member disputes.
+        agreement_id = current_agreement(conn, {"agreement_id": membership[0]})
+        agreement = conn.execute(
+            "SELECT minimum_term_ends_on, amount_minor, currency"
+            " FROM plt01.mem_agreements WHERE agreement_id = %s",
+            (agreement_id,),
+        ).fetchone()
+        assert agreement is not None
+        terms = _terms_of(conn, agreement_id)
+    status = str(membership[1])
+    period_start, period_end, version = membership[2], membership[3], int(membership[4])
+    minimum_term_ends_on: date | None = agreement[0]
+    amount_minor, currency = int(agreement[1]), str(agreement[2])
     # **Whether it can be cancelled at all, asked the way the command asks it.** A panel
     # pricing a cancellation the command would refuse as a bad transition is a figure offered
     # for an act that cannot happen -- and the screen needs to say which of the two it is.
     may_cancel, refused_because = True, None
     try:
-        lifecycle.check_transition("cancellation", str(membership[1]), "cancelled")
+        lifecycle.check_transition("cancellation", status, "cancelled")
     except lifecycle.LifecycleError as e:
         may_cancel, refused_because = False, str(e)
     effective_on, steps = lifecycle.cancellation_effective_on(
-        decided_on=today, terms=terms, period_end=membership[3],
-        minimum_term_ends_on=membership[4])
+        decided_on=today, terms=terms, period_end=period_end,
+        minimum_term_ends_on=minimum_term_ends_on)
     fee_minor, fee_parts, fee_steps = lifecycle.cancellation_fee(
-        effective_on=effective_on, terms=terms, amount_minor=int(membership[5]),
-        period_start=membership[2], period_end=membership[3],
-        minimum_term_ends_on=membership[4])
-    minimum_term_ends_on: date | None = membership[4]
+        effective_on=effective_on, terms=terms, amount_minor=amount_minor,
+        period_start=period_start, period_end=period_end,
+        minimum_term_ends_on=minimum_term_ends_on)
     return {
-        "membership_id": membership_id, "status": str(membership[1]),
+        "membership_id": membership_id, "status": status,
         # The form's optimistic-concurrency token, because the command takes
         # `expected_version` and a screen that cannot supply it is a screen whose write
         # cannot be guarded -- two staff cancelling one membership is MOD-014's ordinary case.
-        "version": int(membership[7]),
+        "version": version,
         "may_cancel": may_cancel,
         "refused_because": refused_because,
         "effective_on": effective_on.isoformat(),
         "ends_immediately": effective_on <= today,
         "disclosed_fee_minor": fee_minor,
-        "disclosed_fee_currency": str(membership[6]),
+        "disclosed_fee_currency": currency,
         # **The parts, not only the total.** They answer different questions and a member
         # disputing one should not have to take the other on trust -- which is MOD-018's
         # argument for four wallet balances rather than one, and is what makes the headline
         # figure checkable rather than merely stated.
         "fee_parts": fee_parts,
-        "amount_minor": int(membership[5]),
+        "amount_minor": amount_minor,
         "explanation": list(steps) + list(fee_steps),
         "cancellation_mode": terms.cancellation_mode,
         "notice_days": terms.notice_days,
@@ -1177,13 +1316,14 @@ def cancel_membership(
                 "cancellation", membership["status"], "cancelled")
         except lifecycle.LifecycleError as e:
             raise Conflict(str(e)) from None
+        agreement_id = current_agreement(conn, membership)
         agreement = conn.execute(
             "SELECT minimum_term_ends_on, amount_minor, currency FROM plt01.mem_agreements"
             " WHERE agreement_id = %s",
-            (membership["agreement_id"],),
+            (agreement_id,),
         ).fetchone()
         assert agreement is not None
-        terms = _terms_of(conn, membership["agreement_id"])
+        terms = _terms_of(conn, agreement_id)
         effective_on, reasoning = lifecycle.cancellation_effective_on(
             decided_on=today, terms=terms, period_end=membership["current_period_end"],
             minimum_term_ends_on=agreement[0])
@@ -3615,21 +3755,33 @@ def list_memberships(
     if status is not None:
         where.append("m.status = %s")
         params.append(status)
+    # **The walk is seeded by the same predicate**, so listing one person's memberships walks
+    # one person's chains rather than every chain in the tenant. The filters are on `m.`
+    # columns the seed has, so the predicate is reused rather than written twice; its
+    # parameters go first because the CTE is first in the statement.
+    seed = list(params)
     params.append(limit)
     with tenant_scope(pool, tenant_id) as conn:
         rows = conn.execute(
-            "SELECT m.membership_id, m.person_id, m.membership_number, m.status,"
+            f"WITH RECURSIVE {_walk_from(' AND '.join(where))}"
+            " SELECT m.membership_id, m.person_id, m.membership_number, m.status,"
             " m.starts_on, m.ends_on, m.current_period_start, m.current_period_end,"
-            " m.status_effective_on, m.agreement_id, a.amount_minor, a.currency,"
-            " a.minimum_term_ends_on, t.membership_kind, t.billing_period, t.is_off_peak"
+            " m.status_effective_on, l.agreement_id, a.amount_minor, a.currency,"
+            " a.minimum_term_ends_on, t.membership_kind, t.billing_period, t.is_off_peak,"
+            " m.agreement_id, l.depth"
             " FROM plt01.mem_memberships m"
-            " JOIN plt01.mem_agreements a ON a.agreement_id = m.agreement_id"
+            # **The agreement is the chain's live end, not `m.agreement_id`.** The obvious
+            # join is on the root, which after an upgrade carries the amount, currency and
+            # term of the contract the member has moved off -- the figures on this row.
+            " JOIN live l ON l.membership_id = m.membership_id"
+            " JOIN plt01.mem_agreements a ON a.agreement_id = l.agreement_id"
             " JOIN plt01.mem_membership_terms t"
             "   ON t.membership_terms_id = a.membership_terms_id"
             f" WHERE {' AND '.join(where)}"
             " ORDER BY m.created_at DESC, m.membership_id DESC LIMIT %s",
-            tuple(params),
+            tuple(seed + params),
         ).fetchall()
+    _refuse_a_truncated_chain(rows, 17)
     return {
         "memberships": [
             {"membership_id": str(r[0]), "person_id": str(r[1]),
@@ -3638,6 +3790,12 @@ def list_memberships(
              "current_period_start": r[6].isoformat() if r[6] else None,
              "current_period_end": r[7].isoformat() if r[7] else None,
              "status_effective_on": r[8].isoformat(), "agreement_id": str(r[9]),
+             # **The root as well, named as what it is.** `agreement_id` is what governs this
+             # membership today, which is what the figures beside it are from; the root is
+             # the immutable link `mem_memberships` carries and is what answers "what did
+             # they originally sign". Returning only the root beside the current agreement's
+             # amount would be a row whose id does not explain its own numbers.
+             "original_agreement_id": str(r[16]),
              "amount_minor": int(r[10]), "currency": str(r[11]),
              "minimum_term_ends_on": r[12].isoformat() if r[12] else None,
              "membership_kind": str(r[13]), "billing_period": str(r[14]),
@@ -3657,22 +3815,27 @@ def get_membership(pool: Pool, tenant_id: str, membership_id: str) -> dict[str, 
     """
     with tenant_scope(pool, tenant_id) as conn:
         row = conn.execute(
-            "SELECT m.person_id, m.membership_number, m.status, m.starts_on, m.ends_on,"
+            f"WITH RECURSIVE {_walk_from('m.membership_id = %s')}"
+            " SELECT m.person_id, m.membership_number, m.status, m.starts_on, m.ends_on,"
             " m.current_period_start, m.current_period_end, m.status_effective_on,"
             " m.version, a.agreement_id, a.amount_minor, a.currency, a.starts_on,"
             " a.ends_on, a.minimum_term_ends_on, a.status, a.signed_at, a.signature_kind,"
             " a.price_resolution_id, a.contract_version_id, t.membership_terms_id,"
             " t.contract_key, t.membership_kind, t.billing_period, t.installment_count,"
-            " t.prepaid_days, t.is_off_peak, t.product_id"
+            " t.prepaid_days, t.is_off_peak, t.product_id, m.agreement_id, l.depth"
             " FROM plt01.mem_memberships m"
-            " JOIN plt01.mem_agreements a ON a.agreement_id = m.agreement_id"
+            # The chain's live end, not its root -- every `a.` column below is a figure the
+            # member is held to and after an upgrade the root carries the one they left.
+            " JOIN live l ON l.membership_id = m.membership_id"
+            " JOIN plt01.mem_agreements a ON a.agreement_id = l.agreement_id"
             " JOIN plt01.mem_membership_terms t"
             "   ON t.membership_terms_id = a.membership_terms_id"
             " WHERE m.membership_id = %s",
-            (membership_id,),
+            (membership_id, membership_id),
         ).fetchone()
         if row is None:
             raise NotFound("membership_not_found")
+        _refuse_a_truncated_chain([row], 29)
         changes = conn.execute(
             "SELECT change_kind, from_status, to_status, effective_on, decided_at, reason"
             " FROM plt01.mem_lifecycle_changes WHERE membership_id = %s"
@@ -3687,7 +3850,14 @@ def get_membership(pool: Pool, tenant_id: str, membership_id: str) -> dict[str, 
         "current_period_end": row[6].isoformat() if row[6] else None,
         "status_effective_on": row[7].isoformat(), "version": int(row[8]),
         "agreement": {
-            "agreement_id": str(row[9]), "amount_minor": int(row[10]),
+            # **The agreement that governs today, with the root named beside it.** This block
+            # is resolved through the supersession chain, so after an upgrade every figure in
+            # it is the live contract's; `original_agreement_id` is the immutable link
+            # `mem_memberships` carries and is what answers "what did they first sign".
+            "agreement_id": str(row[9]),
+            "original_agreement_id": str(row[28]),
+            "supersedes_an_earlier_agreement": int(row[29]) > 0,
+            "amount_minor": int(row[10]),
             "currency": str(row[11]), "starts_on": row[12].isoformat(),
             "ends_on": row[13].isoformat() if row[13] else None,
             "minimum_term_ends_on": row[14].isoformat() if row[14] else None,
@@ -4496,11 +4666,15 @@ def membership_summary(
             (month.first, month.last),
         ).fetchall()
         expiring = conn.execute(
-            "SELECT m.membership_id, m.person_id, m.membership_number, m.status,"
+            f"WITH RECURSIVE {_walk_from("m.status IN ('active', 'grace')")}"
+            " SELECT m.membership_id, m.person_id, m.membership_number, m.status,"
             " m.current_period_end, m.ends_on, a.amount_minor, a.currency,"
-            " t.membership_kind, t.billing_period"
+            " t.membership_kind, t.billing_period, l.depth"
             " FROM plt01.mem_memberships m"
-            " JOIN plt01.mem_agreements a ON a.agreement_id = m.agreement_id"
+            # The live end: this read *sums* `amount_minor` into the value expiring this
+            # month, so a superseded figure is wrong in a total nothing else can check.
+            " JOIN live l ON l.membership_id = m.membership_id"
+            " JOIN plt01.mem_agreements a ON a.agreement_id = l.agreement_id"
             " JOIN plt01.mem_membership_terms t"
             "   ON t.membership_terms_id = a.membership_terms_id"
             " WHERE m.status IN ('active', 'grace')"
@@ -4511,6 +4685,7 @@ def membership_summary(
             " LIMIT %s",
             (as_of, until, LIST_LIMIT),
         ).fetchall()
+    _refuse_a_truncated_chain(expiring, 10)
     counts = {str(r[0]): int(r[1]) for r in by_status}
     kinds = {str(r[0]): int(r[1]) for r in moved}
     joined = kinds.get("activation", 0)

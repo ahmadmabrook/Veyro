@@ -2265,3 +2265,41 @@ the mechanism, and three readings of this one went wrong by reasoning from what 
 updated instead of looking for what had already been built. "A column implying a control nobody
 implemented" has an inverse this repository had not met: a column implying a *model* nobody
 reads, which is worse, because the write path exists and every reader disagrees with it.
+
+
+**A reader that resolves correctly is not a reader its callers all go through, and the sweep is
+what counts them.** MOD-017's supersession chain had eight readers of a membership's terms and
+`current_agreement` closed five of them in one pass; the other three were SQL joins on
+`m.agreement_id` in three listing queries, invisible to every test that exercised the five.
+Nine mutations put one reader each back on the root, and **two came back uncaught, both real
+evidence gaps rather than redundant guards**:
+
+- **The read and the command resolve separately.** `preview_cancellation` and
+  `cancel_membership` each resolve the agreement, and every assertion written for the fix was
+  about the read -- so a command still on the root would have refused the preview's own
+  disclosed figure as a mismatch, which is the disclosure requirement defeated by the pair of
+  functions that exist to serve it. **A disclosure read and the command it discloses for are two
+  readers**, and a test for one proves nothing about the other.
+- **The guard was for a state nothing writes.** The walk filters `status <> 'void'` and no
+  service function writes `void` -- so no route-level test can exercise the clause, and the
+  sweep reporting it uncaught is reporting the absence of a *writer* rather than a redundant
+  guard. The guard stays (the grant admits the write and the partial index carries the same
+  predicate, so the two cannot drift) and its probe writes the status directly: **the probe for
+  a guard that exists for the writer the service is not has to be that writer.** Pulling the
+  thread found that `superseded` and `ended` have no writer either, so after an upgrade the
+  superseded agreement still reads `active`.
+
+**A partial unique index needs a case per direction, and the permission is the one a drop-only
+case cannot see.** `mem_agreements_one_live_supersession` is `UNIQUE (tenant_id,
+supersedes_agreement_id) WHERE ... status <> 'void'`. Dropping it is caught by the fork case;
+removing the *partial clause* makes a legitimate insert fail -- a voided successor would
+permanently occupy the slot its replacement needs -- and only an insert the index must **admit**
+catches that. Two cases, two mutations, and the second mutation is `DROP INDEX` followed by
+`CREATE UNIQUE INDEX` without the `WHERE`, because an index is not a constraint and `ALTER TABLE
+... DROP CONSTRAINT` does not reach one.
+
+**And a `status` a case sets has to satisfy the attribution constraint beside it.** Three rows
+added for those cases carried `status = 'active'` with no signature columns, which
+`mem_agreements_signed_is_signed` refuses -- so the fixture died before the block ran, and in the
+quieter version the case would have been answered by that sibling. `GET STACKED DIAGNOSTICS` is
+what distinguishes them, and it is as necessary for `unique_violation` as for `check_violation`.

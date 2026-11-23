@@ -2577,6 +2577,62 @@ Things worth knowing before extending it:
   database would ever flag the old one, which is why the guard is a static read of the
   migration files; it caught four survivors of the regex rewrite that did the other 118.
 
+**The supersession chain is read now, and closing it took eight readers rather than the
+five this note used to claim.** `mem_agreements.supersedes_agreement_id` has existed since
+`0011` -- its comment says "which agreement this one replaces, for an upgrade, downgrade or
+transfer ... so the chain answers what did this member have in March" -- `create_agreement`
+takes it and `POST /memberships/agreements` exposes it. **Nothing read it.** Every reader went
+to `mem_memberships.agreement_id`, which is the chain's *root* and immutable by grant, so a
+superseding agreement written through a route that exists left the freeze allowance counted
+against the original contract's `freeze_days_per_year`, the cancellation fee computed from the
+original `amount_minor` and `minimum_term_ends_on`, and the notice period and the buy-out taken
+from the contract version the member had moved off -- every figure the module discloses,
+answering from the agreement they left, with no adversary and one route call. That is "a column
+implying a control nobody implemented" inverted: a column implying a *model* nobody reads,
+which is worse, because the write path exists and every reader disagrees with it.
+
+`current_agreement` is the one definition and five single-membership readers call it --
+`freeze_allowance`, `freeze_membership`, `resume_membership`, `preview_cancellation` and
+`cancel_membership`. Four decisions carry it:
+
+- **The root stays immutable, and what governs is derived.** What the member originally agreed
+  to does not move, which is what makes "what did they sign in March" answerable from the row
+  rather than from a history; what they are on *now* is the chain's live end.
+- **A fork is refused by the database.** `0025`'s `mem_agreements_one_live_supersession` is
+  partial on `status <> 'void'`, because with two live successors of one predecessor the answer
+  depends on which row the planner returns -- MOD-018's unordered-lookup finding on the figure a
+  member disputes. `create_agreement` catches the violation as a 409 rather than leaving psycopg
+  to answer 500 with "try again" when the answer is that an upgrade of that agreement exists.
+- **A truncated chain refuses rather than quoting the link it reached.** `not_self` refuses a
+  one-step loop and the index refuses a fork, and neither can see a two-step cycle -- A
+  superseded by B and B superseded by A are two rows with distinct predecessors, so both are
+  writable. A figure from the middle of a chain is a figure nobody agreed to, so the walk stops
+  at thirty and raises; the listing reads refuse on the same condition through the same depth,
+  because a rule with two behaviours is a rule two callers can disagree about.
+- **Three listing reads resolve in SQL, not per row.** `list_memberships`, `get_membership` and
+  `membership_summary` join `live`, a recursive CTE: resolving in Python would be one query per
+  row, and a list is the one place that cost is not payable. The recursive step is **one
+  string** both walks are built from, because two copies of "which row comes next" is
+  one-module-two-definitions on the same figures -- and **each walk is seeded by its caller's
+  own predicate** rather than by every membership in the tenant, because an unbounded seed is a
+  full scan plus a recursive join on every page view of the member list. The predicate is
+  already written in each caller, so it is reused rather than spelled twice; its parameters go
+  first in the tuple, because the CTE is first in the statement. `membership_summary` is the
+  sharpest of the three -- it *sums* `amount_minor` into the value expiring this month, so a
+  superseded figure is wrong in a total nothing else in the build can check.
+
+The listing reads also name the root as `original_agreement_id` and `get_membership` carries
+`supersedes_an_earlier_agreement` from the walk's own depth, because returning only the root
+beside the current agreement's amount would be a row whose id does not explain its own numbers.
+
+Proven: 10 HTTP tests and 9 mutations in `tests/mutate_supersession_chain.py`, every one
+caught -- and **two of the nine were uncaught on the first run, both real evidence gaps**. The
+cancel *command* resolves the agreement separately from the preview, and every assertion had
+been about the read: a command still on the root would refuse the preview's own disclosed figure
+as a mismatch, which is the disclosure requirement defeated by the pair of functions that exist
+to serve it. And nothing had voided a successor, which is the next bullet. Plus two isolation
+cases in check 78, one per direction of `0025`'s index, each mutation-tested.
+
 Known gaps, deliberate:
 
 - **No payment provider and no stored payment methods.** Taking a card is real money and the
@@ -2626,25 +2682,20 @@ Known gaps, deliberate:
   expiry are what the undriven sweeps above would write; a suspension, a reinstatement, a
   transfer, an upgrade and a downgrade are commands -- so each is work rather than a blocker:
   `_record_change` takes the kind already and `check_transition` knows the statuses.
-- **And the upgrade is worse than unwritten: it is half-built, and the written half has no
-  reader.** `mem_agreements.supersedes_agreement_id` exists, its comment says "which agreement
-  this one replaces, for an upgrade, downgrade or transfer ... so the chain answers what did
-  this member have in March", `create_agreement` takes it, and
-  `POST /memberships/agreements` exposes it on the body. **Nothing reads it.** All five
-  readers of a membership's terms go straight to `mem_memberships.agreement_id`, which is the
-  chain's *root* and is immutable by grant -- so a superseding agreement can be written today
-  through a route that exists, and afterwards the freeze allowance is counted against the
-  original contract's `freeze_days_per_year`, the cancellation fee is computed from the
-  original `amount_minor` and `minimum_term_ends_on`, and the notice period and the
-  early-termination buy-out come from the contract version the member has moved off. Every
-  figure the module discloses to a member keeps answering from the agreement they left.
-  That is "a column implying a control nobody implemented" inverted -- a column implying a
-  *model* nobody reads -- and it is reachable with no adversary: one route call. **The fix is a
-  single definition of "this membership's current agreement"** that walks the chain, used by
-  all five readers, after which the upgrade command is the small part. Took three attempts to
-  see: the first reading of this said `change_plan` would do it, the second said the two kinds
-  were unwritable because `agreement_id` cannot move, and both missed that the schema already
-  carries the chain and the route already accepts it.
+- **`superseded`, `ended` and `void` are three declared agreement statuses nothing writes**,
+  found by the mutation sweep reporting the walk's `status <> 'void'` clause uncaught. The
+  column is in the UPDATE grant and `mem_agreements_status` admits all six; the service writes
+  `signed` and `active` and nothing else. So **after an upgrade the superseded agreement still
+  reads `active`**, and `mem_agreements` holds two active agreements for one membership -- the
+  reads are correct because they follow the chain rather than the status, which is the right
+  dependency and leaves the status wrong. Writing `superseded` belongs to the upgrade command
+  rather than to `create_agreement`, because the successor is a `draft` when it is created. The
+  `void` clause stays: the grant admits the write, a successor somebody voided must not go on
+  governing the member, and the index carries the same predicate so the two cannot drift -- its
+  probe is the writer the service is not, which is why that test writes the status directly.
+- **The upgrade command itself is still unwritten**, and the chain is what it needs. With the
+  readers following it, `upgrade` and `downgrade` are `_record_change` plus a superseding
+  agreement plus `superseded` on the predecessor -- the small part this note used to promise.
 - **No installment schedule generation.** `fin_billing_schedules` records the plan and its
   remaining count; nothing walks it.
 - **Nothing reverses a payment inside the module.** A payment has no UPDATE grant at all, so a
