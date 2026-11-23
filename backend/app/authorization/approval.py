@@ -90,22 +90,38 @@ def requires_approval(
 
 def check_decider(
     policy: ApprovalPolicy, *, requested_by: str, decided_by: str,
-    decider_permissions: frozenset[str],
+    decider_permissions: frozenset[str], acting_for: str | None = None,
 ) -> None:
     """Whether this person may decide this request. Raises rather than returning False.
 
-    Two conditions, both of which have been quietly dropped in real systems: the decider holds
-    **every** permission the applicable policies name, and -- when separation of duties applies --
-    the decider is not the requester. The second is the one that turns an approval queue into a
-    formality.
+    Three conditions now, all of which have been quietly dropped in real systems: the decider
+    holds **every** permission the applicable policies name; and -- when separation of duties
+    applies -- neither the decider **nor the authority they are acting on** is the requester.
+
+    **The third is MOD-026's delegation half and it is the one a delegation silently buys.**
+    `acting_for` is the identity whose approval authority is being exercised, which is only
+    ever set where a live delegation grants it. If Alice raises a request and has delegated to
+    Bob, Bob deciding it is Alice approving her own request through a proxy: separation of
+    duties intact in the column and gone in fact. The schema refuses it too, because this
+    build's premise is that the schema is the half that holds when the service is wrong --
+    but the service is where the caller gets a sentence instead of a constraint name.
+
+    That is MOD-007's "a remedy is new capability, so review it as such", applied to a
+    convenience that exists to keep approvals moving while somebody is away.
     """
     missing = policy.required_permissions - decider_permissions
     if missing:
         raise ApprovalError("decider_lacks_permission",
                             "the decider does not hold every permission these policies require")
-    if policy.separation_of_duties and decided_by == requested_by:
+    if not policy.separation_of_duties:
+        return
+    if decided_by == requested_by:
         raise ApprovalError("separation_of_duties",
                             "the requester may not decide their own request")
+    if acting_for is not None and acting_for == requested_by:
+        raise ApprovalError(
+            "separation_of_duties_through_a_delegate",
+            "the requester may not decide their own request through a delegate")
 
 
 def resolve(

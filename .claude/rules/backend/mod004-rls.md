@@ -1901,3 +1901,34 @@ CHECK 32's "one decision per approver per request" inserted a second decision by
 trigger -- leaving the index droppable in silence. Adding a constraint is a change to every
 case that inserts a row it touches. Here the suite refused to start at all, which is the loud
 version; the quiet version is a case that still passes and proves the wrong rule.
+
+
+**A probe that proves a *permission* needs a handler as much as one that proves a refusal.**
+Check 113's branch for "a policy that permits self-approval still may" was written as a bare
+INSERT expected to succeed. When the trigger was wrong the block aborted with the *trigger's*
+message, which a sweep cannot tell from an unrelated error -- it reported MUTERR for a
+mutation that branch had correctly caught. Wrapping it so a failure raises `CHECK nn FAILED`
+makes the catch visible. The asymmetry is easy to miss because every other probe in the file
+is a refusal.
+
+**And a mutation that keeps a branch count by firing unconditionally kills the seed.** Two
+mutations against a trigger function kept a dummy `RAISE EXCEPTION` so the block's
+`RAISE`-counting assertion would still balance -- and put it on the straight path, so every
+row was refused and the suite died before any check ran. `IF false THEN RAISE ... END IF`
+keeps the count and changes nothing else. Both came back MUTERR, which is the harness
+classifying honestly rather than manufacturing a gap, and both were the sweep's author's
+fault rather than the schema's.
+
+**A new table's own CHECKs are not reached by probes written for its triggers.** The
+delegation sweep caught the trigger branches and missed the ninety-day ceiling, the
+not-self rule and the revocation attribution entirely: those are `check_violation` on the
+table, and nothing in a block that only inserts *decisions* touches them. "A constraint
+nobody has broken on purpose is a constraint nobody has tested" applies per constraint, not
+per module, and the sweep is what says which.
+
+**A block's own earlier rows become siblings for its later cases.** Four constraint cases
+added to check 113 failed because an identity used as the recipient had, two probes earlier
+in the same block, been made a delegator -- so the transitivity trigger answered before the
+constraint under test. The usual form of this rule is about a *constraint* added later
+invalidating existing cases; this is the same thing inside one block, where the state a probe
+leaves behind is the state the next one starts from.

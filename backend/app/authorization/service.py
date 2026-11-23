@@ -1052,22 +1052,132 @@ def _insert_request(
 
 def decide_approval(
     pool: Pool, tenant_id: str, *, request_id: str, decided_by: str, decision: str,
-    correlation_id: str, reason: str | None = None,
+    correlation_id: str, reason: str | None = None, on_behalf_of: str | None = None,
 ) -> dict[str, Any]:
-    """DecideApproval (IAM-03-R05), with separation of duties enforced here and in the schema."""
+    """DecideApproval (IAM-03-R05), with separation of duties enforced here and in the schema.
+
+    **`on_behalf_of` is AUT-02-R05's delegation**, and it is the identity whose approval
+    authority is being exercised rather than a label. Three things follow and all three are
+    enforced: a live delegation must grant it (the schema refuses otherwise -- a cited
+    authority is the authority, or it is decoration); the **delegator's** permissions are
+    what the policy is evaluated against, because that is what being delegated to means; and
+    the requester may not be the authority any more than they may be the decider.
+    """
     _require_uuid(correlation_id, "correlation_id")
     if decision not in ("approved", "rejected"):
         raise InvalidRequest("bad_decision")
+    if on_behalf_of is not None and on_behalf_of == decided_by:
+        raise InvalidRequest("acting_on_your_own_authority_is_not_a_delegation")
     with tenant_scope(pool, tenant_id) as conn:
         outcome = _decide_in_tx(conn, tenant_id, request_id=request_id, decided_by=decided_by,
                                 decision=decision, reason=reason,
-                                correlation_id=correlation_id)
+                                correlation_id=correlation_id, on_behalf_of=on_behalf_of)
     return _settled(outcome)
+
+
+def delegate_approvals(
+    pool: Pool, tenant_id: str, *, to_identity_id: str, starts_at: datetime,
+    ends_at: datetime, reason: str, actor_id: str, correlation_id: str,
+) -> dict[str, Any]:
+    """Hand this session's own approval authority to somebody else for a window.
+
+    **The delegator is the session and is never a request field.** A body field here would
+    let anybody delegate anybody's authority to themselves, which is the whole of the
+    approval machinery bought with one uuid -- "derive a scope, never accept one", the rule
+    MOD-008's own review produced when a brand-scoped manager reached another brand by
+    sending its id.
+
+    The window's bounds, the ban on delegating to yourself, and the refusal to pass a
+    delegation on are the schema's; this raises them as service errors so a caller gets a
+    sentence rather than a constraint name.
+    """
+    _require_uuid(correlation_id, "correlation_id")
+    _require_uuid(to_identity_id, "to_identity_id")
+    if to_identity_id == actor_id:
+        raise InvalidRequest("a_delegation_to_yourself_is_not_one")
+    if ends_at <= starts_at:
+        raise InvalidRequest("a_delegation_ends_after_it_starts")
+    with tenant_scope(pool, tenant_id) as conn:
+        try:
+            row = conn.execute(
+                "INSERT INTO iam.approval_delegations"
+                " (tenant_id, from_identity_id, to_identity_id, starts_at, ends_at, reason,"
+                "  created_by, create_correlation_id)"
+                " VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING delegation_id",
+                (tenant_id, actor_id, to_identity_id, starts_at, ends_at, reason, actor_id,
+                 correlation_id),
+            ).fetchone()
+        except errors.RaiseException as exc:
+            raise Conflict(str(exc).strip().splitlines()[0]) from None
+        except errors.CheckViolation:
+            raise InvalidRequest("a_delegation_is_at_most_ninety_days") from None
+        except errors.ForeignKeyViolation:
+            raise NotFound("identity_not_found") from None
+        assert row is not None
+        return {"delegation_id": str(row[0]), "from_identity_id": actor_id,
+                "to_identity_id": to_identity_id}
+
+
+def revoke_delegation(
+    pool: Pool, tenant_id: str, delegation_id: str, *, reason: str, actor_id: str,
+    correlation_id: str,
+) -> dict[str, Any]:
+    """Take a delegation back. **Only the delegator**, because it is their authority.
+
+    An administrator who could revoke somebody else's delegation would be deciding who may
+    approve while that person is away, which is the same power the delegation itself is.
+    """
+    _require_uuid(correlation_id, "correlation_id")
+    with tenant_scope(pool, tenant_id) as conn:
+        row = conn.execute(
+            "SELECT from_identity_id, revoked_at FROM iam.approval_delegations"
+            " WHERE delegation_id = %s FOR UPDATE",
+            (delegation_id,),
+        ).fetchone()
+        if row is None:
+            raise NotFound("delegation_not_found")
+        if str(row[0]) != actor_id:
+            raise Forbidden("only_the_delegator_revokes_their_own_delegation")
+        if row[1] is not None:
+            return {"delegation_id": delegation_id, "repeated": True}
+        conn.execute(
+            "UPDATE iam.approval_delegations SET revoked_at = now(), revoked_by = %s,"
+            " revoke_reason = %s, revoke_correlation_id = %s WHERE delegation_id = %s",
+            (actor_id, reason, correlation_id, delegation_id),
+        )
+        return {"delegation_id": delegation_id, "repeated": False}
+
+
+def list_delegations(
+    pool: Pool, tenant_id: str, *, include_ended: bool = False, limit: int = 100,
+) -> dict[str, Any]:
+    """Who is holding whose approval authority. Bounded and ordered."""
+    if not 1 <= limit <= 100:
+        raise InvalidRequest("limit is between 1 and 100")
+    with tenant_scope(pool, tenant_id) as conn:
+        rows = conn.execute(
+            "SELECT delegation_id, from_identity_id, to_identity_id, starts_at, ends_at,"
+            "       reason, revoked_at, revoke_reason"
+            " FROM iam.approval_delegations"
+            " WHERE (%s OR (revoked_at IS NULL AND ends_at > now()))"
+            " ORDER BY starts_at DESC, delegation_id DESC LIMIT %s",
+            (include_ended, limit),
+        ).fetchall()
+    return {"delegations": [
+        {"delegation_id": str(r[0]), "from_identity_id": str(r[1]),
+         "to_identity_id": str(r[2]), "starts_at": r[3].isoformat(),
+         "ends_at": r[4].isoformat(), "reason": str(r[5]),
+         "revoked_at": r[6].isoformat() if r[6] else None,
+         "revoke_reason": str(r[7]) if r[7] else None,
+         # Derived, because "is this in force" is two timestamps and a null and a reader
+         # computing it from them gets the open cases wrong -- MOD-016's `in_window`.
+         "in_force": r[6] is None and r[3] <= _now() < r[4]}
+        for r in rows]}
 
 
 def _decide_in_tx(
     conn: Connection[Any], tenant_id: str, *, request_id: str, decided_by: str, decision: str,
-    reason: str | None, correlation_id: str,
+    reason: str | None, correlation_id: str, on_behalf_of: str | None = None,
 ) -> tuple[dict[str, Any], ServiceError | None]:
     now = _now()
     row = conn.execute(
@@ -1091,10 +1201,14 @@ def _decide_in_tx(
         action=action, required_permissions=required_permissions,
         required_approvals=required, separation_of_duties=sod,
     )
-    granted = authz.permissions_of(_load_assignments(conn, decided_by), now=now)
+    # **The delegator's permissions, where one is being exercised.** Being delegated to means
+    # acting on somebody's authority, so evaluating the delegate's own grants would make a
+    # delegation either useless (they already had it) or a widening nobody authorised.
+    granted = authz.permissions_of(
+        _load_assignments(conn, on_behalf_of or decided_by), now=now)
     try:
         approvals.check_decider(effective, requested_by=requested_by, decided_by=decided_by,
-                                decider_permissions=granted)
+                                decider_permissions=granted, acting_for=on_behalf_of)
     except approvals.ApprovalError as exc:
         _append_audit(conn, tenant_id, category="access", action="approval.denied",
                       outcome="denied", correlation_id=correlation_id,
@@ -1107,9 +1221,9 @@ def _decide_in_tx(
     try:
         conn.execute(
             "INSERT INTO iam.approval_decisions"
-            " (tenant_id, request_id, decided_by, decision, reason)"
-            " VALUES (%s, %s, %s, %s, %s)",
-            (tenant_id, request_id, decided_by, decision, reason),
+            " (tenant_id, request_id, decided_by, decision, reason, on_behalf_of)"
+            " VALUES (%s, %s, %s, %s, %s, %s)",
+            (tenant_id, request_id, decided_by, decision, reason, on_behalf_of),
         )
     except errors.UniqueViolation:
         raise Conflict("already_decided_by_you") from None

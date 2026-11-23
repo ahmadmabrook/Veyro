@@ -1625,6 +1625,33 @@ SUBJECT_COLUMNS: tuple[Reachability, ...] = (
     Reachability("plt01", "tsk_checklist_items", "label", "write_once",
                  "**the step's own words**, which name a member as readily as a task title "
                  "does. Editable, and cleared by nothing"),
+    # ---------------------------------------------------- MOD-026, slice 2 (iam)
+    #
+    # The sweep demanded two of these; the other four are declared by hand, which is the
+    # division MOD-021 records. `from_identity_id` and `to_identity_id` are the row's whole
+    # point and carry no UPDATE grant, so the database refuses to move them -- which is also
+    # what makes "whose authority did this approval carry" answerable a year later.
+    Reachability("iam", "approval_delegations", "from_identity_id", "unreachable",
+                 "**whose approval authority was handed over.** Insert-only: moving it would "
+                 "rewrite whose authority an approval already carried"),
+    Reachability("iam", "approval_delegations", "to_identity_id", "unreachable",
+                 "who held it. Insert-only, for the same reason"),
+    Reachability("iam", "approval_delegations", "created_by", "unreachable",
+                 "who delegated. The same identity as `from_identity_id` by construction -- "
+                 "the service derives it from the session -- and kept separately because a "
+                 "column that merely agrees today is not a column that answers tomorrow"),
+    Reachability("iam", "approval_delegations", "reason", "unreachable",
+                 "**why somebody handed their approvals over**, which is prose and is where "
+                 "'she is in hospital' gets written. No UPDATE grant, so nothing clears it"),
+    Reachability("iam", "approval_delegations", "revoked_by", "write_once",
+                 "who took it back. Written once with the revocation"),
+    Reachability("iam", "approval_delegations", "revoke_reason", "write_once",
+                 "**why it ended early.** Prose, written once"),
+    Reachability("iam", "approval_decisions", "on_behalf_of", "unreachable",
+                 "**on whose authority a decision was made**, which is half of what makes an "
+                 "approval accountable. The table has no UPDATE grant at all: a decision is "
+                 "what was decided"),
+
     Reachability("plt01", "tsk_dependencies", "created_by", "unreachable",
                  "who said this task waits on that one. Insert-only, because the table has "
                  "no UPDATE grant: changing which task blocks which is two edges and both "

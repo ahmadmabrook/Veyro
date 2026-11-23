@@ -518,9 +518,26 @@ class ApprovalRequestBody(BaseModel):
 
 
 class ApprovalDecisionBody(BaseModel):
+    """`on_behalf_of` is AUT-02-R05's delegation: the identity whose approval authority this
+    decision carries. It is checked against a live delegation by the schema, so a caller
+    cannot claim one -- "a cited authority is the authority, or it is decoration"."""
+
     decision: str
     correlation_id: str
     reason: str | None = None
+    on_behalf_of: str | None = None
+
+
+class ApprovalDelegationBody(BaseModel):
+    """**No `from_identity_id`.** The delegator is the session, because a body field here
+    would let anybody delegate anybody's authority to themselves -- the whole approval
+    machinery bought with one uuid. Derive a scope, never accept one."""
+
+    to_identity_id: str
+    starts_at: datetime
+    ends_at: datetime
+    reason: str = Field(min_length=1, max_length=500)
+    correlation_id: str
 
 
 class AccessReviewBody(BaseModel):
@@ -4282,7 +4299,58 @@ def create_app(
             request_id=require_uuid(request_id, "request_id"),
             decided_by=session["identity_id"], decision=body.decision,
             correlation_id=body.correlation_id, reason=body.reason,
+            on_behalf_of=optional_uuid(body.on_behalf_of, "on_behalf_of"),
         )
+
+    @app.post("/authz/delegations", status_code=201)
+    def delegate_approvals(
+        tenant_id: TenantId, session: Session, body: ApprovalDelegationBody
+    ) -> dict[str, Any]:
+        """Hand this session's own approval authority to somebody for a window.
+
+        **Gated on `authz.approval.decide`**, which is the authority being handed over: a
+        caller who may not decide has nothing to delegate, and a separate permission would
+        let somebody who cannot approve grant approving to somebody else. It is financial
+        class, so this needs a stepped-up session -- which is the right trade for an act that
+        widens who may approve a refund.
+        """
+        permit(session, "authz.approval.decide", body.correlation_id)
+        return authz.delegate_approvals(
+            identity_pool, tenant_id,
+            to_identity_id=require_uuid(body.to_identity_id, "to_identity_id"),
+            starts_at=body.starts_at,
+            ends_at=body.ends_at, reason=body.reason,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id)
+
+    @app.post("/authz/delegations/{delegation_id}/revoke")
+    def revoke_approval_delegation(
+        tenant_id: TenantId, session: Session, delegation_id: str, body: ReasonBody
+    ) -> dict[str, Any]:
+        """Take a delegation back. Only the delegator; the service refuses anybody else."""
+        permit(session, "authz.approval.decide", body.correlation_id)
+        return authz.revoke_delegation(
+            identity_pool, tenant_id, require_uuid(delegation_id, "delegation_id"),
+            reason=body.reason, actor_id=session["identity_id"],
+            correlation_id=body.correlation_id)
+
+    @app.get("/authz/delegations")
+    def list_approval_delegations(
+        tenant_id: TenantId, session: Session, include_ended: bool = False,
+        limit: Annotated[int, Query(ge=1, le=100)] = 100,
+    ) -> dict[str, Any]:
+        """Who is holding whose approval authority.
+
+        **On `authz.role.read` rather than on the decide permission**, because this is the
+        list somebody checks when asking who *could* have approved something, and a reader
+        who may see who holds which role but may not decide under them is exactly who asks.
+        There is no `authz.policy.read` in the catalogue -- the first version of this route
+        named one and it does not exist, which the catalogue would have refused at the gate
+        rather than at import, so it is worth saying that the permission was checked against
+        the list rather than assumed.
+        """
+        permit(session, "authz.role.read")
+        return authz.list_delegations(
+            identity_pool, tenant_id, include_ended=include_ended, limit=limit)
 
     @app.get("/authz/audit")
     def read_audit(

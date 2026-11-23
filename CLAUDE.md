@@ -969,8 +969,8 @@ Known gaps, deliberate:
   existed nowhere before: `plan_dsar` surfaced the same fact per request, so the honest
   answer to "what can you delete" was reachable only after somebody had asked you to delete
   something, and the registry behind it lived in Python and in a test.
-  **The number is worth knowing: 18 of 418 subject-bearing columns are erased or anonymised
-  and 400 survive.** (It was 17 of 388 until MOD-019's `0017` added four withdrawal columns,
+  **The number is worth knowing: 18 of 425 subject-bearing columns are erased or anonymised
+  and 407 survive.** (It was 17 of 388 until MOD-019's `0017` added four withdrawal columns,
   then 17 of 392, and MOD-026's first slice added twenty-six more -- fifteen of which the
   registry's own sweep refused to let through undeclared, which is what MOD-009 built it for.
   The eighteenth reached column is MOD-026's task assignee, and **choosing its mechanism is
@@ -3958,6 +3958,42 @@ one that proves a refusal.**
 **`SELECT ... FOR UPDATE` works under a column-scoped grant**, measured rather than reasoned
 about -- `has_table_privilege(..., 'UPDATE')` reads false afterwards, so deriving the answer
 from it would have been wrong, and the trigger's lock depends on it.
+
+**And delegation is built, which is AUT-02-R05's remaining word.** MOD-008 had a
+`delegated_from` column and deleted it because "no code set and no evaluator read" it -- a
+column implying a model that did not exist -- so the model is built or the word is not
+claimed. `product/0005_approval_delegation.sql` is one table, one column on
+`approval_decisions`, and three refusals; the service derives the delegator from the session,
+evaluates the policy against the **delegator's** permissions (which is what being delegated
+to means), and the three routes sit on `authz.approval.decide` and `authz.role.read`.
+
+**The reason it needed designing before coding is that a delegation can defeat the invariant
+MOD-026 claims.** If Alice raises a request and delegates to Bob, Bob deciding it is Alice
+approving her own request through a proxy: separation of duties intact in the column and gone
+in fact. So `check_decider` takes `acting_for` and the trigger compares both identities.
+That is MOD-007's "a remedy is new capability, so review it as such", applied before the code
+rather than after -- it was learned when a recovery allowance added to close one finding
+became a backdoor minting ten codes with no password.
+
+Three more decisions, each stated rather than discovered: a delegation is **not transitive**,
+because a chain makes "on whose authority" unevaluable without walking it; it has **both ends
+and a ninety-day ceiling**, because an open-ended one is a permanent transfer of approval
+authority, which is a role assignment and already has a table; and **only the delegator
+revokes it**, because an administrator who could would be deciding who may approve while
+somebody is away, which is the same power.
+
+Proven: isolation check 113 now runs thirteen probes -- the trigger branches by their
+sentence, two **weakenings** the branch probes cannot see (a revoked delegation and an expired
+one, which an absent-delegation probe would pass), and four constraint cases naming the
+constraint that refused them. 11 mutations, 10 caught by check 113 and one by check 28's
+prefix-free `iam` sweep. 14 service and HTTP tests.
+
+**The sweep found three uncaught and two of my own mutations malformed**, which is the
+harness rule paid again: the three were the delegation table's own CHECKs, which the trigger
+probes could not reach -- "a constraint nobody has broken on purpose is a constraint nobody
+has tested" -- and the two malformed ones kept a dummy `RAISE` to preserve the branch count
+and fired it unconditionally, so the seed died and the sweep reported MUTERR for mutations it
+had never really run.
 
 **The decision that shaped the module is that there is one approval engine and it is
 MOD-008's.** `iam.approval_policies` already carries `action`, `threshold_minor`,

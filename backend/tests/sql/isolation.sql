@@ -48359,8 +48359,290 @@ BEGIN
             probe := probe + 1;
     END;
 
-    IF probe <> 3 THEN
-        RAISE EXCEPTION 'CHECK 113 FAILED: ran % of 3 INV-AUT-02 probes', probe;
+    -- ---- delegation: four more branches, each probed by its own sentence.
+    --
+    -- Two extra identities, created here and rolled back with the block: the transitivity
+    -- refusals need three people, and the seed has two.
+    INSERT INTO iam.identities (tenant_id, identity_id, person_id, email_normalized,
+                                display_name)
+    VALUES ('11111111-1111-4111-8111-111111111111',
+            'eeeeeeee-0000-4000-8000-00000000000c',
+            'eeeeeeee-0000-4000-8000-00000000000d', 'deputy@acme.test', 'Acme Deputy'),
+           ('11111111-1111-4111-8111-111111111111',
+            'eeeeeeee-0000-4000-8000-00000000000e',
+            'eeeeeeee-0000-4000-8000-00000000000f', 'third@acme.test', 'Acme Third');
+
+    -- Branch 4: a decision citing an authority nobody granted. **"A cited authority is the
+    -- authority, or it is decoration"** -- without this, `on_behalf_of` is a text field that
+    -- says whatever the caller types.
+    BEGIN
+        INSERT INTO iam.approval_decisions
+            (tenant_id, request_id, decided_by, decision, on_behalf_of)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'ffffffff-0000-4000-8000-000000000004',
+                'eeeeeeee-0000-4000-8000-00000000000c', 'approved',
+                'eeeeeeee-0000-4000-8000-00000000000e');
+        RAISE EXCEPTION
+            'CHECK 113 FAILED: a decision claimed an authority no delegation granted';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 113 FAILED%' THEN RAISE; END IF;
+            IF sqlerrm NOT LIKE '%no live delegation grants it%' THEN
+                RAISE EXCEPTION
+                    'CHECK 113 FAILED: the ungranted authority was refused by something '
+                    'else: %', sqlerrm;
+            END IF;
+            probe := probe + 1;
+    END;
+
+    -- A live delegation, so the next two branches have one to work against: the requester
+    -- (`...0002`) delegates to the deputy (`...000c`).
+    INSERT INTO iam.approval_delegations
+        (tenant_id, from_identity_id, to_identity_id, starts_at, ends_at, reason,
+         created_by, create_correlation_id)
+    VALUES ('11111111-1111-4111-8111-111111111111',
+            'eeeeeeee-0000-4000-8000-000000000002',
+            'eeeeeeee-0000-4000-8000-00000000000c',
+            now() - interval '1 hour', now() + interval '7 days', 'away this week',
+            'eeeeeeee-0000-4000-8000-000000000002',
+            '33333333-3333-4333-8333-333333333333');
+
+    -- Branch 5: **the whole reason this migration exists.** The deputy now holds the
+    -- requester's authority, so deciding the requester's own request on it is the requester
+    -- approving themselves through a proxy -- separation of duties intact in the column and
+    -- gone in fact.
+    BEGIN
+        INSERT INTO iam.approval_decisions
+            (tenant_id, request_id, decided_by, decision, on_behalf_of)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'ffffffff-0000-4000-8000-000000000004',
+                'eeeeeeee-0000-4000-8000-00000000000c', 'approved',
+                'eeeeeeee-0000-4000-8000-000000000002');
+        RAISE EXCEPTION
+            'CHECK 113 FAILED: the requester decided their own request through a delegate';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 113 FAILED%' THEN RAISE; END IF;
+            IF sqlerrm NOT LIKE '%through a delegate%' THEN
+                RAISE EXCEPTION
+                    'CHECK 113 FAILED: the proxy self-approval was refused by something '
+                    'else, so the delegation clause proves nothing: %', sqlerrm;
+            END IF;
+            probe := probe + 1;
+    END;
+
+    -- Branch 6: the deputy holds a delegation, so they may not take another one on.
+    BEGIN
+        INSERT INTO iam.approval_delegations
+            (tenant_id, from_identity_id, to_identity_id, starts_at, ends_at, reason,
+             created_by, create_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'eeeeeeee-0000-4000-8000-00000000000c',
+                'eeeeeeee-0000-4000-8000-00000000000e',
+                now(), now() + interval '1 day', 'passing it on',
+                'eeeeeeee-0000-4000-8000-00000000000c',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 113 FAILED: a delegation was passed on';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 113 FAILED%' THEN RAISE; END IF;
+            IF sqlerrm NOT LIKE '%is not passed on%' THEN
+                RAISE EXCEPTION
+                    'CHECK 113 FAILED: the onward delegation was refused by something '
+                    'else: %', sqlerrm;
+            END IF;
+            probe := probe + 1;
+    END;
+
+    -- Branch 7: the other direction. Somebody who has delegated their own approvals away
+    -- cannot hold anybody else's, which is the same chain seen from the far end.
+    BEGIN
+        INSERT INTO iam.approval_delegations
+            (tenant_id, from_identity_id, to_identity_id, starts_at, ends_at, reason,
+             created_by, create_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'eeeeeeee-0000-4000-8000-00000000000e',
+                'eeeeeeee-0000-4000-8000-000000000002',
+                now(), now() + interval '1 day', 'covering for the third',
+                'eeeeeeee-0000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION
+            'CHECK 113 FAILED: somebody who delegated their approvals away took another on';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 113 FAILED%' THEN RAISE; END IF;
+            IF sqlerrm NOT LIKE '%delegated their own approvals away%' THEN
+                RAISE EXCEPTION
+                    'CHECK 113 FAILED: the reverse chain was refused by something else: %',
+                    sqlerrm;
+            END IF;
+            probe := probe + 1;
+    END;
+
+    -- Branches 4a and 4b: the **weakenings**, which the probe above cannot see. It cites a
+    -- delegation that does not exist, so dropping `revoked_at IS NULL` or the time window
+    -- from the live check would leave it passing -- "a case catches a weakening only if the
+    -- weakened rule admits the row". These two rows exist and must still be refused.
+    INSERT INTO iam.approval_delegations
+        (tenant_id, delegation_id, from_identity_id, to_identity_id, starts_at, ends_at,
+         reason, created_by, create_correlation_id, revoked_at, revoked_by, revoke_reason,
+         revoke_correlation_id)
+    VALUES ('11111111-1111-4111-8111-111111111111',
+            'dddddddd-0000-4000-8000-000000000001',
+            'eeeeeeee-0000-4000-8000-00000000000e',
+            'eeeeeeee-0000-4000-8000-00000000000c',
+            now() - interval '1 hour', now() + interval '7 days', 'withdrawn',
+            'eeeeeeee-0000-4000-8000-00000000000e',
+            '33333333-3333-4333-8333-333333333333',
+            now(), 'eeeeeeee-0000-4000-8000-00000000000e', 'came back early',
+            '33333333-3333-4333-8333-333333333333');
+    BEGIN
+        INSERT INTO iam.approval_decisions
+            (tenant_id, request_id, decided_by, decision, on_behalf_of)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'ffffffff-0000-4000-8000-000000000004',
+                'eeeeeeee-0000-4000-8000-00000000000c', 'approved',
+                'eeeeeeee-0000-4000-8000-00000000000e');
+        RAISE EXCEPTION
+            'CHECK 113 FAILED: a revoked delegation still granted somebody''s authority';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 113 FAILED%' THEN RAISE; END IF;
+            IF sqlerrm NOT LIKE '%no live delegation grants it%' THEN
+                RAISE EXCEPTION 'CHECK 113 FAILED: revoked case answered by: %', sqlerrm;
+            END IF;
+            probe := probe + 1;
+    END;
+    -- Expired rather than revoked: the same branch, the other clause.
+    UPDATE iam.approval_delegations
+       SET revoked_at = NULL, revoked_by = NULL, revoke_reason = NULL,
+           revoke_correlation_id = NULL
+     WHERE delegation_id = 'dddddddd-0000-4000-8000-000000000001';
+    UPDATE iam.approval_delegations
+       SET starts_at = now() - interval '30 days', ends_at = now() - interval '1 day'
+     WHERE delegation_id = 'dddddddd-0000-4000-8000-000000000001';
+    BEGIN
+        INSERT INTO iam.approval_decisions
+            (tenant_id, request_id, decided_by, decision, on_behalf_of)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'ffffffff-0000-4000-8000-000000000004',
+                'eeeeeeee-0000-4000-8000-00000000000c', 'approved',
+                'eeeeeeee-0000-4000-8000-00000000000e');
+        RAISE EXCEPTION
+            'CHECK 113 FAILED: a delegation that has ended still granted authority';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 113 FAILED%' THEN RAISE; END IF;
+            IF sqlerrm NOT LIKE '%no live delegation grants it%' THEN
+                RAISE EXCEPTION 'CHECK 113 FAILED: expired case answered by: %', sqlerrm;
+            END IF;
+            probe := probe + 1;
+    END;
+
+    -- ---- the delegation table's own CHECKs, which the trigger probes cannot reach.
+    --
+    -- **A constraint nobody has broken on purpose is a constraint nobody has tested**, and
+    -- the mutation sweep said so: dropping the ninety-day ceiling, the not-self rule and the
+    -- revocation attribution all passed a block that probed only the triggers. Each case
+    -- names the constraint that refused it, because `check_violation` is the same exception
+    -- for every CHECK on a table and counting it proves whichever fires first.
+    BEGIN
+        INSERT INTO iam.approval_delegations
+            (tenant_id, from_identity_id, to_identity_id, starts_at, ends_at, reason,
+             created_by, create_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'eeeeeeee-0000-4000-8000-00000000000e',
+                -- **To the approver, not the requester.** The requester has already
+                -- delegated their own approvals away two probes up, so the transitivity
+                -- trigger answers first and this case proves that instead of the ceiling --
+                -- a new row refused by a sibling, created by this block's own earlier rows.
+                'eeeeeeee-0000-4000-8000-00000000000a',
+                now(), now() + interval '200 days', 'the whole season',
+                'eeeeeeee-0000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 113 FAILED: a delegation ran past the ninety-day ceiling';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender <> 'approval_delegations_bounded' THEN
+                RAISE EXCEPTION
+                    'CHECK 113 FAILED: the long delegation was refused by %, so the '
+                    'ceiling proves nothing', offender;
+            END IF;
+            probe := probe + 1;
+    END;
+    BEGIN
+        INSERT INTO iam.approval_delegations
+            (tenant_id, from_identity_id, to_identity_id, starts_at, ends_at, reason,
+             created_by, create_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'eeeeeeee-0000-4000-8000-00000000000e',
+                'eeeeeeee-0000-4000-8000-00000000000e',
+                now(), now() + interval '1 day', 'myself',
+                'eeeeeeee-0000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 113 FAILED: an identity delegated to itself';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender <> 'approval_delegations_not_self' THEN
+                RAISE EXCEPTION
+                    'CHECK 113 FAILED: the self-delegation was refused by %', offender;
+            END IF;
+            probe := probe + 1;
+    END;
+    -- The revocation trio, **blank and NULL**, because `coalesce` is what makes the blank
+    -- case bite and a case made of spaces cannot tell the two apart -- MOD-014 and MOD-021
+    -- each paid for that once.
+    BEGIN
+        UPDATE iam.approval_delegations
+           SET revoked_at = now(), revoked_by = 'eeeeeeee-0000-4000-8000-00000000000e',
+               revoke_reason = E'\t', revoke_correlation_id =
+               '33333333-3333-4333-8333-333333333333'
+         WHERE delegation_id = 'dddddddd-0000-4000-8000-000000000001';
+        RAISE EXCEPTION 'CHECK 113 FAILED: a delegation was revoked with a blank reason';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender <> 'approval_delegations_revocation_attributed' THEN
+                RAISE EXCEPTION
+                    'CHECK 113 FAILED: the blank reason was refused by %', offender;
+            END IF;
+            probe := probe + 1;
+    END;
+    BEGIN
+        UPDATE iam.approval_delegations
+           SET revoked_at = now(), revoked_by = 'eeeeeeee-0000-4000-8000-00000000000e',
+               revoke_reason = NULL, revoke_correlation_id =
+               '33333333-3333-4333-8333-333333333333'
+         WHERE delegation_id = 'dddddddd-0000-4000-8000-000000000001';
+        RAISE EXCEPTION 'CHECK 113 FAILED: a delegation was revoked with no reason at all';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender <> 'approval_delegations_revocation_attributed' THEN
+                RAISE EXCEPTION
+                    'CHECK 113 FAILED: the null reason was refused by %', offender;
+            END IF;
+            probe := probe + 1;
+    END;
+
+    IF probe <> 13 THEN
+        RAISE EXCEPTION 'CHECK 113 FAILED: ran % of 13 INV-AUT-02 probes', probe;
+    END IF;
+
+    -- **And the probe count is compared against the catalogue**, so a refusal added later
+    -- without a probe fails here rather than at the next sweep. Counting `RAISE EXCEPTION`
+    -- in the module's own trigger functions is the structural half this file applies to
+    -- MOD-022's forty-four branches.
+    IF (SELECT sum((length(prosrc) - length(replace(prosrc, 'RAISE EXCEPTION', '')))
+                   / length('RAISE EXCEPTION'))
+          FROM pg_proc
+         WHERE pronamespace = 'iam'::regnamespace
+           AND proname LIKE 'approval\_%') <> 5 THEN
+        RAISE EXCEPTION
+            'CHECK 113 FAILED: the approval trigger functions raise a different number of '
+            'refusals than this block probes; a branch was added or removed without one';
     END IF;
 
     -- ---- and the function itself, which `md5(prosrc)` cannot see.
