@@ -900,7 +900,17 @@ class CatalogReadTests(CatalogApiTestCase):
         head = self.scoped(tenant_id, ["catalog.product.read"])
         read = self.client.get(f"/catalog/products/{made['product_id']}", headers=head)
         self.assertEqual(read.status_code, 200, read.text)
-        self.assertNotIn("4500", read.text)
+        # **Not a substring search of the raw body.** `4500` is four hex-valid characters
+        # and a `gen_random_uuid()` ends in four, so about once in a few thousand runs a
+        # product id spells the price and turns a correct response red -- which happened to
+        # the sibling assertion in `test_commercial_api.py` and broke `main`. The field names
+        # are the real test anyway: a price reaching this read arrives in one of them.
+        body = read.json()
+        self.assertNotIn("amount_minor", body)
+        for variant in body["variants"]:
+            for money_field in ("amount_minor", "price", "amount", "currency"):
+                self.assertNotIn(money_field, variant,
+                                 f"{money_field} reached the product read")
         self.assertNotIn("amount_minor", read.text)
         self.assertEqual(self.client.get("/catalog/prices", headers=head).status_code, 403)
 

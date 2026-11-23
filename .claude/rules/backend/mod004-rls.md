@@ -1932,3 +1932,28 @@ in the same block, been made a delegator -- so the transitivity trigger answered
 constraint under test. The usual form of this rule is about a *constraint* added later
 invalidating existing cases; this is the same thing inside one block, where the state a probe
 leaves behind is the state the next one starts from.
+
+
+**A short literal searched across a response body is a coin flip against `gen_random_uuid()`,
+and it broke `main`.** `test_the_workspace_returns_no_name_and_no_card_detail` asserted that a
+money read leaks no card last-four by checking `assertNotIn("4417", response.text)`. Four
+digits are four hex characters; a uuid carries thirty-two, so each one offers twenty-nine
+places for a given four-character sequence to appear, at about one in 65,536 each. With a
+dozen ids in a payload that is roughly one run in two hundred -- invisible locally, red in CI,
+and it took the shape of a correct response being reported as a privacy leak.
+
+This is the **collision** form of the rule this file already records three times for consumed
+budgets: a green that depends on something other than the behaviour under test. The budget
+version is found by running the suite twice; this one is found only by running it enough
+times, which means CI finds it and you do not.
+
+**The fix is not to lengthen the probe.** Walk the parsed response, skip anything matching a
+uuid, and check the remaining strings and every key -- a field *named* `card_last4` is as much
+a leak as a value. That keeps the assertion's whole reach (it still fails on a brand or a name
+anywhere in the payload, nested or not) and removes the collision by construction. Proven by
+injecting `"card_brand": "Visa"` into a case row and watching it fail, then restoring.
+
+**And grep for siblings, because the pattern travels.** One more existed:
+`assertNotIn("4500", read.text)` asserting that a product read returns no price. The field
+names were the real test there anyway -- a price reaching that read arrives in one of them --
+so the substring was never carrying the weight it appeared to.

@@ -3177,6 +3177,30 @@ if __name__ == "__main__":
     unittest.main()
 
 
+def _prose_values(payload: object) -> list[str]:
+    """Every string in a response that is not an identifier.
+
+    A uuid is skipped because it is machine-generated and carries no prose, and because
+    searching one for a short literal is a coin flip -- four hex characters match any
+    four-digit probe about once in a few thousand rows. Keys are walked too: a field *named*
+    `card_last4` is as much a leak as a value.
+    """
+    import re as _re
+    uuid_like = _re.compile(r"\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\Z")
+    out: list[str] = []
+    stack: list[object] = [payload]
+    while stack:
+        here = stack.pop()
+        if isinstance(here, dict):
+            out.extend(str(k) for k in here)
+            stack.extend(here.values())
+        elif isinstance(here, list):
+            stack.extend(here)
+        elif isinstance(here, str) and not uuid_like.match(here):
+            out.append(here)
+    return out
+
+
 class CommandCentreReadTests(CommercialApiTestCase):
     """ADM-CC-01's figures and its queue, over HTTP.
 
@@ -3564,11 +3588,23 @@ class CommandCentreReadTests(CommercialApiTestCase):
         tenant_id = self.tenant()
         live = self.membership(tenant_id)
         self.recovery_case(tenant_id, membership_id=live["membership_id"])
-        raw = self.client.get(
+        answer = self.client.get(
             "/finance/recovery",
-            headers=self.scoped(tenant_id, ["finance.dunning.read"])).text
+            headers=self.scoped(tenant_id, ["finance.dunning.read"])).json()
+        # **The prose values, not the raw text, and that is a flake fix rather than a
+        # loosening.** This searched the whole response body for the literal `4417`, which
+        # is four digits -- and a `gen_random_uuid()` ends in four hex characters, so one run
+        # in a few thousand produced `...64d611f34417` and turned a correct response into a
+        # red `main`. A test whose green depends on randomness is this suite's own recurring
+        # finding, and the usual form is a spent budget; this is the same thing with a
+        # collision instead.
+        #
+        # Identifiers are skipped and every other string is still checked, so the assertion
+        # keeps its reach: a card brand or a name reaching a money read fails exactly as
+        # before, and a uuid that happens to spell one cannot.
         for leaked in ("Jane Smith", "Visa", "4417", "expired 08/26"):
-            self.assertNotIn(leaked, raw, f"{leaked} reached a money read")
+            for value in _prose_values(answer):
+                self.assertNotIn(leaked, value, f"{leaked} reached a money read")
         case = self.recovery(tenant_id)["cases"][0]
         self.assertEqual(case["failure_code"], "card_expired")
         self.assertEqual(case["method"], "card")
