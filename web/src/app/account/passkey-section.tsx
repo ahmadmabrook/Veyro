@@ -183,6 +183,7 @@ export function PasskeySection({
           <input type="hidden" name="backed_up" defaultValue="false" />
           <Field
             id="passkey-label" name="label" type="text" rarer="optional"
+            optionalLabel={text("field.optional")}
             label={text("passkey.label")}
             description={text("passkey.labelHint")}
             autoComplete="off"

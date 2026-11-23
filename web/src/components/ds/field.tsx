@@ -76,6 +76,7 @@ export function Field({
   action,
   required,
   rarer = "required",
+  optionalLabel,
   marked,
   describedBy,
   defaultValue,
@@ -99,6 +100,18 @@ export function Field({
   required?: boolean;
   /** Which side is rarer in this form, and therefore which gets the mark. */
   rarer?: "required" | "optional";
+  /**
+   * The word the optional mark is written with, from the caller's catalogue.
+   *
+   * **Required with `rarer="optional"` on a field that is not required, because a mark is a
+   * word and an asterisk is not.** This shell rendered a hard-coded `" (optional)"`, which
+   * is Latin letters in the middle of an Arabic line -- and the message-parity checks are
+   * structurally blind to it, because a string that never became a key is not in either
+   * catalogue. `StatusBadge` is the precedent: "the enum is the state and `label` is the
+   * word", with a usage sweep requiring it. The required mark stays an asterisk here because
+   * an asterisk is not a word.
+   */
+  optionalLabel?: string;
   /**
    * Mark the control without putting anything in the message slot.
    *
@@ -127,8 +140,13 @@ export function Field({
   // that explains why it is marked.
   const messageId = [ownMessage, describedBy].filter(Boolean).join(" ") || undefined;
   const invalid = shown?.kind === "error";
-  const mark =
-    (rarer === "required" && required) || (rarer === "optional" && !required);
+  // **No mark where the word for it is missing, rather than an empty bracket.** The sweep in
+  // `tests/unit/shell-tokens.test.mjs` requires `optionalLabel` wherever this branch can be
+  // reached, which is the same arrangement `StatusBadge` has for its label: the component
+  // cannot invent the word and the sweep is what guarantees a caller supplies it.
+  const mark = rarer === "required"
+    ? Boolean(required)
+    : !required && optionalLabel !== undefined;
 
   return (
     <div className="ds-field" style={style}>
@@ -138,7 +156,7 @@ export function Field({
         {label}
         {mark ? (
           <span className="ds-field-mark">
-            {rarer === "required" ? " *" : " (optional)"}
+            {rarer === "required" ? " *" : ` (${optionalLabel})`}
           </span>
         ) : null}
       </label>

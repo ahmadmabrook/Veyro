@@ -2409,3 +2409,72 @@ direct `kill -TERM` to the node process and then a `git status` to find the left
 one-line mutation in `permissions/page.tsx`, a file the session had never touched. The tell is
 exactly the one already recorded: **a modified file you did not author.** Read it with `cat`,
 check its syntax with `node --check`, count its entries with a regex — never by importing it.
+
+
+**A native `required` refuses the whole form, and a form with two submits has one that does not
+need it.** ADM-CRM-04 has a second button — "Add a lead for them", the canvas's own *"that
+record would open instead of a second one being created"* — which opens a lead against a person
+who already exists and therefore needs neither the name nor the phone. With `required` on those
+inputs the browser refused the submit, showed its own bubble on an empty Name, and **fired no
+submit event at all**: the server action never ran, nothing appeared in the dev log, and the
+click reported success. It took a DOM probe to see it — a `submit` listener in `page.evaluate`
+that never fired — and three wrong theories (the submitter's name/value, hydration, React's
+form-action dispatch) before that.
+
+**And the same constraint was hiding a message on the sibling screen.** ADM-MEM-10 carried
+`required` on both its fields, so the browser always refused before the server could answer:
+`missingFields` was unit-tested as a decision and `walkIn.nameNeeded` was **a branch nothing
+could render**, which is this file's own "a surface branch no fixture can reach" in the one
+place a reader is being told what they got wrong. `aria-required` keeps the announcement and
+drops the refusal; the server validates and the message slot carries the sentence, which is
+this app's own stated rule — *"validate on blur, never on keystroke; re-validate on submit"*. A
+native bubble is the browser's version of a disabled submit: it stops the reader with a message
+this app did not write, in a language it did not choose.
+
+**A spec that creates a row and a sibling that counts rows are coupled through the fixture's
+tenant.** The add-lead spec opens one lead per run and `leads.spec.ts` asserted `4 open leads`
+and exactly four table rows, so adding the first spec turned the second red — in the shape of a
+product regression. This is the consumable-state trap from the other side: not a budget the
+test spends, but a total another test moves. The property worth holding is that each *seeded*
+lead is drawn as its own link and that the figure comes from the board read rather than from the
+page's rows, so the count is a floor and the shape is the assertion. A literal total is an
+assertion about which other specs have run.
+
+**A design-system component that hard-codes a word is invisible to both message-parity
+checks.** The field shell rendered `" (optional)"` for the optional mark — Latin letters in the
+middle of an Arabic line, live on the account page for as long as that field has existed.
+`MESSAGE_KEYS` compares the two catalogues against each other and a string that never became a
+key is in neither; the per-plural-form sweep reads call sites of `fill`. `StatusBadge` is the
+precedent and the remedy is the same: the component takes the word, renders no mark without it,
+and a usage sweep requires it wherever the branch is reachable — mutation-proven against the
+one call site that had it. **The asterisk is why it survived**: the required mark is
+punctuation, so half the API needed no catalogue and the half that did looked like the same
+thing.
+
+**A hand-rolled copy of an approved component is a hand-rolled copy of its class names too.**
+The lead board wrote its own `ds-page-head` markup with the figures in `.muted` rather than
+`.ds-page-figures`, which §8 of the directive of 2026-11-20 forbids outright — and the cost
+showed up in a spec: an assertion written against the design system's own selector found
+nothing on the one screen that had copied the component instead of using it. Replacing it with
+`PageHeader` fixed the spec and the deviation at once.
+
+**Clicking a visually-hidden checkbox is intercepted by its own label, which is the component
+working.** `ChoiceChips` hides the control and draws the chip on the label, so Playwright's
+`.check()` — which clicks the input — is refused by the face in front of it. `{ force: true }`
+would skip the actionability check and hide real problems; the click a reader makes is on the
+chip, and that is the one worth asserting, with the checkbox's own `toBeChecked` behind it.
+
+**A probe assertion can pass on the text of its own debug output.** A temporary test asserted
+`toContainText("error")` against a `<p>` dumping `JSON.stringify(state)` — which contains
+`"error":null`, so it matched instantly and reported success for a submit that never happened.
+Vacuous evidence in a throwaway probe is still vacuous evidence, and it cost one wrong
+conclusion before the dev-server log settled it.
+
+**The fixture's worker subprocess and the API it drives must point at the same database.**
+`runWorkerTick` spawns `python -m app.worker` with `VEYRO_DATABASE_URL` defaulting to the
+documented dev port; a backend started on a different one produces
+`insert or update on "ops_metric_points" violates ... Key is not present in table "tenants"`
+for a tenant that **is** present — because the tick is reading the other database. The message
+names the right tenant and the wrong cause, which is what makes it expensive. The rule is the
+one this file already states for a server started by hand, one layer down: read the harness's
+own env block and match it, or point both halves at the documented default.

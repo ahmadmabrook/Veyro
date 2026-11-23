@@ -50,8 +50,16 @@ test.describe("the lead pipeline", () => {
 
   test("the header's two figures come from the board read", async ({ page }) => {
     await page.goto("/leads");
-    // Four leads are seeded and none is a member, so every one of them is open.
-    await expect(page.locator("#main").getByText("4 open leads")).toBeVisible();
+    // **At least the four seeded ones, counted rather than fixed.** None is a member, so
+    // every lead in the tenant is open -- and the add-lead spec opens one more, which is the
+    // point of that spec: a literal here would be an assertion about how many *other* specs
+    // have run, which is the consumable-state trap this repository has paid for four times.
+    // What the figure must do is come from `GET /crm/board` rather than from the page's rows,
+    // so the shape is what is asserted and the floor is what the fixture guarantees.
+    const figures = page.locator("#main .ds-page-figures");
+    await expect(figures).toHaveText(/\d+ open leads · \d+ going cold/);
+    const open = Number((await figures.textContent() ?? "").match(/(\d+) open leads/)?.[1]);
+    expect(open).toBeGreaterThanOrEqual(4);
   });
 
   test("the On trial column says why it is empty rather than being hidden", async ({ page }) => {
@@ -98,11 +106,12 @@ test.describe("the lead pipeline", () => {
       await expect(grid.getByRole("columnheader", { name: header, exact: true }))
         .toBeVisible();
     }
-    // Four seeded leads, each a row linking to its own record. The names are withheld at
-    // this assurance, so the rows are counted rather than named -- which is also the only
-    // assertion that would survive a fixture with different names in it.
-    await expect(grid.getByRole("row").filter({ has: page.getByRole("link") }))
-      .toHaveCount(4);
+    // **The four seeded leads each have a row, and the count is a floor rather than a
+    // literal.** The add-lead spec creates one in this tenant, so an exact count would be an
+    // assertion about which other specs have run -- and the property worth holding is that
+    // every seeded lead is drawn as its own link, which is what the table is for.
+    const rows = grid.getByRole("row").filter({ has: page.getByRole("link") });
+    expect(await rows.count()).toBeGreaterThanOrEqual(4);
     await expect(grid.getByRole("cell", { name: /Sweifieh open day/ }).first())
       .toBeVisible();
   });

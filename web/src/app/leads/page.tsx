@@ -2,6 +2,8 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { Banner } from "@/components/ds/banner";
+import { Button } from "@/components/ds/button";
+import { PageHeader } from "@/components/ds/page-header";
 import { LeadCard, PipelineColumn } from "@/components/ds/pipeline-column";
 import { Withheld } from "@/components/withheld";
 import { ProseNote } from "@/components/prose";
@@ -56,12 +58,30 @@ export default async function LeadsPage({
 
   if (!(await currentSession())) redirect("/login");
 
-  const [mayLeads, mayPeople] = await gateAll(["crm.lead.read", "people.person.read"] as const);
+  const [mayLeads, mayPeople, mayWrite] = await gateAll([
+    "crm.lead.read",
+    "people.person.read",
+    // **For the header's "Add a lead" and nothing else.** The live ADM-CRM-01 screen draws
+    // `prim('Add a lead')` in its header row and this page rendered nothing there -- the same
+    // shape as ADM-MEM-05's missing "Add member", and with the same consequence: ADM-CRM-04
+    // is the only way to open a lead from a cold start and nothing led to it. Shown by the
+    // verdict rather than by `allowed`, because `people.person.write` is financial class and
+    // the screen it leads to offers the step-up: hiding it from somebody who could step up
+    // makes the capability undiscoverable, and showing it to somebody the gate denies
+    // outright is a button that answers 403.
+    "people.person.write",
+  ] as const);
+  const addLead = gateVerdict(mayWrite) === "denied" ? undefined : (
+    <Button
+      variant="secondary" size="md" href="/leads/new"
+      label={text("leads.addLead")}
+    />
+  );
 
   if (!mayLeads.allowed) {
     const verdict = gateVerdict(mayLeads);
     return (
-      <Shell locale={locale} view={view} filter={filter} board={null} coldAfter={48}>
+      <Shell locale={locale} view={view} filter={filter} board={null} coldAfter={48} action={addLead}>
         <Banner severity={verdict === "gate_failed" ? "critical" : "info"}>
           {verdict === "denied" ? text("leads.refused") : text(gateMessage(mayLeads))}
         </Banner>
@@ -98,7 +118,7 @@ export default async function LeadsPage({
 
   if (failed) {
     return (
-      <Shell locale={locale} view={view} filter={filter} board={null} coldAfter={coldAfter}>
+      <Shell locale={locale} view={view} filter={filter} board={null} coldAfter={coldAfter} action={addLead}>
         <Banner severity="critical">{text("error.unexpected")}</Banner>
       </Shell>
     );
@@ -132,7 +152,7 @@ export default async function LeadsPage({
 
   if (board?.mine_is_zero_without_a_person_record !== undefined) {
     return (
-      <Shell locale={locale} view={view} filter={filter} board={board} coldAfter={coldAfter}>
+      <Shell locale={locale} view={view} filter={filter} board={board} coldAfter={coldAfter} action={addLead}>
         {/* **Two different facts and only one is about the work.** A reader whose sign-in is
             not linked to a person owns no leads, and so does a reader with an empty queue --
             the first is ordinary, because staff hold permissions and do not have to be
@@ -143,7 +163,7 @@ export default async function LeadsPage({
   }
 
   return (
-    <Shell locale={locale} view={view} filter={filter} board={board} coldAfter={coldAfter}>
+    <Shell locale={locale} view={view} filter={filter} board={board} coldAfter={coldAfter} action={addLead}>
       {rows.some((row) => row.name === null) ? (
         <p className="ds-note">
           {text("leads.namesWithheld")}{" "}
@@ -261,13 +281,20 @@ function Board({
 }
 
 function Shell({
-  locale, view, filter, board, coldAfter, children,
+  locale, view, filter, board, coldAfter, action, children,
 }: {
   locale: Locale;
   view: LeadView;
   filter: LeadFilter;
   board: Board | null;
   coldAfter: number;
+  /**
+   * The header's end slot. The live ADM-CRM-01 screen draws "Add a lead" there and this one
+   * rendered nothing -- and it was not in the gap list either, so a specified control was
+   * missing from the screen with no record anywhere that it was missing. ADM-CRM-04 is that
+   * screen, and this is the only way to reach it.
+   */
+  action?: React.ReactNode;
   children: React.ReactNode;
 }) {
   const text = (key: MessageKey) => t(locale, key);
@@ -279,16 +306,24 @@ function Shell({
   };
   return (
     <div className="stack">
-      <header className="ds-page-head">
-        <h1 id="leads-heading">{text("leads.heading")}</h1>
-        {board === null ? null : (
-          <p className="muted">
+      {/* **`PageHeader`, not a hand-rolled head.** This screen wrote its own header -- the
+          same markup, with the figures in `.muted` rather than `.ds-page-figures` -- which is
+          an ad-hoc copy of an approved component, and §8 of the directive of 2026-11-20
+          forbids exactly that. The component carries the flex row, the text column's
+          `min-inline-size` and the end slot, so the only thing this screen decides is what
+          goes in them. */}
+      <PageHeader
+        id="leads-heading"
+        title={text("leads.heading")}
+        figures={board === null ? undefined : (
+          <>
             {fill(locale, "leads.openLeads", { count: board.open_leads })}
             {" · "}
             {fill(locale, "leads.goingCold", { count: board.going_cold })}
-          </p>
+          </>
         )}
-      </header>
+        actions={action}
+      />
 
       <nav aria-label={text("leads.title")} className="chips">
         <Link href={here({ filter: "all" })} aria-current={filter === "all" ? "page" : undefined}>

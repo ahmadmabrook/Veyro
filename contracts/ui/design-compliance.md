@@ -2082,6 +2082,93 @@ needs a conversion to count, which needs the trial — the same gap as the colum
 **The third chip is not offered.** *"Trial ending · 4"* is slice 2's, and a chip that filtered
 to nothing would read as a club with no trials ending rather than as a build with no trials.
 
+## ADM-CRM-04 — add a lead, and the duplicate the door prevents
+
+**The canvas.** *"New lead · Name and phone are enough. Everything else can wait."* Two fields,
+a detection panel reading **"No existing record"** over *"Checked as you typed against members
+and leads. If this number already existed, that record would open instead of a second one being
+created"*, then `SOURCE · OPTIONAL` as a dropdown and `INTEREST · OPTIONAL` as three chips with
+`Classes` and `PT` filled and `Gym only` outlined, and one button: **Save lead**.
+
+- **ADM-CRM-04 · add lead** — `/leads/new`, over `GET /people/contact-match` for the check as
+  you type, `GET /crm/sources` for the dropdown, then `POST /people` and `POST /crm/leads`.
+  `ChoiceChips` is a new design-system component: §23 names eighteen field types and
+  `multiselect` is one of them, nothing provided it, so the drawing is the specification.
+- **ADM-CRM-01's own "Add a lead"** — the live screen draws `prim('Add a lead')` in its header
+  row and `/leads` rendered nothing there. The same shape as ADM-MEM-05's missing *Add member*,
+  with the same consequence: this screen is the only way to open a lead from a cold start and
+  nothing led to it.
+
+### The six things this screen had to settle
+
+**The state this canvas draws is the *clear* one, and that is what makes the panel a detection
+region rather than a warning.** ADM-MEM-10 draws the same panel — same border, same title ink,
+same `warning.600` — saying *"This number already has a record"*; this one draws it saying
+nothing was found. So the treatment is not a severity signal in the design's own usage, and
+painting the clear verdict in green or in neutral ink would be two components where the design
+has one. It is rendered as drawn, in `--color-semantic-warning`, in all three states.
+
+**The match state is borrowed from ADM-MEM-10, because this canvas does not draw one.** It is
+the same check over the same read, so the nearest authority for the shape is the sibling screen,
+and that is where *"Different person"* comes from. Without that escape a desk could never record
+a second sibling on a shared family line — which is the ordinary case paragraph 10200 requires a
+human for rather than a threshold — and nothing else in this build creates a lead.
+
+**And the canvas's sentence is a third action, which only this screen can offer.** *"That record
+would open instead of a second one being created"* is a statement about what happens, and for a
+lead it is literally available: `POST /crm/leads` takes a `person_id`, so a match becomes a lead
+against *that* person with one write and no second record — and if they already have one the
+server returns theirs, which is the sentence exactly. ADM-MEM-10 cannot do this, because a
+member is one command against a person who does not exist yet. Until this screen did it,
+`POST /crm/leads` had no caller for an existing person anywhere in the product.
+
+**It is also the one control here a routine session can use.** Creating a person is
+`people.person.write`, financial class and a step-up; opening a lead against one is
+`crm.lead.write`, routine; the dropdown needs `crm.source.read`, which is a third. So the page
+asks three write-side questions rather than one, and the hold under the button says the match
+path is still open to a session that cannot create a person — because it is.
+
+**Two writes, so there is a window, and the form reports what is in it.** Nothing makes two HTTP
+writes atomic from a browser, so a person created with no lead is a real outcome. A reader told
+only *"that was refused"* would type the name again and be stopped by their own duplicate check,
+which is the worst of the three available answers; the state carries the person's id and the
+banner offers to open it.
+
+**The sub-line is rendered, and this is the one screen where that is not the prose `PageHeader`
+bans.** Its rule — *the design's header is a title and a line of figures, never a paragraph* —
+was derived from the data canvases, and ADM-MEM-10's canvas obeys it with a title and nothing
+under it. This canvas draws *"Name and phone are enough. Everything else can wait."* in the
+secondary ink, and that sentence is not a description of the screen: it is the form's own
+instruction, telling a receptionist they may stop after two fields. A form has nothing to count,
+so the slot is free.
+
+**What is named rather than drawn**, each with the product's reason: assigning an owner (the
+route takes a person id and this screen has no staff list; the profile assigns it), starting a
+trial (nothing marks a product as a trial, which is the first thing slice 2 decides), one
+command for both writes, and an email address — which the canvas leaves out in as many words.
+
+### What the two screens now share
+
+**One check, one panel line, one set of decisions.** `@/lib/walk-in` holds the detection, the
+stale-answer derivation, the acknowledgement rule and the hold; `@/lib/contact-check` is the
+request; `ContactMatchLine` is the matched record's own line. A lead *is* a person, so a number
+already on a record is already on a record — and two copies of any of that would be two
+definitions of *does this number exist*, which on the day they disagreed would have one screen
+create the duplicate the other prevents. The line was a copy for about an hour, differing only
+in which catalogue key spelled *joined*; it is one component with one pair of keys now, because
+a line that must say the same thing in two places drifts the first time either is edited.
+
+### A design-system defect this screen found
+
+**The field shell's optional mark was hard-coded English.** `rarer="optional"` on a field that is
+not required rendered a literal `" (optional)"`, which is Latin letters in the middle of an
+Arabic line — live on the account page, for as long as that field has existed. Neither message
+check could see it: `MESSAGE_KEYS` compares the two catalogues against each other and a string
+that never became a key is in neither. `StatusBadge` is the precedent — *the enum is the state
+and `label` is the word* — so the shell takes `optionalLabel`, renders no mark without it, and
+`tests/unit/ds-usage.test.mjs` requires it wherever the branch is reachable. Mutation-proven
+against the one existing call site.
+
 ### ADM-CRM-03's own five decisions
 
 **Five working forms, because every MOD-027 permission is routine.** A touchpoint, a stage

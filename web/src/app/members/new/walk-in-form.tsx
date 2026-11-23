@@ -3,27 +3,18 @@
 import Link from "next/link";
 import { useActionState, useEffect, useState } from "react";
 
+import { ContactMatchLine } from "@/components/contact-match-line";
 import { Banner } from "@/components/ds/banner";
 import { Button } from "@/components/ds/button";
 import { Field } from "@/components/ds/field";
-import { Withheld } from "@/components/withheld";
 import { fill, formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
-import { monthYearLabel } from "@/lib/time";
+import { checkPhone } from "@/lib/contact-check";
 import {
-  DETECTION_DEBOUNCE_MS,
-  detectionFor,
-  holdReason,
-  interruption,
-  isAbout,
-  knownFrom,
-  mayCreate,
-  recognitionParts,
-  worthChecking,
-  type ContactMatch,
-  type DetectionAnswerFor,
+  DETECTION_DEBOUNCE_MS, detectionFor, holdReason, interruption, isAbout, mayCreate,
+  worthChecking, type DetectionAnswerFor,
 } from "@/lib/walk-in";
 
-import { checkPhone, createWalkIn } from "./actions";
+import { createWalkIn } from "./actions";
 import { IDLE, type WalkInState } from "./state";
 
 /**
@@ -128,14 +119,29 @@ export function WalkInForm({
 
   return (
     <form action={action} className="ds-walk-in-form">
+      {/* **`aria-required`, not `required`, and the two messages below are why.** A native
+          `required` makes the browser refuse the submit and show its own bubble, so
+          `missingFields` ran on no request that could ever be made and `walkIn.nameNeeded`
+          and `walkIn.phoneNeeded` were a branch nothing could reach -- the decision was unit
+          tested and the sentence was never rendered. The app's own rule says to validate on
+          blur and re-validate on submit; a native bubble is the browser's version of a
+          disabled submit, in a language this app did not choose.
+          **Found on ADM-CRM-04**, where the same constraint blocked a second submit that
+          legitimately needs neither field. */}
       <Field
         id="walk-in-name" name="name" type="text" required rarer="optional"
         label={text("walkIn.name")}
-        autoComplete="off"
-        defaultValue={state.echo.name ?? ""}
         message={state.missing.name
           ? { kind: "error", text: text("walkIn.nameNeeded") } : null}
-      />
+      >
+        <input
+          id="walk-in-name" name="name" type="text" aria-required="true"
+          className="ds-field-input" autoComplete="off"
+          aria-describedby={state.missing.name ? "walk-in-name-message" : undefined}
+          aria-invalid={state.missing.name ? true : undefined}
+          defaultValue={state.echo.name ?? ""}
+        />
+      </Field>
 
       {/* **`type="phone"` is not cosmetic.** The shell bidi-isolates it and gives it a
           numeric keyboard from the type rather than from a passed prop, which is what the
@@ -159,8 +165,10 @@ export function WalkInForm({
             figures, so the number reads the same way in both. A child rather than the
             shell's own input, because the detection needs the value as it is typed. */}
         <input
-          id="walk-in-phone" name="phone" type="tel" inputMode="tel" dir="ltr" required
+          id="walk-in-phone" name="phone" type="tel" inputMode="tel" dir="ltr"
+          aria-required="true"
           className="ds-field-input data" autoComplete="off"
+          aria-invalid={state.missing.phone ? true : undefined}
           // Wired here rather than by the shell: a control passed as a child is opaque to it,
           // and this is the one message on the screen a reader must not miss.
           aria-describedby={[
@@ -188,7 +196,7 @@ export function WalkInForm({
               {text("walkIn.alreadyOnARecord")}
             </p>
             <p className="ds-walk-in-match">
-              <MatchLine locale={locale} match={duplicate.first} />
+              <ContactMatchLine locale={locale} match={duplicate.first} />
               {". "}
               {text("walkIn.secondRecord")}
             </p>
@@ -303,35 +311,3 @@ const HOLD_MESSAGE: Record<"checking" | "duplicate" | "unknown", MessageKey> = {
   duplicate: "walkIn.holdDuplicate",
   unknown: "walkIn.holdUnknown",
 };
-
-/**
- * The matched record's own line — "**Hala Barakat** · M-03918 · joined Feb 2025".
- *
- * **The name may be withheld and the line still has to identify the record.** A legal name is
- * `identity` class, so a routine front-desk session gets the marker — and a banner reading
- * only "Withheld" tells a desk nothing about whether this is the person in front of them. The
- * member number and the date are not identity-class, so they stay, which is the same
- * reasoning `WithheldLink` uses for a row in a list.
- */
-function MatchLine({ locale, match }: { locale: Locale; match: ContactMatch }) {
-  const shown = match.preferred_name ?? match.legal_name;
-  const withheld = shown === null || shown === "***";
-  const parts = recognitionParts(match);
-  return (
-    <>
-      <strong>
-        {withheld
-          ? <Withheld locale={locale} reason="member.withheldIdentity" />
-          : shown}
-      </strong>
-      {parts.map((part) => (
-        <span key={part}> · {part}</span>
-      ))}
-      <span>
-        {" · "}
-        {fill(locale, match.joined_on === null ? "walkIn.knownSince" : "walkIn.joined",
-              { date: monthYearLabel(knownFrom(match), locale) })}
-      </span>
-    </>
-  );
-}

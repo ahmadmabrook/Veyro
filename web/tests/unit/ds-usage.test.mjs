@@ -133,6 +133,64 @@ test("a status badge carries the word in the reader's language", () => {
   );
 });
 
+/**
+ * The opening tag of each `<Name` in a file, attributes only.
+ *
+ * Depth-aware on `{}`, because a prop's value is an expression that may contain a `>` -- an
+ * arrow function or a comparison -- and the first `>` in the raw text is then not the end of
+ * the tag. A plain `indexOf(">")` is the shape that makes a sweep report an offender the app
+ * does not have, which costs the same trust as missing one.
+ */
+function openingTags(text, name) {
+  const tags = [];
+  const needle = new RegExp(`<${name}\\b`, "g");
+  let found;
+  while ((found = needle.exec(text)) !== null) {
+    let depth = 0;
+    for (let i = found.index + found[0].length; i < text.length; i += 1) {
+      const ch = text[i];
+      if (ch === "{") depth += 1;
+      else if (ch === "}") depth -= 1;
+      else if (ch === ">" && depth === 0) {
+        tags.push(text.slice(found.index, i));
+        break;
+      }
+    }
+  }
+  return tags;
+}
+
+test("an optional field's mark is a word from the catalogue", () => {
+  // **A mark is a word and an asterisk is not.** The field shell marks whichever side is
+  // rarer in a form, and for the optional side that mark is prose -- which it hard-coded as
+  // `" (optional)"` until now: Latin letters in the middle of an Arabic line, on the account
+  // page, for as long as that field has existed.
+  //
+  // **Neither message check can see it**, which is why this is a sweep and not a test.
+  // `MESSAGE_KEYS` compares the two catalogues against each other and a string that never
+  // became a key is in neither; the per-plural-form sweep reads call sites of `fill`. So the
+  // guard is structural, exactly as StatusBadge's label is above, and it is counted per
+  // field rather than per file because one screen has several.
+  const offenders = [];
+  for (const file of files) {
+    for (const tag of openingTags(file.text, "Field")) {
+      if (!tag.includes('rarer="optional"')) continue;
+      // A *required* field under `rarer="optional"` is not marked at all, so it needs no
+      // word. That is most of this app: the two-field forms mark neither side.
+      if (/\brequired\b/.test(tag)) continue;
+      if (tag.includes("optionalLabel")) continue;
+      offenders.push(`${file.path}: ${tag.split("\n")[0].trim()}`);
+    }
+  }
+  assert.deepEqual(
+    offenders,
+    [],
+    "these render an optional field with no `optionalLabel`; pass the localized word, "
+      + "because the shell cannot invent one and an unmarked optional field is the quiet "
+      + "half of the same defect",
+  );
+});
+
 test("nothing imports the deleted ad-hoc control module", () => {
   const offenders = files
     .filter((f) => f.text.includes("@/components/controls"))

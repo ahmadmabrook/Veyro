@@ -1,39 +1,9 @@
 "use server";
 
 import { ApiError, api, correlationId } from "@/lib/api";
-import { worthChecking, type MatchResult } from "@/lib/walk-in";
+import { worthChecking } from "@/lib/walk-in";
 
-import { IDLE, type DetectionAnswer, type WalkInState } from "./state";
-
-/**
- * The duplicate check ADM-MEM-10 runs "on phone as it is typed, before anything is saved".
- *
- * **The raw value goes to the server.** Nothing here normalizes it: `normalize_contact` is
- * MOD-007's normalizer and it is what the write stores and what the match compares, so a
- * spelling rule on this side would be a second one — the shape MOD-011's review found in a
- * limiter, where eight spellings of one number each got a full budget. The client decides
- * only whether the value is long enough to be worth a request.
- *
- * **Routine, while the write is not.** `people.person.read` is `data_access` with no financial
- * class, so the check that prevents the duplicate is reachable at an ordinary front-desk
- * sign-in; `people.person.write` is financial and needs a step-up. That split is the right way
- * round and worth stating: a desk can always find out that a record exists, and only creating
- * a second one costs more.
- */
-export async function checkPhone(typed: string): Promise<DetectionAnswer> {
-  if (!worthChecking(typed)) return { outcome: "clear" };
-  try {
-    const found = await api<MatchResult>(
-      `/people/contact-match?kind=phone&value=${encodeURIComponent(typed)}&limit=5`);
-    return found.count === 0 ? { outcome: "clear" } : { outcome: "match", result: found };
-  } catch {
-    // **Every failure is `unknown`, including a 403.** A reader who cannot run the check has
-    // not learned that the number is free, and the form holds the button rather than treating
-    // silence as a clear. Which failure it was is not actionable here: the sentence is the
-    // same, and the create below answers the permission question properly.
-    return { outcome: "unknown" };
-  }
-}
+import { IDLE, type WalkInState } from "./state";
 
 /**
  * Create the walk-in. `POST /people`, with the contact points in the same command.

@@ -106,6 +106,7 @@ const surfaces: [string, string][] = [
   // a card in each is what `/permissions` overflowed by 125px for, so it is swept. And the
   // table is a six-column grid whose primary cell stacks a name over a meta line, which is
   // the shape that duplicated every droppable value on three other grids below 600px.
+  ["the add-lead form", "/leads/new"],
   ["the lead board", "/leads"],
   ["the lead table", "/leads?view=table"],
   // The profile is a record header over four metric cells, a timeline and five forms,

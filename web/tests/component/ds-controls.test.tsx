@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { Banner } from "@/components/ds/banner";
 import { Button } from "@/components/ds/button";
+import { ChoiceChips } from "@/components/ds/choice-chips";
 import { Field, visibleMessage } from "@/components/ds/field";
 
 /**
@@ -138,8 +139,25 @@ describe("Field", () => {
     );
     expect(screen.getByText("*", { exact: false })).toBeTruthy();
     required.unmount();
-    render(<Field id="b" name="b" label="Note" rarer="optional" />);
-    expect(screen.getByText("(optional)", { exact: false })).toBeTruthy();
+    // **The optional mark is the caller's word, because a mark is a word and an asterisk is
+    // not.** This assertion used to read `(optional)`, which the shell hard-coded -- Latin
+    // letters in the middle of an Arabic line, and invisible to both message-parity checks
+    // because a string that never became a key is in neither catalogue. The finding was
+    // "whichever side is rarer gets the mark"; the English word was a consequence of nothing
+    // supplying one, so that is what moved.
+    render(
+      <Field id="b" name="b" label="Note" rarer="optional" optionalLabel="اختياري" />,
+    );
+    expect(screen.getByText("(اختياري)", { exact: false })).toBeTruthy();
+  });
+
+  it("marks nothing when the word for the mark is missing", () => {
+    // An empty bracket is a visible defect and a missing mark is a quiet one; the quiet one is
+    // the right trade here, because `tests/unit/shell-tokens.test.mjs` is what requires a
+    // caller to supply the word -- the same arrangement StatusBadge has for its label.
+    render(<Field id="c" name="c" label="Note" rarer="optional" />);
+    expect(screen.queryByText("(", { exact: false })).toBeNull();
+    expect(screen.getByText("Note")).toBeTruthy();
   });
 
   it("isolates a value whose direction is not the page's", () => {
@@ -228,5 +246,92 @@ describe("Banner — the component Alert became", () => {
     const { container } = render(<Banner severity="critical">Refused.</Banner>);
     const box = container.firstElementChild as HTMLElement;
     expect(box.style.background).toContain("--color-surface-default");
+  });
+});
+
+describe("ChoiceChips", () => {
+  const three = [
+    { value: "classes", label: "Classes" },
+    { value: "pt", label: "PT" },
+    { value: "gym_only", label: "Gym only" },
+  ];
+
+  it("is a fieldset with a legend, not a label pointing at a group", () => {
+    // A `<label for>` may name one control; a group of checkboxes is named by a `<legend>`,
+    // which is why this is not the Field shell. A screen reader announces the legend once and
+    // then each chip, rather than reading the group's name before every box.
+    const { container } = render(
+      <ChoiceChips name="interest" legend="Interest" options={three} />,
+    );
+    const group = screen.getByRole("group", { name: "Interest" });
+    expect(group.tagName).toBe("FIELDSET");
+    expect(container.querySelector("label[for]")).toBeNull();
+  });
+
+  it("submits one value per selection, which is why nothing here is client state", () => {
+    // Three real checkboxes sharing a name: `FormData.getAll` is the whole mechanism, so the
+    // group works in a form with no JavaScript -- on a surface whose sign-in deliberately
+    // does. A pressable `<span>` would be a control this app could not submit.
+    render(<ChoiceChips name="interest" legend="Interest" options={three} />);
+    const boxes = screen.getAllByRole("checkbox");
+    expect(boxes.map((b) => b.getAttribute("name"))).toEqual(
+      ["interest", "interest", "interest"],
+    );
+    expect(boxes.map((b) => b.getAttribute("value"))).toEqual(
+      ["classes", "pt", "gym_only"],
+    );
+  });
+
+  it("checks what the caller echoed back, so a refused submit keeps the choices", () => {
+    render(
+      <ChoiceChips
+        name="interest" legend="Interest" options={three}
+        defaultSelected={["classes", "pt"]}
+      />,
+    );
+    expect(screen.getByRole("checkbox", { name: "Classes" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "PT" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Gym only" })).not.toBeChecked();
+  });
+
+  it("marks the group with the caller's word, or not at all", () => {
+    // The same rule as the field shell's, and for the same reason: a mark is a word, so the
+    // component cannot invent one. The canvas draws `INTEREST · OPTIONAL`.
+    // **The same shape the field shell renders.** This put "Interest optional" beside
+    // "Source (optional)" on one screen until somebody read the page: two marks for one
+    // meaning, which the canvas draws with one treatment.
+    const marked = render(
+      <ChoiceChips name="i" legend="Interest" mark="optional" options={three} />,
+    );
+    expect(screen.getByText("(optional)", { exact: false })).toBeTruthy();
+    marked.unmount();
+    const { container } = render(
+      <ChoiceChips name="i" legend="Interest" options={three} />,
+    );
+    expect(container.querySelector(".ds-field-mark")).toBeNull();
+  });
+
+  it("carries at most one note, under the group rather than inside it", () => {
+    // "Gym only is not combined with the other two" is a rule a reader needs before choosing,
+    // and it is one sentence: the field shell's own message-slot discipline, applied to a
+    // group whose chips have no slot of their own.
+    const { container } = render(
+      <ChoiceChips
+        name="i" legend="Interest" options={three} note="Gym only stands alone."
+      />,
+    );
+    const notes = container.querySelectorAll(".ds-choice-note");
+    expect(notes.length).toBe(1);
+    expect(notes[0]?.textContent).toBe("Gym only stands alone.");
+  });
+
+  it("hides the control and leaves it focusable, because the ring is drawn on the face", () => {
+    const { container } = render(
+      <ChoiceChips name="i" legend="Interest" options={three} />,
+    );
+    const box = screen.getByRole("checkbox", { name: "Classes" });
+    expect(box).toHaveClass("ds-visually-hidden");
+    expect(box.getAttribute("hidden")).toBeNull();
+    expect(container.querySelectorAll(".ds-choice-chip-face").length).toBe(3);
   });
 });

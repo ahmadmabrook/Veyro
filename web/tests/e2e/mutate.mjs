@@ -2181,6 +2181,137 @@ const MUTATIONS = [
     runner: "playwright",
     grep: "clock runs from its creation",
   },
+  {
+    id: "new-lead-clear-panel",
+    why: "the clear verdict is the state ADM-CRM-04's canvas actually draws -- \"No existing "
+      + "record\" over the mechanism sentence -- so dropping it leaves the one screen whose "
+      + "whole subject is a check saying nothing about having run one",
+    file: "src/app/leads/new/lead-form.tsx",
+    from: '        ) : detection.kind === "clear" && isAbout(detection, value) ? (',
+    to: "        ) : false ? (",
+    runner: "playwright",
+    grep: "the state this canvas draws",
+  },
+  {
+    id: "new-lead-use-person-skips-the-person-write",
+    why: "\"that record would open instead of a second one being created\" is the canvas's "
+      + "own behaviour, and it works by skipping the person write entirely -- falling through "
+      + "creates the duplicate the screen exists to prevent",
+    file: "src/app/leads/new/actions.ts",
+    from: "  if (chosen.length > 0) return openAgainst(chosen, source, interests, echo);",
+    to: "  if (false) return openAgainst(chosen, source, interests, echo);",
+    runner: "playwright",
+    grep: "opens the lead that already exists",
+  },
+  {
+    id: "new-lead-existing-is-reported",
+    why: "a form that said \"the lead is open\" for a record somebody else opened last week "
+      + "would be telling a desk they did something they did not do",
+    file: "src/app/leads/new/actions.ts",
+    from: `    return {
+      ...IDLE,
+      createdLeadId: String(opened.lead_id),
+      openedExisting: opened.existing === true,
+    };
+  } catch (error) {
+    // No person was created here`,
+    to: `    return {
+      ...IDLE,
+      createdLeadId: String(opened.lead_id),
+      openedExisting: false,
+    };
+  } catch (error) {
+    // No person was created here`,
+    runner: "playwright",
+    grep: "opens the lead that already exists",
+  },
+  {
+    id: "new-lead-match-path-needs-its-own-permission",
+    why: "opening a lead against an existing person is `crm.lead.write`, which a front desk "
+      + "does not hold -- a button that answers 403 is worse than its absence",
+    file: "src/app/leads/new/lead-form.tsx",
+    from: "              {canOpenLead ? (",
+    to: "              {true ? (",
+    runner: "playwright",
+    grep: "a front desk gets the check and neither write",
+  },
+  {
+    id: "new-lead-board-button-is-gated",
+    why: "`people.person.write` is financial class, so the verdict is what tells \"a stronger "
+      + "sign-in would open this\" from \"you may not\" -- and a denied reader must get no "
+      + "button at all",
+    file: "src/app/leads/page.tsx",
+    from: '  const addLead = gateVerdict(mayWrite) === "denied" ? undefined : (',
+    to: "  const addLead = false ? undefined : (",
+    runner: "playwright",
+    grep: "no Add a lead button at all",
+  },
+  {
+    id: "new-lead-no-native-constraint",
+    why: "a native `required` makes the browser refuse the whole form, and this one has a "
+      + "second submit that legitimately needs neither field -- and it also hides the app's "
+      + "own sentence behind a bubble in a language this app did not choose",
+    file: "src/app/leads/new/lead-form.tsx",
+    from: '          id="new-lead-name" name="name" type="text" aria-required="true"',
+    to: '          id="new-lead-name" name="name" type="text" required',
+    runner: "playwright",
+    grep: "opens the lead that already exists",
+  },
+  {
+    id: "new-lead-hold-says-what-is-still-open",
+    why: "the create is held for want of a financial permission and the match path is not, so "
+      + "a sentence that stopped at \"needs a stronger sign-in\" would send a reader away "
+      + "from the one control that works",
+    file: "src/app/leads/new/lead-form.tsx",
+    from: '            {canOpenLead ? <> {text("newLead.matchPathStillOpen")}</> : null}',
+    to: "            {false ? null : null}",
+    runner: "playwright",
+    grep: "says the match path is still open",
+  },
+  {
+    id: "new-lead-gym-only-stands-alone",
+    why: "the server refuses `gym_only` beside the other two, and this app's validation "
+      + "handler deliberately names no field -- so a reader who was not told loses the whole "
+      + "submit to a 422 that explains nothing",
+    file: "src/app/leads/new/lead-form.tsx",
+    from: '        note={text("newLead.interestExclusive")}',
+    to: "        note={undefined}",
+    runner: "playwright",
+    grep: "draws the canvas's two optional fields",
+  },
+  {
+    id: "walk-in-no-native-constraint",
+    why: "`missingFields` had no reader at all while the two fields carried a native "
+      + "`required`: the browser refused the submit and showed its own bubble, so "
+      + "`walkIn.nameNeeded` was a branch nothing could render",
+    file: "src/app/members/new/walk-in-form.tsx",
+    from: '          id="walk-in-name" name="name" type="text" aria-required="true"',
+    to: '          id="walk-in-name" name="name" type="text" required',
+    runner: "playwright",
+    grep: "creates a person with a contact point",
+  },
+  {
+    id: "contact-match-withheld-is-a-marker",
+    why: "`GET /people/contact-match` returns the mask *string* for a field this session may "
+      + "not read, so a line that printed it would read as somebody called `***` -- and the "
+      + "panel would stop telling a desk that the name is withheld rather than absent",
+    file: "src/components/contact-match-line.tsx",
+    from: '  const withheld = shown === null || shown === "***";',
+    to: "  const withheld = false;",
+    runner: "playwright",
+    grep: "offers three answers",
+  },
+  {
+    id: "choice-chips-mark-shape",
+    why: "the canvas draws `SOURCE \u00b7 OPTIONAL` and `INTEREST \u00b7 OPTIONAL` with one "
+      + "treatment, and this rendered \"Interest optional\" beside \"Source (optional)\" "
+      + "until somebody read the page -- two spellings of one meaning on one screen",
+    file: "src/components/ds/choice-chips.tsx",
+    from: "          <span className=\"ds-field-mark\">{` (${mark})`}</span>",
+    to: '          <span className="ds-field-mark"> {mark}</span>',
+    runner: "playwright",
+    grep: "marks them as optional",
+  },
 ];
 
 const only = process.argv[2];

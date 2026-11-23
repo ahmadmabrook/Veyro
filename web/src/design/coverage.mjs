@@ -210,11 +210,6 @@ const BACKLOG = {
   // MOD-027's own dependency chain runs through MOD-026, so the seven CRM screens are two
   // modules deep rather than one. The pipeline, a lead, its stages and the unified inbox are
   // all its; `lifecycle_state` on a MOD-014 person is the only part of any of it here.
-  "ADM-CRM-04": "work: MOD-027 slice 1 answers this form. `POST /crm/leads` opens a lead against a "
-    + "MOD-014 person and returns the existing one where there is one, which is the "
-    + "canvas's own behaviour -- that record would open instead of a second one being "
-    + "created -- and `GET /people/contact-match` is the check as you type. The screen is "
-    + "the work",
   "ADM-CRM-06": "work: MOD-027 slice 2, which converts a trial through MOD-017's "
     + "`change_membership_plan` -- built now, and the reason this entry no longer waits on "
     + "that module. What slice 2 has to decide first is what marks a product as a trial: "

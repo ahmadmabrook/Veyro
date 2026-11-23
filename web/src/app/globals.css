@@ -1056,6 +1056,89 @@ a {
   line-height: 1;
 }
 
+/* --- ChoiceChips -------------------------------------------------------- *
+ * ADM-CRM-04's `INTEREST · OPTIONAL`. The canvas fills a selected chip in `warm.900` with
+ * inverse ink and outlines an unselected one, which is `--color-text-primary` as a surface --
+ * the one place in this app where a text token is a background, and it is the design's own
+ * choice rather than a shortcut: an accent fill would make three equal choices read as three
+ * severities. The control is a visually-hidden checkbox, so the ring is drawn on the face. */
+.ds-choice-group {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.ds-choice-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.ds-choice-chip {
+  /* The hidden input is `position: absolute`, so the label is what it positions against --
+     otherwise it escapes to the nearest positioned ancestor and takes the focus ring with
+     it. */
+  position: relative;
+  display: inline-flex;
+}
+
+.ds-choice-chip-face {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* The touch floor, which the source makes non-negotiable on a tapped control: "minimum
+     target 44px on Touch". A chip the canvas draws at 28px is a chip a receptionist misses. */
+  min-block-size: 36px;
+  padding-inline: var(--space-3);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-button);
+  background: var(--color-surface-default);
+  color: var(--color-text-primary);
+  font-size: var(--type-label-size);
+  font-weight: 400;
+  cursor: pointer;
+}
+
+@media (pointer: coarse) {
+  .ds-choice-chip-face {
+    min-block-size: 44px;
+  }
+}
+
+.ds-choice-chip input:checked + .ds-choice-chip-face {
+  background: var(--color-text-primary);
+  border-color: var(--color-text-primary);
+  color: var(--color-text-inverse);
+  font-weight: var(--type-label-weight);
+}
+
+/* The ring belongs on the face, because the control it names is a pixel wide and hidden. */
+.ds-choice-chip input:focus-visible + .ds-choice-chip-face {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 2px;
+}
+
+.ds-choice-chip-face:hover {
+  background: var(--color-surface-hover);
+}
+
+.ds-choice-chip input:checked + .ds-choice-chip-face:hover {
+  /* A checked chip is already the strongest surface here; lightening it on hover would read
+     as unselecting. The border is what moves. */
+  background: var(--color-text-primary);
+  border-color: var(--color-text-secondary);
+}
+
+.ds-choice-note {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--type-caption-size);
+  line-height: var(--type-caption-line);
+}
+
 .ds-avatar {
   display: inline-flex;
   align-items: center;

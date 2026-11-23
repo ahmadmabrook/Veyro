@@ -2620,11 +2620,25 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
       method: "POST", ...as(token),
       body: { legal_name: name, profile_kinds: ["lead"], correlation_id: cid() },
     });
+    // **A phone on the lead, because ADM-CRM-04's whole subject is finding one.** Without it
+    // the add-lead form's duplicate check has no lead to find, and its deterministic case --
+    // a person who *already has a lead*, where the server returns theirs rather than opening
+    // a second -- is the one state no `fresh()` number can reach. The `01NN` block pairs with
+    // the member's `0042` so both read as fixture data at a glance.
+    const body = { ...over };
+    if (body.phone !== undefined) {
+      await call(`/people/${who.person_id}/contacts`, {
+        method: "POST", ...as(token),
+        body: { kind: "phone", value: body.phone, is_primary: true,
+                correlation_id: cid() },
+      });
+      delete body.phone;
+    }
     return call("/crm/leads", {
       method: "POST", ...as(token),
       body: {
         person_id: who.person_id, source_id: leadSource.source_id,
-        correlation_id: cid(), ...over,
+        correlation_id: cid(), ...body,
       },
     });
   };
@@ -2632,7 +2646,9 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
   // own case, "Rana Sabbagh NO CONTACT · 2 DAYS" beside "open day · 2d". It reads warm here
   // because it was made a moment ago; what the fixture proves is that the row is drawn and
   // that the chip filters, and the forty-eight-hour boundary is the component test's.
-  const coldLead = await leadFor("Rana Sabbagh", { interests: ["classes", "pt"] });
+  const coldLead = await leadFor("Rana Sabbagh", {
+    interests: ["classes", "pt"], phone: "+962 79 000 0101",
+  });
   const contactedLead = await leadFor("Omar Zaid");
   await call(`/crm/leads/${contactedLead.lead_id}/touchpoints`, {
     method: "POST", ...as(token),

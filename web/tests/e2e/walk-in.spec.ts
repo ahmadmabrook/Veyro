@@ -150,6 +150,15 @@ test.describe("creating the record, once the reader has stepped up", () => {
 
     const form = page.locator("form.ds-walk-in-form");
     await expect(form.getByLabel("Name")).toBeVisible();
+
+    // **`missingFields` had no reader until now.** The two fields carried a native
+    // `required`, so the browser refused the submit and showed its own bubble -- the
+    // decision was unit tested and `walkIn.nameNeeded` was a branch nothing could render.
+    // They carry `aria-required` instead, so an empty submit reaches the server and the
+    // message slot carries the sentence this app wrote.
+    await form.getByRole("button", { name: "Create the record" }).click();
+    await expect(form).toContainText("A record needs a name.");
+
     await form.getByLabel("Name").fill("Walk-in Created");
     await form.getByLabel("Phone").fill(fresh());
 

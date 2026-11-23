@@ -4737,10 +4737,16 @@ Things worth knowing before extending it:
 
 Known gaps, deliberate:
 
-- **Three of the eight screens are built and five are not.** ADM-CRM-01's board,
-  ADM-CRM-02's table and ADM-CRM-03's profile are `/leads` and `/leads/{id}` -- see "The web
-  app" -- and the add form, the trial pair, the lost sheet and the conversation are owed;
-  `design:coverage` carries each with what is left in it.
+- **Four of the eight screens are built and four are not.** ADM-CRM-01's board,
+  ADM-CRM-02's table, ADM-CRM-03's profile and ADM-CRM-04's add form are `/leads`,
+  `/leads/{id}` and `/leads/new` -- see "The web app" -- and the trial pair, the lost sheet
+  and the conversation are owed; `design:coverage` carries each with what is left in it.
+- **`POST /crm/leads` has a caller for an existing person now, and until ADM-CRM-04 it had
+  none.** The route takes a `person_id` and returns the lead that person already has, which
+  is the canvas's own "that record would open instead of a second one being created" -- and
+  nothing in the product ever passed it a person the duplicate check had just found, so the
+  one write that *prevents* a duplicate rather than cleaning one up was unreachable. That is
+  this build's "a writer with no reader" shape read from the write side.
 - **No trial, so the `On trial` column is always empty** and the board says so rather than
   hiding it. Nothing in this build marks a product as a trial -- neither
   `cat_products.product_type` nor `mem_membership_terms.membership_kind` has such a value --
@@ -4985,6 +4991,16 @@ rendered correctly and `main` was not in the accessibility tree at all. Found by
 tree out of a failing spec; no assertion about text could have seen it, because the text was
 all there.
 
+**ADM-CRM-04's add form is `/leads/new`, and it is where the duplicate the whole pipeline
+rests on is prevented rather than cleaned up.** Its decisions, and the two defects it found
+outside itself, are in MOD-027's section above; what belongs here is that it shares every
+decision behind the check with ADM-MEM-10 through `@/lib/walk-in`, `@/lib/contact-check` and
+`ContactMatchLine` -- one definition each, because a lead *is* a person, so a number already on
+a record is already on a record, and two copies would be two definitions of "does this number
+exist". **The match line was a copy for about an hour**, differing only in which catalogue key
+spelled "joined"; it is one component with one pair of keys now, which is the same judgement as
+the shared check and arrived at by noticing the duplicate rather than by a test.
+
 **ADM-CRM-03's profile is the second module in this app with a full set of working write
 forms**, and for MOD-026's reason: every MOD-027 permission is `data_access` or
 `configuration` with no financial class, so a touchpoint, a stage move, the ownership, the
@@ -5006,6 +5022,59 @@ next action and the interests all have forms. Five decisions carry it, and three
 - **An empty timeline is a sentence rather than a list of one.** `Timeline` renders an `<ol>`
   and an `<ol>` may hold only `<li>`, so a banner inside it is an accessibility violation --
   caught by the profile's own axe scan, which is the layer that sees a rendered tree.
+
+**ADM-CRM-04 is the add form, and the state its canvas draws is the one the sibling screen
+does not.** ADM-MEM-10 draws the detection panel saying *"This number already has a record"*;
+this one draws it saying **"No existing record"** over the mechanism sentence. Same border,
+same title ink, same `warning.600` -- so the region is a standing detection panel rather than a
+severity signal in the design's own usage, and recolouring the clear verdict into reassurance
+would be two components where the design has one. It is rendered as drawn. Five more decisions
+carry it:
+
+- **The match state is borrowed from ADM-MEM-10, because this canvas does not draw one.** It is
+  the same check over the same read, so the nearest authority for the shape is the sibling
+  screen -- and that is where "Different person" comes from. Without that escape a desk could
+  never record a second sibling on a shared family line, which is the ordinary case paragraph
+  10200 wants a human for, and nothing else in this build creates a lead.
+- **The canvas's sentence is a third action, and only this screen can offer it.** "That record
+  would open instead of a second one being created" is a statement about what happens, and for
+  a lead it is literally available: `POST /crm/leads` takes a `person_id`, so a match becomes a
+  lead against *that* person with one write and no second record. ADM-MEM-10 cannot do this,
+  because a member is one command against a person who does not exist yet.
+- **It is also the one control here a routine session can use.** Creating a person is
+  `people.person.write`, financial class and a step-up; opening a lead against one is
+  `crm.lead.write`, routine; the dropdown needs `crm.source.read`, a third. So the page asks
+  three write-side questions rather than one, and the hold under the button says the match path
+  is still open to a session that cannot create a person -- because it is.
+- **Two writes, so there is a window, and the form reports what is in it.** Nothing makes two
+  HTTP writes atomic from a browser, so a person created with no lead is a real outcome; a
+  reader told only "that was refused" would type the name again and be stopped by their own
+  duplicate check. The state carries the person's id and the banner offers to open it.
+- **The sub-line is rendered, and this is the one screen where that is not the prose
+  `PageHeader` bans.** Its rule came from the data canvases and ADM-MEM-10's canvas obeys it
+  with a title and nothing under it. This one draws "Name and phone are enough. Everything else
+  can wait." in the secondary ink, which is not a description of the screen: it is the form's
+  own instruction. A form has nothing to count, so the slot is free.
+
+**And it found two defects outside itself, one of them live.** `ChoiceChips` is a new
+design-system component -- §23 names eighteen field types, `multiselect` is one of them, nothing
+provided it -- and building it showed that the field shell's **optional mark was hard-coded
+English**: `" (optional)"`, Latin letters in the middle of an Arabic line, on the account page
+for as long as that field has existed. Neither message check could see it, because a string that
+never became a key is in neither catalogue; `StatusBadge`'s precedent is the remedy, so the
+shell takes the word and `tests/unit/ds-usage.test.mjs` requires it. The second was **a native
+`required` that refused a submit the design needs**: the match path needs neither field, and
+with the constraint on, pressing it fired no submit event at all -- and on ADM-MEM-10 the same
+constraint had made `walkIn.nameNeeded` a branch nothing could render, so `missingFields` was a
+decision with a unit test and no reader. Both forms carry `aria-required` now and the server's
+answer reaches the message slot. Proven: 18 browser tests, 6 component tests, 9 mutations, all
+caught.
+
+**And the board was missing a control its own screen specifies.** The live ADM-CRM-01 draws
+`prim('Add a lead')` in its header row and `/leads` rendered nothing there -- ADM-MEM-05's
+missing "Add member" a second time, with the same consequence: the add form is the only way to
+open a lead from a cold start and nothing led to it. Fixing it replaced that screen's
+hand-rolled `ds-page-head` with `PageHeader`, which is the component §8 forbids copying.
 
 **MOD-026's three screens are where a reader who is *nobody* became a product state worth
 rendering.** Two of ADM-CC-06's five states and ADM-TSK-01's first chip are derived from
@@ -5649,6 +5718,13 @@ on the screen are decisions rather than rendering:
   * **A check that could not run is not a check that passed.** An unreachable server holds the
     button exactly as a match does, because "we do not know" and "it is free" are different
     facts and conflating them turns a network blip into a silent duplicate.
+  * **`aria-required`, not `required`, and that is a correction rather than a choice.** Both
+    fields carried the native constraint, so the browser refused every incomplete submit and
+    showed its own bubble -- which meant `missingFields` ran on no request that could be made
+    and `walkIn.nameNeeded` was **a branch nothing could render**: a decision with a unit test
+    and no reader, in the one place a reader is told what they got wrong. Found on ADM-CRM-04,
+    where the same constraint blocked a submit the design needs. The announcement stays, the
+    refusal goes, and the server's answer reaches the message slot in the reader's language.
   * **No keystroke validation, which is the Input contract's own rule.** "Validate on blur,
     never on keystroke; re-validate on submit" -- so the submit is not gated on the fields
     being filled, because a button that un-disables as they become acceptable is keystroke
@@ -6253,7 +6329,7 @@ re-running the fixture invalidates every test already created.
 
 Known gaps: the surface covers the sign-in, the step-up, the account page, MOD-004, MOD-005,
 MOD-007, MOD-008, MOD-009, MOD-010, MOD-011, MOD-012, MOD-013, MOD-014, MOD-016, MOD-017,
-MOD-018, MOD-019, MOD-021, MOD-022, MOD-026 and MOD-027's board, table and profile, plus
+MOD-018, MOD-019, MOD-021, MOD-022, MOD-026 and MOD-027's board, table, profile and add form, plus
 MOD-020's roster on a session,
 ADM-SCH-04's availability grid at `/rota`, ADM-MSH-07's cancellation sheet at
 `/people/{id}?tab=membership&cancel=1`, ADM-MEM-10's walk-in form at
