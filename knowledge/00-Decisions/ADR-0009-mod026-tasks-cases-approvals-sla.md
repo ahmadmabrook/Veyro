@@ -97,9 +97,30 @@ What MOD-026 adds, and only this:
   parallel. One stage reproduces today's behaviour exactly, so nothing already approved
   changes meaning.
 - **Delegation**, which is R05's remaining word. A delegation is a row, not a column: who
-  delegated what to whom, between which instants, and it is revocable. A delegated approval
-  records both identities, because "who actually decided" and "on whose authority" are two
-  facts and INV-AUT-02 is about the first.
+  delegated what to whom, between which instants, and it is revocable. MOD-008 had a
+  `delegated_from` column on `role_assignments` and deleted it because "no code set and no
+  evaluator read" it -- a column implying a delegation model that did not exist, which is
+  this build's recurring shape. So the model is built or the word is not claimed.
+
+  **And delegation is new capability that can defeat the invariant, which is the thing to get
+  right before writing it.** INV-AUT-02 compares `decided_by` with `requested_by`. If Alice
+  raises a request and has delegated her approval authority to Bob, then Bob deciding it is
+  Alice approving her own request through a proxy -- the separation of duties intact in the
+  column and gone in fact. So a delegated decision records **both** identities and the
+  trigger compares both: `decided_by <> requested_by` **and** `on_behalf_of <> requested_by`.
+
+  That is MOD-007's rule applied before the code rather than after it -- "a remedy is new
+  capability, so review it as such", learned when a recovery allowance added to fix one
+  finding reached `issue_recovery_codes` and became a backdoor that minted ten fresh codes
+  with no password. A delegation is exactly that shape: a convenience added to keep approvals
+  moving while somebody is away, which silently widens who may approve what.
+
+  **Two further consequences, both stated rather than discovered later.** A delegation must
+  not be transitive -- Bob delegating onward to Carol would make "on whose authority" a chain
+  nothing can evaluate at decision time, and the honest answer is to refuse the second hop.
+  And a delegation is bounded by the same quorum: two decisions made by one person, one of
+  them on somebody else's authority, are still one person pressing the button twice, so the
+  unique index has to be on the *acting* identity, which is what `decided_by` already is.
 - **R04's action classes as a declared catalogue**, so a tenant cannot invent an approval class
   the product has no permission for -- which is also how the payroll gap stays visible rather
   than becoming a policy nobody can exercise.
