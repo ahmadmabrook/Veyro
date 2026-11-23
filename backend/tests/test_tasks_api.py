@@ -228,3 +228,69 @@ class LifecycleTests(TasksApiTestCase):
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
+
+
+class ClockRouteTests(TasksApiTestCase):
+    def club(self, tenant_id: str) -> str:
+        owner = self.headers(tenant_id)
+        org = self.client.post("/organizations", json={
+            "legal_name": "Veyro Sites Ltd", "country_code": "JO",
+            **self.correlation()}, headers=owner)
+        brand = self.client.post("/brands", json={
+            "organization_id": org.json()["organization_id"], "brand_name": "City"},
+            headers=owner)
+        made = self.client.post("/locations", json={
+            "brand_id": brand.json()["brand_id"], "location_name": "Downtown",
+            "timezone": "Asia/Amman"}, headers=owner)
+        self.assertEqual(made.status_code, 201, made.text)
+        location_id = str(made.json()["location_id"])
+        for weekday in range(5):
+            hours = self.client.post("/tasks/calendar", json={
+                "location_id": location_id, "kind": "open", "weekday": weekday,
+                "opens_at": "09:00", "closes_at": "17:00", **self.correlation()},
+                headers=owner)
+            self.assertEqual(hours.status_code, 201, hours.text)
+        return self.queue(tenant_id, location_id=location_id)
+
+    def test_the_clock_routes_are_reached_rather_than_the_task_path_parameter(self):
+        """`/tasks/clocks/{clock_id}` sits under the same prefix as `/tasks/{task_id}`, and
+        FastAPI matches in declaration order -- the trap `/memberships/summary` was bitten
+        by. A clock id read as a task id would answer 404 for a clock that exists."""
+        tenant_id = self.tenant()
+        queue_id = self.club(tenant_id)
+        task_id = self.task(tenant_id, queue_id)
+        owner = self.headers(tenant_id)
+        made = self.client.post("/tasks/clocks", json={
+            "task_id": task_id, "target_seconds": 4 * 3600, **self.correlation()},
+            headers=owner)
+        self.assertEqual(made.status_code, 201, made.text)
+        read = self.client.get(
+            f"/tasks/clocks/{made.json()['clock_id']}", headers=owner)
+        self.assertEqual(read.status_code, 200, read.text)
+        self.assertEqual(read.json()["measured_in"], "business_hours")
+        self.assertIn("due_at", read.json())
+
+    def test_the_sla_permission_is_its_own(self):
+        """MOD-013's finding: a permission's name is a claim about what it is for. Somebody
+        who works tasks is not necessarily who decides what the club promises."""
+        tenant_id = self.tenant()
+        queue_id = self.club(tenant_id)
+        task_id = self.task(tenant_id, queue_id)
+        worker = self.scoped(tenant_id, ["tasks.task.read", "tasks.task.write"])
+        refused = self.client.post("/tasks/clocks", json={
+            "task_id": task_id, "target_seconds": 3600, **self.correlation()},
+            headers=worker)
+        self.assertEqual(refused.status_code, 403, refused.text)
+
+    def test_a_target_outside_its_bounds_is_refused_at_the_boundary(self):
+        """Bounded on the body as well as in the schema, so an out-of-range integer is a
+        refusal rather than a `DataError` the handlers do not catch -- MOD-011's and
+        MOD-012's finding, which this build has now paid for three times."""
+        tenant_id = self.tenant()
+        task_id = self.task(tenant_id, self.club(tenant_id))
+        for seconds in (1, 10**12):
+            with self.subTest(seconds=seconds):
+                answer = self.client.post("/tasks/clocks", json={
+                    "task_id": task_id, "target_seconds": seconds, **self.correlation()},
+                    headers=self.headers(tenant_id))
+                self.assertEqual(answer.status_code, 422, answer.text)

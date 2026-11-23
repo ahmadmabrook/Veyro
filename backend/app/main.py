@@ -2971,6 +2971,34 @@ class TaskAssignBody(BaseModel):
     correlation_id: str
 
 
+class SlaClockBody(BaseModel):
+    """A target on one task or one case.
+
+    **No `location_id`.** It is derived from the subject's queue, because a caller able to
+    name one could measure a promise against a calendar the work is not done in -- MOD-017's
+    `brand_id` finding, where an off-peak grant was drawn on at seven in the evening.
+    `warn_at_basis_points` is basis points rather than a float: a fraction stored as a double
+    is a figure that renders differently in two places.
+    """
+
+    task_id: str | None = None
+    case_id: str | None = None
+    target_seconds: int = Field(ge=60, le=31_536_000)
+    escalate_to_queue_id: str | None = None
+    warn_at_basis_points: int = Field(default=8000, ge=1, le=9999)
+    correlation_id: str
+
+
+class SlaSettleBody(BaseModel):
+    """`breached` is here as well as `met`, because a target can be judged missed by somebody
+    who saw it happen rather than only by arithmetic -- and the judgement is final either
+    way, with a new target on the same subject as the remedy."""
+
+    status: Literal["met", "breached", "cancelled"]
+    reason: str = Field(min_length=1, max_length=2000)
+    correlation_id: str
+
+
 class TaskDependencyBody(BaseModel):  # noqa: D101
     depends_on_task_id: str
     correlation_id: str
@@ -9571,6 +9599,69 @@ def create_app(
             assignee_person_id=optional_uuid(
                 assignee_person_id, "assignee_person_id"),
             status=status, limit=limit)
+
+    @app.post("/tasks/clocks", status_code=201)
+    def start_task_clock(
+        tenant_id: TenantId, session: Session, body: SlaClockBody
+    ) -> dict[str, Any]:
+        """Put a target on a task or a case. AUT-02-R06."""
+        permit(session, "tasks.sla.write", body.correlation_id)
+        return tasks.start_clock(
+            tenant_pool, tenant_id,
+            task_id=optional_uuid(body.task_id, "task_id"),
+            case_id=optional_uuid(body.case_id, "case_id"),
+            target_seconds=body.target_seconds,
+            escalate_to_queue_id=optional_uuid(
+                body.escalate_to_queue_id, "escalate_to_queue_id"),
+            warn_at_basis_points=body.warn_at_basis_points,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id)
+
+    @app.post("/tasks/clocks/{clock_id}/pause")
+    def pause_task_clock(
+        tenant_id: TenantId, session: Session, clock_id: str, body: ReasonBody
+    ) -> dict[str, Any]:
+        """Stop a clock, with a stated reason: "why did this stop" is asked precisely when a
+        target was missed."""
+        permit(session, "tasks.sla.write", body.correlation_id)
+        return tasks.pause_clock(
+            tenant_pool, tenant_id, require_uuid(clock_id, "clock_id"),
+            reason=body.reason, actor_id=session["identity_id"],
+            correlation_id=body.correlation_id)
+
+    @app.post("/tasks/clocks/{clock_id}/resume")
+    def resume_task_clock(
+        tenant_id: TenantId, session: Session, clock_id: str, body: CommercialActionBody
+    ) -> dict[str, Any]:
+        """Start it again. The pause row keeps when it stopped and why."""
+        permit(session, "tasks.sla.write", body.correlation_id)
+        return tasks.resume_clock(
+            tenant_pool, tenant_id, require_uuid(clock_id, "clock_id"),
+            actor_id=session["identity_id"], correlation_id=body.correlation_id)
+
+    @app.post("/tasks/clocks/{clock_id}/settle")
+    def settle_task_clock(
+        tenant_id: TenantId, session: Session, clock_id: str, body: SlaSettleBody
+    ) -> dict[str, Any]:
+        """Judge a target once. A re-judgement is a new target on the same subject."""
+        permit(session, "tasks.sla.write", body.correlation_id)
+        return tasks.settle_clock(
+            tenant_pool, tenant_id, require_uuid(clock_id, "clock_id"),
+            status=body.status, reason=body.reason, actor_id=session["identity_id"],
+            correlation_id=body.correlation_id)
+
+    @app.get("/tasks/clocks/{clock_id}")
+    def read_task_clock(
+        tenant_id: TenantId, session: Session, clock_id: str
+    ) -> dict[str, Any]:
+        """What this target is and where it stands, computed rather than stored.
+
+        **A club with no stated business hours falls back to elapsed wall-clock time and the
+        answer says so**, because a business-hours clock against an empty calendar would
+        never advance -- which is a breach that never fires.
+        """
+        permit(session, "tasks.sla.read")
+        return tasks.read_clock(
+            tenant_pool, tenant_id, require_uuid(clock_id, "clock_id"))
 
     @app.get("/tasks/{task_id}")
     def read_work_task(

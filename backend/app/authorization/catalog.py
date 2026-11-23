@@ -835,6 +835,21 @@ PERMISSIONS: dict[str, Permission] = dict([
     _p("tasks.case.read", "See cases and their timeline", "data_access"),
     _p("tasks.case.write", "Open a case, write on its timeline, resolve or close it",
        "data_access"),
+    # **Its own pair, because setting a target is a different act from doing the work.**
+    # MOD-013's rule that a permission's name is a claim about what it is for: a queue
+    # manager who decides what a club promises is not necessarily the person answering the
+    # task, and `tasks.task.write` buying the promise as well would be the
+    # `GET /notifications/channels` finding one module over.
+    #
+    # Routine, like the rest of this module. **Settling a clock is final by trigger** -- a
+    # target is judged once -- and what keeps a routine permission safe there is that the
+    # remedy exists by construction: the running-clock index is partial, so a new target can
+    # be started on the same subject once the old one is settled, which is the recurrence
+    # pattern this module already uses for a case.
+    _p("tasks.sla.read", "See a target, what it consumed and where it stands",
+       "configuration"),
+    _p("tasks.sla.write", "Put a target on work, pause it, resume it or judge it",
+       "configuration"),
 
     # Support and AI, named separately because IAM-03-R06 audits them separately.
     _p("support.session.start", "Start a supported session as another user",

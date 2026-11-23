@@ -1652,6 +1652,28 @@ SUBJECT_COLUMNS: tuple[Reachability, ...] = (
                  "approval accountable. The table has no UPDATE grant at all: a decision is "
                  "what was decided"),
 
+    # ---------------------------------------------------- MOD-026, slice 3b
+    #
+    # Four demanded by the sweep and two declared by hand: both reason columns are prose,
+    # and `tsk_sla_pauses.reason` is the one a reader should worry about -- "waiting on the
+    # member's consultant" is how somebody records why a clock stopped.
+    Reachability("plt01", "tsk_sla_clocks", "created_by", "unreachable",
+                 "who put a target on this work. Insert-only: a promise is not reattributed"),
+    Reachability("plt01", "tsk_sla_clocks", "settled_by", "write_once",
+                 "who judged the target met, breached or cancelled. The one-way trigger "
+                 "admits no second judgement"),
+    Reachability("plt01", "tsk_sla_clocks", "settle_reason", "write_once",
+                 "**why a target was judged as it was.** Prose, made final by the same "
+                 "trigger"),
+    Reachability("plt01", "tsk_sla_pauses", "paused_by", "unreachable",
+                 "who stopped the clock. Insert-only, because when it stopped and who said "
+                 "so is what the row exists to state"),
+    Reachability("plt01", "tsk_sla_pauses", "reason", "unreachable",
+                 "**why the clock stopped**, which is prose and is asked precisely when a "
+                 "target was missed. No UPDATE grant, so nothing clears it"),
+    Reachability("plt01", "tsk_sla_pauses", "resumed_by", "write_once",
+                 "who started it again. Written once with the resumption"),
+
     Reachability("plt01", "tsk_dependencies", "created_by", "unreachable",
                  "who said this task waits on that one. Insert-only, because the table has "
                  "no UPDATE grant: changing which task blocks which is two edges and both "

@@ -969,8 +969,8 @@ Known gaps, deliberate:
   existed nowhere before: `plan_dsar` surfaced the same fact per request, so the honest
   answer to "what can you delete" was reachable only after somebody had asked you to delete
   something, and the registry behind it lived in Python and in a test.
-  **The number is worth knowing: 18 of 425 subject-bearing columns are erased or anonymised
-  and 407 survive.** (It was 17 of 388 until MOD-019's `0017` added four withdrawal columns,
+  **The number is worth knowing: 18 of 431 subject-bearing columns are erased or anonymised
+  and 413 survive.** (It was 17 of 388 until MOD-019's `0017` added four withdrawal columns,
   then 17 of 392, and MOD-026's first slice added twenty-six more -- fifteen of which the
   registry's own sweep refused to let through undeclared, which is what MOD-009 built it for.
   The eighteenth reached column is MOD-026's task assignee, and **choosing its mechanism is
@@ -3988,8 +3988,7 @@ one, which an absent-delegation probe would pass), and four constraint cases nam
 constraint that refused them. 11 mutations, 10 caught by check 113 and one by check 28's
 prefix-free `iam` sweep. 14 service and HTTP tests.
 
-**AUT-02-R06's arithmetic is built, which is slice 3a: `app/tasks/sla.py`, pure, with no
-clock table yet.** INV-AUT-02's other half is "SLA calculation is time-zone and
+**AUT-02-R06 is built: the arithmetic (3a) and the clocks it measures (3b).** INV-AUT-02's other half is "SLA calculation is time-zone and
 business-calendar aware", and that sentence is this module. Nothing is stored: a clock is its
 target, the calendar and its pauses, and the remaining time is a function of those and
 `now()` -- MOD-018's no-stored-balance for the fifth time. 25 unit tests with no database and
@@ -4009,6 +4008,41 @@ not whole, because a clock paused overnight was not running anyway and subtracti
 is how a target silently doubles. And **an empty calendar raises rather than answering
 zero** -- MOD-019's "no rota is not never available", in the direction that matters here,
 because a clock that never advances is a breach that never fires.
+
+**3b is two tables, two triggers, a service and five routes.** `tsk_sla_clocks` holds what
+the target is, when it started and which calendar it is measured against; `tsk_sla_pauses`
+holds every span it was stopped for, each with an actor and a stated reason -- because "why
+did this clock stop" is asked precisely when a target was missed. Four decisions:
+
+- **The location is derived from the subject's queue and snapshotted on the clock.** A caller
+  able to name one could measure a promise against a calendar the work is not done in, which
+  is MOD-017's `brand_id` finding; re-reading the queue later would change what a member was
+  promised after the fact, which is MOD-019's "a session snapshots everything that describes
+  it" applied to a promise.
+- **A club with no stated business hours falls back to elapsed wall-clock time and the read
+  says so.** MOD-019's "no rota is not never available", in the direction that matters here:
+  a business-hours clock against an empty calendar never advances, which is a breach that
+  never fires.
+- **An escalation to a retired queue is refused by a trigger** -- an alarm wired to a bell
+  nobody answers, which is MOD-021's "a lookup that proves something exists does not
+  authorise what you do next".
+- **A target is judged once and the judgement does not move**, by trigger, because
+  re-measuring a promise after the fact is how a missed one becomes a met one. The remedy
+  exists by construction rather than as a gap: the running-clock index is partial, so a new
+  target can be started on the same subject once the old is settled -- the recurrence pattern
+  this module already uses for a case.
+
+**`tasks.sla.read` and `tasks.sla.write` are their own pair**, because setting a target is a
+different act from doing the work: a queue manager who decides what a club promises is not
+necessarily the person answering the task, and folding it into `tasks.task.write` would be
+MOD-013's `GET /notifications/channels` finding one module over.
+
+**And the no-countdown claim is swept for now, because `0021`'s header claimed it before it
+was true.** Check 112 bans a dozen stored-countdown column names under `tsk_` -- plus `due_at`
+on the clock tables only, where it is a derivation rather than the ordinary caller-stated
+field it is on a task. Proven by adding `seconds_remaining` and `breached` and watching it
+fail. That is the "a doc claiming a control it does not have" shape, caught by writing the
+control.
 
 **A mutation came back uncaught and the guard it removed turned out to be subsumed by
 accident.** A `kind == "open"` filter was redundant because a closed window has no hours --

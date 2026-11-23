@@ -32,7 +32,7 @@ from psycopg import Connection
 
 from app.db import Pool, tenant_scope
 from app.errors import Conflict, InvalidRequest, NotFound
-from app.tasks import subjects, workflow
+from app.tasks import sla, subjects, workflow
 
 #: Every listing read is bounded and ordered. Unbounded is a bulk export and a denial of
 #: service at once; unordered makes the planner the author, which is MOD-018's `chart_for`
@@ -771,3 +771,236 @@ def complete_checklist_item(
             (_now(), actor_id, correlation_id, item_id),
         )
         return {"item_id": item_id, "repeated": False}
+
+
+# -------------------------------------------------------------- the SLA clocks
+
+
+def _calendar(conn: Connection, location_id: str) -> tuple[tuple[sla.Window, ...], str]:
+    """A location's live calendar and its timezone, read together.
+
+    **The zone is the location's and never the caller's** -- MOD-019's finding, where a rota
+    read in the session's zone made a London coach available at six in the morning.
+    """
+    zone = conn.execute(
+        "SELECT timezone FROM plt01.locations WHERE location_id = %s", (location_id,),
+    ).fetchone()
+    if zone is None:
+        raise NotFound("location_not_found")
+    rows = conn.execute(
+        "SELECT kind, weekday, on_date, opens_at, closes_at"
+        " FROM plt01.tsk_business_hours"
+        " WHERE location_id = %s AND withdrawn_at IS NULL",
+        (location_id,),
+    ).fetchall()
+    return tuple(sla.Window(str(r[0]), r[1], r[2], r[3], r[4]) for r in rows), str(zone[0])
+
+
+def start_clock(
+    pool: Pool, tenant_id: str, *, task_id: str | None, case_id: str | None,
+    target_seconds: int, escalate_to_queue_id: str | None, warn_at_basis_points: int,
+    actor_id: str, correlation_id: str,
+) -> dict[str, Any]:
+    """Put a target on a task or a case. AUT-02-R06.
+
+    **The location is derived from the subject's queue, not accepted.** A caller able to name
+    one could measure a promise against a calendar the work is not done in -- which is
+    MOD-017's `brand_id` finding, where an off-peak grant was drawn on at seven in the
+    evening because the caller sent the minute.
+    """
+    if (task_id is None) == (case_id is None):
+        raise InvalidRequest("a clock is about one task or one case, and about exactly one")
+    with tenant_scope(pool, tenant_id) as conn:
+        if task_id is not None:
+            row = conn.execute(
+                "SELECT q.location_id, t.status FROM plt01.tsk_tasks t"
+                " JOIN plt01.tsk_queues q ON q.queue_id = t.queue_id"
+                " WHERE t.task_id = %s",
+                (task_id,),
+            ).fetchone()
+            if row is None:
+                raise NotFound("task_not_found")
+            if str(row[1]) in workflow.SETTLED:
+                raise Conflict("a settled task takes no new target")
+        else:
+            row = conn.execute(
+                "SELECT q.location_id, c.status FROM plt01.tsk_cases c"
+                " JOIN plt01.tsk_queues q ON q.queue_id = c.queue_id"
+                " WHERE c.case_id = %s",
+                (case_id,),
+            ).fetchone()
+            if row is None:
+                raise NotFound("case_not_found")
+            if str(row[1]) == "closed":
+                raise Conflict("a closed case takes no new target")
+        if row[0] is None:
+            raise InvalidRequest(
+                "this queue belongs to no club, so there is no calendar to measure a target "
+                "against; give the queue a location first")
+        location_id = str(row[0])
+        made = conn.execute(
+            "INSERT INTO plt01.tsk_sla_clocks"
+            " (tenant_id, task_id, case_id, location_id, target_seconds,"
+            "  warn_at_basis_points, started_at, escalate_to_queue_id, created_by,"
+            "  create_correlation_id)"
+            " VALUES (%s, %s, %s, %s, %s, %s, now(), %s, %s, %s) RETURNING clock_id",
+            (tenant_id, task_id, case_id, location_id, target_seconds,
+             warn_at_basis_points, escalate_to_queue_id, actor_id, correlation_id),
+        ).fetchone()
+        assert made is not None
+        return {"clock_id": str(made[0]), "location_id": location_id,
+                "target_seconds": target_seconds}
+
+
+def pause_clock(
+    pool: Pool, tenant_id: str, clock_id: str, *, reason: str, actor_id: str,
+    correlation_id: str,
+) -> dict[str, Any]:
+    """Stop a clock, with a stated reason.
+
+    R06's "pause reasons", and the reason is mandatory because **"why did this clock stop" is
+    asked precisely when a target was missed** -- the "evidence with nobody's name on it" rule
+    in the one place a missed promise gets explained.
+    """
+    with tenant_scope(pool, tenant_id) as conn:
+        clock = conn.execute(
+            "SELECT status FROM plt01.tsk_sla_clocks WHERE clock_id = %s FOR UPDATE",
+            (clock_id,),
+        ).fetchone()
+        if clock is None:
+            raise NotFound("clock_not_found")
+        if str(clock[0]) != "running":
+            raise Conflict(f"this clock is already {clock[0]}")
+        open_pause = conn.execute(
+            "SELECT pause_id FROM plt01.tsk_sla_pauses"
+            " WHERE clock_id = %s AND resumed_at IS NULL",
+            (clock_id,),
+        ).fetchone()
+        if open_pause is not None:
+            return {"pause_id": str(open_pause[0]), "repeated": True}
+        row = conn.execute(
+            "INSERT INTO plt01.tsk_sla_pauses"
+            " (tenant_id, clock_id, paused_at, reason, paused_by, pause_correlation_id)"
+            " VALUES (%s, %s, now(), %s, %s, %s) RETURNING pause_id",
+            (tenant_id, clock_id, reason, actor_id, correlation_id),
+        ).fetchone()
+        assert row is not None
+        return {"pause_id": str(row[0]), "repeated": False}
+
+
+def resume_clock(
+    pool: Pool, tenant_id: str, clock_id: str, *, actor_id: str, correlation_id: str,
+) -> dict[str, Any]:
+    """Start it again. The pause row keeps when it stopped and why."""
+    with tenant_scope(pool, tenant_id) as conn:
+        row = conn.execute(
+            "SELECT pause_id FROM plt01.tsk_sla_pauses"
+            " WHERE clock_id = %s AND resumed_at IS NULL FOR UPDATE",
+            (clock_id,),
+        ).fetchone()
+        if row is None:
+            raise Conflict("this clock is not paused")
+        conn.execute(
+            "UPDATE plt01.tsk_sla_pauses SET resumed_at = now(), resumed_by = %s,"
+            " resume_correlation_id = %s WHERE pause_id = %s",
+            (actor_id, correlation_id, row[0]),
+        )
+        return {"pause_id": str(row[0]), "resumed": True}
+
+
+def settle_clock(
+    pool: Pool, tenant_id: str, clock_id: str, *, status: str, reason: str, actor_id: str,
+    correlation_id: str,
+) -> dict[str, Any]:
+    """Judge a target once. `met`, `breached` or `cancelled`.
+
+    **A target is judged once and the judgement does not move**, which the trigger enforces:
+    re-measuring a promise after the fact is how a missed one becomes a met one.
+    """
+    if status not in ("met", "breached", "cancelled"):
+        raise InvalidRequest("a clock settles as met, breached or cancelled")
+    with tenant_scope(pool, tenant_id) as conn:
+        row = conn.execute(
+            "SELECT status FROM plt01.tsk_sla_clocks WHERE clock_id = %s FOR UPDATE",
+            (clock_id,),
+        ).fetchone()
+        if row is None:
+            raise NotFound("clock_not_found")
+        if str(row[0]) != "running":
+            return {"clock_id": clock_id, "status": str(row[0]), "repeated": True}
+        conn.execute(
+            "UPDATE plt01.tsk_sla_clocks SET status = %s, settled_at = now(),"
+            " settled_by = %s, settle_reason = %s, settle_correlation_id = %s"
+            " WHERE clock_id = %s",
+            (status, actor_id, reason, correlation_id, clock_id),
+        )
+        return {"clock_id": clock_id, "status": status, "repeated": False}
+
+
+def read_clock(pool: Pool, tenant_id: str, clock_id: str) -> dict[str, Any]:
+    """What this target is, and where it stands. **Computed, never stored.**
+
+    **A location with no calendar falls back to elapsed wall-clock time and the answer says
+    so**, rather than reporting zero elapsed. MOD-019 read an empty rota as "never available"
+    and nothing could be scheduled in a tenant at all; here the same silence would be a clock
+    that never advances, which is a breach that never fires.
+    """
+    with tenant_scope(pool, tenant_id) as conn:
+        row = conn.execute(
+            "SELECT task_id, case_id, location_id, target_seconds, warn_at_basis_points,"
+            "       started_at, escalate_to_queue_id, status, settled_at, settle_reason"
+            " FROM plt01.tsk_sla_clocks WHERE clock_id = %s",
+            (clock_id,),
+        ).fetchone()
+        if row is None:
+            raise NotFound("clock_not_found")
+        pauses = conn.execute(
+            "SELECT paused_at, resumed_at, reason FROM plt01.tsk_sla_pauses"
+            " WHERE clock_id = %s ORDER BY paused_at",
+            (clock_id,),
+        ).fetchall()
+        windows, zone = _calendar(conn, str(row[2]))
+
+    now = _now()
+    spans = tuple((p[0], p[1] or now) for p in pauses)
+    out: dict[str, Any] = {
+        "clock_id": clock_id,
+        "task_id": str(row[0]) if row[0] else None,
+        "case_id": str(row[1]) if row[1] else None,
+        "location_id": str(row[2]), "timezone": zone,
+        "target_seconds": int(row[3]), "started_at": row[5].isoformat(),
+        "escalate_to_queue_id": str(row[6]) if row[6] else None,
+        "status": str(row[7]),
+        "settled_at": row[8].isoformat() if row[8] else None,
+        "settle_reason": str(row[9]) if row[9] else None,
+        "paused": [
+            {"paused_at": p[0].isoformat(),
+             "resumed_at": p[1].isoformat() if p[1] else None,
+             "reason": str(p[2])}
+            for p in pauses],
+        "is_paused": any(p[1] is None for p in pauses),
+    }
+    if not sla.has_hours(windows):
+        # Stated, not silently zero -- and the figure offered is the honest one.
+        elapsed = int((now - row[5]).total_seconds())
+        out["measured_in"] = "elapsed_time"
+        out["no_calendar"] = (
+            "this club states no business hours, so the target is measured against elapsed "
+            "wall-clock time; a business-hours clock against an empty calendar would never "
+            "advance, which is a breach that never fires")
+        out["consumed_seconds"] = elapsed
+        out["state"] = "breached" if elapsed >= int(row[3]) else "running"
+        return out
+
+    out["measured_in"] = "business_hours"
+    out["consumed_seconds"] = sla.open_seconds(
+        windows, zone, frm=row[5], to=now, paused=spans)
+    due = sla.due_at(windows, zone, started_at=row[5], target_seconds=int(row[3]))
+    out["due_at"] = due.isoformat()
+    out["state"] = sla.state(
+        due=due, now=now, started_at=row[5],
+        warn_at_fraction=int(row[4]) / 10_000)
+    # **Returned rather than left to a reader**, because remaining time is the number a
+    # surface renders and computing it from two instants is where a second definition starts.
+    out["remaining_seconds"] = max(0, int(row[3]) - out["consumed_seconds"])
+    return out

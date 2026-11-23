@@ -470,3 +470,163 @@ class MaskingTests(TasksTestCase):
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
+
+
+class ClockTests(TasksTestCase):
+    """AUT-02-R06 against a real database. The arithmetic is `test_tasks_sla.py`; what is
+    here is whether the right inputs reach it."""
+
+    def location(self, tenant_id: str, *, timezone: str = "Asia/Amman") -> str:
+        owner = self.headers(tenant_id)
+        org = self.client.post("/organizations", json={
+            "legal_name": "Veyro Sites Ltd", "country_code": "JO",
+            **self.correlation()}, headers=owner)
+        brand = self.client.post("/brands", json={
+            "organization_id": org.json()["organization_id"], "brand_name": "City"},
+            headers=owner)
+        created = self.client.post("/locations", json={
+            "brand_id": brand.json()["brand_id"], "location_name": "Downtown",
+            "timezone": timezone}, headers=owner)
+        self.assertEqual(created.status_code, 201, created.text)
+        return str(created.json()["location_id"])
+
+    def club(self, tenant_id: str, *, with_hours: bool = True) -> tuple[str, str]:
+        """A location and a queue in it, optionally with a weekday calendar."""
+        location_id = self.location(tenant_id)
+        if with_hours:
+            for weekday in range(5):
+                tasks.set_business_hours(
+                    self._tenant_pool, tenant_id, location_id=location_id, kind="open",
+                    weekday=weekday, on_date=None, opens_at=time(9, 0),
+                    closes_at=time(17, 0), note=None, actor_id=ACTOR,
+                    correlation_id=self.cid())
+        return location_id, self.queue(tenant_id, location_id=location_id)
+
+    def clock(self, tenant_id: str, task_id: str, **over: object) -> str:
+        body: dict = {"case_id": None, "target_seconds": 4 * 3600,
+                      "escalate_to_queue_id": None, "warn_at_basis_points": 8000}
+        body.update(over)
+        return str(tasks.start_clock(
+            self._tenant_pool, tenant_id, task_id=task_id, actor_id=ACTOR,
+            correlation_id=self.cid(), **body)["clock_id"])
+
+    def test_the_location_comes_from_the_queue_and_not_the_caller(self):
+        """A caller able to name one could measure a promise against a calendar the work is
+        not done in -- MOD-017's `brand_id` finding, where an off-peak grant was drawn on at
+        seven in the evening because the caller sent the minute."""
+        tenant_id = self.tenant()
+        location_id, queue_id = self.club(tenant_id)
+        task_id = self.task(tenant_id, queue_id)
+        out = tasks.start_clock(
+            self._tenant_pool, tenant_id, task_id=task_id, case_id=None,
+            target_seconds=3600, escalate_to_queue_id=None, warn_at_basis_points=8000,
+            actor_id=ACTOR, correlation_id=self.cid())
+        self.assertEqual(out["location_id"], location_id)
+
+    def test_a_clock_is_about_one_subject_and_exactly_one(self):
+        tenant_id = self.tenant()
+        _, queue_id = self.club(tenant_id)
+        task_id = self.task(tenant_id, queue_id)
+        case_id = self.case(tenant_id, queue_id)
+        for task, case in ((None, None), (task_id, case_id)):
+            with self.subTest(task=task, case=case):
+                with self.assertRaises(InvalidRequest):
+                    tasks.start_clock(
+                        self._tenant_pool, tenant_id, task_id=task, case_id=case,
+                        target_seconds=3600, escalate_to_queue_id=None,
+                        warn_at_basis_points=8000, actor_id=ACTOR,
+                        correlation_id=self.cid())
+
+    def test_one_running_clock_per_subject(self):
+        """Two targets on one task is two promises, and which one a breach report counts
+        would be the planner's choice."""
+        tenant_id = self.tenant()
+        _, queue_id = self.club(tenant_id)
+        task_id = self.task(tenant_id, queue_id)
+        self.clock(tenant_id, task_id)
+        with self.assertRaises(pg.UniqueViolation):
+            self.clock(tenant_id, task_id)
+
+    def test_a_queue_with_no_club_has_no_calendar_to_measure_against(self):
+        """Refused at the boundary with a sentence naming the remedy, rather than reaching
+        the schema's NOT NULL as a 500."""
+        tenant_id = self.tenant()
+        task_id = self.task(tenant_id, self.queue(tenant_id))
+        with self.assertRaises(InvalidRequest) as caught:
+            self.clock(tenant_id, task_id)
+        self.assertIn("give the queue a location", str(caught.exception))
+
+    def test_an_escalation_to_a_retired_queue_is_refused(self):
+        """An alarm wired to a bell nobody answers -- MOD-021's "a lookup that proves
+        something exists does not authorise what you do next"."""
+        tenant_id = self.tenant()
+        _, queue_id = self.club(tenant_id)
+        task_id = self.task(tenant_id, queue_id)
+        dead = self.queue(tenant_id)
+        tasks.retire_queue(self._tenant_pool, tenant_id, dead, reason="merged",
+                           actor_id=ACTOR, correlation_id=self.cid())
+        with self.assertRaises(pg.RaiseException) as caught:
+            self.clock(tenant_id, task_id, escalate_to_queue_id=dead)
+        self.assertIn("bell nobody answers", str(caught.exception))
+
+    def test_a_pause_states_why_and_resuming_closes_it(self):
+        tenant_id = self.tenant()
+        _, queue_id = self.club(tenant_id)
+        clock_id = self.clock(tenant_id, self.task(tenant_id, queue_id))
+        first = tasks.pause_clock(self._tenant_pool, tenant_id, clock_id,
+                                  reason="waiting on the member", actor_id=ACTOR,
+                                  correlation_id=self.cid())
+        again = tasks.pause_clock(self._tenant_pool, tenant_id, clock_id,
+                                  reason="again", actor_id=ACTOR,
+                                  correlation_id=self.cid())
+        self.assertTrue(again["repeated"])
+        self.assertEqual(first["pause_id"], again["pause_id"])
+        read = tasks.read_clock(self._tenant_pool, tenant_id, clock_id)
+        self.assertTrue(read["is_paused"])
+        self.assertEqual(read["paused"][0]["reason"], "waiting on the member")
+        tasks.resume_clock(self._tenant_pool, tenant_id, clock_id, actor_id=ACTOR,
+                           correlation_id=self.cid())
+        self.assertFalse(
+            tasks.read_clock(self._tenant_pool, tenant_id, clock_id)["is_paused"])
+        with self.assertRaises(Conflict):
+            tasks.resume_clock(self._tenant_pool, tenant_id, clock_id, actor_id=ACTOR,
+                               correlation_id=self.cid())
+
+    def test_a_target_is_judged_once(self):
+        tenant_id = self.tenant()
+        _, queue_id = self.club(tenant_id)
+        clock_id = self.clock(tenant_id, self.task(tenant_id, queue_id))
+        tasks.settle_clock(self._tenant_pool, tenant_id, clock_id, status="met",
+                           reason="answered in an hour", actor_id=ACTOR,
+                           correlation_id=self.cid())
+        again = tasks.settle_clock(self._tenant_pool, tenant_id, clock_id,
+                                   status="breached", reason="changed my mind",
+                                   actor_id=ACTOR, correlation_id=self.cid())
+        self.assertTrue(again["repeated"])
+        self.assertEqual(again["status"], "met")
+
+    def test_the_read_computes_the_state_rather_than_storing_it(self):
+        tenant_id = self.tenant()
+        _, queue_id = self.club(tenant_id)
+        clock_id = self.clock(tenant_id, self.task(tenant_id, queue_id))
+        read = tasks.read_clock(self._tenant_pool, tenant_id, clock_id)
+        self.assertEqual(read["measured_in"], "business_hours")
+        self.assertIn(read["state"], ("running", "warning", "breached"))
+        self.assertIn("due_at", read)
+        self.assertEqual(read["timezone"], "Asia/Amman")
+        self.assertEqual(
+            read["remaining_seconds"],
+            max(0, read["target_seconds"] - read["consumed_seconds"]))
+
+    def test_a_club_with_no_calendar_falls_back_to_elapsed_time_and_says_so(self):
+        """**MOD-019's "no rota is not never available", in the direction that matters
+        here**: a business-hours clock against an empty calendar never advances, which is a
+        breach that never fires."""
+        tenant_id = self.tenant()
+        location_id = self.location(tenant_id)
+        queue_id = self.queue(tenant_id, location_id=location_id)
+        clock_id = self.clock(tenant_id, self.task(tenant_id, queue_id))
+        read = tasks.read_clock(self._tenant_pool, tenant_id, clock_id)
+        self.assertEqual(read["measured_in"], "elapsed_time")
+        self.assertIn("never advance", read["no_calendar"])
+        self.assertNotIn("due_at", read)

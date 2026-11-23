@@ -48105,7 +48105,14 @@ BEGIN
             ('tsk_tasks', 'settle_correlation_id'),
             ('tsk_checklist_items', 'label'), ('tsk_checklist_items', 'completed_at'),
             ('tsk_checklist_items', 'completed_by'),
-            ('tsk_checklist_items', 'complete_correlation_id')),
+            ('tsk_checklist_items', 'complete_correlation_id'),
+            ('tsk_sla_clocks', 'status'), ('tsk_sla_clocks', 'settled_at'),
+            ('tsk_sla_clocks', 'settled_by'), ('tsk_sla_clocks', 'settle_reason'),
+            ('tsk_sla_clocks', 'settle_correlation_id'),
+            ('tsk_sla_clocks', 'escalate_to_queue_id'),
+            ('tsk_sla_clocks', 'warn_at_basis_points'),
+            ('tsk_sla_pauses', 'resumed_at'), ('tsk_sla_pauses', 'resumed_by'),
+            ('tsk_sla_pauses', 'resume_correlation_id')),
         actual(role, t, c) AS (
             SELECT r.rolname, cl.relname::text, a.attname::text
               FROM pg_class cl
@@ -48170,7 +48177,16 @@ BEGIN
             ('tsk_dependencies', 'tenant_id'), ('tsk_dependencies', 'dependency_id'),
             ('tsk_dependencies', 'task_id'), ('tsk_dependencies', 'depends_on_task_id'),
             ('tsk_dependencies', 'created_at'), ('tsk_dependencies', 'created_by'),
-            ('tsk_dependencies', 'create_correlation_id')),
+            ('tsk_dependencies', 'create_correlation_id'),
+            ('tsk_sla_clocks', 'tenant_id'), ('tsk_sla_clocks', 'clock_id'),
+            ('tsk_sla_clocks', 'location_id'), ('tsk_sla_clocks', 'target_seconds'),
+            ('tsk_sla_clocks', 'warn_at_basis_points'), ('tsk_sla_clocks', 'started_at'),
+            ('tsk_sla_clocks', 'status'), ('tsk_sla_clocks', 'created_at'),
+            ('tsk_sla_clocks', 'created_by'), ('tsk_sla_clocks', 'create_correlation_id'),
+            ('tsk_sla_pauses', 'tenant_id'), ('tsk_sla_pauses', 'pause_id'),
+            ('tsk_sla_pauses', 'clock_id'), ('tsk_sla_pauses', 'paused_at'),
+            ('tsk_sla_pauses', 'reason'), ('tsk_sla_pauses', 'paused_by'),
+            ('tsk_sla_pauses', 'pause_correlation_id')),
         actual(t, c) AS (
             SELECT cl.relname::text, a.attname::text
               FROM pg_class cl
@@ -48185,6 +48201,38 @@ BEGIN
           FROM expected WHERE (t, c) NOT IN (SELECT t, c FROM actual)
     LOOP
         RAISE EXCEPTION 'CHECK 112 FAILED: %', wrong;
+    END LOOP;
+
+    -- ---- no stored countdown, anywhere under this prefix.
+    --
+    -- **The absence is the control, and an absence is what a later migration restores.** An
+    -- SLA clock is its target, its calendar and its pauses, and the remaining time is a
+    -- function of those and `now()`; a column holding the answer is a second copy of the
+    -- truth that goes stale between writes, and a `breached` flag is the same thing with
+    -- fewer values. MOD-018 sweeps for a cached balance and MOD-019 for a `held_count` for
+    -- exactly this reason -- and `0021`'s own header claimed this sweep existed before it
+    -- did, which is the "a doc claiming a control it does not have" shape caught by writing
+    -- the control.
+    --
+    -- `due_at` is banned on the clock tables only: it is a derivation there and a perfectly
+    -- ordinary caller-stated field on a task.
+    FOR wrong IN
+        SELECT format('%s.%s', cl.relname, a.attname)
+          FROM pg_class cl
+          JOIN pg_attribute a ON a.attrelid = cl.oid AND a.attnum > 0 AND NOT a.attisdropped
+         WHERE cl.relnamespace = 'plt01'::regnamespace
+           AND cl.relkind IN ('r', 'p')
+           AND cl.relname LIKE 'tsk\_%'
+           AND (a.attname IN ('seconds_remaining', 'minutes_remaining', 'time_remaining',
+                              'remaining_seconds', 'remaining_minutes', 'elapsed_seconds',
+                              'breached', 'is_breached', 'sla_state', 'breach_at',
+                              'open_seconds', 'business_seconds')
+                OR (cl.relname LIKE 'tsk\_sla\_%' AND a.attname = 'due_at'))
+    LOOP
+        RAISE EXCEPTION
+            'CHECK 112 FAILED: % is a stored countdown, and an SLA clock derives its '
+            'remaining time from its target, its calendar and its pauses -- a column '
+            'holding the answer is a second copy of the truth that goes stale', wrong;
     END LOOP;
 
     -- ---- every foreign key, as a set.
@@ -48219,7 +48267,14 @@ BEGIN
             ('tsk_checklist_items', 'FOREIGN KEY (tenant_id, task_id) REFERENCES plt01.tsk_tasks(tenant_id, task_id)'),
             ('tsk_dependencies', 'FOREIGN KEY (tenant_id) REFERENCES plt01_platform.tenants(tenant_id)'),
             ('tsk_dependencies', 'FOREIGN KEY (tenant_id, task_id) REFERENCES plt01.tsk_tasks(tenant_id, task_id)'),
-            ('tsk_dependencies', 'FOREIGN KEY (tenant_id, depends_on_task_id) REFERENCES plt01.tsk_tasks(tenant_id, task_id)')),
+            ('tsk_dependencies', 'FOREIGN KEY (tenant_id, depends_on_task_id) REFERENCES plt01.tsk_tasks(tenant_id, task_id)'),
+            ('tsk_sla_clocks', 'FOREIGN KEY (tenant_id) REFERENCES plt01_platform.tenants(tenant_id)'),
+            ('tsk_sla_clocks', 'FOREIGN KEY (tenant_id, task_id) REFERENCES plt01.tsk_tasks(tenant_id, task_id)'),
+            ('tsk_sla_clocks', 'FOREIGN KEY (tenant_id, case_id) REFERENCES plt01.tsk_cases(tenant_id, case_id)'),
+            ('tsk_sla_clocks', 'FOREIGN KEY (tenant_id, location_id) REFERENCES plt01.locations(tenant_id, location_id)'),
+            ('tsk_sla_clocks', 'FOREIGN KEY (tenant_id, escalate_to_queue_id) REFERENCES plt01.tsk_queues(tenant_id, queue_id)'),
+            ('tsk_sla_pauses', 'FOREIGN KEY (tenant_id) REFERENCES plt01_platform.tenants(tenant_id)'),
+            ('tsk_sla_pauses', 'FOREIGN KEY (tenant_id, clock_id) REFERENCES plt01.tsk_sla_clocks(tenant_id, clock_id)')),
         actual(t, def) AS (
             SELECT cl.relname::text, pg_get_constraintdef(c.oid)
               FROM pg_constraint c
