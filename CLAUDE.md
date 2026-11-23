@@ -2622,12 +2622,25 @@ Known gaps, deliberate:
   which is this build's most-repeated finding sitting in the module that records what a member
   agreed to. **Found by checking MOD-027's design record against the code**, which needed an
   upgrade to convert a trial and discovered there is none.
-  Three of the eight are the undriven schedules the bullet above names -- a renewal, a grace
-  entry and an expiry are what a sweep would write -- and five are commands nobody has built:
-  an upgrade and a downgrade (moving a member between products, which is what converting a
-  trial *is*), a transfer to another person, a suspension, and a reinstatement from one. Each
-  is work rather than a blocker: `_record_change` takes the kind already, and
-  `check_transition` already knows which statuses each may move between.
+  **Six of the eight are writable and want a command; two are not writable at all**, and that
+  second half is the finding rather than the count. `upgrade` and `downgrade` are declared
+  `active -> active`, and moving a member between products would have to move either
+  `mem_memberships.agreement_id` or `mem_agreements.variant_id` -- and **neither is in any
+  runtime role's UPDATE grant**, nor is `price_resolution_id`, nor is `person_id`. That is
+  deliberate and it is this module's own premise: what the member agreed to does not move, which
+  is what makes "what did this member agree to a year ago" answerable from the row. So the two
+  kinds are not merely unwritten, they are kinds whose effect the schema forbids -- a declared
+  value the privileges rule out, which is stronger than a declared value nothing writes.
+  **A product change is therefore a new agreement and a new membership on the same person**, and
+  that is also what makes the CRM canvas's "nothing is re-entered" true: everything it lists as
+  carrying forward -- her check-ins, her class attendance, her coach's first note -- is
+  person-scoped, so the person id is the id that matters and not the membership's. Deleting the
+  two kinds is the remedy this build applies elsewhere to a value nothing can produce; widening
+  the grant is the alternative and would be wrong for the reason above.
+  The other six are commands and jobs nobody has built, each writable with the grants that
+  exist: a renewal, a grace entry and an expiry are what the undriven sweeps above would write;
+  a suspension, a reinstatement and a transfer are commands. `_record_change` takes the kind
+  already and `check_transition` knows the statuses, so each is work rather than a blocker.
 - **No installment schedule generation.** `fin_billing_schedules` records the plan and its
   remaining count; nothing walks it.
 - **Nothing reverses a payment inside the module.** A payment has no UPDATE grant at all, so a

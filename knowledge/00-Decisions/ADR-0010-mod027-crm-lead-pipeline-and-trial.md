@@ -55,16 +55,30 @@ state everything must now handle".
 So a trial is an **`active` membership on a trial product with a short term**, and what marks
 it as a trial is the agreement's own terms rather than a status. Two things follow:
 
-- **"The trial becomes the membership" is MOD-017's `upgrade`, which is a declared change
-  kind nothing writes — and finding that out is what checking this record produced.** The first
-  draft of this paragraph said the conversion is `change_plan` "which MOD-017 has". It does
-  not: `change_plan` is **MOD-015's**, the SaaS subscription a tenant buys from Veyro, and a
-  member's membership has no plan change at all. `lifecycle.EDGES` declares `upgrade` and
-  `downgrade` as `active -> active`, `_record_change` already takes the kind and
-  `check_transition` already knows the statuses — and no service function, route or job writes
-  either. So converting a trial is **MOD-017's work, not MOD-027's**: an upgrade command on
-  the same membership id, which is what makes ADM-CRM-06's "same ID, no re-entry" true. Eight
-  of thirteen change kinds are in that state and MOD-017's gap list now says so.
+- **"The trial becomes the membership" is a new agreement on the same person, and the
+  membership id does not survive — which took two corrections to get right and is the reason
+  this record is worth having.** The first draft said the conversion is `change_plan`, "which
+  MOD-017 has". It does not: `change_plan` is **MOD-015's**, the SaaS subscription a tenant
+  buys from Veyro. The second draft said it is MOD-017's `upgrade`, a declared `active ->
+  active` change kind nothing writes. That is true about the kind and wrong about the
+  mechanism: moving a member between products would have to move
+  `mem_memberships.agreement_id` or `mem_agreements.variant_id`, and **neither is in any
+  runtime role's UPDATE grant** — nor `price_resolution_id`, nor `person_id`. What the member
+  agreed to does not move, which is MOD-017's own premise and what makes "what did they agree
+  to a year ago" answerable from the row.
+
+  So a conversion is `create_agreement` and `activate_membership` on the **same person**, with
+  the trial membership expired — both of which exist. **And that is what makes the canvas's
+  "nothing is re-entered" true**: every item it lists as carrying forward is person-scoped —
+  "her check-ins, her spin attendance and her coach's first note" are MOD-022 decisions,
+  MOD-020 bookings and MOD-014 notes, all keyed on the person. The id that matters is the
+  person's, not the membership's, which is also exactly what "a lead, a trialist and a member
+  are one record at three stages" says. ADM-CRM-06's "same ID" reads as the person.
+
+  **`upgrade` and `downgrade` should therefore be deleted from `lifecycle.EDGES`**, which is
+  MOD-017's work and the remedy this build applies elsewhere to a declared value nothing can
+  produce. Six of the other declared kinds *are* writable and want commands; MOD-017's gap
+  list now carries all of it.
 - **"Expiry with no conversion moves the record to lost with reason 'trial lapsed'"** is a
   sweep over memberships whose term ended with no change — and `memberships.revoke_ended_grants`
   is already the worker job that revokes an ended membership's grants on the same predicate.
@@ -73,13 +87,16 @@ it as a trial is the agreement's own terms rather than a status. Two things foll
 
 **What this needs from MOD-017 that it has not got**, checked rather than assumed:
 
-- **An upgrade command**, above. The declared kind is there and nothing writes it.
-- **Nothing else.** A 7-day trial is a `membership` product with a term, and `PRODUCT_TYPES`
-  carries `membership` already -- so the trial product is configuration rather than a
-  capability gap, which is what FD-05's own gap note says. `GET /people/contact-match` is
-  built. `memberships.revoke_ended_grants` is a worker job on the term-end predicate. Each of
-  those four was a claim in this record's first draft and each was verified against the code;
-  the one that was wrong is the one above.
+- **Nothing, which is the answer after two corrections.** `create_agreement` and
+  `activate_membership` exist and are what a conversion is; a 7-day trial is a `membership`
+  product with a term and `PRODUCT_TYPES` carries `membership` already, so the trial product
+  is configuration rather than a capability gap -- which is what FD-05's own gap note says.
+  `GET /people/contact-match` is built. `memberships.revoke_ended_grants` is a worker job on
+  the term-end predicate. **What MOD-017 owes is a deletion rather than a feature**: the two
+  change kinds whose effect its own privileges forbid.
+- Every one of those was a claim in this record's drafts and every one was checked against the
+  code. Two were wrong, and both were about the same thing -- which module owns the mechanism
+  for moving somebody onto a different product.
 
 ## D3 — The pipeline is five columns and the stage is derived where it can be
 

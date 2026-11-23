@@ -2233,3 +2233,20 @@ Two rules fall out, and the second is the one worth carrying:
   sell something on a recurring basis to different customers, so "plan change" is a phrase that
   resolves in both -- and a record written from the phrase rather than from the symbol put the
   wrong module's machinery into a build order. The check is the import path, not the word.
+
+**And a declared value the privileges forbid is stronger than one nothing writes.** The
+correction above was itself wrong once: having found `upgrade` declared and unwritten, the
+record then said the conversion is an upgrade command somebody has to build. It is not
+buildable. Moving a member between products would have to move
+`mem_memberships.agreement_id` or `mem_agreements.variant_id`, and neither is in any runtime
+role's UPDATE grant -- nor is `price_resolution_id`, nor `person_id`. The module's own premise
+is that what the member agreed to does not move, which is what makes "what did they agree to a
+year ago" answerable from the row. So two of its thirteen change kinds name an act its own
+privilege layer rules out, and the remedy is to delete them rather than to widen a grant that
+is load-bearing.
+
+**The check that distinguishes the two cases is one query**, and it is the one to run before
+writing a command for a declared state: ask `has_column_privilege` about every column the act
+would have to move. A kind whose columns are all writable is work; a kind whose effect needs an
+immutable column is a kind that should not be declared. Six of MOD-017's eight unwritten kinds
+turned out to be the first and two the second, and nothing in the module said which.
