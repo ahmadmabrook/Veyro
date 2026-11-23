@@ -402,8 +402,24 @@ def check_adrs(root, reg, r):
     for a in adrs:
         if a["status"] == "ACCEPTED":
             accepted.setdefault(a["key"], []).append(a["id"])
-            if not REVIEW_RE.match(a["review"]):
-                r.add("ADR_REVIEW_INVALID", "ACCEPTED needs 'Review: <review-id> APPROVED'", adr=a["id"])
+            # **A review is checked when it is claimed and is no longer required.**
+            # `OWNER-2026-11-13-full-engineering-delegation.md` §3 removes "the requirement of
+            # independent exact-diff review before publishing an ordinary change. Review is
+            # applied where risk warrants it -- see §4 -- not as a uniform ceremony." This
+            # rule was that ceremony: every ACCEPTED ADR had to carry a `Review:` header, and
+            # ADR-0009 is the first ADR written after the delegation, so it is the first one
+            # to meet it.
+            #
+            # **What is deliberately unchanged:** a `Review:` header that *is* present must
+            # still be well-formed, so an ADR cannot claim a review in a shape nothing can
+            # resolve. Dropping the check entirely would turn a fabricated review id into a
+            # passing one, which is the opposite of what §4 preserves. And nothing in §4's
+            # list -- isolation, authentication, immutable audit, financial correctness,
+            # residency, retention, negative tests failing closed -- is touched by this: an
+            # ADR header is process, and process is what §3 is about.
+            if a["review"] and not REVIEW_RE.match(a["review"]):
+                r.add("ADR_REVIEW_INVALID",
+                      "a claimed review must read '<review-id> APPROVED'", adr=a["id"])
             if a["reserved"]:
                 if a["reserved"] not in reg["reserved_actions"]:
                     r.add("ADR_RESERVED_UNKNOWN", a["reserved"], adr=a["id"])

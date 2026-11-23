@@ -137,6 +137,25 @@ The backend checks, each a separate command so one failure does not hide the res
 (cd backend && python3 -m unittest discover -s app/tenancy/domain/tests -t . -v)
 ```
 
+**And those are not what CI runs.** CI runs eleven more steps -- the governance structural
+check, its own validator suite, the domain-closure check and suite, the runner and
+trusted-gate suites, the screen-contract identity check, and the web app's `audit:ci`,
+`design:check`, `tokens:check` and `test:foundation`. Running the list above is not running
+the gate, and that cost a red `main` on **both jobs at once**: an ADR header written as prose
+parsed as no header, and `design:coverage` refused three backlog entries whose module had
+just landed -- a check this file's own session wrote to catch a stale excuse, firing correctly
+on its author. One command covers everything a local run can answer:
+
+```bash
+tools/local_ci.sh
+```
+
+It omits only what needs Docker (the container build, its smoke test, the rollback rehearsal)
+and the browser suite, which needs a provisioned fixture and a port. **It also runs Python
+with `-B`, as CI does**, because the domain-closure check refuses a `__pycache__` inside a
+lane root and an ordinary local test run creates one -- so the first version of the script
+failed twice on an artefact of itself while CI was clean.
+
 These need `backend/requirements-dev.lock` installed in the active interpreter. The repository
 carries a `.venv/` (gitignored) created for this purpose; if `ruff`, `mypy`, `fastapi` or
 `psycopg` is missing, install the lock into it rather than working around the gap. Say so if the

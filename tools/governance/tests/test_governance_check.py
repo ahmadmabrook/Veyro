@@ -251,9 +251,23 @@ class StaticCheck(Base):
 
 
 class AdrChecks(Base):
-    def test_accepted_without_review(self):
+    def test_accepted_needs_no_review(self):
+        """**The gate the owner removed, asserted from the other side.**
+
+        `OWNER-2026-11-13-full-engineering-delegation.md` section 3 removes "the requirement
+        of independent exact-diff review before publishing an ordinary change. Review is
+        applied where risk warrants it -- see section 4 -- not as a uniform ceremony." This
+        test asserted that ceremony, and ADR-0009 is the first ADR written after the
+        delegation, so it is the first one to meet it.
+
+        **The finding behind the old test is kept rather than deleted**, by the sibling
+        below: a review that *is* claimed must still be well-formed, so an ADR cannot assert
+        a review in a shape nothing can resolve. What changed is only whether one is
+        required -- which is the "was this test asserting the finding, or a consequence of
+        the gap?" question, in its process form.
+        """
         self.fx.adr("ADR-0001-change-control", Review=None)
-        self.assertBlocked("ADR_REVIEW_INVALID")
+        self.assertEqual(self.check()[0], 0)
 
     def test_accepted_with_invalid_review(self):
         self.fx.adr("ADR-0001-change-control", Review="REV-001 CHANGES_REQUESTED")
@@ -390,7 +404,11 @@ class ChangeControl(Base):
         self.assertBlocked("CHANGE_ADR_NOT_ACCEPTED", self.change("ADR-0002", "governance/registry.json"))
         self.fx.adr("ADR-0003-n", ID="ADR-0003", Covers="governance/", **{"Decision-Key": "n-key"})
         self.assertBlocked("CHANGE_ADR_NOT_COVERING", self.change("ADR-0003", "tools/governance/x.py"))
-        self.fx.adr("ADR-0001-change-control", Review=None)
+        # **A malformed claim rather than an absent one**, because an absent review no longer
+        # makes an ADR invalid -- see `test_accepted_needs_no_review`. The assertion is
+        # unchanged; only the means of making the ADR invalid moved, which is what keeps this
+        # case about `CHANGE_ADR_INVALID` rather than about the review rule.
+        self.fx.adr("ADR-0001-change-control", Review="REV-001 CHANGES_REQUESTED")
         self.assertBlocked("CHANGE_ADR_INVALID", self.change("ADR-0001", "governance/registry.json"))
 
     def test_covers_does_not_match_sibling_prefix(self):

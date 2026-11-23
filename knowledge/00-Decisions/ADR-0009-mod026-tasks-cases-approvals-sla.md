@@ -1,6 +1,17 @@
 # ADR-0009 — MOD-026: where tasks, cases, approvals and SLA clocks live
 
-**Status:** accepted · **Date:** 2026-11-23 · **Scope:** MOD-026 (TSD scope AUT-02)
+- ID: ADR-0009
+- Status: ACCEPTED
+- Decision-Key: mod026-tasks-cases-approvals-sla
+- Covers: backend/migrations/tenant/0019_tasks_and_cases.sql, backend/app/tasks/, backend/tests/test_tasks_domain.py, backend/tests/mutate_tasks_domain.py
+
+**Dated 2026-11-23. Scope: MOD-026, TSD scope AUT-02.** The header block above is the form
+`tools/governance/governance_check.py` parses; the first draft of this record wrote the same
+facts as prose on one line, so **no header was parsed at all** and four required ones were
+reported missing. CI caught it, which is the finding worth carrying: the local gate
+`CLAUDE.md` describes under "Running it" is the backend checks and the web suite, and CI runs
+two more steps on top -- this structural check and `design:coverage`. Running what the file
+lists is not running what CI runs.
 
 Authority: `OWNER-2026-11-13-full-engineering-delegation.md`. Ordinary architecture decisions
 are delegated to the session; this record exists because two of these decisions are not

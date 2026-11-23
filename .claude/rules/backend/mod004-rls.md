@@ -1807,3 +1807,52 @@ cancels *immediately*, so the sheet says "Access ends today." and not "Access en
 -- two different messages, and the spec asserted the dated one. **The pair of messages is the
 thing to look for**: where a screen picks between two sentences on a condition the fixture
 happens to fix, an assertion on either one is an assertion about the fixture.
+
+
+**Running the checks a doc lists is not running the checks CI runs, and the gap is eleven
+steps wide.** `CLAUDE.md`'s "Running it" section names the database rebuild, ruff, mypy, the
+two backend suites and the worker. The workflow runs those *and* the governance structural
+check, the governance validator's own suite, the domain-closure check and its suite, the
+runner and trusted-gate suites, the screen-contract identity check, and four more web steps
+(`audit:ci`, `design:check`, `tokens:check`, `test:foundation`). A commit that passed
+everything the doc listed went red on **both jobs at once**.
+
+Both failures were real and both were mine. An ADR's status and scope written as prose on one
+line parsed as **no header at all**, so four required headers were reported missing -- the
+checker wants `- Key: value`. And `design:coverage` refused three backlog entries that said
+MOD-026 was unbuilt, because `backend/app/tasks/` now exists: **the stale-excuse direction of
+a check written in this same session, firing correctly on its author within the hour.** That
+is the cheapest possible demonstration that the direction was worth building, and it is also
+the reminder that a gap note becomes false the moment the gap closes, whoever wrote it.
+
+`tools/local_ci.sh` is the answer, so "I ran the checks" and "I ran the checks CI runs" stop
+being different claims. It omits only what needs Docker and the browser suite.
+
+**And it runs Python with `-B`, which is not a detail.** The domain-closure check refuses a
+`__pycache__` directory inside a lane root -- an unchecked hash-based `.pyc` is loaded without
+validating its source, so the bytecode that runs need not match the `.py` the tool reads. CI's
+backend step is `python -B -m unittest`, so CI never has one; an ordinary local run creates
+twenty-three of them. The first version of the gate script therefore failed two steps on an
+artefact of *itself*, which is the harness-manufactures-the-gap shape this file already
+records for mutation sweeps, arriving from a direction none of those paragraphs cover.
+
+**A process gate the owner removed still lives in the tooling until somebody meets it.**
+`governance_check.py` required every `ACCEPTED` ADR to carry `Review: <id> APPROVED`, and
+`OWNER-2026-11-13-full-engineering-delegation.md` §3 removes "the requirement of independent
+exact-diff review before publishing an ordinary change. Review is applied where risk warrants
+it -- see §4 -- not as a uniform ceremony." ADR-0009 is the first ADR written after the
+delegation and so the first to hit it. **The two wrong ways out were tempting and both are
+fabrication**: inventing a review id, or quietly deleting the check. The rule is narrowed
+instead -- a review that *is* claimed must still be well-formed, so an ADR cannot assert one
+in a shape nothing can resolve -- and that narrowing is mutation-proven, because a malformed
+claim still returns `BLOCKED`. Nothing in §4's preserved list (isolation, authentication,
+immutable audit, financial correctness, residency, retention, negative tests failing closed)
+is touched by it.
+
+Its own test suite then failed twice, which is the same lesson one layer down:
+`test_accepted_without_review` asserted the ceremony, and a sibling
+(`test_accepted_with_invalid_review`) carried the finding that actually matters. So the first
+flipped to assert the permission and the second was left alone -- **was this test asserting
+the finding, or a consequence of the gate?** -- and a third case that used an absent review
+merely as a convenient way to make an ADR invalid had its *means* swapped for a malformed
+claim, keeping its own assertion intact.

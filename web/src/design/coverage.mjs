@@ -196,20 +196,28 @@ const BACKLOG = {
   // MOD-026 is the shortest chain of the five and the one three screens here wait on: its
   // own dependencies, MOD-008 and MOD-013, are both built, so it is buildable now and what
   // keeps it unbuilt is the order of the work rather than anything in the way.
-  "ADM-CC-06": "MOD-026: a side sheet holds per-item state -- what was resolved, by whom, "
-    + "when, and what is still open on it -- and no module keeps a resolution record. A "
-    + "resolvable item with an owner and an SLA is MOD-026's case; the Command Center's "
-    + "queue is derived from live state, which is why ADM-CC-07 waits on the same module",
-  "ADM-CC-07": "MOD-026: a resolved history is a list of cases that were closed, and a case "
-    + "is MOD-026's. The queue this screen would be the history of is derived from live "
-    + "state, so there is nothing to list yet",
-  "ADM-TSK-01": "MOD-026: tasks. Its dependencies MOD-008 and MOD-013 are both built, so "
-    + "this is the next Pilot-wave module with nothing in front of it",
+  // **These three moved from `MOD-026:` to `work:` the hour MOD-026's first slice landed, and
+  // this check is what moved them.** A `MOD-0NN:` reason means the module is not built; the
+  // staleness direction asserts the opposite, so `backend/app/tasks/` existing failed all
+  // three on the push that created it. That is the stale-excuse direction working exactly as
+  // intended, and it is worth noting that nothing else in the repository would have noticed.
+  "ADM-CC-06": "work: MOD-026 has its case container, its queues and its timeline, and no "
+    + "service layer or routes -- slice 1 of 4 is the schema and the decisions. This sheet "
+    + "needs the reads R07 owns (slice 4) plus the SLA state R06 computes (slice 3), because "
+    + "the Command Center's queue is derived from live state rather than stored",
+  "ADM-CC-07": "work: MOD-026 keeps a resolution reason and the attribution on every resolved "
+    + "case, by constraint, so the history this screen lists exists in the schema. What is "
+    + "missing is the listing read, which is slice 4",
+  "ADM-TSK-01": "work: MOD-026's tasks, checklists, dependencies and queues are built with "
+    + "their isolation checks and domain tests; the service layer, the routes and R07's "
+    + "workload read are slices 2 to 4. This screen is the module's own surface and lands "
+    + "with slice 4",
   // MOD-027's own dependency chain runs through MOD-026, so the seven CRM screens are two
   // modules deep rather than one. The pipeline, a lead, its stages and the unified inbox are
   // all its; `lifecycle_state` on a MOD-014 person is the only part of any of it here.
   "ADM-CRM-01": "MOD-027: the pipeline, its stages and a lead's movement between them. "
-    + "MOD-027 depends on MOD-026, which is unbuilt, so this is two modules deep; "
+    + "MOD-027 depends on MOD-026, whose first slice is built and whose service layer is "
+    + "not, so this is still two modules deep; "
     + "`lifecycle_state` on a MOD-014 person is the only part of a lead that exists here",
   "ADM-CRM-02": "MOD-027: there is no lead in this build to list",
   "ADM-CRM-03": "MOD-027: a lead's profile, its activity and its owner",
@@ -229,7 +237,8 @@ const BACKLOG = {
     + "seam rather than the blocker",
   // MOD-055 depends on MOD-026 too, so automation sits behind tasks for the same reason CRM
   // does -- an automation's actions are approvals and cases.
-  "ADM-AUT-01": "MOD-055: automation, which depends on MOD-010 (built) and MOD-026 (not), so "
+  "ADM-AUT-01": "MOD-055: automation, which depends on MOD-010 (built) and MOD-026 (slice 1 "
+    + "of 4), so "
     + "it is behind tasks in the chain rather than waiting on anything outside",
   "ADM-AUT-02": "MOD-055: the builder is the authoring surface for the bounded actions, "
     + "retries and loop protection MOD-055's objective names",
