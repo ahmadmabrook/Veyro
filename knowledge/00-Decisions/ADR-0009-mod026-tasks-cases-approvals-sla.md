@@ -173,6 +173,37 @@ sweep. The order follows what the next thing needs rather than the requirement n
 
 1. **The calendar, tasks and cases** (R01, R02, R03). Nothing depends on approvals, and the
    calendar is needed by the SLA slice. A task with a due date is useful before any SLA exists.
+
+   **Landed as 1a: the schema, the privileges, isolation check 112 with its mutations, and
+   the pure decisions in `app/tasks/`. The service and the routes are 1b and are not built.**
+   That is a deviation from this record's own "each slice lands whole" and is written down
+   rather than quietly redefined -- a schema with no reader is this build's most-repeated
+   finding, and MOD-026 now has one. 1b is the next increment and these three decisions are
+   settled so it is mechanical rather than guesswork:
+
+   - **Eight permissions**, two per area: `tasks.queue.read|write` and
+     `tasks.calendar.read|write` in the `configuration` category, `tasks.task.read|write` and
+     `tasks.case.read|write` in `data_access`. All eight are **routine**. A queue and a rota
+     are edited by the people who run the floor, which is `scheduling.availability.write`'s
+     own argument -- "refusing them a step-up every time somebody books a day off would make
+     the rota wrong instead" -- and both acts are correctable here, by a retirement that can
+     be lifted and a withdrawal that leaves a history. Raising and settling a task is the
+     ordinary work of a shift. A case entry is written under `tasks.case.write` rather than a
+     ninth permission, because an entry is how a case moves.
+   - **A task title is readable and two prose columns are masked.** MOD-019 masks a session
+     change's `reason` unless the caller holds `scheduling.session.change`, because a reason
+     column is where a health fact goes in practice, and a reviewer read a diagnosis out of
+     one. `tsk_tasks.settle_reason` and `tsk_cases.resolution_reason` are the same shape and
+     get the same treatment: masked unless the caller holds the matching **write**
+     permission, because whoever may settle a task may read why one was settled. The
+     **title** is not masked, and that is a decision rather than an oversight -- a queue
+     whose titles are withheld cannot be worked at all, and the privacy registry already
+     declares that a title may name a member, so the disclosure is stated rather than
+     implied.
+   - **The subject is resolved for the five kinds that have a table and recorded for the
+     three that do not**, and the read says which it did. `subjects.is_a_claim` is the
+     function; a surface showing an unresolved id without saying so would be presenting a
+     claim as a verified reference, which is MOD-012's `validated` finding.
 2. **Approval stages and delegation** (R04, R05), extending `iam`.
 3. **SLA clocks, pauses, breach warning and escalation** (R06), plus the worker job.
 4. **The reporting read** (R07) and the three screens ADM-TSK-01, ADM-CC-06 and ADM-CC-07.

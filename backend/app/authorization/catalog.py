@@ -814,6 +814,28 @@ PERMISSIONS: dict[str, Permission] = dict([
     _p("access.event.reconcile",
        "Reconcile a reader's offline events after it reconnects", "configuration"),
 
+    # MOD-026 (AUT-02). **All eight are routine, and that is a decision rather than an
+    # oversight.** A queue and a business calendar are edited by the people who run the
+    # floor, which is `scheduling.availability.write`'s own argument -- refusing them a
+    # step-up every time somebody records a public holiday would make the calendar wrong
+    # instead, and an SLA is measured against it. Both acts are correctable: a retirement can
+    # be lifted and a calendar window is withdrawn rather than deleted, which is what makes a
+    # routine permission safe here and is MOD-013's rule from the other side.
+    _p("tasks.queue.read", "See the work queues and who they belong to", "configuration"),
+    _p("tasks.queue.write", "Open or retire a work queue", "configuration"),
+    _p("tasks.calendar.read", "See when a club's people are at work", "configuration"),
+    _p("tasks.calendar.write", "Set or withdraw business hours", "configuration"),
+    # Raising, assigning and settling a task is the ordinary work of a shift. What is *not*
+    # routine is reading why something was settled: `settle_reason` and `resolution_reason`
+    # are prose, and MOD-019 learned that a reason column is where a health fact goes in
+    # practice -- so those two are masked unless the caller holds the matching write
+    # permission, the same trade `scheduling.session.change` makes.
+    _p("tasks.task.read", "See tasks, their checklists and what blocks them", "data_access"),
+    _p("tasks.task.write", "Raise, assign, progress or settle a task", "data_access"),
+    _p("tasks.case.read", "See cases and their timeline", "data_access"),
+    _p("tasks.case.write", "Open a case, write on its timeline, resolve or close it",
+       "data_access"),
+
     # Support and AI, named separately because IAM-03-R06 audits them separately.
     _p("support.session.start", "Start a supported session as another user",
        "support", "privileged"),
