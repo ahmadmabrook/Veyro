@@ -108,6 +108,9 @@ const surfaces: [string, string][] = [
   // the shape that duplicated every droppable value on three other grids below 600px.
   ["the lead board", "/leads"],
   ["the lead table", "/leads?view=table"],
+  // The profile is a record header over four metric cells, a timeline and five forms,
+  // which is the densest stack of components on any CRM screen.
+  ["a lead profile", `/leads/${creds.ownedLeadId}`],
   ["the task list", "/tasks"],
   ["an attention item", `/tasks/cases/${creds.moneyCaseId}`],
   ["resolved today", "/tasks/resolved"],

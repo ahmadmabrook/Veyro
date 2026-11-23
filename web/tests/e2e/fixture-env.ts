@@ -37,6 +37,7 @@ export type Fixture = {
   deskQueueId: string;
   coldLeadId: string;
   ownedLeadId: string;
+  touredLeadId: string;
   /** ADM-CC-06's own subject: "6 payments failed overnight", unassigned, with six records. */
   moneyCaseId: string;
   moneyCaseNumber: string;
@@ -194,6 +195,7 @@ export function fixture(): Fixture {
     "VEYRO_E2E_DESK_QUEUE_ID",
     "VEYRO_E2E_COLD_LEAD_ID",
     "VEYRO_E2E_OWNED_LEAD_ID",
+    "VEYRO_E2E_TOURED_LEAD_ID",
     "VEYRO_E2E_MONEY_CASE_ID",
     "VEYRO_E2E_MONEY_CASE_NUMBER",
     "VEYRO_E2E_ASSIGNED_CASE_ID",
@@ -237,6 +239,7 @@ export function fixture(): Fixture {
     deskQueueId: env.VEYRO_E2E_DESK_QUEUE_ID!,
     coldLeadId: env.VEYRO_E2E_COLD_LEAD_ID!,
     ownedLeadId: env.VEYRO_E2E_OWNED_LEAD_ID!,
+    touredLeadId: env.VEYRO_E2E_TOURED_LEAD_ID!,
     moneyCaseId: env.VEYRO_E2E_MONEY_CASE_ID!,
     moneyCaseNumber: env.VEYRO_E2E_MONEY_CASE_NUMBER!,
     assignedCaseId: env.VEYRO_E2E_ASSIGNED_CASE_ID!,

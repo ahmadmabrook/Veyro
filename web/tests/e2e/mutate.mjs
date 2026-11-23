@@ -2139,6 +2139,48 @@ const MUTATIONS = [
     runner: "playwright",
     grep: "says the reader is nobody",
   },
+  {
+    id: "lead-stage-is-forward-only",
+    why: "`toured` is the last sales stage and the two columns after it are what a membership "
+      + "answers, so a backwards or an onward move from there is one the service refuses -- "
+      + "\"a button the module will refuse is worse than no button\"",
+    file: "src/lib/leads.ts",
+    from: '  if (stage === "contacted") return "toured";\n  return null;',
+    to: '  if (stage === "contacted") return "toured";\n  return "new";',
+    runner: "playwright",
+    grep: "no stage move, because the pipeline has no edge",
+  },
+  {
+    id: "lead-owner-control-is-one",
+    why: "assigning the owner a lead already has is a 409 -- a write that changed nothing "
+      + "would bump the version and read as a handover somebody made -- so an owned lead is "
+      + "offered the release and only the release",
+    file: "src/app/leads/[leadId]/forms.tsx",
+    from: '        label={text(owned ? "lead.formRelease" : "lead.formClaim")}',
+    to: '        label={text("lead.formClaim")}',
+    runner: "playwright",
+    grep: "offered the release and not the claim",
+  },
+  {
+    id: "lead-interest-already-held",
+    why: "an interest already recorded cannot be withdrawn, so offering it again is a tick "
+      + "that does nothing -- and the remaining one is what makes the form mean something",
+    file: "src/app/leads/[leadId]/forms.tsx",
+    from: "  const offer = options.filter((one) => !held.includes(one.value));",
+    to: "  const offer = [...options];",
+    runner: "playwright",
+    grep: "already recorded is not offered again",
+  },
+  {
+    id: "lead-empty-timeline-says-why",
+    why: "an absent list reads as a lead nobody has spoken to *and* as a screen that failed "
+      + "to load, and the first is the fact the cold rule is computed from",
+    file: "src/app/leads/[leadId]/page.tsx",
+    from: "      {lead.touchpoints.length === 0 ? (",
+    to: "      {false ? (",
+    runner: "playwright",
+    grep: "clock runs from its creation",
+  },
 ];
 
 const only = process.argv[2];

@@ -2818,6 +2818,7 @@ if (invokedDirectly) {
       `VEYRO_E2E_DESK_QUEUE_ID=${fixture.deskQueueId}`,
       `VEYRO_E2E_COLD_LEAD_ID=${fixture.coldLeadId}`,
       `VEYRO_E2E_OWNED_LEAD_ID=${fixture.ownedLeadId}`,
+      `VEYRO_E2E_TOURED_LEAD_ID=${fixture.touredLeadId}`,
       `VEYRO_E2E_MONEY_CASE_ID=${fixture.moneyCaseId}`,
       `VEYRO_E2E_MONEY_CASE_NUMBER=${fixture.moneyCaseNumber}`,
       `VEYRO_E2E_ASSIGNED_CASE_ID=${fixture.assignedCaseId}`,

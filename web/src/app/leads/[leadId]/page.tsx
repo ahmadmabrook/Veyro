@@ -1,0 +1,290 @@
+import Link from "next/link";
+import { redirect } from "next/navigation";
+
+import { Banner } from "@/components/ds/banner";
+import { MetricCell } from "@/components/ds/metric-cell";
+import { RecordHeader } from "@/components/ds/record-header";
+import { Timeline, TimelineItem } from "@/components/ds/timeline";
+import { ProseNote } from "@/components/prose";
+import { Withheld } from "@/components/withheld";
+import { fill, t, type Locale, type MessageKey } from "@/i18n/locale";
+import { ApiError, currentSession, gateAll, gateMessage, gateVerdict } from "@/lib/api";
+import { readNames } from "@/lib/desk-reads";
+import {
+  INTERESTS, interestWord, kindWord, nextStage, sinceLabel, stageWord,
+  type LeadDetail,
+} from "@/lib/leads";
+import { readLead } from "@/lib/leads-reads";
+import { isWithheld } from "@/lib/people";
+import { presentation } from "@/lib/preferences";
+import { dayLabel, timeOfDay } from "@/lib/time";
+
+import {
+  InterestsForm, NextActionForm, OwnerForm, StageForm, TouchpointForm,
+} from "./forms";
+
+/**
+ * ADM-CRM-03 · LEAD PROFILE — "Rana Sabbagh / NO CONTACT · 2 DAYS / Sweifieh open day ·
+ * +962 79 411 0288 · interested in classes and PT" over four metrics and a TOUCHPOINTS list.
+ *
+ * **Five working forms**, because every MOD-027 permission is routine: a touchpoint, a stage
+ * move, the ownership, the next action and the interests. Elsewhere in this app a write form
+ * is absent because its permission is a stepped-up financial one and "a button that answered
+ * 403 is worse than its absence"; none of these is.
+ *
+ * **Four of the canvas's figures are the trial's and are not drawn.** `4 VISITS`, `4
+ * CLASSES`, `2 DAYS LEFT` and `High ENGAGEMENT` all need a trial, and nothing in this build
+ * marks a product as one — so the metric row carries what this slice can answer and the gap
+ * list names the four rather than drawing them as zeros. A metric cell reading `0 VISITS` for
+ * a member who has been four times is the confident wrong answer MOD-014's own 360 was bitten
+ * by.
+ *
+ * **The phone number is not here either.** The canvas puts it in the subline; it is a contact
+ * point on the member record behind its own permission, and this screen composes the name
+ * through `GET /people/names` and does not reach the number.
+ */
+export default async function LeadPage({
+  params,
+}: {
+  params: Promise<{ leadId: string }>;
+}) {
+  const { locale } = await presentation();
+  const text = (key: MessageKey) => t(locale, key);
+  const { leadId } = await params;
+
+  if (!(await currentSession())) redirect("/login");
+
+  const [mayLead, mayTouch, mayWrite, mayPeople] = await gateAll([
+    "crm.lead.read", "crm.touchpoint.write", "crm.lead.write", "people.person.read",
+  ] as const);
+
+  if (!mayLead.allowed) {
+    const verdict = gateVerdict(mayLead);
+    return (
+      <div className="stack">
+        <Banner severity={verdict === "gate_failed" ? "critical" : "info"}>
+          {verdict === "denied" ? text("lead.refused") : text(gateMessage(mayLead))}
+        </Banner>
+        <Link href="/leads">{text("lead.backToBoard")}</Link>
+      </div>
+    );
+  }
+
+  let lead: LeadDetail | null = null;
+  let missing = false;
+  let failed = false;
+  let names = new Map<string, { person_id: string; legal_name: string | null }>();
+  try {
+    lead = await readLead(leadId);
+    const wanted = [lead.person_id, ...(lead.owner_person_id ? [lead.owner_person_id] : [])];
+    names = mayPeople.allowed
+      ? await readNames(wanted).catch(() => new Map())
+      : new Map();
+  } catch (error) {
+    if (!(error instanceof ApiError)) throw error;
+    if (error.status === 404) missing = true;
+    else failed = true;
+  }
+
+  if (missing || lead === null) {
+    return (
+      <div className="stack">
+        <Banner severity="info">{text(failed ? "error.unexpected" : "lead.notFound")}</Banner>
+        <Link href="/leads">{text("lead.backToBoard")}</Link>
+      </div>
+    );
+  }
+
+  const nameOf = (personId: string | null): string | null => {
+    if (personId === null) return null;
+    const name = names.get(personId)?.legal_name ?? null;
+    // A masked value is a marker rather than a name -- the board paid for discovering that
+    // `***` renders as though somebody were called it.
+    return name !== null && !isWithheld(name) ? name : null;
+  };
+
+  const name = nameOf(lead.person_id);
+  const owner = lead.owner_person_id === null ? null : nameOf(lead.owner_person_id);
+  const interests = lead.interests
+    .map((one) => {
+      const key = interestWord(one);
+      return key === null ? one : t(locale, key);
+    })
+    .join(" · ");
+  const stage = (() => {
+    const key = stageWord(lead.stage);
+    return key === null ? lead.stage : t(locale, key);
+  })();
+  const onward = nextStage(lead.stage);
+
+  return (
+    <div className="stack">
+      <RecordHeader
+        id="lead-heading"
+        name={
+          name ?? <Withheld locale={locale} reason="member.withheldIdentity" />
+        }
+        {...(lead.going_cold
+          ? { band: { text: text("lead.bandCold"), tone: "warning" as const } }
+          : {})}
+        subline={
+          <>
+            {lead.source === null
+              ? text("lead.sublineNoSource")
+              : fill(locale, "lead.sublineSource", { source: lead.source })}
+            {" · "}
+            {owner === null
+              ? text(lead.owner_person_id === null
+                ? "lead.sublineUnowned" : "member.withheld")
+              : fill(locale, "lead.sublineOwner", { owner })}
+            {" · "}
+            {interests === ""
+              ? text("lead.sublineNoInterests")
+              : fill(locale, "lead.sublineInterests", { interests })}
+          </>
+        }
+      />
+
+      <section className="metrics" aria-label={text("lead.title")}>
+        <MetricCell label={text("lead.metaStage")} value={stage} />
+        <MetricCell
+          label={text("lead.metaSince")}
+          value={sinceLabel(locale, lead.hours_since_contact)}
+        />
+        <MetricCell
+          label={text("lead.metaTouchpoints")}
+          value={String(lead.touchpoint_count)}
+        />
+        <MetricCell
+          label={text("lead.metaNext")}
+          value={lead.next_action ?? text("leads.noNext")}
+          {...(lead.next_action_on !== null ? { comparison: lead.next_action_on } : {})}
+        />
+      </section>
+
+      {/* **The empty state is not inside the list.** `Timeline` renders an `<ol>`, and an
+          `<ol>` may hold only `<li>` -- a banner in there is an axe violation, which the
+          profile's own scan caught. An empty timeline is a sentence rather than a list of
+          one, so it replaces the component instead of sitting inside it. */}
+      {lead.touchpoints.length === 0 ? (
+        <section className="page-section" aria-labelledby="lead-timeline-empty">
+          <h2 id="lead-timeline-empty">{text("lead.timeline")}</h2>
+          <Banner severity="info">{text("lead.timelineEmpty")}</Banner>
+        </section>
+      ) : (
+        <Timeline label={text("lead.timeline")}>
+          {lead.touchpoints.map((touch) => {
+            const kind = kindWord(touch.kind);
+            return (
+              <TimelineItem
+                key={touch.touchpoint_id}
+                // UTC, and the gutter says so -- which is the one "today" this build has: a
+                // tenant with clubs in two zones has two local todays and a timeline
+                // carrying neither.
+                time={timeOfDay(touch.occurred_at)}
+                day={dayLabel(touch.occurred_at)}
+                tone="visit"
+                title={kind === null ? touch.kind : t(locale, kind)}
+                meta={
+                  touch.summary_withheld
+                    ? <Withheld locale={locale} reason="lead.summaryWithheld" />
+                    : touch.summary
+                }
+              />
+            );
+          })}
+        </Timeline>
+      )}
+
+      {mayTouch.allowed ? (
+        <section className="page-section" aria-labelledby="lead-record">
+          <h2 id="lead-record">{text("lead.sectionRecord")}</h2>
+          <TouchpointForm
+            locale={locale}
+            leadId={leadId}
+            kinds={kindOptions(locale)}
+          />
+        </section>
+      ) : null}
+
+      {mayWrite.allowed ? (
+        <>
+          <section className="page-section" aria-labelledby="lead-stage">
+            <h2 id="lead-stage">{text("lead.sectionStage")}</h2>
+            <StageForm
+              locale={locale}
+              leadId={leadId}
+              next={onward === null ? null : {
+                value: onward,
+                label: fill(locale, "lead.stageTo", { stage: stageLabel(locale, onward) }),
+              }}
+            />
+          </section>
+
+          <section className="page-section" aria-labelledby="lead-owner">
+            <h2 id="lead-owner">{text("lead.sectionOwner")}</h2>
+            <OwnerForm
+              locale={locale}
+              leadId={leadId}
+              owned={lead.owner_person_id !== null}
+            />
+          </section>
+
+          <section className="page-section" aria-labelledby="lead-next">
+            <h2 id="lead-next">{text("lead.sectionNext")}</h2>
+            <NextActionForm
+              locale={locale}
+              leadId={leadId}
+              set={lead.next_action !== null}
+            />
+          </section>
+
+          <section className="page-section" aria-labelledby="lead-interests">
+            <h2 id="lead-interests">{text("lead.sectionInterests")}</h2>
+            <InterestsForm
+              locale={locale}
+              leadId={leadId}
+              held={lead.interests}
+              options={INTERESTS.map((one) => ({
+                value: one, label: interestLabel(locale, one),
+              }))}
+            />
+          </section>
+        </>
+      ) : null}
+
+      <ProseNote>{text("leads.nameIsElsewhere")}</ProseNote>
+
+      <section className="page-section" aria-labelledby="lead-gaps">
+        <h2 id="lead-gaps">{text("leads.gaps")}</h2>
+        <dl className="facts">
+          <dt>{text("lead.gapTrialLabel")}</dt>
+          <dd>{text("lead.gapTrial")}</dd>
+          <dt>{text("lead.gapPhoneLabel")}</dt>
+          <dd>{text("lead.gapPhone")}</dd>
+          <dt>{text("lead.gapWhatsAppLabel")}</dt>
+          <dd>{text("lead.gapWhatsApp")}</dd>
+        </dl>
+      </section>
+
+      <Link href="/leads">{text("lead.backToBoard")}</Link>
+    </div>
+  );
+}
+
+function stageLabel(locale: Locale, stage: string): string {
+  const key = stageWord(stage);
+  return key === null ? stage : t(locale, key);
+}
+
+function interestLabel(locale: Locale, interest: string): string {
+  const key = interestWord(interest);
+  return key === null ? interest : t(locale, key);
+}
+
+function kindOptions(locale: Locale): { value: string; label: string }[] {
+  return ["call", "message", "email", "visit", "tour", "note"].map((kind) => {
+    const key = kindWord(kind);
+    return { value: kind, label: key === null ? kind : t(locale, key) };
+  });
+}

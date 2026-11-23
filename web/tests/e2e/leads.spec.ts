@@ -19,7 +19,7 @@ import { useOwnerSession } from "./sign-in";
  * are proven by `backend/tests/test_crm_api.py` and by fifteen mutations over the decisions.
  */
 
-const { coldLeadId, ownedLeadId } = fixture();
+const { coldLeadId, ownedLeadId, touredLeadId } = fixture();
 
 const WCAG = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"];
 
@@ -174,6 +174,104 @@ test.describe("the lead pipeline", () => {
       const scan = await new AxeBuilder({ page }).withTags(WCAG).analyze();
       expect(scan.violations, view).toEqual([]);
     }
+  });
+
+  test("the profile carries the lead's own facts and its timeline", async ({ page }) => {
+    // ADM-CRM-03. The name is withheld at this assurance, so what is asserted is everything
+    // this module owns: the source, the interests, the stage, the touchpoint and the four
+    // metrics the slice can answer.
+    await page.goto(`/leads/${coldLeadId}`);
+    const main = page.locator("#main");
+    await expect(main.getByText("from Sweifieh open day")).toBeVisible();
+    await expect(main.getByText(/interested in Classes/)).toBeVisible();
+    await expect(main.getByText("unassigned")).toBeVisible();
+    await expect(main.getByRole("heading", { name: /Touchpoints/ })).toBeVisible();
+  });
+
+  test("a lead with no touchpoint says the clock runs from its creation", async ({ page }) => {
+    // **The empty timeline is a sentence rather than a blank**, because an absent list reads
+    // as a lead nobody has spoken to *and* as a screen that failed to load -- and the first
+    // is the fact the cold rule is computed from.
+    await page.goto(`/leads/${coldLeadId}`);
+    await expect(page.locator("#main").getByText(/clock the pipeline reads runs from/))
+      .toBeVisible();
+  });
+
+  test("a touchpoint is rendered with its kind and its prose", async ({ page }) => {
+    await page.goto(`/leads/${touredLeadId}`);
+    const main = page.locator("#main");
+    await expect(main.getByText("Toured").first()).toBeVisible();
+    await expect(main.getByText("walked the floor with Yasmin")).toBeVisible();
+  });
+
+  test("the five write forms are offered, because every permission here is routine",
+    async ({ page }) => {
+      // Elsewhere in this app a write form is absent because its permission is a stepped-up
+      // financial one; none of MOD-027's is, which is what makes this the second module with
+      // a full set of working forms.
+      await page.goto(`/leads/${coldLeadId}`);
+      const main = page.locator("#main");
+      for (const label of ["Record it", "Move to Contacted", "Claim this lead", "Set it",
+        "Add"]) {
+        await expect(main.getByRole("button", { name: label, exact: true })).toBeVisible();
+      }
+    });
+
+  test("a toured lead is offered no stage move, because the pipeline has no edge",
+    async ({ page }) => {
+      // "A button the module will refuse is worse than no button": `toured` is the last sales
+      // stage and the two columns after it are what a membership answers.
+      await page.goto(`/leads/${touredLeadId}`);
+      const main = page.locator("#main");
+      await expect(main.getByText(/last sales stage/)).toBeVisible();
+      await expect(main.getByRole("button", { name: /^Move to/ })).toHaveCount(0);
+    });
+
+  test("an owned lead is offered the release and not the claim", async ({ page }) => {
+    // One control, because the server refuses a no-op: assigning the owner a lead already has
+    // is a 409, since a write that changed nothing would read as a handover somebody made.
+    await page.goto(`/leads/${ownedLeadId}`);
+    const main = page.locator("#main");
+    await expect(main.getByRole("button", { name: "Release it" })).toBeVisible();
+    await expect(main.getByRole("button", { name: "Claim this lead" })).toHaveCount(0);
+  });
+
+  test("the next action is shown and offers to be cleared where there is one",
+    async ({ page }) => {
+      await page.goto(`/leads/${ownedLeadId}`);
+      const main = page.locator("#main");
+      await expect(main.getByText("call back about the 17:00 tour").first()).toBeVisible();
+      await expect(main.getByRole("button", { name: "Clear it" })).toBeVisible();
+    });
+
+  test("an interest already recorded is not offered again", async ({ page }) => {
+    // The cold lead was seeded interested in classes and PT, so only the third is offered --
+    // and the form says the set cannot shrink, which is MOD-027's own recorded gap rather
+    // than this screen's restraint.
+    await page.goto(`/leads/${coldLeadId}`);
+    const main = page.locator("#main");
+    await expect(main.getByRole("checkbox", { name: "Gym only" })).toBeVisible();
+    await expect(main.getByRole("checkbox", { name: "Classes" })).toHaveCount(0);
+    await expect(main.getByText(/cannot be taken back yet/)).toBeVisible();
+  });
+
+  test("the four trial figures are named rather than drawn as zeros", async ({ page }) => {
+    // A metric cell reading `0 VISITS` for a member who has been four times is the confident
+    // wrong answer MOD-014's own 360 was bitten by.
+    await page.goto(`/leads/${coldLeadId}`);
+    await expect(page.locator("#main").getByText(/nothing in this build marks one/))
+      .toBeVisible();
+  });
+
+  test("a lead id nobody holds says so rather than failing", async ({ page }) => {
+    await page.goto("/leads/00000000-0000-4000-8000-000000000000");
+    await expect(page.locator("#main").getByText(/no lead with that id/)).toBeVisible();
+  });
+
+  test("no accessibility violations on the profile", async ({ page }) => {
+    await page.goto(`/leads/${ownedLeadId}`);
+    const scan = await new AxeBuilder({ page }).withTags(WCAG).analyze();
+    expect(scan.violations).toEqual([]);
   });
 
   test("the rail reaches the board", async ({ page }) => {

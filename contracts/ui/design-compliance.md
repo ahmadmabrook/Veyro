@@ -2036,6 +2036,10 @@ absent for want of a step-up.
   them.
 - **ADM-CRM-02 · lead table** — `/leads?view=table`, the same reads through `DataGrid`, with
   `rowSeverity` carrying the cold mark the canvas asks for by name.
+- **ADM-CRM-03 · lead profile** — `/leads/{lead_id}`, over `GET /crm/leads/{id}` with
+  `GET /people/names` composed for the name and the owner's. `RecordHeader` with the cold band,
+  four `MetricCell`s, a `Timeline` of touchpoints, and **five working forms**: a touchpoint, a
+  stage move, the ownership, the next action and the interests.
 
 ### The four things this screen had to settle
 
@@ -2077,3 +2081,41 @@ needs a conversion to count, which needs the trial — the same gap as the colum
 
 **The third chip is not offered.** *"Trial ending · 4"* is slice 2's, and a chip that filtered
 to nothing would read as a club with no trials ending rather than as a build with no trials.
+
+### ADM-CRM-03's own five decisions
+
+**Five working forms, because every MOD-027 permission is routine.** A touchpoint, a stage
+move, the ownership, the next action and the interests — all `data_access` or `configuration`
+with no financial class. This is the second module in this app with a full set, after MOD-026,
+and for the same reason: *"raising, claiming and writing up a lead is the ordinary work of a
+sales shift"*, and a step-up on every logged phone call would make the pipeline wrong instead.
+
+**No button where the pipeline has no edge.** `toured` is the last sales stage — the two
+columns after it are what a membership answers — so a toured lead is offered the sentence
+rather than a move the service would refuse. FD-06's *"a button the module will refuse is worse
+than no button"*.
+
+**One ownership control, because the server refuses a no-op.** Assigning the owner a lead
+already has is a 409: a write that changed nothing would bump the version and read as a
+handover somebody made. So an owned lead is offered the release and an unowned one the claim,
+and which act a claim turns out to be — a claim or a handover — is the server's to name from
+what the column held.
+
+**The interests form says the set cannot shrink, before the tick rather than after it.** There
+is no UPDATE and no DELETE grant on `crm_lead_interests`, so an interest recorded by mistake is
+uncorrectable until the slice that adds `lost` adds the withdrawal. An interest already
+recorded is not offered again, which is what makes the remaining checkbox mean something.
+
+**Four of the canvas's figures are the trial's and are named rather than drawn.** `4 VISITS`,
+`4 CLASSES`, `2 DAYS LEFT` and `High ENGAGEMENT` all need a trial, and nothing in this build
+marks a product as one. A metric cell reading `0 VISITS` for a member who has been four times
+is the confident wrong answer MOD-014's own 360 was bitten by, so the metric row carries the
+stage, the last contact, the touchpoint count and the next action — four figures this slice can
+answer — and the gap list names the other four. The phone number in the canvas's subline is a
+contact point behind its own permission and is named too, as is WhatsApp, which nothing here
+can send.
+
+**And an empty timeline is a sentence rather than a list of one.** `Timeline` renders an `<ol>`
+and an `<ol>` may hold only `<li>`, so a banner inside it is an accessibility violation — which
+the profile's own axe scan caught. The empty state replaces the component rather than sitting
+in it.

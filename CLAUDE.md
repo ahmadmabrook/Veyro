@@ -4737,10 +4737,10 @@ Things worth knowing before extending it:
 
 Known gaps, deliberate:
 
-- **Two of the eight screens are built and six are not.** ADM-CRM-01's board and
-  ADM-CRM-02's table are `/leads` -- see "The web app" -- and the profile, the add form, the
-  trial pair and the lost sheet are owed; `design:coverage` carries each with what is left in
-  it. Still more screens than any other module's.
+- **Three of the eight screens are built and five are not.** ADM-CRM-01's board,
+  ADM-CRM-02's table and ADM-CRM-03's profile are `/leads` and `/leads/{id}` -- see "The web
+  app" -- and the add form, the trial pair, the lost sheet and the conversation are owed;
+  `design:coverage` carries each with what is left in it.
 - **No trial, so the `On trial` column is always empty** and the board says so rather than
   hiding it. Nothing in this build marks a product as a trial -- neither
   `cat_products.product_type` nor `mem_membership_terms.membership_kind` has such a value --
@@ -4984,6 +4984,28 @@ renders another nests it -- invalid HTML, and it costs *both* their landmark rol
 rendered correctly and `main` was not in the accessibility tree at all. Found by reading the
 tree out of a failing spec; no assertion about text could have seen it, because the text was
 all there.
+
+**ADM-CRM-03's profile is the second module in this app with a full set of working write
+forms**, and for MOD-026's reason: every MOD-027 permission is `data_access` or
+`configuration` with no financial class, so a touchpoint, a stage move, the ownership, the
+next action and the interests all have forms. Five decisions carry it, and three are refusals:
+
+- **No button where the pipeline has no edge.** `toured` is the last sales stage, so a toured
+  lead gets the sentence rather than a move the service refuses -- FD-06's rule.
+- **One ownership control, because the server refuses a no-op.** Assigning the owner a lead
+  already has is a 409: a write that changed nothing would bump the version and read as a
+  handover somebody made. An owned lead is offered the release, an unowned one the claim, and
+  which act a claim turns out to be is the server's to name.
+- **The interests form says the set cannot shrink before the tick rather than after it**, and
+  an interest already recorded is not offered again. There is no UPDATE and no DELETE grant on
+  that table until the slice that adds `lost` adds the withdrawal.
+- **Four of the canvas's figures are the trial's and are named rather than drawn.** `4 VISITS`,
+  `4 CLASSES`, `2 DAYS LEFT` and `High ENGAGEMENT` all need a trial; a cell reading `0 VISITS`
+  for a member who has been four times is the confident wrong answer MOD-014's own 360 was
+  bitten by. The metric row carries the four this slice can answer.
+- **An empty timeline is a sentence rather than a list of one.** `Timeline` renders an `<ol>`
+  and an `<ol>` may hold only `<li>`, so a banner inside it is an accessibility violation --
+  caught by the profile's own axe scan, which is the layer that sees a rendered tree.
 
 **MOD-026's three screens are where a reader who is *nobody* became a product state worth
 rendering.** Two of ADM-CC-06's five states and ADM-TSK-01's first chip are derived from
@@ -6231,7 +6253,7 @@ re-running the fixture invalidates every test already created.
 
 Known gaps: the surface covers the sign-in, the step-up, the account page, MOD-004, MOD-005,
 MOD-007, MOD-008, MOD-009, MOD-010, MOD-011, MOD-012, MOD-013, MOD-014, MOD-016, MOD-017,
-MOD-018, MOD-019, MOD-021, MOD-022, MOD-026 and MOD-027's board and table, plus
+MOD-018, MOD-019, MOD-021, MOD-022, MOD-026 and MOD-027's board, table and profile, plus
 MOD-020's roster on a session,
 ADM-SCH-04's availability grid at `/rota`, ADM-MSH-07's cancellation sheet at
 `/people/{id}?tab=membership&cancel=1`, ADM-MEM-10's walk-in form at

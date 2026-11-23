@@ -114,6 +114,23 @@ const KIND_WORDS: Record<string, MessageKey> = {
   note: "leads.kind.note",
 };
 
+/** ADM-CRM-04's three, in the vocabulary's own order -- which is the server's. */
+export const INTERESTS = ["classes", "pt", "gym_only"] as const;
+
+/**
+ * The one stage the pipeline admits from here, or `null` at the end of it.
+ *
+ * **Forward only, and the table is the server's `EDGES` read from the client side.** A screen
+ * that offered a backwards move would offer one the service refuses, which is FD-06's "a
+ * button the module will refuse is worse than no button" -- and `toured` is the last sales
+ * stage, because the two columns after it are what a membership answers.
+ */
+export function nextStage(stage: string): string | null {
+  if (stage === "new") return "contacted";
+  if (stage === "contacted") return "toured";
+  return null;
+}
+
 const INTEREST_WORDS: Record<string, MessageKey> = {
   classes: "leads.interest.classes",
   pt: "leads.interest.pt",
