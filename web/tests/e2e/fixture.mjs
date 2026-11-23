@@ -2599,6 +2599,66 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
     body: { target: "done", reason: "ordered on the fourteenth", correlation_id: cid() },
   });
 
+  // ---- MOD-027's pipeline (ADM-CRM-01, ADM-CRM-02) ----------------------------------
+  //
+  // **Four leads, because a board with one card demonstrates nothing.** One in each stored
+  // stage plus an unattributed one, so the board draws three non-empty columns and the table
+  // has a row for each -- and one of them is cold, which is the single row state either view
+  // has. A lead cannot be *aged* from here (`crm_leads.created_at` is outside every runtime
+  // role's UPDATE grant, deliberately: a lead whose age could be reset is a lead that never
+  // goes cold), so the cold one is the lead nobody has touched and the warm ones carry a
+  // touchpoint written just now.
+  const leadSource = await call("/crm/sources", {
+    method: "POST", ...as(token),
+    body: {
+      source_key: "sweifieh_open_day", display_name: "Sweifieh open day",
+      correlation_id: cid(),
+    },
+  });
+  const leadFor = async (name, over = {}) => {
+    const who = await call("/people", {
+      method: "POST", ...as(token),
+      body: { legal_name: name, profile_kinds: ["lead"], correlation_id: cid() },
+    });
+    return call("/crm/leads", {
+      method: "POST", ...as(token),
+      body: {
+        person_id: who.person_id, source_id: leadSource.source_id,
+        correlation_id: cid(), ...over,
+      },
+    });
+  };
+  // Cold: no touchpoint at all, so the clock runs from its creation -- which is the canvas's
+  // own case, "Rana Sabbagh NO CONTACT · 2 DAYS" beside "open day · 2d". It reads warm here
+  // because it was made a moment ago; what the fixture proves is that the row is drawn and
+  // that the chip filters, and the forty-eight-hour boundary is the component test's.
+  const coldLead = await leadFor("Rana Sabbagh", { interests: ["classes", "pt"] });
+  const contactedLead = await leadFor("Omar Zaid");
+  await call(`/crm/leads/${contactedLead.lead_id}/touchpoints`, {
+    method: "POST", ...as(token),
+    body: {
+      kind: "call", summary: "asked twice about the 19:00 spin class",
+      correlation_id: cid(),
+    },
+  });
+  const touredLead = await leadFor("Lina Haddad");
+  await call(`/crm/leads/${touredLead.lead_id}/touchpoints`, {
+    method: "POST", ...as(token),
+    body: { kind: "tour", summary: "walked the floor with Yasmin", correlation_id: cid() },
+  });
+  // An owned lead with a next action, which is the one row where ADM-CRM-02's OWNER and NEXT
+  // ACTION columns have anything in them. The owner is the seeded member, because this
+  // fixture's staff are sign-ins rather than people -- which is the asymmetry the board's
+  // own "mine" branch is about.
+  const ownedLead = await leadFor("Faris Alami", { owner_person_id: person.person_id });
+  await call(`/crm/leads/${ownedLead.lead_id}/next-action`, {
+    method: "POST", ...as(token),
+    body: {
+      next_action: "call back about the 17:00 tour", next_action_on: day(2).slice(0, 10),
+      correlation_id: cid(),
+    },
+  });
+
   // Last, so it sees everything above. The timeline, the dispatched outbox and the sweeps on
   // the operations board are all these ticks' work.
   //
@@ -2664,6 +2724,12 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
     assignedCaseId: assignedCase.case_id,
     snoozedCaseId: snoozedCase.case_id,
     snoozedReturnOn: returnOn,
+    // MOD-027's pipeline.
+    leadSourceId: leadSource.source_id,
+    coldLeadId: coldLead.lead_id,
+    contactedLeadId: contactedLead.lead_id,
+    touredLeadId: touredLead.lead_id,
+    ownedLeadId: ownedLead.lead_id,
     overdueTaskId: overdueTask.task_id,
     mineTaskId: mineTask.task_id,
     settledTaskId: settledTask.task_id,
@@ -2750,6 +2816,8 @@ if (invokedDirectly) {
       `VEYRO_E2E_TASK_PASSWORD=${fixture.taskPassword}`,
       `VEYRO_E2E_DUTY_PERSON_ID=${fixture.dutyPersonId}`,
       `VEYRO_E2E_DESK_QUEUE_ID=${fixture.deskQueueId}`,
+      `VEYRO_E2E_COLD_LEAD_ID=${fixture.coldLeadId}`,
+      `VEYRO_E2E_OWNED_LEAD_ID=${fixture.ownedLeadId}`,
       `VEYRO_E2E_MONEY_CASE_ID=${fixture.moneyCaseId}`,
       `VEYRO_E2E_MONEY_CASE_NUMBER=${fixture.moneyCaseNumber}`,
       `VEYRO_E2E_ASSIGNED_CASE_ID=${fixture.assignedCaseId}`,

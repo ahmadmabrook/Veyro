@@ -101,6 +101,13 @@ const surfaces: [string, string][] = [
   // grids below 600px; the sheet is four `MetricCell`s over a `Timeline` and five forms, which
   // is the densest stack of components on any screen here; and the resolved board is a grid
   // whose outcome column holds a tenant's own prose.
+  // **MOD-027's two.** The board is five columns in a CSS grid, which is the one layout here
+  // whose width is a column count rather than a table's -- a `repeat(5, minmax(0, 1fr))` with
+  // a card in each is what `/permissions` overflowed by 125px for, so it is swept. And the
+  // table is a six-column grid whose primary cell stacks a name over a meta line, which is
+  // the shape that duplicated every droppable value on three other grids below 600px.
+  ["the lead board", "/leads"],
+  ["the lead table", "/leads?view=table"],
   ["the task list", "/tasks"],
   ["an attention item", `/tasks/cases/${creds.moneyCaseId}`],
   ["resolved today", "/tasks/resolved"],

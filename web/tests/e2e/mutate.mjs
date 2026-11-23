@@ -2074,6 +2074,71 @@ const MUTATIONS = [
     grep: "cannot be given a commitment the server would never send",
     runner: "vitest",
   },
+  // ---- MOD-027's board and table (ADM-CRM-01, ADM-CRM-02) ----
+  {
+    id: "lead-masked-name-is-a-marker",
+    why: "`GET /people/names` returns the *marker* for a field this session cannot read, not "
+      + "a null -- so without `isWithheld` the board printed `***` as though somebody were "
+      + "called that, and its own step-up offer never appeared because nothing looked "
+      + "withheld. Found by the browser spec, which is the layer that sees a rendered value",
+    file: "src/app/leads/page.tsx",
+    from: "    return name !== null && !isWithheld(name) ? name : null;",
+    to: "    return name;",
+    runner: "playwright",
+    grep: "step-up that lifts the names",
+  },
+  {
+    id: "lead-board-column-order",
+    why: "the five columns are the canvas's own sequence, and a board that drew Joined before "
+      + "New would pass five separate visibility checks",
+    file: "src/lib/leads.ts",
+    from: 'export const BOARD_COLUMNS = ["new", "contacted", "toured", "on_trial", "joined"] as const;',
+    to: 'export const BOARD_COLUMNS = ["joined", "on_trial", "toured", "contacted", "new"] as const;',
+    runner: "playwright",
+    grep: "five columns, in its order",
+  },
+  {
+    id: "lead-on-trial-says-why",
+    why: "`On trial` is always empty in this build, and a column drawn with no reason reads as "
+      + "a club with no trials rather than as a build with none",
+    file: "src/lib/leads.ts",
+    from: '  return stage === "on_trial" ? "leads.onTrialEmpty" : null;',
+    to: "  return null;",
+    runner: "playwright",
+    grep: "says why it is empty",
+  },
+  {
+    id: "lead-age-unit",
+    why: "the canvas writes both units -- \"open day · 2d\" and \"instagram · 4h\" -- and a "
+      + "board that said 48h where it means 2d is a figure a reader has to divide",
+    file: "src/lib/leads.ts",
+    from: "  if (hours < 24) return fill(locale, \"leads.sinceHours\", { count: hours });",
+    to: "  if (hours < 1000) return fill(locale, \"leads.sinceHours\", { count: hours });",
+    runner: "vitest",
+    grep: "hours below a day and days above it",
+  },
+  {
+    id: "lead-unattributed-source",
+    why: "\"where did this come from\" is the question the source-effectiveness report is built "
+      + "on, so an unattributed lead is the answer that matters most -- not a blank before a "
+      + "separator",
+    file: "src/lib/leads.ts",
+    from: '  const source = lead.source ?? fill(locale, "leads.noSource", {});',
+    to: "  const source = lead.source ?? \"\";",
+    runner: "vitest",
+    grep: "says so rather than leaving the line half-empty",
+  },
+  {
+    id: "lead-mine-needs-a-person",
+    why: "a reader whose sign-in is not linked to a person owns no leads, and an empty board "
+      + "with no reason is indistinguishable from an empty queue -- two facts, one of them "
+      + "not about the work at all",
+    file: "src/app/leads/page.tsx",
+    from: "  if (board?.mine_is_zero_without_a_person_record !== undefined) {",
+    to: "  if (false) {",
+    runner: "playwright",
+    grep: "says the reader is nobody",
+  },
 ];
 
 const only = process.argv[2];

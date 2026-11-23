@@ -96,7 +96,7 @@ export default async function RootLayout({
     // per-identity budget. Same evaluator, same assurance weighing, one scope resolution.
     const [
       organization, people, access, permissions, devices, operations, schedule, configuration,
-      finance, catalog, privacy, messages, integrations, payments, tasks,
+      finance, catalog, privacy, messages, integrations, payments, tasks, leads,
     ] = await gateAll([
       "tenancy.organization.read",
       "people.person.read",
@@ -113,6 +113,7 @@ export default async function RootLayout({
       "integrations.install.read",
       "finance.payment.read",
       "tasks.task.read",
+      "crm.lead.read",
     ] as const);
     // **Grouped, iconed and counted, which is what the rail actually is.** The Command
     // Center canvas draws thirteen items under four headings -- OPERATE, PEOPLE, MONEY,
@@ -147,6 +148,13 @@ export default async function RootLayout({
         group: "nav.groupPeople", icon: "members" },
       { href: "/people", label: "nav.people", allowed: people.allowed,
         group: "nav.groupPeople", icon: "staff" },
+      // **`Leads` is the design's own third PEOPLE entry**, between Members and Staff in
+      // ADM-CC-01's rail with a count beside it: `['Leads', 'ADM-CRM-01', '◎', '36']`. The
+      // count is not rendered here, because the figure the canvas shows is the open-lead
+      // total and the rail would be a second place it is computed -- the board's header is
+      // where it belongs, and two of them can disagree.
+      { href: "/leads", label: "nav.leads", allowed: leads.allowed,
+        group: "nav.groupPeople", icon: "members" },
       // **The design's own "Staff & coaches", which this rail listed as absent until now.**
       // It shares `people.person.read` with the two above because a staff profile is one of
       // a person's profiles -- the permission's own description says so -- and the role and

@@ -3460,3 +3460,53 @@ a {
   flex-direction: column;
   gap: var(--space-2);
 }
+
+/* ADM-CRM-01's board. Five columns of cards, and the responsive behaviour belongs here
+ * rather than in the screen -- §08: accessibility, RTL and responsive behaviour are the
+ * component's, "not in a screen spec", because otherwise every new screen re-implements
+ * them.
+ *
+ * **Five columns at 375px is 68px each**, which is a column of broken words rather than a
+ * board: "Sweifieh open day · just now" in 68px wraps to eight lines. The sideways-scroll
+ * sweep cannot see that -- a narrow grid does not overflow, it just becomes unreadable -- so
+ * this is the half a sweep does not cover and a look at the page does. Below bp.sm the five
+ * stack, which is the reading order the stages are already in, and the table view is the
+ * other answer a reader can reach from the toggle.
+ *
+ * `minmax(0, 1fr)` rather than `1fr`: a grid track's implicit minimum is `auto`, so a long
+ * unbroken word in a card would push the track wider than its share and widen the page --
+ * which is the 125px overflow `/permissions` paid for, one layout over. */
+.ds-pipeline {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: var(--space-3);
+  align-items: start;
+}
+
+@media (max-width: 899px) {
+  .ds-pipeline { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 599px) {
+  .ds-pipeline { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* ADM-CRM-01's `LeadCard`. The card's own box is inline on the component, as every design-
+ * system component's is; what cannot be inline is a state, so the hover and focus
+ * affordances live here.
+ *
+ * **An interactive surface says so.** §31's `interactive` card kind carries a cursor and a
+ * hover, and a card that navigates with neither reads as a panel -- which is the "a link
+ * styled as a button, and the inverse too" rule from the other side.
+ *
+ * **Found by the `ds-` sweep**, which refused this class while it styled nothing: a class
+ * name the stylesheet does not define is a component the app thinks it has, and the sweep
+ * exists because the text and the structure are identical either way. */
+.ds-lead-card:hover {
+  border-color: var(--color-border-strong);
+  background: var(--color-surface-raised);
+}
+
+/* No `:focus-visible` rule: the global `:where(a, ...)` one already rings every link, and a
+ * second would be two definitions of one ring -- which is the duplication this stylesheet's
+ * own `.ds-button` comment records. */

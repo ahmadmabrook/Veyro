@@ -210,16 +210,6 @@ const BACKLOG = {
   // MOD-027's own dependency chain runs through MOD-026, so the seven CRM screens are two
   // modules deep rather than one. The pipeline, a lead, its stages and the unified inbox are
   // all its; `lifecycle_state` on a MOD-014 person is the only part of any of it here.
-  "ADM-CRM-01": "work: MOD-027 slice 1 answers this board -- `GET /crm/board` returns all five "
-    + "columns with their counts and the header own figures -- 36 open leads, 7 going cold "
-    + "-- so what is owed is the screen. Two parts of the canvas are later slices: the `On "
-    + "trial` column is always empty because nothing marks a product as a trial, which is "
-    + "slice 2, the Veyro-suggests block is slice 4 and needs a model nobody has an and "
-    + "account with",
-  "ADM-CRM-02": "work: MOD-027 slice 1 answers this table. `GET /crm/leads` returns the lead, its "
-    + "source, its owner, the hours since contact and the next action, ordered oldest "
-    + "contact first because a lead's value decays by the hour, and two of the three chips "
-    + "the canvas draws are `going_cold` and `mine`. The third, trial ending, is slice 2",
   "ADM-CRM-03": "work: MOD-027 slice 1 answers the profile -- the lead, its interests, its owner and "
     + "its touchpoint timeline, with a touchpoint's prose masked for a reader who could not "
     + "have written one. The canvas's four metrics (visits, classes, days left, engagement) "

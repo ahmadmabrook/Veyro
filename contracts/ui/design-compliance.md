@@ -2008,3 +2008,72 @@ assigning writes a timeline entry nothing removes, so a spec that pressed either
 the first run against a fresh fixture and fail on every run after it. What the browser asserts
 is which controls are offered, which are inert and what each state says; the writes are proven
 by `backend/tests/test_tasks_api.py` and by nine mutations over the decisions.
+
+## ADM-CRM-01 · ADM-CRM-02 — the pipeline, as a board and as a table
+
+**The canvases.** ADM-CRM-01 is a header (*"36 open leads · 7 going cold"* over *"Khalda · 31%
+converted over 30 days, up 4 points"*), an `Add a lead` button, and five columns — New 12,
+Contacted 9, Toured 6, On trial 7, Joined 11 this month — each a stack of cards carrying a name
+and one meta line (*"open day · 2d"*, *"instagram · 4h"*, *"called · 1d"*, *"Mon 17:00"*, *"day
+6 of 7"*) with a `+10 more` overflow. Its COMPONENTS line names `PipelineColumn ×5 · LeadCard ·
+Member360Header(lead variant) · AITreatment(ai.600) · StatusBadge(no-contact)`. ADM-CRM-02 is
+the same rows as a grid — LEAD, SOURCE, OWNER, AGE, NEXT ACTION — with three chips (*"No contact
+48h · 7"*, *"Trial ending · 4"*, *"Mine · 12"*), a `Board view` toggle, and the note that fixes
+the whole screen: *"Same grid component as the members list at the same 34px. Sales sees their
+own leads by default with a Mine toggle; a Club Manager sees the team. Age is the sortable
+column that matters — a lead's value decays by the hour, so it carries colour where the others
+do not."*
+
+**Every MOD-027 permission is routine**, as MOD-026's are and for the same reason: raising,
+claiming and writing up a lead is the ordinary work of a sales shift, and a step-up on every
+logged phone call would make the pipeline wrong instead. So nothing on these two screens is
+absent for want of a step-up.
+
+- **ADM-CRM-01 · lead pipeline** — `/leads`, over `GET /crm/board` for the five counts and the
+  header's two figures, `GET /crm/leads` for the cards, and `GET /people/names` composed in one
+  batch for the names. `PipelineColumn` and `LeadCard` are new design-system components, built
+  from the canvas's drawing because the COMPONENTS line names them and nothing else specifies
+  them.
+- **ADM-CRM-02 · lead table** — `/leads?view=table`, the same reads through `DataGrid`, with
+  `rowSeverity` carrying the cold mark the canvas asks for by name.
+
+### The four things this screen had to settle
+
+**A lead has no name, so the board composes one.** MOD-027 holds no name, number or address —
+ADM-CRM-01 makes it structural, *"a lead, a trialist and a member are one record at three
+stages"* — so every name on these two screens comes from `GET /people/names` in a single batch,
+masked by MOD-014's rules rather than this screen's. Not one request per row: a board of fifty
+is the round-trip problem the staff list paid for once. The owner column rides in the same
+batch, because a second request for the second column would be two round trips for one table.
+
+**The counts are the tenant's and the cards are a page.** A column can read 12 over two cards
+and a `+10 more` line, which is the canvas's own shape: the board read counts every lead and the
+card list is a bounded page. A chip figure taken from the fifty rows loaded would be the
+members-list finding, where summing the page was honest and still the wrong number in the place
+a manager reads the business.
+
+**The cold mark is `rowSeverity` and an edge-mark, never a fill.** *"Age is the sortable column
+that matters … so it carries colour where the others do not"*, and a pipeline stage is not a
+severity: painting the five columns would make the board read as a problem list. A lead in `new`
+is not worse than one in `toured`.
+
+**`Mine` is a flag on the request.** A session carries an `identity_id` and the link to a person
+is MOD-014's, so a client-side "mine" filter is not expressible — the same finding ADM-TSK-01
+paid for, and the same remedy: `GET /crm/leads?mine=true` and `GET /crm/board?mine=true` derive
+it. A reader whose sign-in is not linked to a person gets the reason rather than an empty board,
+because staff hold permissions and do not have to be anybody in particular.
+
+### What is drawn and empty, and what is not drawn at all
+
+**`On trial` is drawn with its reason on the column.** Nothing in this build marks a product as
+a trial — neither `cat_products.product_type` nor `mem_membership_terms.membership_kind` has
+such a value — so no lead can be on one and the column is always empty. Hiding it would make
+the board read as four stages, which is a different product from the one the design draws.
+
+**Two things on the canvas are absent and named on the screen.** The *"VEYRO SUGGESTS · YOU SEND
+IT"* block needs a model nobody here has an account with; its permission exists and is
+`privileged`, which needs a hardware sign-in. And *"31% converted over 30 days, up 4 points"*
+needs a conversion to count, which needs the trial — the same gap as the column above.
+
+**The third chip is not offered.** *"Trial ending · 4"* is slice 2's, and a chip that filtered
+to nothing would read as a club with no trials ending rather than as a build with no trials.

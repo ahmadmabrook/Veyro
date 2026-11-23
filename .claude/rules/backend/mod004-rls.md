@@ -2369,3 +2369,43 @@ is the check working at its widest.** `design:coverage` refused eight screens at
 remedy is not a token change: each reason has to say what is *left* in the module, which is a
 different sentence per screen and is exactly the information a reader needs. Budget for it when
 a new module's first slice lands, and read each reason rather than editing the prefix.
+
+
+**A page must not render its own `<main>`, and nesting one costs *both* their landmark role.**
+`layout.tsx` wraps every page in `<main id="main">`, so a page that renders another produces
+invalid HTML — and Chrome then exposes neither as `main`, which means the screen renders
+correctly and `main` is absent from the accessibility tree. Every assertion about text passes;
+what fails is a locator scoped to `main`. Found by reading the tree out of a failing spec rather
+than by any sweep, and the tell is that *some* assertions on the page pass while every one
+scoped to the landmark does not. Scope a spec to `#main`, which is the layout's own, and give a
+page's content a `div`.
+
+**A masked value is a marker, not a null, and treating it as absent hides the remedy too.**
+`GET /people/names` answers a field this session cannot read with the mask string, so
+`found?.legal_name ?? null` yields `"***"` — which renders as though somebody were called that,
+and makes a "some name is withheld" test false, which is how MOD-027's board lost the step-up
+offer it needs. `isWithheld` is the test, the members list already used it, and the browser spec
+is what caught it: the assertion that the step-up link is *present* is the one that fails, not
+the one about the name. **When a read can mask, the surface's "is this withheld" check is a
+function and never a null check.**
+
+**A sweep that measures overflow cannot see a layout that is merely unreadable.** A five-column
+CSS grid at 375px is 68px a column: it does not overflow, so the sideways-scroll sweep passes,
+and the content wraps into a strip of broken words. The responsive behaviour belongs to the
+component rather than the screen — §08 of the design source says so in as many words — so it is
+a class with breakpoints, and the breakpoint-boundary sweep then checks the numbers are the
+design's. **Overflow and legibility are two properties and only one of them has a sweep.**
+
+**`getByRole(..., { name })` matches by substring, so "Age" finds "Stage".** Playwright's
+accessible-name matching is a substring test for a string argument, and a column header that
+names a superstring of another is the smallest possible form of the positional-locator trap:
+the assertion passes against the wrong element until a second header makes it ambiguous. `exact:
+true` for any name that is a substring of a sibling's.
+
+**And never `import()` a sweep module to inspect it — this file says so, and it happened again.**
+`node -e "import('./tests/e2e/mutate.mjs')"` *ran* the whole browser mutation sweep in the
+background, which edits source files; `TaskStop` reaches none of the handlers, so it took a
+direct `kill -TERM` to the node process and then a `git status` to find the leftover — a
+one-line mutation in `permissions/page.tsx`, a file the session had never touched. The tell is
+exactly the one already recorded: **a modified file you did not author.** Read it with `cat`,
+check its syntax with `node --check`, count its entries with a regex — never by importing it.

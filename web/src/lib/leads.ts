@@ -1,0 +1,203 @@
+import { fill, formatInteger, type Locale, type MessageKey } from "@/i18n/locale";
+
+/**
+ * ADM-CRM-01 and ADM-CRM-02's decisions, with no I/O in the module.
+ *
+ * **Nothing here composes a name.** A lead is a `ppl_persons` row -- "a lead, a trialist and
+ * a member are one record at three stages, never three records" -- so the name arrives from
+ * MOD-014 already masked by its own rules, and this module never builds one from parts.
+ *
+ * **The two views are two components over one list.** The canvas draws a board of five
+ * columns and a "Board view" toggle beside a table; ADM-CRM-02's own note says the table is
+ * "the same grid component as the members list at the same 34px". So the view is a parameter
+ * and the rows are the same rows.
+ */
+
+/** The five columns ADM-CRM-01 draws, in its own order. The last two are MOD-017's answer. */
+export const BOARD_COLUMNS = ["new", "contacted", "toured", "on_trial", "joined"] as const;
+
+export type BoardColumn = (typeof BOARD_COLUMNS)[number];
+
+export const LEAD_VIEWS = ["board", "table"] as const;
+
+export type LeadView = (typeof LEAD_VIEWS)[number];
+
+export function isLeadView(value: string | undefined): value is LeadView {
+  return value !== undefined && (LEAD_VIEWS as readonly string[]).includes(value);
+}
+
+/** ADM-CRM-02's three chips. The third is slice 2's and is not offered. */
+export const LEAD_FILTERS = ["all", "going_cold", "mine"] as const;
+
+export type LeadFilter = (typeof LEAD_FILTERS)[number];
+
+export function isLeadFilter(value: string | undefined): value is LeadFilter {
+  return value !== undefined && (LEAD_FILTERS as readonly string[]).includes(value);
+}
+
+/** One row of `GET /crm/leads`. No name, no number: those are MOD-014's. */
+export type LeadRow = {
+  lead_id: string;
+  person_id: string;
+  stage: string;
+  source_id: string | null;
+  source: string | null;
+  owner_person_id: string | null;
+  next_action: string | null;
+  next_action_on: string | null;
+  created_at: string;
+  version: number;
+  last_touch_at: string | null;
+  hours_since_contact: number;
+  going_cold: boolean;
+};
+
+export type LeadList = {
+  leads: LeadRow[];
+  count: number;
+  limit: number;
+  truncated: boolean;
+  going_cold_after_hours: number;
+};
+
+export type Board = {
+  columns: { stage: string; count: number }[];
+  open_leads: number;
+  going_cold: number;
+  /** Present when the reader is not linked to a person, in which case every count is zero. */
+  mine_is_zero_without_a_person_record?: string;
+  on_trial_is_empty_in_this_slice?: string;
+};
+
+export type Touchpoint = {
+  touchpoint_id: string;
+  kind: string;
+  occurred_at: string;
+  summary: string;
+  summary_withheld: boolean;
+  recorded_at: string;
+  recorded_by: string;
+};
+
+export type LeadDetail = LeadRow & {
+  stage_changed_at: string;
+  interests: string[];
+  board_stage: string;
+  touchpoints: Touchpoint[];
+  touchpoint_count: number;
+  touchpoints_truncated: boolean;
+};
+
+export type SourceRow = {
+  source_id: string;
+  source_key: string;
+  display_name: string;
+  location_id: string | null;
+  status: string;
+  created_at: string;
+};
+
+const STAGE_WORDS: Record<string, MessageKey> = {
+  new: "leads.stage.new",
+  contacted: "leads.stage.contacted",
+  toured: "leads.stage.toured",
+  on_trial: "leads.stage.onTrial",
+  joined: "leads.stage.joined",
+};
+
+const KIND_WORDS: Record<string, MessageKey> = {
+  call: "leads.kind.call",
+  message: "leads.kind.message",
+  email: "leads.kind.email",
+  visit: "leads.kind.visit",
+  tour: "leads.kind.tour",
+  note: "leads.kind.note",
+};
+
+const INTEREST_WORDS: Record<string, MessageKey> = {
+  classes: "leads.interest.classes",
+  pt: "leads.interest.pt",
+  gym_only: "leads.interest.gymOnly",
+};
+
+/**
+ * The reader's word for a stored value, or `null` where this build has none.
+ *
+ * **A vocabulary the backend stores is never a label**, which this app has four recorded
+ * defects from -- a `lifecycle_state` rendered as `lead`, a plan rendered as `recurring`, a
+ * wallet kind and a credential kind, each Latin letters in the middle of an Arabic line. And
+ * `null` rather than a fallback word: the set is the server's and may grow, so showing an
+ * ugly value is better than hiding a stage somebody needs to see.
+ */
+export function stageWord(stage: string): MessageKey | null {
+  return STAGE_WORDS[stage] ?? null;
+}
+
+export function kindWord(kind: string): MessageKey | null {
+  return KIND_WORDS[kind] ?? null;
+}
+
+export function interestWord(interest: string): MessageKey | null {
+  return INTEREST_WORDS[interest] ?? null;
+}
+
+/**
+ * How long since this lead was last contacted, in the canvas's own two forms.
+ *
+ * "open day · 2d" and "instagram · 4h": hours below a day and whole days above it. Both are
+ * whole numbers, because this app has one number path and `formatInteger` throws for a
+ * fraction -- which cost a 500 on a rendered page once.
+ *
+ * **The server computed the hours.** A browser comparing a timestamp against its own clock
+ * counts in the wrong frame, which this build has three recorded defects from, so the figure
+ * comes down on the row and this only chooses the unit.
+ */
+export function sinceLabel(locale: Locale, hours: number): string {
+  if (hours < 1) return fill(locale, "leads.sinceNow", {});
+  if (hours < 24) return fill(locale, "leads.sinceHours", { count: hours });
+  return fill(locale, "leads.sinceDays", { count: Math.floor(hours / 24) });
+}
+
+/**
+ * ADM-CRM-02's meta line under a name: the source and the age.
+ *
+ * A lead with no source says so rather than leaving the line half-empty: "where did this come
+ * from" is the question ADM-RPT-03 is built on, and an unattributed lead is the answer that
+ * matters most.
+ */
+export function metaLine(locale: Locale, lead: LeadRow): string {
+  const source = lead.source ?? fill(locale, "leads.noSource", {});
+  return `${source} · ${sinceLabel(locale, lead.hours_since_contact)}`;
+}
+
+/**
+ * The count beside a column title, as the canvas draws it.
+ *
+ * Rendered through `formatInteger` rather than interpolated, because this app has one
+ * number path and a cross-runtime parity test behind it -- a bare `String(n)` is a second
+ * one. `latn` because the numeral system is a tenant setting this build does not carry,
+ * which is the same choice `money()` records.
+ */
+export function columnCount(count: number): string {
+  return formatInteger(count, "latn");
+}
+
+/**
+ * How many cards a column draws before it says "+N more".
+ *
+ * Two, which is what the canvas draws -- and the overflow line is a link rather than a
+ * truncation, because a column that silently stopped would be a count the reader cannot
+ * reconcile with the rows under it.
+ */
+export const CARDS_PER_COLUMN = 2;
+
+/**
+ * What a board column is missing, where it is missing something.
+ *
+ * `on_trial` is always empty in this slice: nothing in this build marks a product as a trial,
+ * so the column is drawn with the reason rather than hidden. A hidden column would make the
+ * board read as four stages, which is a different product from the one the design draws.
+ */
+export function columnNote(stage: string): MessageKey | null {
+  return stage === "on_trial" ? "leads.onTrialEmpty" : null;
+}

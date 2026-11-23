@@ -4737,9 +4737,10 @@ Things worth knowing before extending it:
 
 Known gaps, deliberate:
 
-- **No screens.** ADM-CRM-01, 02, 03 and 04 are answered by the reads and writes this slice
-  built and none of them is drawn yet; `design:coverage` carries each with what is left in it.
-  Eight screens, which is more than any other unbuilt module's.
+- **Two of the eight screens are built and six are not.** ADM-CRM-01's board and
+  ADM-CRM-02's table are `/leads` -- see "The web app" -- and the profile, the add form, the
+  trial pair and the lost sheet are owed; `design:coverage` carries each with what is left in
+  it. Still more screens than any other module's.
 - **No trial, so the `On trial` column is always empty** and the board says so rather than
   hiding it. Nothing in this build marks a product as a trial -- neither
   `cat_products.product_type` nor `mem_membership_terms.membership_kind` has such a value --
@@ -4943,6 +4944,46 @@ acts and the resolution all have forms rather than reasons for not having them; 
 account page, which was the only screen in this app that wrote anything for a long stretch and
 has five of them: revoking another live session, revoking a device, trusting one, minting a
 batch of recovery codes and enrolling a passkey.
+
+**ADM-CRM-01's board and ADM-CRM-02's table are `/leads`, and they are the first screens here
+whose own components the design system did not have.** The canvas's COMPONENTS line names
+`PipelineColumn ×5 · LeadCard` and nothing else in the design specifies them, so the drawing is
+the specification: a column is a header with a count over a short stack of cards and a `+N
+more` line, and a card is a name, one meta line and -- for a cold lead -- an edge-mark. Not a
+`Card`, because §31 forbids one that draws a border round a block; not a `DataGrid`, because a
+grid turns five parallel short lists into the table view ADM-CRM-02 draws instead.
+
+Five things in them are decisions:
+
+- **Every name on both screens is withheld at an ordinary sign-in, and the board offers the
+  remedy.** A lead is a `ppl_persons` row, so the names come from `GET /people/names` in one
+  batch -- `legal_name` is an identity-class field, which a sales desk's password session
+  cannot read. The members list paid for discovering that a column of markers with nothing to
+  act on is a dead end; this board carries the same step-up link, and a card whose name is
+  withheld is still a link to its record.
+- **The masked value is a *marker*, not a null**, which is the defect the browser spec caught:
+  `GET /people/names` returns `***` for a field this session cannot read, so the first version
+  rendered it as though somebody were called that -- and the board's own step-up offer never
+  appeared, because nothing looked withheld. `isWithheld` is MOD-014's own test for it and the
+  members list already used it.
+- **The counts are the tenant's and the cards are a page.** A column reads 12 over two cards
+  and a `+N more` line, which is the canvas's own shape: the board read counts every lead and
+  the card list is bounded. A chip figure summed from the page would be the members-list
+  finding again.
+- **The layout is the component's, not the screen's.** Five columns at 375px is 68px each,
+  which is a column of broken words rather than a board -- and the sideways-scroll sweep cannot
+  see it, because a narrow grid does not overflow, it just becomes unreadable. `.ds-pipeline`
+  collapses to two columns at bp.sm and one at bp.xs, which is the reading order the stages are
+  already in.
+- **`On trial` is drawn with its reason on the column**, because nothing in this build marks a
+  product as a trial. Hiding it would make the board read as four stages, which is a different
+  product from the one the design draws.
+
+**And the page had to stop rendering its own `<main>`.** The layout owns one, so a page that
+renders another nests it -- invalid HTML, and it costs *both* their landmark role: the board
+rendered correctly and `main` was not in the accessibility tree at all. Found by reading the
+tree out of a failing spec; no assertion about text could have seen it, because the text was
+all there.
 
 **MOD-026's three screens are where a reader who is *nobody* became a product state worth
 rendering.** Two of ADM-CC-06's five states and ADM-TSK-01's first chip are derived from
@@ -6190,7 +6231,8 @@ re-running the fixture invalidates every test already created.
 
 Known gaps: the surface covers the sign-in, the step-up, the account page, MOD-004, MOD-005,
 MOD-007, MOD-008, MOD-009, MOD-010, MOD-011, MOD-012, MOD-013, MOD-014, MOD-016, MOD-017,
-MOD-018, MOD-019, MOD-021, MOD-022 and MOD-026, plus MOD-020's roster on a session,
+MOD-018, MOD-019, MOD-021, MOD-022, MOD-026 and MOD-027's board and table, plus
+MOD-020's roster on a session,
 ADM-SCH-04's availability grid at `/rota`, ADM-MSH-07's cancellation sheet at
 `/people/{id}?tab=membership&cancel=1`, ADM-MEM-10's walk-in form at
 `/members/new`, FD-06's class check-in at `/desk/classes/{id}` and FD-03's denial
