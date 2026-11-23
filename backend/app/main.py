@@ -498,13 +498,31 @@ class AuthzPolicyBody(BaseModel):
     description: str | None = None
 
 
+class ApprovalStageBody(BaseModel):
+    """One step of a staged approval: N holders of one permission.
+
+    **No ordinal.** The order is the list's, because a caller-supplied ordinal admits a gap --
+    and `sequential` walks "every earlier stage", so a gap would make "earlier" depend on how
+    somebody numbered a row rather than on the order they wrote.
+    """
+
+    required_permission: str
+    required_approvals: int = Field(default=1, ge=1, le=20)
+
+
 class ApprovalPolicyBody(BaseModel):
+    """**`stages` is AUT-02-R05's "sequential, parallel", and absent means single-stage** --
+    the existing meaning, whose stage is `required_permission` and `required_approvals`. Those
+    two stay required so a staged policy still says what one approver of it looks like."""
+
     action: str
     required_permission: str
     correlation_id: str
     threshold_minor: int = 0
     required_approvals: int = 1
     separation_of_duties: bool = True
+    stages: list[ApprovalStageBody] = Field(default_factory=list, max_length=8)
+    sequential: bool = False
 
 
 class ApprovalRequestBody(BaseModel):
@@ -526,6 +544,10 @@ class ApprovalDecisionBody(BaseModel):
     correlation_id: str
     reason: str | None = None
     on_behalf_of: str | None = None
+    # **Which step this decision is for**, defaulted to the single-stage case so every
+    # existing caller keeps working. The request's own snapshot says which stages it has, and
+    # both this module and a trigger refuse one it has not got.
+    stage_ordinal: int = Field(default=1, ge=1, le=8)
 
 
 class ApprovalDelegationBody(BaseModel):
@@ -4380,6 +4402,8 @@ def create_app(
             required_approvals=body.required_approvals,
             separation_of_duties=body.separation_of_duties,
             actor_identity_id=session["identity_id"],
+            stages=[stage.model_dump() for stage in body.stages],
+            sequential=body.sequential,
         )
 
     @app.post("/authz/approvals", status_code=201)
@@ -4413,6 +4437,7 @@ def create_app(
             decided_by=session["identity_id"], decision=body.decision,
             correlation_id=body.correlation_id, reason=body.reason,
             on_behalf_of=optional_uuid(body.on_behalf_of, "on_behalf_of"),
+            stage_ordinal=body.stage_ordinal,
         )
 
     @app.post("/authz/delegations", status_code=201)

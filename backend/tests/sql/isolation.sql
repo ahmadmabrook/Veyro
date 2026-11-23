@@ -48698,8 +48698,305 @@ BEGIN
             probe := probe + 1;
     END;
 
-    IF probe <> 13 THEN
-        RAISE EXCEPTION 'CHECK 113 FAILED: ran % of 13 INV-AUT-02 probes', probe;
+    -- ---- R05's stages: the two triggers `0006` adds, and the tables' own CHECKs.
+    --
+    -- **A single-stage request has no stage rows at all**, which is the one admissible
+    -- absence: a policy with no stages is a single-stage policy whose stage is ordinal 1. So
+    -- "ordinal 1 with no rows" has to be permitted and every other ordinal refused, which no
+    -- composite key can express -- hence a trigger, and hence a probe for each side.
+    -- **Its own request, because a refused insert that stops being refused lands a row.**
+    -- Pointed at a request other probes decide, the mutation that disables this branch let
+    -- the decision through -- and a *later* probe then hit the one-decision-per-approver
+    -- index, so the sweep reported a check other than 113 answering. A probe whose row
+    -- survives its own mutation needs a subject nobody else touches.
+    INSERT INTO iam.approval_requests
+        (tenant_id, request_id, action, resource_type, requested_by, required_approvals,
+         separation_of_duties, required_permissions, expires_at)
+    VALUES ('11111111-1111-4111-8111-111111111111',
+            'ffffffff-0000-4000-8000-000000000011', 'billing.refund.issue', 'invoice',
+            'eeeeeeee-0000-4000-8000-000000000002', 1, false,
+            ARRAY['billing.refund.approve'], now() + interval '1 day');
+    BEGIN
+        INSERT INTO iam.approval_decisions
+            (tenant_id, request_id, decided_by, decision, stage_ordinal)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'ffffffff-0000-4000-8000-000000000011',
+                'eeeeeeee-0000-4000-8000-00000000000a', 'approved', 3);
+        RAISE EXCEPTION
+            'CHECK 113 FAILED: a decision named stage 3 of a single-stage request';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 113 FAILED%' THEN RAISE; END IF;
+            IF sqlerrm NOT LIKE '%a decision about nothing%' THEN
+                RAISE EXCEPTION
+                    'CHECK 113 FAILED: the phantom stage was refused by something else: %',
+                    sqlerrm;
+            END IF;
+            probe := probe + 1;
+    END;
+
+    -- A staged, sequential request: stage 1 needs one holder of the refund approval, stage 2
+    -- needs one holder of the export permission. Seeded here rather than in the file's main
+    -- seed because every probe below is about this one request.
+    INSERT INTO iam.approval_requests
+        (tenant_id, request_id, action, resource_type, requested_by, required_approvals,
+         separation_of_duties, required_permissions, expires_at, sequential)
+    VALUES ('11111111-1111-4111-8111-111111111111',
+            'ffffffff-0000-4000-8000-00000000000f', 'billing.refund.issue', 'invoice',
+            'eeeeeeee-0000-4000-8000-000000000002', 2, false,
+            ARRAY['billing.refund.approve'], now() + interval '1 day', true);
+    INSERT INTO iam.approval_request_stages
+        (tenant_id, request_id, ordinal, required_permission, required_approvals)
+    VALUES ('11111111-1111-4111-8111-111111111111',
+            'ffffffff-0000-4000-8000-00000000000f', 1, 'billing.refund.approve', 1),
+           ('11111111-1111-4111-8111-111111111111',
+            'ffffffff-0000-4000-8000-00000000000f', 2, 'finance.export.run', 1);
+
+    BEGIN
+        INSERT INTO iam.approval_decisions
+            (tenant_id, request_id, decided_by, decision, stage_ordinal)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'ffffffff-0000-4000-8000-00000000000f',
+                'eeeeeeee-0000-4000-8000-00000000000a', 'approved', 7);
+        RAISE EXCEPTION 'CHECK 113 FAILED: a decision named a stage the request has not got';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 113 FAILED%' THEN RAISE; END IF;
+            IF sqlerrm NOT LIKE '%has no stage%' THEN
+                RAISE EXCEPTION
+                    'CHECK 113 FAILED: the unknown stage was refused by something else: %',
+                    sqlerrm;
+            END IF;
+            probe := probe + 1;
+    END;
+
+    -- **The refusal sequential exists for**: stage 2 before stage 1 has its approval.
+    BEGIN
+        INSERT INTO iam.approval_decisions
+            (tenant_id, request_id, decided_by, decision, stage_ordinal)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'ffffffff-0000-4000-8000-00000000000f',
+                'eeeeeeee-0000-4000-8000-00000000000a', 'approved', 2);
+        RAISE EXCEPTION 'CHECK 113 FAILED: stage 2 was decided before stage 1';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 113 FAILED%' THEN RAISE; END IF;
+            IF sqlerrm NOT LIKE '%is not open%' THEN
+                RAISE EXCEPTION
+                    'CHECK 113 FAILED: the out-of-order stage was refused by something '
+                    'else: %', sqlerrm;
+            END IF;
+            probe := probe + 1;
+    END;
+
+    -- **And the permission, which no refusal probe can see.** Stage 1 is open, so it takes a
+    -- decision -- and then stage 2 is open too, by a different person, because the unique
+    -- index is one decision per approver per request across every stage. Without this the
+    -- trigger could refuse every staged decision and the three refusals above would still
+    -- pass, which is the "a guard that refuses too much" shape only a permission probe
+    -- catches.
+    BEGIN
+        INSERT INTO iam.approval_decisions
+            (tenant_id, request_id, decided_by, decision, stage_ordinal)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'ffffffff-0000-4000-8000-00000000000f',
+                'eeeeeeee-0000-4000-8000-00000000000a', 'approved', 1);
+        INSERT INTO iam.approval_decisions
+            (tenant_id, request_id, decided_by, decision, stage_ordinal)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'ffffffff-0000-4000-8000-00000000000f',
+                'eeeeeeee-0000-4000-8000-00000000000e', 'approved', 2);
+        probe := probe + 1;
+    EXCEPTION
+        WHEN OTHERS THEN
+            RAISE EXCEPTION
+                'CHECK 113 FAILED: stage 1 and then stage 2, by two people, was refused: %',
+                sqlerrm;
+    END;
+
+    -- **A parallel request's second stage is open from the start**, which is the whole
+    -- difference between the two words R05 names -- and a trigger that refused every
+    -- out-of-order decision would pass every refusal probe above while making "parallel"
+    -- mean nothing. A permission probe is the only thing that sees a guard refusing too much.
+    INSERT INTO iam.approval_requests
+        (tenant_id, request_id, action, resource_type, requested_by, required_approvals,
+         separation_of_duties, required_permissions, expires_at, sequential)
+    VALUES ('11111111-1111-4111-8111-111111111111',
+            'ffffffff-0000-4000-8000-000000000010', 'billing.refund.issue', 'invoice',
+            'eeeeeeee-0000-4000-8000-000000000002', 2, false,
+            ARRAY['billing.refund.approve'], now() + interval '1 day', false);
+    INSERT INTO iam.approval_request_stages
+        (tenant_id, request_id, ordinal, required_permission, required_approvals)
+    VALUES ('11111111-1111-4111-8111-111111111111',
+            'ffffffff-0000-4000-8000-000000000010', 1, 'billing.refund.approve', 1),
+           ('11111111-1111-4111-8111-111111111111',
+            'ffffffff-0000-4000-8000-000000000010', 2, 'finance.export.run', 1);
+    BEGIN
+        INSERT INTO iam.approval_decisions
+            (tenant_id, request_id, decided_by, decision, stage_ordinal)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'ffffffff-0000-4000-8000-000000000010',
+                'eeeeeeee-0000-4000-8000-00000000000a', 'approved', 2);
+        probe := probe + 1;
+    EXCEPTION
+        WHEN OTHERS THEN
+            RAISE EXCEPTION
+                'CHECK 113 FAILED: a parallel second stage was refused before the first: %',
+                sqlerrm;
+    END;
+
+    -- ---- the two stage tables' own CHECKs, which no trigger probe reaches.
+    --
+    -- Each names the constraint that refused it, because `check_violation` is the same
+    -- exception for every CHECK on a table and counting it proves whichever fires first.
+    BEGIN
+        INSERT INTO iam.approval_request_stages
+            (tenant_id, request_id, ordinal, required_permission, required_approvals)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                -- **A permission no other stage of this request uses.** With the ordinal
+                -- CHECK dropped the row is otherwise answered by the one-stage-per-permission
+                -- rule, so the case would prove the sibling -- which the mutation sweep said
+                -- by reporting it as answered by a different check.
+                'ffffffff-0000-4000-8000-000000000010', 9, 'authz.role.write', 1);
+        RAISE EXCEPTION 'CHECK 113 FAILED: a request stage sat past the declared ceiling';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender <> 'approval_request_stages_ordinal' THEN
+                RAISE EXCEPTION 'CHECK 113 FAILED: stage 9 was refused by %', offender;
+            END IF;
+            probe := probe + 1;
+    END;
+    BEGIN
+        INSERT INTO iam.approval_request_stages
+            (tenant_id, request_id, ordinal, required_permission, required_approvals)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'ffffffff-0000-4000-8000-000000000010', 3, 'authz.role.read', 0);
+        RAISE EXCEPTION 'CHECK 113 FAILED: a request stage asked for no approvers';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender <> 'approval_request_stages_count' THEN
+                RAISE EXCEPTION 'CHECK 113 FAILED: the empty quorum was refused by %',
+                                offender;
+            END IF;
+            probe := probe + 1;
+    END;
+    BEGIN
+        INSERT INTO iam.approval_request_stages
+            (tenant_id, request_id, ordinal, required_permission, required_approvals)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'ffffffff-0000-4000-8000-000000000010', 3, 'finance.*', 1);
+        RAISE EXCEPTION 'CHECK 113 FAILED: a request stage named a wildcard';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender <> 'approval_request_stages_permission_shape' THEN
+                RAISE EXCEPTION 'CHECK 113 FAILED: the wildcard was refused by %', offender;
+            END IF;
+            probe := probe + 1;
+    END;
+    -- **One authority is one stage**, which is what stops a quorum being written as two rows
+    -- that then disagree about the count -- and the permission in the key is what a
+    -- prefix-free primary-key sweep cannot see.
+    BEGIN
+        INSERT INTO iam.approval_request_stages
+            (tenant_id, request_id, ordinal, required_permission, required_approvals)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'ffffffff-0000-4000-8000-000000000010', 3, 'finance.export.run', 1);
+        RAISE EXCEPTION 'CHECK 113 FAILED: one authority was two stages of one request';
+    EXCEPTION
+        WHEN unique_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender NOT LIKE 'approval_request_stages_tenant_id_request_id_required%' THEN
+                RAISE EXCEPTION 'CHECK 113 FAILED: the repeat was refused by %', offender;
+            END IF;
+            probe := probe + 1;
+    END;
+    BEGIN
+        INSERT INTO iam.approval_request_stages
+            (tenant_id, request_id, ordinal, required_permission, required_approvals)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'ffffffff-0000-4000-8000-000000000010', 2, 'authz.role.write', 1);
+        RAISE EXCEPTION 'CHECK 113 FAILED: two stages shared one ordinal';
+    EXCEPTION
+        WHEN unique_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender <> 'approval_request_stages_pkey' THEN
+                RAISE EXCEPTION 'CHECK 113 FAILED: the shared ordinal was refused by %',
+                                offender;
+            END IF;
+            probe := probe + 1;
+    END;
+    -- The policy side, whose three CHECKs are the same rules one table over. **The policy is
+    -- seeded here**, because this block had none: the first version read one with a
+    -- `LIMIT 1` subselect, which returned NULL and failed on the not-null rather than on the
+    -- constraint under test -- a case refused for the wrong reason, which is what every
+    -- `GET STACKED DIAGNOSTICS` in this file exists to catch.
+    INSERT INTO iam.approval_policies
+        (tenant_id, approval_policy_id, action, threshold_minor, required_permission,
+         required_approvals, separation_of_duties, sequential)
+    VALUES ('11111111-1111-4111-8111-111111111111',
+            'cccccccc-0000-4000-8000-000000000001', 'billing.refund.issue', 0,
+            'billing.refund.approve', 1, true, false);
+    BEGIN
+        INSERT INTO iam.approval_policy_stages
+            (tenant_id, approval_policy_id, ordinal, required_permission,
+             required_approvals, created_by, create_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'cccccccc-0000-4000-8000-000000000001',
+                9, 'finance.export.run', 1,
+                'eeeeeeee-0000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 113 FAILED: a policy stage sat past the declared ceiling';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender <> 'approval_policy_stages_ordinal' THEN
+                RAISE EXCEPTION 'CHECK 113 FAILED: policy stage 9 was refused by %', offender;
+            END IF;
+            probe := probe + 1;
+    END;
+    BEGIN
+        INSERT INTO iam.approval_policy_stages
+            (tenant_id, approval_policy_id, ordinal, required_permission,
+             required_approvals, created_by, create_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'cccccccc-0000-4000-8000-000000000001',
+                2, 'finance.export.run', 0,
+                'eeeeeeee-0000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 113 FAILED: a policy stage asked for no approvers';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender <> 'approval_policy_stages_count' THEN
+                RAISE EXCEPTION 'CHECK 113 FAILED: the empty policy quorum was refused by %',
+                                offender;
+            END IF;
+            probe := probe + 1;
+    END;
+    BEGIN
+        INSERT INTO iam.approval_policy_stages
+            (tenant_id, approval_policy_id, ordinal, required_permission,
+             required_approvals, created_by, create_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'cccccccc-0000-4000-8000-000000000001',
+                2, 'finance.*', 1,
+                'eeeeeeee-0000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 113 FAILED: a policy stage named a wildcard';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender <> 'approval_policy_stages_permission_shape' THEN
+                RAISE EXCEPTION 'CHECK 113 FAILED: the policy wildcard was refused by %',
+                                offender;
+            END IF;
+            probe := probe + 1;
+    END;
+    IF probe <> 26 THEN
+        RAISE EXCEPTION 'CHECK 113 FAILED: ran % of 26 INV-AUT-02 probes', probe;
     END IF;
 
     -- **And the probe count is compared against the catalogue**, so a refusal added later
@@ -48710,7 +49007,7 @@ BEGIN
                    / length('RAISE EXCEPTION'))
           FROM pg_proc
          WHERE pronamespace = 'iam'::regnamespace
-           AND proname LIKE 'approval\_%') <> 5 THEN
+           AND proname LIKE 'approval\_%') <> 8 THEN
         RAISE EXCEPTION
             'CHECK 113 FAILED: the approval trigger functions raise a different number of '
             'refusals than this block probes; a branch was added or removed without one';

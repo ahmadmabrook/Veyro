@@ -5,6 +5,7 @@ privilege, separation of duties, an audit log that cannot be changed quietly. A 
 those is mostly attacks that must fail, so that is how these are written.
 """
 
+import pathlib
 import unittest
 from datetime import UTC, datetime, timedelta
 
@@ -665,3 +666,247 @@ class ReviewRegressionTests(unittest.TestCase):
         with self.assertRaises(audit.AuditError) as caught:
             audit.verify_chain(TENANT, [forged])
         self.assertEqual(caught.exception.code, "content_changed")
+
+
+class ApprovalStageTests(unittest.TestCase):
+    """AUT-02-R05's last word: "sequential, parallel".
+
+    **The combination rule is the thing worth testing hardest.** `policy_for` combines every
+    applicable policy and never chooses between them; a stage *list* reintroduces the row-order
+    dependence that rule exists to remove, which is why a stage is a permission and a count
+    rather than a position. Every assertion about order here is written as "the answer does not
+    depend on which policy came first", because that is the property rather than a consequence
+    of it.
+    """
+
+    LATER = NOW + timedelta(days=1)
+
+    MANAGER = approval.ApprovalPolicy(
+        "billing.refund.issue", threshold_minor=10_000,
+        required_permissions=frozenset({"billing.refund.approve"}),
+        stages=(approval.Stage(1, "billing.refund.approve", 1),), sequential=True)
+    FINANCE = approval.ApprovalPolicy(
+        "billing.refund.issue", threshold_minor=1_000_000,
+        required_permissions=frozenset({"finance.export.run"}),
+        stages=(approval.Stage(2, "finance.export.run", 1),))
+
+    def test_unstaged_policies_combine_to_no_stages_at_all(self):
+        """**"Staged" means somebody declared stages**, which is what keeps the response and
+        the request's snapshot answering the question the same way -- and keeps every policy
+        written before `0006` behaving exactly as it did."""
+        plain = approval.ApprovalPolicy(
+            "billing.refund.issue",
+            required_permissions=frozenset({"billing.refund.approve"}),
+            required_approvals=2)
+        combined = approval.policy_for([plain], "billing.refund.issue", 50_000)
+        self.assertEqual(combined.stages, ())
+        self.assertEqual(combined.required_approvals, 2)
+        self.assertFalse(combined.sequential)
+
+    def test_a_policy_with_no_stages_is_a_single_stage_policy(self):
+        """**The absence is the existing meaning**, which is why the migration backfills
+        nothing and nothing already written changes behaviour."""
+        plain = approval.ApprovalPolicy(
+            "billing.refund.issue",
+            required_permissions=frozenset({"billing.refund.approve"}),
+            required_approvals=2)
+        self.assertEqual(
+            approval.stages_of(plain),
+            (approval.Stage(1, "billing.refund.approve", 2),))
+
+    def test_two_policies_combine_into_two_stages_in_either_order(self):
+        forwards = approval.policy_for(
+            [self.MANAGER, self.FINANCE], "billing.refund.issue", 5_000_000)
+        backwards = approval.policy_for(
+            [self.FINANCE, self.MANAGER], "billing.refund.issue", 5_000_000)
+        self.assertEqual(forwards.stages, backwards.stages)
+        self.assertEqual(
+            [(s.ordinal, s.required_permission) for s in forwards.stages],
+            [(1, "billing.refund.approve"), (2, "finance.export.run")])
+        # `sequential` is `any()`, like separation of duties: a lenient policy must not switch
+        # a strict one's sequencing off.
+        self.assertTrue(forwards.sequential)
+        self.assertTrue(backwards.sequential)
+
+    def test_the_same_permission_twice_is_one_stage_at_the_larger_count(self):
+        """Two policies both naming a stage for the same authority is a quorum, not two
+        steps -- and two rows saying it would be two definitions of the count."""
+        two = approval.ApprovalPolicy(
+            "billing.refund.issue",
+            required_permissions=frozenset({"billing.refund.approve"}),
+            stages=(approval.Stage(1, "billing.refund.approve", 2),))
+        combined = approval.policy_for(
+            [self.MANAGER, two], "billing.refund.issue", 50_000)
+        self.assertEqual(len(combined.stages), 1)
+        # **And the count survives the collapse**, which an earlier version lost: reporting a
+        # one-stage combination as unstaged read its count off `required_approvals`, which is
+        # 1 on both of these policies while the stage asks for 2.
+        self.assertEqual(combined.stages[0].required_approvals, 2)
+        self.assertEqual(combined.required_approvals, 1)
+
+    def test_the_ordinals_are_renumbered_so_a_gap_cannot_reach_the_request(self):
+        """A policy may legitimately number its stages 1 and 5; the request's snapshot is
+        1..N, because `sequential` walks "every earlier stage" and a gap would make "earlier"
+        depend on how somebody numbered a row."""
+        sparse = approval.ApprovalPolicy(
+            "billing.refund.issue",
+            required_permissions=frozenset({"finance.export.run"}),
+            stages=(approval.Stage(5, "finance.export.run", 1),))
+        combined = approval.policy_for(
+            [self.MANAGER, sparse], "billing.refund.issue", 50_000)
+        self.assertEqual([s.ordinal for s in combined.stages], [1, 2])
+
+    def test_a_plain_policy_beside_a_staged_one_contributes_its_own_stage(self):
+        plain = approval.ApprovalPolicy(
+            "billing.refund.issue",
+            required_permissions=frozenset({"authz.role.write"}), required_approvals=3)
+        combined = approval.policy_for(
+            [self.MANAGER, plain], "billing.refund.issue", 50_000)
+        self.assertEqual(
+            {(s.required_permission, s.required_approvals) for s in combined.stages},
+            {("billing.refund.approve", 1), ("authz.role.write", 3)})
+
+    def test_the_combined_order_respects_every_policy_rather_than_the_highest_ordinal(self):
+        """**A three-policy cycle is the case no pairwise check sees.** A before B, B before C
+        and C before A each agree with the others on their one shared permission -- and taking
+        the highest ordinal each permission was given then makes all three equal, so the result
+        falls back to the alphabet and a policy's stated order is silently violated. That is
+        the row-order dependence `policy_for` exists to remove, wearing a different hat."""
+        def staged(*pairs):
+            return approval.ApprovalPolicy(
+                "billing.refund.issue",
+                required_permissions=frozenset({pairs[0][1]}),
+                stages=tuple(approval.Stage(n, name, 1) for n, name in pairs))
+        a, b, c = "aaa.aaa.aaa", "bbb.bbb.bbb", "ccc.ccc.ccc"
+        cycle = [staged((1, a), (2, b)), staged((1, b), (2, c)), staged((1, c), (2, a))]
+        self.assertIsNotNone(approval.order_conflict(cycle))
+        # And a chain that *is* orderable comes out in the order every policy asked for, not
+        # in the order the maxima happen to give.
+        chain = [staged((1, a), (2, b)), staged((1, b), (2, c))]
+        self.assertIsNone(approval.order_conflict(chain))
+        combined = approval.policy_for(chain, "billing.refund.issue", 0)
+        self.assertEqual([st.required_permission for st in combined.stages], [a, b, c])
+        # Order-independent, which is the property rather than a consequence of it.
+        self.assertEqual(
+            approval.policy_for(list(reversed(chain)), "billing.refund.issue", 0).stages,
+            combined.stages)
+
+    def test_a_pair_ordered_both_ways_is_a_two_cycle_and_needs_no_second_check(self):
+        """**The simple case the cycle check already answers.** An earlier version looked for
+        this pair first and then for a cycle; the mutation sweep reported the pair check as
+        uncaught, correctly -- a pair ordered both ways *is* a two-cycle. Deleted rather than
+        tested harder, and this is the assertion that the remaining check still catches it."""
+        def staged(*pairs):
+            return approval.ApprovalPolicy(
+                "billing.refund.issue",
+                required_permissions=frozenset({pairs[0][1]}),
+                stages=tuple(approval.Stage(n, name, 1) for n, name in pairs))
+        a, b = "aaa.aaa.aaa", "bbb.bbb.bbb"
+        self.assertEqual(
+            approval.order_conflict([staged((1, a), (2, b)), staged((1, b), (2, a))]),
+            (a, b))
+
+    # ---- what a stage refuses
+
+    def stages(self):
+        return (approval.Stage(1, "billing.refund.approve", 1),
+                approval.Stage(2, "finance.export.run", 1))
+
+    def test_a_sequential_second_stage_is_shut_until_the_first_is_approved(self):
+        with self.assertRaises(approval.ApprovalError) as refused:
+            approval.check_stage(
+                self.stages(), stage_ordinal=2, decisions=[], sequential=True,
+                decider_permissions=frozenset({"finance.export.run"}))
+        self.assertEqual(refused.exception.code, "stage_not_open")
+
+    def test_a_parallel_second_stage_is_open_from_the_start(self):
+        """The whole difference between the two words R05 names."""
+        approval.check_stage(
+            self.stages(), stage_ordinal=2, decisions=[], sequential=False,
+            decider_permissions=frozenset({"finance.export.run"}))
+
+    def test_the_second_stage_opens_once_the_first_has_its_count(self):
+        approval.check_stage(
+            self.stages(), stage_ordinal=2,
+            decisions=[approval.Decision("bob", "approved", 1)], sequential=True,
+            decider_permissions=frozenset({"finance.export.run"}))
+
+    def test_a_decider_without_this_stage_permission_is_refused(self):
+        """**What makes a stage a kind of approver rather than one more body.** `check_decider`
+        charges every permission the combined policies name; this charges the one this step is
+        for, and holding the other stage's is not holding this one's."""
+        with self.assertRaises(approval.ApprovalError) as refused:
+            approval.check_stage(
+                self.stages(), stage_ordinal=2, decisions=[], sequential=False,
+                decider_permissions=frozenset({"billing.refund.approve"}))
+        self.assertEqual(refused.exception.code, "decider_lacks_stage_permission")
+
+    def test_a_stage_the_request_has_not_got_is_refused(self):
+        with self.assertRaises(approval.ApprovalError) as refused:
+            approval.check_stage(
+                self.stages(), stage_ordinal=7, decisions=[], sequential=False,
+                decider_permissions=frozenset({"finance.export.run"}))
+        self.assertEqual(refused.exception.code, "no_such_stage")
+
+    def test_a_single_stage_request_admits_ordinal_one_and_nothing_else(self):
+        """The one admissible absence: a policy with no stages is a single-stage policy, so a
+        request carrying no stage rows has exactly stage 1."""
+        approval.check_stage(
+            (), stage_ordinal=1, decisions=[], sequential=False,
+            decider_permissions=frozenset())
+        with self.assertRaises(approval.ApprovalError) as refused:
+            approval.check_stage(
+                (), stage_ordinal=2, decisions=[], sequential=False,
+                decider_permissions=frozenset())
+        self.assertEqual(refused.exception.code, "no_such_stage")
+
+    # ---- what a staged request resolves to
+
+    def resolve(self, decisions, stages=(), required=2):
+        return approval.resolve(required_approvals=required, decisions=decisions,
+                                expires_at=self.LATER, now=NOW, stages=stages)
+
+    def test_every_stage_has_to_have_its_count_not_the_total(self):
+        """**The defect this is written against:** three signatures on stage 1 satisfying a
+        two-stage approval would make "a club manager and then finance" mean "two people"."""
+        stages = self.stages()
+        piled = [approval.Decision("bob", "approved", 1),
+                 approval.Decision("carol", "approved", 1),
+                 approval.Decision("dana", "approved", 1)]
+        self.assertEqual(self.resolve(piled, stages), "pending")
+        self.assertEqual(
+            self.resolve(piled + [approval.Decision("eve", "approved", 2)], stages),
+            "approved")
+
+    def test_a_rejection_anywhere_settles_the_whole_request(self):
+        """A stage is a condition rather than a vote, so there is no stage to localise a
+        rejection to."""
+        self.assertEqual(
+            self.resolve([approval.Decision("bob", "approved", 1),
+                          approval.Decision("carol", "rejected", 2)], self.stages()),
+            "rejected")
+
+    def test_expiry_is_still_checked_before_approval(self):
+        self.assertEqual(
+            approval.resolve(
+                required_approvals=1,
+                decisions=[approval.Decision("bob", "approved", 1),
+                           approval.Decision("carol", "approved", 2)],
+                expires_at=NOW, now=NOW, stages=self.stages()),
+            "expired")
+
+    def test_an_unstaged_request_resolves_exactly_as_it_did(self):
+        """No stages, no change -- which is what makes the migration a no-op for every request
+        already recorded."""
+        self.assertEqual(
+            self.resolve([approval.Decision("bob", "approved"),
+                          approval.Decision("carol", "approved")]),
+            "approved")
+        self.assertEqual(self.resolve([approval.Decision("bob", "approved")]), "pending")
+
+    def test_the_schema_and_this_module_agree_about_the_ceiling(self):
+        """A decision function and a CHECK that disagree about a bound is two encodings of one
+        rule, which is MOD-020's waitlist edge."""
+        migration = (pathlib.Path(__file__).resolve().parent.parent
+                     / "migrations" / "product" / "0006_approval_stages.sql").read_text()
+        self.assertIn(f"ordinal BETWEEN 1 AND {approval.MAX_STAGES}", migration)

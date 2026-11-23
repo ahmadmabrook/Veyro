@@ -1682,6 +1682,12 @@ SUBJECT_COLUMNS: tuple[Reachability, ...] = (
                  "who took it back. Written once with the revocation"),
     Reachability("iam", "approval_delegations", "revoke_reason", "write_once",
                  "**why it ended early.** Prose, written once"),
+    Reachability("iam", "approval_policy_stages", "created_by", "unreachable",
+                 "**who wrote this step of a staged approval.** `GRANT SELECT, INSERT` and "
+                 "nothing else, so neither the step nor the name on it moves: a stage order "
+                 "that could be edited after requests were made against it is the defect the "
+                 "request's own snapshot exists to prevent, and the author is what makes the "
+                 "order answerable a year later"),
     Reachability("iam", "approval_decisions", "on_behalf_of", "unreachable",
                  "**on whose authority a decision was made**, which is half of what makes an "
                  "approval accountable. The table has no UPDATE grant at all: a decision is "

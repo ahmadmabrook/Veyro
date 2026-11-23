@@ -969,8 +969,8 @@ Known gaps, deliberate:
   existed nowhere before: `plan_dsar` surfaced the same fact per request, so the honest
   answer to "what can you delete" was reachable only after somebody had asked you to delete
   something, and the registry behind it lived in Python and in a test.
-  **The number is worth knowing: 19 of 438 subject-bearing columns are erased or anonymised
-  and 419 survive.** (It was 17 of 388 until MOD-019's `0017` added four withdrawal columns,
+  **The number is worth knowing: 19 of 439 subject-bearing columns are erased or anonymised
+  and 420 survive.** (It was 17 of 388 until MOD-019's `0017` added four withdrawal columns,
   then 17 of 392, and MOD-026's first slice added twenty-six more -- fifteen of which the
   registry's own sweep refused to let through undeclared, which is what MOD-009 built it for.
   The eighteenth reached column is MOD-026's task assignee, and **choosing its mechanism is
@@ -3892,8 +3892,8 @@ Known gaps, deliberate:
 - **The timeline does not know about any of this.** MOD-014 projects nine event types and none
   of MOD-022's six is among them, so a member's timeline shows no door they walked through.
 
-**MOD-026 (AUT-02 tasks, cases, approvals and SLA) -- slices 1, 2, 3 and 4 built, screens
-included; R05's stages and R07's reporting read are what is left.** Ten `tsk_` tables in
+**MOD-026 (AUT-02 tasks, cases, approvals and SLA) -- implemented: R01 to R07, screens
+included.** Ten `tsk_` tables in
 `plt01` under the same forced RLS, five trigger functions, and `app/tasks/` beside them: a
 business calendar, work queues, tasks with their checklists and dependencies, cases with an
 insert-only timeline, an owner, a deferral and the records an exception is about, SLA clocks
@@ -4209,7 +4209,9 @@ which `tsk_cases_snooze_attributed` refuses, because the five snooze columns are
 Clearing all five would have been worse than the refusal: it **un-defers the case**, moving it
 back into a queue somebody has to work, so an erasure would have changed what a tenant has to
 do today. The assignee clears and the two snooze columns are declared `write_once` residue
-with that reason on the row. The disclosure moves to **19 of 438**.
+with that reason on the row. The disclosure moves to **19 of 438** -- and to **19 of 439**
+with slice 5's staged-approval author, which the registry's own sweep refused to let through
+undeclared, for the second time in two slices.
 
 **R07's bottleneck names the blockers rather than counting blocked work**, which is MOD-005's
 "a rule id is not a reason" one level up: a count of blocked tasks is what a reader cannot act
@@ -4277,6 +4279,73 @@ MOD-026 reads and writes; the owner then reads the same item as *somebody else's
 one state ADM-CC-06 is most specific about. Both halves have a browser fixture rather than only
 a component test, which is this build's "a surface branch no fixture can reach" trap, paid for
 four times.
+
+**Slice 5 is R05's last word, "sequential, parallel", and a stage is a permission rather
+than a position.** `required_approvals` was a quorum of one authority, so "a club manager and
+then finance" was unexpressible -- and the two facts the requirement carries are exactly that
+an approval can need more than one *kind* of approver, and that sequential means the second
+kind cannot decide before the first has. `product/0006` adds a policy's stages, the request's
+own snapshot of them, a `sequential` flag on each, and a `stage_ordinal` on every decision.
+Proven: isolation check 113 now runs 26 probes -- every trigger branch by its sentence, two
+*permissions* no refusal probe can see, and nine constraint cases naming the constraint that
+refused them; 12 mutations in `tests/sql/sweep_approval_stages.py`, all caught; 17 domain
+tests with no database; 18 service tests.
+
+Four decisions carry it, and one of them is a deletion:
+
+- **A stage is "N holders of permission P", keyed by the permission**, which is what makes the
+  combination rule survive. `policy_for` combines every applicable policy and never chooses
+  between them, because a single column naming one permission had to pick by row order when
+  two applied at the same strictness. A stage *list* has that problem one level up:
+  concatenating two policies' stages is order-dependent, the exact dependence combining was
+  built to remove. Keyed by permission it is not -- the count is the most any policy asks for,
+  the ordinal is the highest any gives it, and the result is renumbered 1..N so `sequential`'s
+  "every earlier stage" cannot depend on how somebody numbered a row.
+- **The combined order is a topological sort of every policy's own order, and a cycle is
+  refused when the policy is written.** Taking the highest ordinal each permission was given
+  was the first version and it is arbitrary on a case no pairwise check sees: three policies
+  ordering A before B, B before C and C before A each agree with the others on their one
+  shared permission, and the maxima then come out equal so the result falls back to the
+  alphabet -- a policy's stated order silently violated, which is the row-order dependence
+  `policy_for` exists to remove wearing a different hat. `order_conflict` is the cycle check
+  and it runs at the policy write, which is MOD-012's succession rule: catching it at the
+  moment somebody needs an approval is catching it too late for the person waiting to do
+  anything about. **Found by working the cycle through on paper**, which is worth noting
+  because the pairwise version passed every test that existed at the time.
+- **`UNIQUE (tenant_id, request_id, decided_by)` is untouched and is what makes a stage mean
+  something.** One person, one decision per request across every stage: a two-stage approval
+  decided twice by one person is one approval wearing two hats, which is the thing stages
+  exist to prevent. The constraint that already stopped a quorum being one person pressing the
+  button twice turns out to be the constraint a stage needs, unchanged.
+- **The trigger takes no lock, and that is a correction rather than an omission.** The first
+  version took `FOR UPDATE` on the request by analogy with MOD-019's `FOR SHARE` finding; the
+  mutation sweep reported its removal as uncaught, and checking each reader is why it is gone.
+  `sequential` is outside every runtime role's UPDATE grant so it cannot move, and the earlier
+  stages' approvals come from an insert-only table -- so two concurrent decisions at READ
+  COMMITTED are each fail-*closed* with respect to the other. The lock would only have made
+  the guard more permissive under concurrency, which is the wrong direction for a guard.
+
+**And a staged policy could name an authority no stage charges, which is a hole the new rule
+opened.** With stages the permission requirement is the stage's -- charging the policy's own to
+every decider is the defect two paragraphs down -- so a `required_permission` outside the stage
+list is simply never checked by anything. `write_approval_policy` refuses it now, which is a
+declared value nothing reads caught before it is written rather than found later as a policy
+that admits anybody; and the refusal immediately caught two of this slice's own test fixtures,
+which is the usual sign it was worth having.
+
+**And three defects came out of writing the tests, each a shape this file records.** `stages`
+on the wire meant "this combination has a stage list", which `combine_stages` produces for a
+plain policy too -- so an unstaged request reported one stage while its snapshot carried none,
+two answers to "is this staged". It means "somebody declared stages" now, and the first
+attempt at that collapsed a one-stage combination to nothing, which **silently lost a count**:
+a policy whose single stage asks for two approvers has `required_approvals = 1` on its own
+row. `check_decider` charged the *union* of every applicable policy's permission to every
+decider, so each approver needed every stage's authority -- which is to say one person could
+satisfy all of them, the exact opposite of what a stage is for. And `_decide_in_tx` built its
+effective policy without the snapshot's stages, so that path saw a staged request as unstaged
+and refused a finance approver the finance stage. All three were found by tests rather than by
+reading, and the third by the one test that needs a decider holding exactly one stage's
+authority.
 
 **The decision that shaped the module is that there is one approval engine and it is
 MOD-008's.** `iam.approval_policies` already carries `action`, `threshold_minor`,
@@ -4405,11 +4474,19 @@ Known gaps, deliberate:
 - **Nothing publishes an event.** AUT-02 names none in the catalogue this build carries, and
   inventing one would be inventing product -- but a task raised and settled is exactly the
   kind of thing MOD-014's timeline projects, and it projects none of them.
-- **R06 is built end to end; R05's stages and R07's reporting read are what is left.** R04
-  and R05's quorum, amount thresholds, expiry and delegation are done -- stages (sequential
-  and parallel) need the approval request to carry more than one, which is a change to the
-  snapshot MOD-008's review put there. R07 is the workload, aging, bottleneck, outcome and
-  compliance read the three screens draw.
+- **Payroll approvals are the one requirement fragment with nothing to point at**, which is
+  R04's seventh action class: `action` is a permission-shaped string and there is no payroll
+  module in this build, so a policy naming one would be a policy for an action nothing can
+  perform -- the "declared value nothing writes" shape, refused rather than stored. The other
+  six action classes are in the catalogue. **R05 is complete as of slice 5**: quorum, amount
+  thresholds, expiry, delegation and now stages, sequential and parallel.
+- **The approval engine has no screen, and that is the design's own shape rather than a gap
+  here.** Checked rather than assumed: the Admin inventory carries no approvals queue. What it
+  carries is thresholds *inside* other screens -- ADM-POS-03's discount threshold, which is
+  what makes POS-06 require a manager -- and "Tasks, cases & approvals" is a domain item whose
+  V1 screen is ADM-TSK-01. So this module's surface obligation is the three screens it has, and
+  a reader looking for an approvals board is looking for something the design does not draw.
+  Whoever builds POS-06 will want a decision control on it, which is that screen's work.
 - **Nothing announces a breach *warning*.** `sla.state` returns `warning` past the threshold
   and only a reader sees it; the sweep acts on the breach. Two reasons, and the first is a
   product judgement rather than a wait: a warning task per clock at eighty per cent doubles
@@ -6057,13 +6134,13 @@ absence. The rest need modules this repository does not have (CRM, automation, s
 
 Within those, the work is per module rather than per screen, because each one needs its gate,
 its masked fields and its failure states wired the way those are. The second is the modules
-themselves. **MOD-026's four slices have all landed, screens included** -- see its entry above
--- so the three Admin screens that waited on it are built and it is the first module in this
-build whose backlog entries came off `design:coverage` by being satisfied rather than rewritten.
-It was chosen by dependency order rather than by screen count: MOD-027, MOD-047 and MOD-055 all
-depend on it. **What MOD-026 still owes is within its own requirements rather than its
-screens**: R05's approval stages, which need the request's snapshot to carry more than one, and
-R07's reporting read behind the workload figures the task board already draws.
+themselves. **MOD-026 is built, R01 to R07 with its screens** -- see its entry above -- so the
+three Admin screens that waited on it are done and it is the first module in this build whose
+backlog entries came off `design:coverage` by being satisfied rather than rewritten. It was
+chosen by dependency order rather than by screen count: MOD-027, MOD-047 and MOD-055 all depend
+on it. The one requirement fragment with nothing to point at is R04's payroll action class,
+which waits on a payroll module this build does not have: a policy naming it would be a policy
+for an action nothing can perform.
 
 **MOD-027 is next by the same reasoning**, and it is now unblocked: eight backlogged Admin
 screens are its, more than any other module's, and MOD-026's case and queue are what its

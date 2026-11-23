@@ -133,6 +133,65 @@ design, and no role is a member of another. The reference is therefore an id wit
 behind it — the same seam `ppl_identity_links` already is, and it is named as a gap rather
 than wished away.
 
+## D1a — R05's stages are a snapshot, keyed by permission, and the order is checked at write
+
+**Amendment, after slices 1 to 4; built as slice 5.** R05's remaining word is
+"sequential, parallel", and the
+engine has no notion of a second *kind* of approver: `required_approvals` is a quorum of one
+authority, so "a club manager and then finance" is unexpressible. The essential content of
+the requirement is those two facts — an approval can need more than one kind of approver, and
+sequential means the second kind cannot decide before the first has.
+
+**A stage is "N holders of permission P", and that is what makes the combination rule survive.**
+`policy_for` combines every applicable policy and never chooses between them, because two
+policies at the same strictness naming different permissions made a single column pick by row
+order. A stage list has the same problem one level up: concatenating two policies' stages is
+order-dependent, which is the exact dependence combining was built to remove. Keyed by
+permission it is not: for each distinct permission among all the applicable policies' stages,
+the count is the most any of them asks for, and the ordinal is the highest any of them gives
+it. `sequential` is `any()`, like `separation_of_duties`.
+
+**The combined order is a topological sort of every policy's own order, and a cycle is refused
+when the policy is written.** This record's first draft said the ordinal is the highest any
+policy gives a permission, and that is arbitrary on a case no pairwise check sees: three
+policies ordering A before B, B before C and C before A each agree with the others on their one
+shared permission, and the maxima then come out equal so the result falls back to the alphabet.
+A policy's stated order is then silently violated, which is the row-order dependence `policy_for`
+exists to remove. `order_conflict` refuses the cycle at the policy write -- MOD-012's succession
+check is the precedent: catching it where somebody is writing the change is worth more than
+catching it at the moment somebody needs an approval, when the person waiting can do nothing.
+
+**The stages are snapshotted onto the request**, which is not a new decision — MOD-008's review
+put the snapshot there after re-deriving the terms let somebody holding `authz.policy.write`
+turn separation of duties off for a request already in flight. A stage list re-derived at
+decision time is the same defect with more surface.
+
+**`UNIQUE (tenant_id, request_id, decided_by)` stays exactly as it is, and it is what makes a
+stage mean something.** One person, one decision per request, across every stage: a two-stage
+approval decided twice by one person is one approval wearing two hats, which is the thing
+stages exist to prevent. The constraint that already stops a quorum being one person pressing
+the button twice turns out to be the constraint a stage needs, unchanged.
+
+**A policy with no stage rows is a single-stage policy**, whose stage is its own
+`required_permission` and `required_approvals`. So nothing already written changes behaviour,
+and the migration backfills no rows: the absence *is* the existing meaning rather than a state
+to migrate.
+
+**What this costs and where it is stated.** A decision names the stage it is for, so
+`approval_decisions` gains a `stage_ordinal` with a composite reference into the request's own
+stages — a decision cannot name a stage the request does not have. Under `sequential` a stage
+is open only when every earlier stage has its count, which `approval.py` decides and a trigger
+refuses, because the schema is the half that holds when the service is wrong.
+
+**And that trigger takes no lock, which is a correction to this record's own first draft.** It
+said the request row is locked `FOR UPDATE` by analogy with MOD-019's `FOR SHARE` finding; the
+mutation sweep reported the removal as uncaught, and checking each reader is why it is gone
+rather than tested harder. `sequential` is outside every runtime role's UPDATE grant, so it
+cannot move; the earlier stages' approvals come from an insert-only table, so two concurrent
+decisions at READ COMMITTED are each fail-*closed* with respect to the other. The lock would
+only have made the guard more permissive under concurrency, which is the wrong direction for a
+guard -- and the service's own `FOR UPDATE` is what makes the ordinary path deterministic.
+
 ## D2 — A task's subject is an open vocabulary with closed members
 
 R01 names nine link targets and **three of them do not exist in this build**: a lead is
@@ -199,8 +258,11 @@ the mechanism was needed.
 
 ## D5 — Build order, and why the slices are these
 
-Four slices, each shippable on its own and each with its own isolation checks and mutation
-sweep. The order follows what the next thing needs rather than the requirement numbering:
+Four slices as first written, and **five as built**: R05's stages turned out to be a slice of
+its own rather than part of slice 2's approval work, because a stage changes the request's
+snapshot and the decision path as well as the policy. Each is shippable on its own and each has
+its own isolation checks and mutation sweep. The order follows what the next thing needs rather
+than the requirement numbering:
 
 1. **The calendar, tasks and cases** (R01, R02, R03). Nothing depends on approvals, and the
    calendar is needed by the SLA slice. A task with a due date is useful before any SLA exists.
@@ -324,6 +386,34 @@ isolation checks run against deliberate mutations, domain functions with no I/O,
 the routes through `permit`, and the tests. The standard is the one the owner directive of
 2026-11-18 sets — the whole stack, not the backend — so slice 4 is part of the module and not
 an afterthought.
+
+### Slice 5 — R05's stages, and the three defects writing the tests found
+
+*Landed: `product/0006`, `approval.py`'s `Stage`, `combine_stages`, `check_stage` and a
+stage-aware `resolve`, the two service paths, both route bodies, and 26 probes in check 113
+with 12 mutations.*
+
+**Each of the three was a figure or a requirement with two answers**, and all three were found
+by a test rather than by reading:
+
+- **`stages` on the wire meant two different things.** `combine_stages` produces a single
+  synthetic stage for a plain policy, so an unstaged request reported one stage while its
+  snapshot carried none. It means "somebody declared stages" now -- and the first attempt at
+  that collapsed a one-stage combination to nothing, which silently lost a count, because a
+  policy whose single stage asks for two approvers has `required_approvals = 1` on its own row.
+- **`check_decider` charged the union to every decider.** With stages the authority is the
+  stage's; charging every applicable policy's permission to every approver means each of them
+  needs all of it, which is to say one person could satisfy every stage -- the exact opposite
+  of what a stage is for. Found by the parallel test, which is the only one with a decider
+  holding exactly one stage's authority.
+- **`_decide_in_tx` built its effective policy without the snapshot's stages**, so that path
+  saw a staged request as unstaged and refused a finance approver the finance stage.
+
+**And the subsumed CHECK is worth recording beside them.** `approval_decisions.stage_ordinal`
+carried a range CHECK that the BEFORE trigger subsumes: any ordinal the trigger admits is
+inside the request's own stages, which are bounded. The sweep reported its drop as uncaught
+and the probe written for it was answered by the trigger, so it is deleted -- MOD-016's
+judgement for a constraint a sibling already names.
 
 ## What this record does not decide
 

@@ -905,36 +905,144 @@ def write_approval_policy(
     pool: Pool, tenant_id: str, *, action: str, required_permission: str, correlation_id: str,
     threshold_minor: int = 0, required_approvals: int = 1,
     separation_of_duties: bool = True, actor_identity_id: str | None = None,
+    stages: list[dict[str, Any]] | None = None, sequential: bool = False,
 ) -> dict[str, Any]:
+    """WriteApprovalPolicy (IAM-03-R05), with AUT-02-R05's stages.
+
+    **A policy with no stages is a single-stage policy**, whose stage is `required_permission`
+    and `required_approvals` -- the existing meaning, which is why those two stay required and
+    why `0006` backfills nothing.
+
+    **An order conflict is refused here rather than when a request is made.** Two policies that
+    disagree about the order of the same two permissions have no defensible automatic answer,
+    and MOD-012's succession rule is the precedent: catching it where somebody is writing the
+    change is worth more than catching it at the moment an approval is needed, when there is
+    nothing the person waiting can do about it.
+    """
     _require_uuid(correlation_id, "correlation_id")
     _permission(action)
     _permission(required_permission)
     if required_approvals < 1:
         raise InvalidRequest("approval_policy_needs_an_approver")
+    wanted = _stage_rows(stages)
+    if sequential and not wanted:
+        # A single-stage policy cannot be sequential: there is nothing to order. Stated rather
+        # than stored, because a flag nothing reads is this build's most-repeated finding.
+        raise InvalidRequest("a_single_stage_policy_has_no_order")
+    if wanted and required_permission not in {st.required_permission for st in wanted}:
+        # **An authority no stage charges is an authority nobody is ever asked for.** With
+        # stages the permission requirement is the stage's -- charging the policy's own to
+        # every decider would mean each approver needs every stage's, which is one person
+        # satisfying all of them -- so a `required_permission` outside the stage list is
+        # simply never checked. Refused rather than silently inert, which is this build's
+        # "a declared value nothing reads" finding caught before it is written.
+        raise InvalidRequest("the_policys_own_permission_must_be_one_of_its_stages")
     with tenant_scope(pool, tenant_id) as conn:
+        if wanted:
+            _refuse_order_conflict(conn, action, wanted)
         try:
             row = conn.execute(
                 """
                 INSERT INTO iam.approval_policies
                     (tenant_id, action, threshold_minor, required_permission,
-                     required_approvals, separation_of_duties)
-                VALUES (%s, %s, %s, %s, %s, %s) RETURNING approval_policy_id
+                     required_approvals, separation_of_duties, sequential)
+                VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING approval_policy_id
                 """,
                 (tenant_id, action, threshold_minor, required_permission, required_approvals,
-                 separation_of_duties),
+                 separation_of_duties, sequential),
             ).fetchone()
         except errors.CheckViolation:
             raise InvalidRequest("bad_approval_policy") from None
         assert row is not None
+        policy_id = str(row[0])
+        for stage in wanted:
+            try:
+                conn.execute(
+                    "INSERT INTO iam.approval_policy_stages"
+                    " (tenant_id, approval_policy_id, ordinal, required_permission,"
+                    "  required_approvals, created_by, create_correlation_id)"
+                    " VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                    (tenant_id, policy_id, stage.ordinal, stage.required_permission,
+                     stage.required_approvals, actor_identity_id, correlation_id),
+                )
+            except errors.UniqueViolation:
+                raise InvalidRequest("a_stage_per_permission") from None
+            except errors.CheckViolation:
+                raise InvalidRequest("bad_approval_stage") from None
+            except errors.ForeignKeyViolation:
+                raise NotFound("author_not_found") from None
         _append_audit(conn, tenant_id, category="access", action="approval_policy.written",
                       outcome="recorded", correlation_id=correlation_id,
                       actor_identity_id=actor_identity_id, resource_type="approval_policy",
-                      resource_id=str(row[0]), detail={"action": action,
-                                                       "threshold_minor": threshold_minor})
-    return {"approval_policy_id": str(row[0]), "action": action,
+                      resource_id=policy_id, detail={"action": action,
+                                                     "threshold_minor": threshold_minor,
+                                                     "stages": len(wanted),
+                                                     "sequential": sequential})
+    return {"approval_policy_id": policy_id, "action": action,
             "required_permission": required_permission,
             "threshold_minor": threshold_minor, "required_approvals": required_approvals,
-            "separation_of_duties": separation_of_duties}
+            "separation_of_duties": separation_of_duties, "sequential": sequential,
+            "stages": [{"ordinal": st.ordinal,
+                        "required_permission": st.required_permission,
+                        "required_approvals": st.required_approvals} for st in wanted]}
+
+
+def _stage_rows(stages: list[dict[str, Any]] | None) -> tuple[approvals.Stage, ...]:
+    """The stages a caller asked for, shape-checked at the boundary.
+
+    Contiguous from 1, because `sequential` walks "every earlier stage" and a gap would make
+    "earlier" depend on how somebody numbered a row -- the ordinals are what the order *is*.
+    """
+    if not stages:
+        return ()
+    if len(stages) > approvals.MAX_STAGES:
+        raise InvalidRequest("too_many_stages")
+    built = []
+    for index, stage in enumerate(stages, start=1):
+        permission = str(stage.get("required_permission", ""))
+        _permission(permission)
+        count = int(stage.get("required_approvals", 1))
+        if not 1 <= count <= 20:
+            raise InvalidRequest("a_stage_needs_between_one_and_twenty_approvers")
+        built.append(approvals.Stage(ordinal=index, required_permission=permission,
+                                     required_approvals=count))
+    if len({st.required_permission for st in built}) != len(built):
+        raise InvalidRequest("a_stage_per_permission")
+    return tuple(built)
+
+
+def _refuse_order_conflict(
+    conn: Connection[Any], action: str, wanted: tuple[approvals.Stage, ...],
+) -> None:
+    """Refuse a policy whose stage order cannot be satisfied beside the live ones.
+
+    **A cycle, not a pair**, and the pairwise version was the first draft: three policies
+    ordering the manager before finance, finance before the owner and the owner before the
+    manager each agree with the others on their one shared permission and cannot be satisfied
+    together. `combine_stages` then falls back to a stable-but-arbitrary order, which is the
+    row-order dependence `policy_for` exists to remove -- so the honest place to refuse it is
+    here, where somebody is writing the change and can do something about it. MOD-012's
+    succession rule, and `approval.order_conflict` is the check.
+    """
+    existing = conn.execute(
+        "SELECT s.approval_policy_id, s.ordinal, s.required_permission, s.required_approvals"
+        " FROM iam.approval_policy_stages s"
+        " JOIN iam.approval_policies p"
+        "   ON p.tenant_id = s.tenant_id AND p.approval_policy_id = s.approval_policy_id"
+        " WHERE p.action = %s AND p.retired_at IS NULL"
+        " ORDER BY s.approval_policy_id, s.ordinal",
+        (action,),
+    ).fetchall()
+    grouped: dict[str, list[approvals.Stage]] = {}
+    for r in existing:
+        grouped.setdefault(str(r[0]), []).append(
+            approvals.Stage(ordinal=int(r[1]), required_permission=str(r[2]),
+                            required_approvals=int(r[3])))
+    live = [approvals.ApprovalPolicy(action=action, stages=tuple(stages))
+            for stages in grouped.values()]
+    live.append(approvals.ApprovalPolicy(action=action, stages=wanted))
+    if approvals.order_conflict(live) is not None:
+        raise Conflict("stage_order_conflicts_with_a_live_policy")
 
 
 def _approval_policies(conn: Connection[Any], action: str) -> list[approvals.ApprovalPolicy]:
@@ -942,15 +1050,31 @@ def _approval_policies(conn: Connection[Any], action: str) -> list[approvals.App
     terms; choosing one of them would let a lenient row above a strict one govern."""
     rows = conn.execute(
         "SELECT action, threshold_minor, required_permission, required_approvals,"
-        " separation_of_duties FROM iam.approval_policies"
+        " separation_of_duties, approval_policy_id, sequential FROM iam.approval_policies"
         " WHERE action = %s AND retired_at IS NULL",
         (action,),
     ).fetchall()
+    staged = conn.execute(
+        "SELECT s.approval_policy_id, s.ordinal, s.required_permission, s.required_approvals"
+        " FROM iam.approval_policy_stages s"
+        " JOIN iam.approval_policies p"
+        "   ON p.tenant_id = s.tenant_id AND p.approval_policy_id = s.approval_policy_id"
+        " WHERE p.action = %s AND p.retired_at IS NULL"
+        " ORDER BY s.approval_policy_id, s.ordinal",
+        (action,),
+    ).fetchall()
+    stages: dict[str, list[approvals.Stage]] = {}
+    for r in staged:
+        stages.setdefault(str(r[0]), []).append(
+            approvals.Stage(ordinal=int(r[1]), required_permission=str(r[2]),
+                            required_approvals=int(r[3])))
     return [
         approvals.ApprovalPolicy(action=r[0], threshold_minor=int(r[1]),
                                  required_permissions=frozenset({r[2]}),
                                  required_approvals=int(r[3]),
-                                 separation_of_duties=bool(r[4]))
+                                 separation_of_duties=bool(r[4]),
+                                 stages=tuple(stages.get(str(r[5]), ())),
+                                 sequential=bool(r[6]))
         for r in rows
     ]
 
@@ -1010,6 +1134,15 @@ def _request_in_tx(
              "required_approvals": policy.required_approvals,
              "separation_of_duties": policy.separation_of_duties,
              "required_permissions": sorted(policy.required_permissions),
+             # **Returned, because a requester has to be able to see what they are waiting
+             # for.** A staged approval that reported only a count would say "two approvals"
+             # where it means "a manager and then finance", which is the distinction the
+             # stages exist to draw.
+             "sequential": policy.sequential,
+             "stages": [{"ordinal": st.ordinal,
+                         "required_permission": st.required_permission,
+                         "required_approvals": st.required_approvals}
+                        for st in policy.stages],
              "expires_at": expires.isoformat()}, None)
 
 
@@ -1028,12 +1161,12 @@ def _insert_request(
             INSERT INTO iam.approval_requests
                 (tenant_id, action, resource_type, resource_id, amount_minor, currency,
                  reason, requested_by, required_approvals, separation_of_duties,
-                 required_permissions, expires_at)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING request_id
+                 required_permissions, expires_at, sequential)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING request_id
             """,
             (tenant_id, action, resource_type, resource_id, amount_minor, currency, reason,
              requested_by, policy.required_approvals, policy.separation_of_duties,
-             sorted(policy.required_permissions), expires),
+             sorted(policy.required_permissions), expires, policy.sequential),
         ).fetchone()
     except errors.ForeignKeyViolation:
         raise NotFound("requester_not_found") from None
@@ -1041,6 +1174,21 @@ def _insert_request(
         raise InvalidRequest("bad_approval_request") from None
     assert row is not None
     request_id = str(row[0])
+    # **The combined stages, snapshotted.** MOD-008's review put the snapshot on the request
+    # after re-deriving the terms let somebody holding `authz.policy.write` turn separation of
+    # duties off for a request already in flight; a stage list re-derived at decision time is
+    # the same defect with more surface. Written whenever the combination has any, so the
+    # response and the snapshot answer "is this staged" the same way -- and a one-stage staged
+    # policy keeps its own count, which collapsing it to `required_approvals` silently lost.
+    if policy.stages:
+        for stage in policy.stages:
+            conn.execute(
+                "INSERT INTO iam.approval_request_stages"
+                " (tenant_id, request_id, ordinal, required_permission, required_approvals)"
+                " VALUES (%s, %s, %s, %s, %s)",
+                (tenant_id, request_id, stage.ordinal, stage.required_permission,
+                 stage.required_approvals),
+            )
     _append_audit(conn, tenant_id, category="access", action="approval.requested",
                   outcome="recorded", correlation_id=correlation_id,
                   actor_identity_id=requested_by, resource_type="approval_request",
@@ -1053,6 +1201,7 @@ def _insert_request(
 def decide_approval(
     pool: Pool, tenant_id: str, *, request_id: str, decided_by: str, decision: str,
     correlation_id: str, reason: str | None = None, on_behalf_of: str | None = None,
+    stage_ordinal: int = 1,
 ) -> dict[str, Any]:
     """DecideApproval (IAM-03-R05), with separation of duties enforced here and in the schema.
 
@@ -1068,10 +1217,13 @@ def decide_approval(
         raise InvalidRequest("bad_decision")
     if on_behalf_of is not None and on_behalf_of == decided_by:
         raise InvalidRequest("acting_on_your_own_authority_is_not_a_delegation")
+    if not 1 <= stage_ordinal <= approvals.MAX_STAGES:
+        raise InvalidRequest("bad_stage_ordinal")
     with tenant_scope(pool, tenant_id) as conn:
         outcome = _decide_in_tx(conn, tenant_id, request_id=request_id, decided_by=decided_by,
                                 decision=decision, reason=reason,
-                                correlation_id=correlation_id, on_behalf_of=on_behalf_of)
+                                correlation_id=correlation_id, on_behalf_of=on_behalf_of,
+                                stage_ordinal=stage_ordinal)
     return _settled(outcome)
 
 
@@ -1178,11 +1330,12 @@ def list_delegations(
 def _decide_in_tx(
     conn: Connection[Any], tenant_id: str, *, request_id: str, decided_by: str, decision: str,
     reason: str | None, correlation_id: str, on_behalf_of: str | None = None,
+    stage_ordinal: int = 1,
 ) -> tuple[dict[str, Any], ServiceError | None]:
     now = _now()
     row = conn.execute(
         "SELECT action, requested_by, required_approvals, separation_of_duties, state,"
-        " expires_at, required_permissions FROM iam.approval_requests"
+        " expires_at, required_permissions, sequential FROM iam.approval_requests"
         " WHERE request_id = %s FOR UPDATE",
         (request_id,),
     ).fetchone()
@@ -1191,8 +1344,19 @@ def _decide_in_tx(
     action, requested_by, required, sod, state, expires_at, required_permissions = (
         row[0], str(row[1]), int(row[2]), bool(row[3]), row[4], row[5], frozenset(row[6]),
     )
+    sequential = bool(row[7])
     if state != "pending":
         raise Conflict("approval_already_decided")
+    # The request's own snapshot, which is what governs. Empty is a single-stage request and
+    # `check_stage` reads it as ordinal 1 -- the existing meaning rather than a special case.
+    stages = tuple(
+        approvals.Stage(ordinal=int(r[0]), required_permission=str(r[1]),
+                        required_approvals=int(r[2]))
+        for r in conn.execute(
+            "SELECT ordinal, required_permission, required_approvals"
+            " FROM iam.approval_request_stages WHERE request_id = %s ORDER BY ordinal",
+            (request_id,),
+        ).fetchall())
 
     # **The request's own snapshot governs, not today's policies.** Re-deriving the terms at
     # decision time let anybody holding `authz.policy.write` turn separation of duties off for a
@@ -1200,6 +1364,12 @@ def _decide_in_tx(
     effective = approvals.ApprovalPolicy(
         action=action, required_permissions=required_permissions,
         required_approvals=required, separation_of_duties=sod,
+        # **The snapshot's stages, because `check_decider` reads them.** With stages the
+        # authority is the stage's rather than the union, and leaving this off made the policy
+        # look unstaged there -- so a finance approver was charged the manager's permission and
+        # refused the finance stage. Found by the parallel test, which is the one that needs a
+        # decider holding exactly one stage's authority.
+        stages=stages, sequential=sequential,
     )
     # **The delegator's permissions, where one is being exercised.** Being delegated to means
     # acting on somebody's authority, so evaluating the delegate's own grants would make a
@@ -1209,6 +1379,13 @@ def _decide_in_tx(
     try:
         approvals.check_decider(effective, requested_by=requested_by, decided_by=decided_by,
                                 decider_permissions=granted, acting_for=on_behalf_of)
+        # **The stage's own permission and its turn**, after the policy's. Two checks rather
+        # than one because they answer different questions: the policy's is "may this person
+        # decide this request at all", and the stage's is "is this the step they hold, and is
+        # it open". A caller sent to the wrong stage is told which it was.
+        approvals.check_stage(
+            stages, stage_ordinal=stage_ordinal, decisions=_recorded(conn, request_id),
+            sequential=sequential, decider_permissions=granted)
     except approvals.ApprovalError as exc:
         _append_audit(conn, tenant_id, category="access", action="approval.denied",
                       outcome="denied", correlation_id=correlation_id,
@@ -1221,24 +1398,25 @@ def _decide_in_tx(
     try:
         conn.execute(
             "INSERT INTO iam.approval_decisions"
-            " (tenant_id, request_id, decided_by, decision, reason, on_behalf_of)"
-            " VALUES (%s, %s, %s, %s, %s, %s)",
-            (tenant_id, request_id, decided_by, decision, reason, on_behalf_of),
+            " (tenant_id, request_id, decided_by, decision, reason, on_behalf_of,"
+            "  stage_ordinal)"
+            " VALUES (%s, %s, %s, %s, %s, %s, %s)",
+            (tenant_id, request_id, decided_by, decision, reason, on_behalf_of,
+             stage_ordinal),
         )
     except errors.UniqueViolation:
         raise Conflict("already_decided_by_you") from None
     except errors.ForeignKeyViolation:
         raise NotFound("decider_not_found") from None
+    except errors.RaiseException as exc:
+        # The schema's own refusals: a stage the request has not got, and a sequential stage
+        # whose predecessor is unapproved. Reached only where this module's own check and the
+        # trigger disagree, which is the case the trigger exists for.
+        raise Conflict(str(exc).strip().splitlines()[0]) from None
 
-    recorded = [
-        approvals.Decision(decided_by=str(r[0]), decision=r[1])
-        for r in conn.execute(
-            "SELECT decided_by, decision FROM iam.approval_decisions WHERE request_id = %s",
-            (request_id,),
-        ).fetchall()
-    ]
+    recorded = _recorded(conn, request_id)
     resolved = approvals.resolve(required_approvals=required, decisions=recorded,
-                                 expires_at=expires_at, now=now)
+                                 expires_at=expires_at, now=now, stages=stages)
     if resolved != "pending":
         conn.execute(
             "UPDATE iam.approval_requests SET state = %s, decided_at = %s WHERE request_id = %s",
@@ -1252,7 +1430,28 @@ def _decide_in_tx(
                   resource_id=request_id,
                   detail={"decision": decision, "state": resolved, "approvals": approved})
     return ({"request_id": request_id, "decision": decision, "state": resolved,
-             "approvals": approved, "required_approvals": required}, None)
+             "approvals": approved, "required_approvals": required,
+             "stage_ordinal": stage_ordinal,
+             # **What is still outstanding, per stage.** A staged request reporting only a
+             # total would say "one of two" where it means "finance has not signed", which is
+             # the whole distinction -- and a caller would have to re-derive it from two reads.
+             "stages": [{"ordinal": st.ordinal,
+                         "required_permission": st.required_permission,
+                         "required_approvals": st.required_approvals,
+                         "approved": approvals.stage_approvals(recorded, st.ordinal)}
+                        for st in stages]}, None)
+
+
+def _recorded(conn: Connection[Any], request_id: str) -> list[approvals.Decision]:
+    """Every decision on a request, with the stage each was for."""
+    return [
+        approvals.Decision(decided_by=str(r[0]), decision=r[1], stage_ordinal=int(r[2]))
+        for r in conn.execute(
+            "SELECT decided_by, decision, stage_ordinal FROM iam.approval_decisions"
+            " WHERE request_id = %s",
+            (request_id,),
+        ).fetchall()
+    ]
 
 
 def list_approval_requests(

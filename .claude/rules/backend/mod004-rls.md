@@ -2145,3 +2145,71 @@ which `blocked -> done` refuses in the Python table and in the trigger alike: so
 the status the state machine refuses, and the fixture seeds one. Same judgement as deleting a
 constraint subsumed by a sibling, arrived at from the surface: when a filter makes a client-side
 check vacuous, ask which case the *server* still refuses and gate on that one.
+
+
+**A probe whose row survives its own mutation poisons the probes after it.** Check 113's
+single-stage case pointed at a request other probes decide: with the branch disabled the
+refused insert *landed*, and a later probe then hit `UNIQUE (tenant_id, request_id,
+decided_by)` -- so the sweep reported "a check other than 113 answered" for a mutation that
+branch had correctly caught. This is the "one bad probe aborts the block" trap from the other
+side: there the probe's own statement was refused by a sibling, here it *succeeded* and
+changed the state the next probe starts from. A probe for a refusal needs a subject nobody
+else touches, because the world where its mutation is applied is a world where its row exists.
+
+**And a constraint case needs a value no sibling rule claims, which depends on the mutated
+world rather than the real one.** Two of the new request-stage cases used a permission already
+held by another stage of the same request: correct today, because the ordinal CHECK fires
+first -- and with that CHECK dropped the row was refused by the one-stage-per-permission rule
+instead, so the case proved the sibling. The question to ask of a case is not "which rule
+refuses this row" but "which rule refuses it once the rule under test is gone".
+
+**A BEFORE trigger subsumes a range CHECK on the column it validates.** `stage_ordinal`
+carried `CHECK (stage_ordinal BETWEEN 1 AND 8)` and the trigger refuses any ordinal the
+request has not got -- which for a staged request means anything outside its own stages,
+themselves bounded, and for a single-stage request means anything but 1. So the CHECK had no
+isolating case and could not have one: the sweep reported its drop as uncaught and the probe
+written for it was answered by the trigger's sentence. Deleted rather than tested harder,
+which is MOD-016's judgement for a kind domain its operand constraint already named and
+MOD-018's for a ceiling a trigger already bounded.
+
+**An uncaught lock mutation is the one case where the honest answer is usually to remove the
+lock.** `FOR UPDATE` on a parent row is this file's own prescription where a trigger reads it
+to decide whether a child may be written -- and the prescription has a premise: that the
+absence lets through something the lock would refuse. For MOD-026's stage guard neither reader
+could move. `sequential` is outside every runtime role's UPDATE grant, and the earlier stages'
+approvals come from an insert-only table, so two concurrent decisions at READ COMMITTED are
+each fail-*closed* with respect to the other: without the lock a stage-2 decision racing the
+stage-1 approval it depends on is **refused** rather than admitted. The lock would only have
+made the guard more permissive under concurrency, which is the wrong direction for a guard. So
+the rule has a companion: before adding `FOR UPDATE` to a trigger, name the column that can
+move and the direction the race goes -- and if the unlocked answer is the stricter one, the
+lock is decoration and a two-connection test would be proving nothing.
+
+**PostgreSQL truncates a generated constraint name at 63 characters**, so a mutation naming
+`approval_request_stages_request_id_required_permission_key` errors and is recorded as not
+run -- the harness manufacturing the gap it then reports. Take the name from `pg_constraint`
+rather than composing it.
+
+
+**A pairwise consistency check is not a consistency check, and the third element is where it
+breaks.** MOD-026's stage order was validated by comparing each new policy against each live
+one for every permission they *share*: A before B beside B before C beside C before A passes
+all three comparisons and cannot be satisfied together. Worse, the combination rule then
+resolved it silently -- every permission's ordinal came out equal under `max`, so the result
+fell back to the alphabet and one policy's stated order was quietly dropped. The fix is a cycle
+check over the union of every ordering, and a topological sort (Kahn, with a sorted ready set
+so the answer stays order-independent) rather than a per-key maximum. **Found by working the
+cycle through on paper**, which is worth recording: the pairwise version passed every test that
+existed when it was written, and the test that catches it had to be derived from the shape of
+the rule rather than from a failure.
+
+
+**Narrowing where a check applies opens a hole where it used to.** MOD-026's stages moved the
+permission requirement from the policy to the stage, because charging the union to every
+decider means each approver needs every stage's authority -- one person satisfying all of them,
+the opposite of what a stage is for. The consequence nobody writes down is the other side: a
+policy's own `required_permission` outside its stage list is then checked by *nothing*, so a
+staged policy could name an authority nobody is ever asked for. Refused at the write, which is
+a declared value nothing reads caught before it exists -- and the refusal caught two of the
+slice's own test fixtures on its first run, which is the usual sign it was worth having. **When
+a check narrows its scope, ask what the old scope covered that the new one does not.**
