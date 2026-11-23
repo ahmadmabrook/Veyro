@@ -92,13 +92,21 @@ test.describe("the operations board", () => {
     const jobs = page
       .locator("section")
       .filter({ has: page.getByRole("heading", { name: "Scheduled jobs" }) });
-    // Nine jobs, and the registry is what decides that -- a job added without a declared
-    // name cannot record a metric at all, so a tenth row here means a tenth job was wired.
-    // **The count is a tripwire on purpose**, which is why it is a literal rather than a
-    // property: wiring a job should bring somebody to this file. The seventh is MOD-011's
-    // objective evaluation, which is also what made the next test's locator fail; the eighth
-    // is MOD-013's digest close and the ninth MOD-017's ended-membership revocation.
-    await expect(jobs.locator("tbody tr")).toHaveCount(9);
+    // Ten jobs, and the registry is what decides that -- a job added without a declared
+    // name cannot record a metric at all, so an eleventh row here means an eleventh job was
+    // wired. **The count is a tripwire on purpose**, which is why it is a literal rather
+    // than a property: wiring a job should bring somebody to this file. The seventh is
+    // MOD-011's objective evaluation, which is also what made the next test's locator fail;
+    // the eighth is MOD-013's digest close, the ninth MOD-017's ended-membership revocation
+    // and the tenth MOD-026's SLA breach sweep.
+    //
+    // **And the tripwire caught its author.** MOD-026's slice 3c wired the tenth job, ran
+    // the whole backend suite twice and every non-Docker CI step, and went red here -- the
+    // backend's own count derives from `registry.JOBS` (`test_worker.py`) and this is the
+    // only hard-coded one in the repository, so nothing local could see it. That is the
+    // design working: the cost of the literal is exactly one red run per job, and the thing
+    // it buys is that somebody reads this file and the board beside it.
+    await expect(jobs.locator("tbody tr")).toHaveCount(10);
     await expect(jobs).toContainText("events.relay");
     await expect(jobs).toContainText("access.replay_sweep");
     // The fixture ran the worker once, so no job may read as never run.

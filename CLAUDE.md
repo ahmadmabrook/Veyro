@@ -4067,6 +4067,14 @@ writes is minutes. Four decisions carry it:
 - **Each clock is judged in its own savepoint and a failed escalation leaves it running.** A
   breach settled with nobody told is a missed promise that reads as handled.
 
+**And it went red on `main` for one line nothing local could reach.** The operations board's
+browser spec asserts the number of scheduled-job rows as a literal, and its own comment says
+that is a tripwire on purpose -- "wiring a job should bring somebody to this file". The whole
+backend suite ran twice on a freshly rebuilt database and every non-Docker CI step passed,
+because the backend's own assertion derives from `len(registry.JOBS)` and that spec holds the
+only hard-coded count of it in the repository. The tripwire worked and its author did not come;
+the answer is to visit the file, not to soften the check.
+
 **And one of the four decisions was wrong when first written, which the second test found.**
 The sweep returned early for any clock with an open pause -- "a stopped clock is not spending
 its target", which is true and is already what `_consumed` does, since it subtracts the

@@ -2044,3 +2044,19 @@ file next to it -- the other being an escalation trigger whose "re-check only wh
 pointer moves" clause was in its own module's sibling, three files earlier. **Read the
 nearest existing instance before writing a new one**: this repository's rules are mostly
 recorded as prose, and prose is easy to agree with and hard to notice you have not applied.
+
+
+**A hard-coded count that only CI can reach will be found by CI, and that is the deliberate
+trade rather than a defect.** `operations.spec.ts` asserts the number of rows on the
+scheduled-jobs board as a literal, and its own comment says why: "the count is a tripwire on
+purpose ... wiring a job should bring somebody to this file". Slice 3c wired the tenth worker
+job, ran the whole backend suite twice on a freshly rebuilt database, ran every non-Docker CI
+step, and went red on that one line -- because the backend's own assertion derives from
+`len(registry.JOBS)` and this is the only hard-coded count of it in the repository, so nothing
+runnable locally could see it. **The judgement to make when a tripwire fires is which of the
+two it is**: a stale count of something *missing* goes false the hour the thing is built and
+should become a property (the reports index's `UNBUILT.length`, recorded above); a count of
+something *present*, written as a literal with a stated reason, is a review prompt and the
+right answer is to visit the file rather than to soften the check. Both look identical in a
+red log, and only the comment beside the literal tells them apart -- which is the argument for
+writing that comment when the literal goes in.
