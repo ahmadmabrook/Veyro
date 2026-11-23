@@ -210,26 +210,45 @@ const BACKLOG = {
   // MOD-027's own dependency chain runs through MOD-026, so the seven CRM screens are two
   // modules deep rather than one. The pipeline, a lead, its stages and the unified inbox are
   // all its; `lifecycle_state` on a MOD-014 person is the only part of any of it here.
-  "ADM-CRM-01": "MOD-027: the pipeline, its stages and a lead's movement between them. "
-    + "MOD-027 depends on MOD-026, whose first slice is built and whose service layer is "
-    + "not, so this is still two modules deep; "
-    + "`lifecycle_state` on a MOD-014 person is the only part of a lead that exists here",
-  "ADM-CRM-02": "MOD-027: there is no lead in this build to list",
-  "ADM-CRM-03": "MOD-027: a lead's profile, its activity and its owner",
-  "ADM-CRM-04": "MOD-027: adding a lead writes the record MOD-027 owns. MOD-014's "
-    + "`create_person` writes a person, which is the half that exists",
-  "ADM-CRM-06": "MOD-027: converting a trial needs a trial, and no MOD-017 membership state "
-    + "starts a clock on one",
-  "ADM-CRM-07": "MOD-027: a lost reason is a field on a lead",
-  "ADM-COM-01": "MOD-027: a WhatsApp thread is the unified inbox MOD-027's objective names, "
-    + "and it needs both halves -- MOD-013 authors a message and sends nothing, and MOD-012 "
-    + "has no inbound receiver, which is where the messaging provider and the vault that "
-    + "verifies a callback signature are the seam this work stops at",
-  "FD-05": "MOD-027: 'Creates a lead already in trial with the clock running, a credential, "
-    + "and an app invitation by text. Yasmin picks it up on her pipeline within the minute' "
-    + "-- the pipeline and the lead are MOD-027's, nothing starts a trial clock on a MOD-017 "
-    + "membership, and the invitation by text is where MOD-013's missing dispatcher is the "
-    + "seam rather than the blocker",
+  "ADM-CRM-01": "work: MOD-027 slice 1 answers this board -- `GET /crm/board` returns all five "
+    + "columns with their counts and the header own figures -- 36 open leads, 7 going cold "
+    + "-- so what is owed is the screen. Two parts of the canvas are later slices: the `On "
+    + "trial` column is always empty because nothing marks a product as a trial, which is "
+    + "slice 2, the Veyro-suggests block is slice 4 and needs a model nobody has an and "
+    + "account with",
+  "ADM-CRM-02": "work: MOD-027 slice 1 answers this table. `GET /crm/leads` returns the lead, its "
+    + "source, its owner, the hours since contact and the next action, ordered oldest "
+    + "contact first because a lead's value decays by the hour, and two of the three chips "
+    + "the canvas draws are `going_cold` and `mine`. The third, trial ending, is slice 2",
+  "ADM-CRM-03": "work: MOD-027 slice 1 answers the profile -- the lead, its interests, its owner and "
+    + "its touchpoint timeline, with a touchpoint's prose masked for a reader who could not "
+    + "have written one. The canvas's four metrics (visits, classes, days left, engagement) "
+    + "are the trial's and are slice 2, and MOD-020 and MOD-022 own the counts behind them",
+  "ADM-CRM-04": "work: MOD-027 slice 1 answers this form. `POST /crm/leads` opens a lead against a "
+    + "MOD-014 person and returns the existing one where there is one, which is the "
+    + "canvas's own behaviour -- that record would open instead of a second one being "
+    + "created -- and `GET /people/contact-match` is the check as you type. The screen is "
+    + "the work",
+  "ADM-CRM-06": "work: MOD-027 slice 2, which converts a trial through MOD-017's "
+    + "`change_membership_plan` -- built now, and the reason this entry no longer waits on "
+    + "that module. What slice 2 has to decide first is what marks a product as a trial: "
+    + "neither `cat_products.product_type` nor `mem_membership_terms.membership_kind` has "
+    + "such a value, so a trial being an active membership on a trial product is not yet "
+    + "expressible. The canvas's take-the-payment button is the provider either way",
+  "ADM-CRM-07": "work: MOD-027 slice 3. `crm_leads.stage` deliberately admits only the three sales "
+    + "stages, because a declared value nothing writes is this build's most-repeated "
+    + "finding -- so the slice that writes `lost` adds it to the domain, along with the "
+    + "reason, the attribution and the withdrawal `crm_lead_interests` also needs",
+  "ADM-COM-01": "work: MOD-027 slice 4, the conversation record. A thread per person, its touchpoints "
+    + "and who owns it is work -- slice 1 built the touchpoint half -- and both ends of the "
+    + "message are the seam: MOD-013 authors one and sends nothing, and MOD-012 has no "
+    + "inbound receiver, which needs the messaging provider and the vault that verifies a "
+    + "callback signature",
+  "FD-05": "work: MOD-027 slice 2. The pipeline and the lead are built in slice 1, so a walk-in "
+    + "trial is the trial half: nothing marks a product as a trial yet, which is what slice "
+    + "2 decides. The canvas's app invitation by text is where MOD-013's missing dispatcher "
+    + "is the seam rather than the blocker, and Yasmin picking it up on her pipeline within "
+    + "the minute is `GET /crm/leads?mine=true`, which exists",
   // MOD-055 depends on MOD-026 too, so automation sits behind tasks for the same reason CRM
   // does -- an automation's actions are approvals and cases.
   "ADM-AUT-01": "MOD-055: automation, which depends on MOD-010 (built) and MOD-026 (slice 1 "

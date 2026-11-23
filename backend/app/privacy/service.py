@@ -987,6 +987,9 @@ _CLEAR_SQL: dict[tuple[str, str], str] = {
     # is this file's own "tombstones are per-column, not a generic NULL -- every entry
     # answers a real constraint", read in the direction that says no entry belongs here.
     ("tsk_cases", "assignee_person_id"): "NULL",
+    # MOD-027: a lead owned by somebody who has been erased is unowned work, which is
+    # the same reading as the task assignee above.
+    ("crm_leads", "owner_person_id"): "NULL",
     # `identities_has_an_identifier` requires one of the two contact columns to survive, so the
     # email is replaced with a per-row tombstone rather than emptied. The unique index permits
     # it because the identity id makes it unique; the phone can then go to NULL.

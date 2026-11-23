@@ -55,6 +55,8 @@ from app.catalog import service as catalog
 from app.commercial import service as commercial
 from app.config import Settings, load_settings
 from app.configuration import service as config
+from app.crm import pipeline as crm_pipeline
+from app.crm import service as crm
 from app.devices import service as devices
 from app.errors import InvalidRequest, NotFound, ServiceError, TooManyRequests
 from app.events import service as events
@@ -1466,6 +1468,102 @@ class ResumeBody(BaseModel):
     reason: str = Field(min_length=1, max_length=500)
     expected_version: int | None = Field(default=None, ge=1)
     idempotency_key: str = Field(min_length=1, max_length=200)
+    correlation_id: str
+
+
+class LeadSourceBody(BaseModel):
+    """Where leads come from, as a tenant's own row.
+
+    A row rather than a string because ADM-RPT-03 groups conversions by source, and free text
+    would make the one report this field exists for a group-by over typos.
+    """
+
+    source_key: str = Field(min_length=2, max_length=63)
+    display_name: str = Field(min_length=1, max_length=200)
+    location_id: str | None = None
+    correlation_id: str
+
+
+class RetireSourceBody(BaseModel):
+    reason: str = Field(min_length=1, max_length=500)
+    correlation_id: str
+
+
+class LeadBody(BaseModel):
+    """ADM-CRM-04's form, which is two fields and two optional ones.
+
+    **No name and no phone number.** "Name and phone are enough" is about the *screen*: the
+    person is MOD-014's and is created there, and this body cites them. A name here would be
+    the second copy MOD-013 refuses to hold.
+
+    **No idempotency key**, because the person is the key: a lead already open for them is
+    returned, which is the canvas's own behaviour rather than a convenience.
+    """
+
+    person_id: str
+    source_id: str | None = None
+    interests: list[str] = Field(default_factory=list, max_length=3)
+    owner_person_id: str | None = None
+    # True to claim the lead for the caller. Derived from the session, like MOD-026's
+    # `to_self`: a request that could name a person would let a reader claim a lead as
+    # somebody else, and both fields together is a caller that does not know what it meant.
+    owner_is_me: bool = False
+    correlation_id: str
+
+    @model_validator(mode="after")
+    def one_owner(self) -> LeadBody:
+        if self.owner_is_me and self.owner_person_id is not None:
+            raise ValueError("name an owner or claim it yourself, not both")
+        return self
+
+
+class TouchpointBody(BaseModel):
+    """A conversation, written up. The kind decides which stage it reaches."""
+
+    kind: str = Field(min_length=1, max_length=40)
+    summary: str = Field(min_length=1, max_length=2000)
+    # Optional, because a salesperson writes up Friday's open day on Monday. It may not be in
+    # the future: "No contact · 2 days" is counted from it.
+    occurred_at: datetime | None = None
+    correlation_id: str
+
+
+class LeadStageBody(BaseModel):
+    to_stage: str = Field(min_length=1, max_length=40)
+    expected_version: int | None = Field(default=None, ge=1)
+    correlation_id: str
+
+
+class LeadAssignBody(BaseModel):
+    """Claim a lead, hand it over, or release it."""
+
+    owner_person_id: str | None = None
+    to_self: bool = False
+    # True to release: a null owner is the release, and a body that said nothing would be
+    # indistinguishable from one that meant to clear it.
+    release: bool = False
+    expected_version: int | None = Field(default=None, ge=1)
+    correlation_id: str
+
+    @model_validator(mode="after")
+    def one_intent(self) -> LeadAssignBody:
+        named = [self.owner_person_id is not None, self.to_self, self.release]
+        if sum(1 for n in named if n) != 1:
+            raise ValueError("name an owner, claim it yourself, or release it -- exactly one")
+        return self
+
+
+class NextActionBody(BaseModel):
+    """ADM-CRM-02's NEXT ACTION column. Both halves or neither."""
+
+    next_action: str | None = Field(default=None, max_length=200)
+    next_action_on: date | None = None
+    expected_version: int | None = Field(default=None, ge=1)
+    correlation_id: str
+
+
+class LeadInterestsBody(BaseModel):
+    interests: list[str] = Field(min_length=1, max_length=3)
     correlation_id: str
 
 
@@ -9997,6 +10095,174 @@ def create_app(
         return tasks.read_task(
             tenant_pool, tenant_id, require_uuid(task_id, "task_id"),
             may_read_reasons=("tasks.task.write" in held_permissions(session)))
+
+    # ------------------------------------------------------------ MOD-027, the leads
+    #
+    # **Routine throughout.** Raising, claiming and writing up a lead is the ordinary work of a
+    # sales shift, and a step-up on every logged phone call would make the pipeline wrong
+    # instead -- MOD-026's reason, in the module whose screens are the first a stranger passes
+    # through. Nothing here moves money or opens a door.
+    #
+    # **No name, no number, no address.** A lead is a `ppl_persons` row; MOD-014 answers who
+    # they are, through its own gate and under its own masking.
+
+    @app.post("/crm/sources", status_code=201)
+    def declare_lead_source(
+        tenant_id: TenantId, session: Session, body: LeadSourceBody
+    ) -> dict[str, Any]:
+        """Declare where leads come from. Idempotent on the key."""
+        permit(session, "crm.source.write", body.correlation_id)
+        return crm.create_source(
+            tenant_pool, tenant_id, source_key=body.source_key,
+            display_name=body.display_name,
+            location_id=optional_uuid(body.location_id, "location_id"),
+            actor_id=session["identity_id"], correlation_id=body.correlation_id)
+
+    @app.post("/crm/sources/{source_id}/retire")
+    def retire_lead_source(
+        tenant_id: TenantId, session: Session, source_id: str, body: RetireSourceBody
+    ) -> dict[str, Any]:
+        """Stop offering a source without losing the leads that came through it."""
+        permit(session, "crm.source.write", body.correlation_id)
+        return crm.retire_source(
+            tenant_pool, tenant_id, require_uuid(source_id, "source_id"),
+            reason=body.reason, actor_id=session["identity_id"],
+            correlation_id=body.correlation_id)
+
+    @app.get("/crm/sources")
+    def list_lead_sources(
+        tenant_id: TenantId, session: Session, include_retired: bool = False,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        """ADM-CRM-04's dropdown, and the groups ADM-RPT-03 will read."""
+        permit(session, "crm.source.read")
+        return crm.list_sources(
+            tenant_pool, tenant_id, include_retired=include_retired, limit=limit)
+
+    # **Declared before `/crm/leads/{lead_id}`**, because FastAPI matches in declaration order
+    # and a literal segment behind a path parameter is never reached -- which cost
+    # `/memberships/summary` a 422 once.
+    @app.get("/crm/board")
+    def read_lead_board(
+        tenant_id: TenantId, session: Session, mine: bool = False
+    ) -> dict[str, Any]:
+        """ADM-CRM-01's five columns and the header's two counts."""
+        permit(session, "crm.lead.read")
+        own = actor_person_id(tenant_id, session) if mine else None
+        if mine and own is None:
+            return {"columns": [{"stage": c, "count": 0}
+                                for c in crm_pipeline.BOARD_COLUMNS],
+                    "open_leads": 0, "going_cold": 0,
+                    "mine_is_zero_without_a_person_record": (
+                        "this identity is not linked to a person, so it owns no leads. "
+                        "Staff hold permissions and do not have to be anybody in particular")}
+        return crm.board(tenant_pool, tenant_id, owner_person_id=own)
+
+    @app.post("/crm/leads", status_code=201)
+    def open_lead(
+        tenant_id: TenantId, session: Session, body: LeadBody
+    ) -> dict[str, Any]:
+        """ADM-CRM-04. A person who already has a lead gets theirs back, which is the
+        canvas's own behaviour: "that record would open instead of a second one being
+        created"."""
+        permit(session, "crm.lead.write", body.correlation_id)
+        owner = (_require_person(actor_person_id(tenant_id, session)) if body.owner_is_me
+                 else optional_uuid(body.owner_person_id, "owner_person_id"))
+        return crm.create_lead(
+            tenant_pool, tenant_id, person_id=require_uuid(body.person_id, "person_id"),
+            source_id=optional_uuid(body.source_id, "source_id"),
+            interests=tuple(body.interests), owner_person_id=owner,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id)
+
+    @app.get("/crm/leads")
+    def list_leads(
+        tenant_id: TenantId, session: Session, stage: str | None = None,
+        owner_person_id: str | None = None, mine: bool = False, unowned: bool = False,
+        going_cold: bool = False, limit: int = 50,
+    ) -> dict[str, Any]:
+        """ADM-CRM-02's table and its chips, oldest contact first."""
+        permit(session, "crm.lead.read")
+        own = actor_person_id(tenant_id, session) if mine else None
+        if mine and own is None:
+            return {"leads": [], "count": 0, "limit": limit, "truncated": False,
+                    "mine_is_zero_without_a_person_record": (
+                        "this identity is not linked to a person, so it owns no leads")}
+        return crm.list_leads(
+            tenant_pool, tenant_id, stage=stage,
+            owner_person_id=own or optional_uuid(owner_person_id, "owner_person_id"),
+            unowned=unowned, going_cold=going_cold, limit=limit)
+
+    @app.get("/crm/leads/{lead_id}")
+    def read_lead(
+        tenant_id: TenantId, session: Session, lead_id: str, limit: int = 50
+    ) -> dict[str, Any]:
+        """ADM-CRM-03's profile. A touchpoint's prose is masked for a reader who could not
+        have written one -- it is where a health fact goes in practice."""
+        permit(session, "crm.lead.read")
+        return crm.read_lead(
+            tenant_pool, tenant_id, require_uuid(lead_id, "lead_id"),
+            may_read_summaries=("crm.touchpoint.write" in held_permissions(session)),
+            limit=limit)
+
+    @app.post("/crm/leads/{lead_id}/touchpoints", status_code=201)
+    def record_lead_touchpoint(
+        tenant_id: TenantId, session: Session, lead_id: str, body: TouchpointBody
+    ) -> dict[str, Any]:
+        """Write up a conversation. The kind decides which stage it reaches, in the same
+        transaction, because the board counts what the timeline says."""
+        permit(session, "crm.touchpoint.write", body.correlation_id)
+        return crm.record_touchpoint(
+            tenant_pool, tenant_id, require_uuid(lead_id, "lead_id"),
+            kind=body.kind, summary=body.summary, occurred_at=body.occurred_at,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id)
+
+    @app.post("/crm/leads/{lead_id}/stage")
+    def move_lead_stage(
+        tenant_id: TenantId, session: Session, lead_id: str, body: LeadStageBody
+    ) -> dict[str, Any]:
+        """The explicit stage move, for what a touchpoint does not cover. Forward only."""
+        permit(session, "crm.lead.write", body.correlation_id)
+        return crm.advance_stage(
+            tenant_pool, tenant_id, require_uuid(lead_id, "lead_id"),
+            to_stage=body.to_stage, expected_version=body.expected_version,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id)
+
+    @app.post("/crm/leads/{lead_id}/assign")
+    def assign_lead(
+        tenant_id: TenantId, session: Session, lead_id: str, body: LeadAssignBody
+    ) -> dict[str, Any]:
+        """Claim a lead, hand it over, or release it. Which act it was is derived from what
+        the column held, so a caller cannot report a release and perform a handover."""
+        permit(session, "crm.lead.write", body.correlation_id)
+        owner = (_require_person(actor_person_id(tenant_id, session)) if body.to_self
+                 else None if body.release
+                 else optional_uuid(body.owner_person_id, "owner_person_id"))
+        return crm.assign_lead(
+            tenant_pool, tenant_id, require_uuid(lead_id, "lead_id"),
+            owner_person_id=owner, expected_version=body.expected_version)
+
+    @app.post("/crm/leads/{lead_id}/next-action")
+    def set_lead_next_action(
+        tenant_id: TenantId, session: Session, lead_id: str, body: NextActionBody
+    ) -> dict[str, Any]:
+        """ADM-CRM-02's NEXT ACTION column, or clear it. Both halves or neither."""
+        permit(session, "crm.lead.write", body.correlation_id)
+        return crm.set_next_action(
+            tenant_pool, tenant_id, require_uuid(lead_id, "lead_id"),
+            next_action=body.next_action, next_action_on=body.next_action_on,
+            expected_version=body.expected_version)
+
+    @app.post("/crm/leads/{lead_id}/interests")
+    def record_lead_interests(
+        tenant_id: TenantId, session: Session, lead_id: str, body: LeadInterestsBody
+    ) -> dict[str, Any]:
+        """Add to what a lead is interested in. The set only grows in this slice, which the
+        module's own note records as the gap it is."""
+        permit(session, "crm.lead.write", body.correlation_id)
+        return crm.record_interests(
+            tenant_pool, tenant_id, require_uuid(lead_id, "lead_id"),
+            interests=tuple(body.interests), actor_id=session["identity_id"],
+            correlation_id=body.correlation_id)
 
     return app
 

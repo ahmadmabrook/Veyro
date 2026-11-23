@@ -168,9 +168,20 @@ MOD-013's notifications is work, and the inbound half is the seam.
 
 1. **The lead and its pipeline** (ADM-CRM-01, 02, 03, 04): the schema, the stage machine, the
    touchpoint timeline, the owner, the source, the next action, and the duplicate check at the
-   door. Nothing in it depends on the trial.
+   door. Nothing in it depends on the trial. **Landed**: four `crm_` tables, `app/crm/`, five
+   permissions, twelve routes, isolation check 115, and the screens still owed -- see
+   `CLAUDE.md`'s MOD-027 section. Two things in this record were corrected by building it: the
+   `lost` stage is *not* in the schema's stage domain, because a declared value nothing writes
+   is this build's most-repeated finding and slice 3 is what writes it; and `gym_only` is
+   refused in combination with another interest, which D3 did not consider and which the words
+   themselves require.
 2. **The trial** (ADM-CRM-05, 06): the trial product, the clock derived from the agreement, the
-   conversion through `change_plan`, and the lapse sweep.
+   conversion through MOD-017's `change_membership_plan` -- **not `change_plan`, which is
+   MOD-015's SaaS subscription**, and which the first draft of this record named -- and the
+   lapse sweep. **The decision in front of it**: what marks a product as a trial. Neither
+   `cat_products.product_type` nor `mem_membership_terms.membership_kind` carries such a value,
+   so "an active membership on a trial product" is not yet expressible, and slice 1's board
+   returns an empty `On trial` column that says so. `change_membership_plan` is built.
 3. **Lost and reopen** (ADM-CRM-07) plus the source-effectiveness read ADM-RPT-06 draws.
 4. **The conversation record**, to the seam, with the provider named.
 

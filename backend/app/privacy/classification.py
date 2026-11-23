@@ -1543,6 +1543,46 @@ SUBJECT_COLUMNS: tuple[Reachability, ...] = (
     # never will. A task title is the clearest case in this module -- "call Hala about her
     # card" is the ordinary way somebody writes one -- and a settlement reason is where "she
     # asked us to stop contacting her" goes.
+    # ---- MOD-027, the lead pipeline ----
+    #
+    # **A lead is a `ppl_persons` row and this module holds no name, number or address**, so
+    # the erasure that reaches a person reaches everything about them that matters here. What
+    # survives is the sales record itself, and these seven declarations are what it says.
+    Reachability("plt01", "crm_leads", "person_id", "unreachable",
+                 "**which person this lead is about.** Not in any runtime role's UPDATE grant "
+                 "and no DELETE anywhere: re-pointing a lead at another person is the "
+                 "duplicate-entry defect ADM-CRM-04 is structured against, arriving through "
+                 "an UPDATE. So an erased person keeps a lead row -- a stage, a source and a "
+                 "date, with the name read through MOD-014 and therefore gone"),
+    Reachability("plt01", "crm_leads", "owner_person_id", "anonymize",
+                 "**which salesperson owns this lead now.** It moves on every handover and "
+                 "`assign_lead` already writes NULL for a release, so the erasure clears it: "
+                 "a lead owned by somebody who has been erased is unowned work. MOD-026's "
+                 "task assignee, in the module one along",
+                 clears=("owner_person_id",), locate_by="owner_person_id"),
+    Reachability("plt01", "crm_leads", "created_by", "unreachable",
+                 "who opened the lead. Insert-only, because a lead's age is what ADM-CRM-02 "
+                 "says matters and the row that states it is not editable"),
+    Reachability("plt01", "crm_lead_sources", "created_by", "unreachable",
+                 "who declared a lead source. Insert-only"),
+    Reachability("plt01", "crm_lead_sources", "retired_by", "write_once",
+                 "who stopped a source being offered. Written once with the retirement"),
+    Reachability("plt01", "crm_lead_interests", "recorded_by", "unreachable",
+                 "who recorded that a lead is interested in classes, PT or the gym. "
+                 "Insert-only, and there is no UPDATE grant on this table at all"),
+    Reachability("plt01", "crm_touchpoints", "recorded_by", "unreachable",
+                 "who wrote up a conversation. Insert-only, which is what makes the timeline "
+                 "a record rather than a draft"),
+    # **The one free-text column, named rather than left to the sweep.** The reachability
+    # sweep matches column *names*, so a column called `summary` is invisible to it -- and
+    # this is where a health fact goes in practice, which MOD-017 and MOD-019 each paid for
+    # discovering about a free-text reason. It is masked on the read for anybody who could not
+    # have written one, and an erasure cannot reach it: insert-only, in `plt01`, where the
+    # executor has no prose path.
+    Reachability("plt01", "crm_touchpoints", "summary", "unreachable",
+                 "**what a salesperson wrote about a conversation.** Prose a caller supplies, "
+                 "on an insert-only table with no UPDATE grant -- so it is residue, and the "
+                 "control that stands is the mask on the read"),
     Reachability("plt01", "tsk_queues", "created_by", "unreachable",
                  "who opened a work queue. Insert-only"),
     Reachability("plt01", "tsk_queues", "retired_by", "write_once",

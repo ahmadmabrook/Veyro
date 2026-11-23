@@ -159,6 +159,11 @@ READ_ROUTES = [
     ("get", f"/booking/sessions/{_ID}/roster", None),
     ("get", f"/booking/members/{_ID}/bookings", None),
     ("get", "/booking/appeals", None),
+    # ------------------------------------------------------------------ MOD-027 CRM
+    ("get", "/crm/sources", None),
+    ("get", "/crm/board", None),
+    ("get", "/crm/leads", None),
+    ("get", f"/crm/leads/{_ID}", None),
 ]
 
 WRITE_ROUTES = [
@@ -654,6 +659,22 @@ WRITE_ROUTES = [
       "no_show_id": _ID, "idempotency_key": "sweep", **_CORR}),
     ("post", f"/booking/appeals/{_ID}/decide",
      {"uphold": False, "note": "sweep", **_CORR}),
+    # ------------------------------------------------------------------ MOD-027 CRM
+    #
+    # Routine throughout, so the sweep proves the ordinary refusal: a session holding nothing
+    # is 403 on every one of them, and a session holding only `crm.lead.read` is refused every
+    # write -- which is what makes the mask on a touchpoint's prose worth anything.
+    ("post", "/crm/sources",
+     {"source_key": "open_day", "display_name": "Open day", **_CORR}),
+    ("post", f"/crm/sources/{_ID}/retire", {"reason": "no longer run", **_CORR}),
+    ("post", "/crm/leads", {"person_id": _ID, **_CORR}),
+    ("post", f"/crm/leads/{_ID}/touchpoints",
+     {"kind": "call", "summary": "left a message", **_CORR}),
+    ("post", f"/crm/leads/{_ID}/stage", {"to_stage": "contacted", **_CORR}),
+    ("post", f"/crm/leads/{_ID}/assign", {"to_self": True, **_CORR}),
+    ("post", f"/crm/leads/{_ID}/next-action",
+     {"next_action": "call back", "next_action_on": "2026-09-01", **_CORR}),
+    ("post", f"/crm/leads/{_ID}/interests", {"interests": ["classes"], **_CORR}),
 ]
 
 
@@ -1025,7 +1046,11 @@ class GateCoverageTests(unittest.TestCase):
                             # **`/fleet`, not `/devices`.** MOD-007 owns `/devices/{id}` for
                             # a member's own handset, and sweeping the two together would
                             # read as one surface while being two modules' authority.
-                            "/fleet")
+                            "/fleet",
+                            # MOD-027's whole surface, from its first slice: twelve routes and
+                            # all of them routine, so a sample would prove nothing a reader
+                            # could not have guessed.
+                            "/crm")
 
     def test_every_route_of_a_fully_swept_module_is_in_the_behavioural_sweep(self):
         """The sweeps are a sample elsewhere; for these modules they are the whole surface.

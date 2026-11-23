@@ -49735,4 +49735,480 @@ BEGIN
 END $$;
 ROLLBACK;
 
-\echo 'tenant isolation: 114/114 checks passed'
+-- ========================================================= CHECK 115 (MOD-027)
+--
+-- MOD-027 slice 1's own structure and its constraint cases. The prefix-free sweeps prove the
+-- schema-wide rules -- RLS, the policy predicate, the tenant foreign key, the tenant-leading
+-- key, the privilege bans -- and nothing about *this* module, so what is here is the three
+-- pins this file requires per module plus one case per rule that can be isolated.
+BEGIN;
+DO $$
+DECLARE
+    wrong text;
+BEGIN
+    -- ---- the UPDATE grants, per role and per column, both directions.
+    --
+    -- **Not `person_id`**: re-pointing a lead at another person is the duplicate-entry defect
+    -- ADM-CRM-04 is structured against, arriving through an UPDATE. **Not `created_at`**: age
+    -- is the column ADM-CRM-02 says matters, and a lead whose age could be reset is a lead
+    -- that never goes cold. **Not `source_key`**: a report groups by it, so re-keying one
+    -- would silently merge two histories.
+    FOR wrong IN
+        WITH expected(t, c) AS (VALUES
+            ('crm_lead_sources', 'display_name'), ('crm_lead_sources', 'status'),
+            ('crm_lead_sources', 'retired_at'), ('crm_lead_sources', 'retired_by'),
+            ('crm_lead_sources', 'retire_reason'),
+            ('crm_lead_sources', 'retire_correlation_id'),
+            ('crm_leads', 'stage'), ('crm_leads', 'stage_changed_at'),
+            ('crm_leads', 'source_id'), ('crm_leads', 'owner_person_id'),
+            ('crm_leads', 'next_action'), ('crm_leads', 'next_action_on'),
+            ('crm_leads', 'version')),
+        actual(role, t, c) AS (
+            SELECT r.rolname, cl.relname::text, a.attname::text
+              FROM pg_class cl
+              JOIN pg_attribute a ON a.attrelid = cl.oid AND a.attnum > 0 AND NOT a.attisdropped
+              CROSS JOIN (VALUES ('veyro_cp_app'), ('veyro_cp_worker')) AS rr(rolname)
+              JOIN pg_roles r ON r.rolname = rr.rolname
+             WHERE cl.relnamespace = 'plt01'::regnamespace
+               AND cl.relkind IN ('r', 'p')
+               AND cl.relname LIKE 'crm\_%'
+               AND has_column_privilege(r.rolname, cl.oid, a.attname, 'UPDATE'))
+        SELECT format('%s has UPDATE on %s.%s which is not in the pin', role, t, c)
+          FROM actual WHERE (t, c) NOT IN (SELECT t, c FROM expected)
+        UNION ALL
+        SELECT format('%s.%s is pinned as updatable and no role holds it', t, c)
+          FROM expected e
+         WHERE NOT EXISTS (SELECT 1 FROM actual a WHERE a.t = e.t AND a.c = e.c)
+    LOOP
+        RAISE EXCEPTION 'CHECK 115 FAILED: %', wrong;
+    END LOOP;
+
+    -- ---- every NOT NULL, as a set. A NOT NULL is what makes a sibling CHECK bite, and under
+    -- MATCH SIMPLE a NULL in any column of a composite foreign key skips the whole check.
+    FOR wrong IN
+        WITH expected(t, c) AS (VALUES
+            ('crm_lead_sources', 'tenant_id'), ('crm_lead_sources', 'source_id'),
+            ('crm_lead_sources', 'source_key'), ('crm_lead_sources', 'display_name'),
+            ('crm_lead_sources', 'status'), ('crm_lead_sources', 'created_at'),
+            ('crm_lead_sources', 'created_by'),
+            ('crm_lead_sources', 'create_correlation_id'),
+            ('crm_leads', 'tenant_id'), ('crm_leads', 'lead_id'),
+            ('crm_leads', 'person_id'), ('crm_leads', 'stage'),
+            ('crm_leads', 'stage_changed_at'), ('crm_leads', 'version'),
+            ('crm_leads', 'created_at'), ('crm_leads', 'created_by'),
+            ('crm_leads', 'correlation_id'),
+            ('crm_lead_interests', 'tenant_id'), ('crm_lead_interests', 'lead_id'),
+            ('crm_lead_interests', 'interest'), ('crm_lead_interests', 'recorded_at'),
+            ('crm_lead_interests', 'recorded_by'),
+            ('crm_lead_interests', 'correlation_id'),
+            ('crm_touchpoints', 'tenant_id'), ('crm_touchpoints', 'touchpoint_id'),
+            ('crm_touchpoints', 'lead_id'), ('crm_touchpoints', 'kind'),
+            ('crm_touchpoints', 'occurred_at'), ('crm_touchpoints', 'summary'),
+            ('crm_touchpoints', 'recorded_at'), ('crm_touchpoints', 'recorded_by'),
+            ('crm_touchpoints', 'correlation_id')),
+        actual(t, c) AS (
+            SELECT cl.relname::text, a.attname::text
+              FROM pg_class cl
+              JOIN pg_attribute a ON a.attrelid = cl.oid AND a.attnum > 0
+                                 AND NOT a.attisdropped AND a.attnotnull
+             WHERE cl.relnamespace = 'plt01'::regnamespace
+               AND cl.relkind IN ('r', 'p') AND cl.relname LIKE 'crm\_%')
+        SELECT format('%s.%s is NOT NULL and the pin does not say so', t, c)
+          FROM actual WHERE (t, c) NOT IN (SELECT t, c FROM expected)
+        UNION ALL
+        SELECT format('%s.%s is pinned NOT NULL and is nullable', t, c)
+          FROM expected WHERE (t, c) NOT IN (SELECT t, c FROM actual)
+    LOOP
+        RAISE EXCEPTION 'CHECK 115 FAILED: %', wrong;
+    END LOOP;
+
+    -- ---- every foreign key, as a set. MOD-012's lesson: a sweep of one *kind* of reference
+    -- is not a sweep, and `owner_person_id` beside `person_id` is exactly the shape that gets
+    -- sampled.
+    FOR wrong IN
+        WITH expected(t, def) AS (VALUES
+            ('crm_lead_sources', 'FOREIGN KEY (tenant_id) REFERENCES plt01_platform.tenants(tenant_id)'),
+            ('crm_lead_sources', 'FOREIGN KEY (tenant_id, location_id) REFERENCES plt01.locations(tenant_id, location_id)'),
+            ('crm_leads', 'FOREIGN KEY (tenant_id) REFERENCES plt01_platform.tenants(tenant_id)'),
+            ('crm_leads', 'FOREIGN KEY (tenant_id, person_id) REFERENCES plt01.ppl_persons(tenant_id, person_id)'),
+            ('crm_leads', 'FOREIGN KEY (tenant_id, owner_person_id) REFERENCES plt01.ppl_persons(tenant_id, person_id)'),
+            ('crm_leads', 'FOREIGN KEY (tenant_id, source_id) REFERENCES plt01.crm_lead_sources(tenant_id, source_id)'),
+            ('crm_lead_interests', 'FOREIGN KEY (tenant_id) REFERENCES plt01_platform.tenants(tenant_id)'),
+            ('crm_lead_interests', 'FOREIGN KEY (tenant_id, lead_id) REFERENCES plt01.crm_leads(tenant_id, lead_id)'),
+            ('crm_touchpoints', 'FOREIGN KEY (tenant_id) REFERENCES plt01_platform.tenants(tenant_id)'),
+            ('crm_touchpoints', 'FOREIGN KEY (tenant_id, lead_id) REFERENCES plt01.crm_leads(tenant_id, lead_id)')),
+        actual(t, def) AS (
+            SELECT cl.relname::text, pg_get_constraintdef(c.oid)
+              FROM pg_constraint c
+              JOIN pg_class cl ON cl.oid = c.conrelid
+             WHERE cl.relnamespace = 'plt01'::regnamespace
+               AND cl.relname LIKE 'crm\_%' AND c.contype = 'f')
+        SELECT format('%s carries %s which is not pinned', t, def)
+          FROM actual WHERE (t, def) NOT IN (SELECT t, def FROM expected)
+        UNION ALL
+        SELECT format('%s is pinned to carry %s and does not', t, def)
+          FROM expected WHERE (t, def) NOT IN (SELECT t, def FROM actual)
+    LOOP
+        RAISE EXCEPTION 'CHECK 115 FAILED: %', wrong;
+    END LOOP;
+
+    -- ---- one unique rule per thing the design says cannot happen twice.
+    FOR wrong IN
+        WITH expected(name) AS (VALUES
+            ('crm_lead_sources_one_key'), ('crm_leads_one_per_person')),
+        actual(name) AS (
+            SELECT ci.relname::text
+              FROM pg_index i
+              JOIN pg_class ci ON ci.oid = i.indexrelid
+              JOIN pg_class ct ON ct.oid = i.indrelid
+             WHERE ct.relnamespace = 'plt01'::regnamespace
+               AND ct.relname LIKE 'crm\_%' AND i.indisunique AND NOT i.indisprimary)
+        SELECT format('%s is a unique rule the pin does not name', name)
+          FROM actual WHERE name NOT IN (SELECT name FROM expected)
+        UNION ALL
+        SELECT format('%s is pinned and is gone', name)
+          FROM expected WHERE name NOT IN (SELECT name FROM actual)
+    LOOP
+        RAISE EXCEPTION 'CHECK 115 FAILED: %', wrong;
+    END LOOP;
+END $$;
+ROLLBACK;
+
+-- ---- the cases.
+--
+-- Each row is the seed's own valid row with exactly one field moved, and each names the
+-- constraint that refused it: `check_violation` is the same exception for every CHECK on a
+-- table, so a case that counts it proves whichever fires first -- the trap this repository has
+-- shipped in six modules and found by sweeping afterwards each time.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+
+INSERT INTO plt01.crm_lead_sources
+    (tenant_id, source_id, source_key, display_name, created_by, create_correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-9000-4000-8000-000000000001',
+        'open_day', 'Sweifieh open day', '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333');
+INSERT INTO plt01.crm_leads
+    (tenant_id, lead_id, person_id, source_id, created_by, correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-9000-4000-8000-000000000002',
+        'bbbbbbbb-1000-4000-8000-000000000001', 'cccccccc-9000-4000-8000-000000000001',
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333');
+
+DO $$
+DECLARE
+    offender text;
+    probe int := 0;
+BEGIN
+    -- A source key that is not a key.
+    BEGIN
+        INSERT INTO plt01.crm_lead_sources
+            (tenant_id, source_key, display_name, created_by, create_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'Open Day!', 'Something',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 115 FAILED: a source key that is not a key';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender <> 'crm_lead_sources_key_shape' THEN
+                RAISE EXCEPTION 'CHECK 115 FAILED: refused by % instead', offender;
+            END IF;
+            probe := probe + 1;
+    END;
+
+    -- A source with a blank name. The regex form, not `btrim`: a tab is whitespace too, and
+    -- 118 constraints in this build were once satisfied by one.
+    BEGIN
+        INSERT INTO plt01.crm_lead_sources
+            (tenant_id, source_key, display_name, created_by, create_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'nameless', E'\t',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 115 FAILED: a source with no name';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender <> 'crm_lead_sources_name_stated' THEN
+                RAISE EXCEPTION 'CHECK 115 FAILED: refused by % instead', offender;
+            END IF;
+            probe := probe + 1;
+    END;
+
+    -- A source retired with no stated reason. The `coalesce` is what this proves: a CHECK
+    -- passes on NULL, so without it the one record of why a source stopped being offered
+    -- could be empty -- the trap MOD-014 and MOD-021 each paid for once.
+    BEGIN
+        UPDATE plt01.crm_lead_sources
+           SET status = 'retired', retired_at = now(),
+               retired_by = '33333333-3333-4333-8333-333333333333',
+               retire_reason = NULL,
+               retire_correlation_id = '33333333-3333-4333-8333-333333333333'
+         WHERE source_id = 'cccccccc-9000-4000-8000-000000000001';
+        RAISE EXCEPTION 'CHECK 115 FAILED: a source retired with no stated reason';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender <> 'crm_lead_sources_retirement_attributed' THEN
+                RAISE EXCEPTION 'CHECK 115 FAILED: refused by % instead', offender;
+            END IF;
+            probe := probe + 1;
+    END;
+
+    -- A retired status with no retirement date, which is the other side of the pair: the
+    -- attribution constraint admits the all-NULL row, so only this one catches a status that
+    -- says retired while the dates say live.
+    BEGIN
+        UPDATE plt01.crm_lead_sources SET status = 'retired'
+         WHERE source_id = 'cccccccc-9000-4000-8000-000000000001';
+        RAISE EXCEPTION 'CHECK 115 FAILED: retired with no retirement';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender <> 'crm_lead_sources_retired_is_retired' THEN
+                RAISE EXCEPTION 'CHECK 115 FAILED: refused by % instead', offender;
+            END IF;
+            probe := probe + 1;
+    END;
+
+    -- A source status outside the two.
+    BEGIN
+        UPDATE plt01.crm_lead_sources SET status = 'paused'
+         WHERE source_id = 'cccccccc-9000-4000-8000-000000000001';
+        RAISE EXCEPTION 'CHECK 115 FAILED: a source status outside the two';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender <> 'crm_lead_sources_status' THEN
+                RAISE EXCEPTION 'CHECK 115 FAILED: refused by % instead', offender;
+            END IF;
+            probe := probe + 1;
+    END;
+
+    -- **A second lead for one person**, which is the duplicate ADM-CRM-04 is structured to
+    -- prevent and the one rule in this module the service relies on the database for.
+    BEGIN
+        INSERT INTO plt01.crm_leads
+            (tenant_id, person_id, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 115 FAILED: a second lead for one person';
+    EXCEPTION
+        WHEN unique_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender <> 'crm_leads_one_per_person' THEN
+                RAISE EXCEPTION 'CHECK 115 FAILED: refused by % instead', offender;
+            END IF;
+            probe := probe + 1;
+    END;
+
+    -- A stage outside the three this module stores. `lost` is slice 3's and the derived
+    -- columns are MOD-017's, so neither is writable here.
+    BEGIN
+        UPDATE plt01.crm_leads SET stage = 'lost'
+         WHERE lead_id = 'cccccccc-9000-4000-8000-000000000002';
+        RAISE EXCEPTION 'CHECK 115 FAILED: a stage outside the three';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender <> 'crm_leads_stage' THEN
+                RAISE EXCEPTION 'CHECK 115 FAILED: refused by % instead', offender;
+            END IF;
+            probe := probe + 1;
+    END;
+
+    -- A next action with no date, and a date with no action: both sides, because an
+    -- implication either way would admit one of them.
+    BEGIN
+        UPDATE plt01.crm_leads SET next_action = 'call back'
+         WHERE lead_id = 'cccccccc-9000-4000-8000-000000000002';
+        RAISE EXCEPTION 'CHECK 115 FAILED: a next action with no date';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender <> 'crm_leads_next_action_paired' THEN
+                RAISE EXCEPTION 'CHECK 115 FAILED: refused by % instead', offender;
+            END IF;
+            probe := probe + 1;
+    END;
+    BEGIN
+        UPDATE plt01.crm_leads SET next_action_on = DATE '2026-09-01'
+         WHERE lead_id = 'cccccccc-9000-4000-8000-000000000002';
+        RAISE EXCEPTION 'CHECK 115 FAILED: a date with no next action';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender <> 'crm_leads_next_action_paired' THEN
+                RAISE EXCEPTION 'CHECK 115 FAILED: refused by % instead', offender;
+            END IF;
+            probe := probe + 1;
+    END;
+
+    -- A next action that is whitespace, with its date supplied so the pairing is satisfied
+    -- and this is the only rule left to refuse it.
+    BEGIN
+        UPDATE plt01.crm_leads
+           SET next_action = E'\t', next_action_on = DATE '2026-09-01'
+         WHERE lead_id = 'cccccccc-9000-4000-8000-000000000002';
+        RAISE EXCEPTION 'CHECK 115 FAILED: a blank next action';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender <> 'crm_leads_next_action_stated' THEN
+                RAISE EXCEPTION 'CHECK 115 FAILED: refused by % instead', offender;
+            END IF;
+            probe := probe + 1;
+    END;
+
+    -- A next action longer than the column admits.
+    BEGIN
+        UPDATE plt01.crm_leads
+           SET next_action = repeat('x', 201), next_action_on = DATE '2026-09-01'
+         WHERE lead_id = 'cccccccc-9000-4000-8000-000000000002';
+        RAISE EXCEPTION 'CHECK 115 FAILED: an unbounded next action';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender <> 'crm_leads_next_action_bounded' THEN
+                RAISE EXCEPTION 'CHECK 115 FAILED: refused by % instead', offender;
+            END IF;
+            probe := probe + 1;
+    END;
+
+    -- A version below one, which optimistic concurrency reads as a row nobody has written.
+    BEGIN
+        UPDATE plt01.crm_leads SET version = 0
+         WHERE lead_id = 'cccccccc-9000-4000-8000-000000000002';
+        RAISE EXCEPTION 'CHECK 115 FAILED: a version below one';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender <> 'crm_leads_version_positive' THEN
+                RAISE EXCEPTION 'CHECK 115 FAILED: refused by % instead', offender;
+            END IF;
+            probe := probe + 1;
+    END;
+
+    -- An interest outside the three the canvas offers.
+    BEGIN
+        INSERT INTO plt01.crm_lead_interests
+            (tenant_id, lead_id, interest, recorded_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'cccccccc-9000-4000-8000-000000000002', 'nutrition',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 115 FAILED: an interest outside the three';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender <> 'crm_lead_interests_vocabulary' THEN
+                RAISE EXCEPTION 'CHECK 115 FAILED: refused by % instead', offender;
+            END IF;
+            probe := probe + 1;
+    END;
+
+    -- A touchpoint of a kind nobody declared.
+    BEGIN
+        INSERT INTO plt01.crm_touchpoints
+            (tenant_id, lead_id, kind, occurred_at, summary, recorded_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'cccccccc-9000-4000-8000-000000000002', 'carrier_pigeon', now(),
+                'sent a bird', '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 115 FAILED: a touchpoint of an unknown kind';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender <> 'crm_touchpoints_kind' THEN
+                RAISE EXCEPTION 'CHECK 115 FAILED: refused by % instead', offender;
+            END IF;
+            probe := probe + 1;
+    END;
+
+    -- A touchpoint with nothing written in it, and one longer than the column admits.
+    BEGIN
+        INSERT INTO plt01.crm_touchpoints
+            (tenant_id, lead_id, kind, occurred_at, summary, recorded_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'cccccccc-9000-4000-8000-000000000002', 'note', now(), E'\t',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 115 FAILED: a touchpoint with no summary';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender <> 'crm_touchpoints_summary_stated' THEN
+                RAISE EXCEPTION 'CHECK 115 FAILED: refused by % instead', offender;
+            END IF;
+            probe := probe + 1;
+    END;
+    BEGIN
+        INSERT INTO plt01.crm_touchpoints
+            (tenant_id, lead_id, kind, occurred_at, summary, recorded_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'cccccccc-9000-4000-8000-000000000002', 'note', now(), repeat('x', 2001),
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 115 FAILED: an unbounded touchpoint summary';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender <> 'crm_touchpoints_summary_bounded' THEN
+                RAISE EXCEPTION 'CHECK 115 FAILED: refused by % instead', offender;
+            END IF;
+            probe := probe + 1;
+    END;
+
+    -- **A touchpoint in the future**, which is the bound "no contact · 2 days" is counted
+    -- from: a note dated forward would make a cold lead read as warm. Measured against the
+    -- server's own clock rather than between two columns the same writer supplies, which is
+    -- MOD-021's finding.
+    BEGIN
+        INSERT INTO plt01.crm_touchpoints
+            (tenant_id, lead_id, kind, occurred_at, summary, recorded_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'cccccccc-9000-4000-8000-000000000002', 'note',
+                now() + interval '1 day', 'spoke to her tomorrow',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 115 FAILED: a touchpoint in the future';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender <> 'crm_touchpoints_not_in_the_future' THEN
+                RAISE EXCEPTION 'CHECK 115 FAILED: refused by % instead', offender;
+            END IF;
+            probe := probe + 1;
+    END;
+
+    -- **A permission, which no refusal probe can see**: a touchpoint written up three days
+    -- after the conversation is the ordinary case -- "a salesperson writes up Friday's open
+    -- day on Monday" -- so the forward-only bound must admit it.
+    BEGIN
+        INSERT INTO plt01.crm_touchpoints
+            (tenant_id, lead_id, kind, occurred_at, summary, recorded_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'cccccccc-9000-4000-8000-000000000002', 'tour',
+                now() - interval '3 days', 'met her at the open day',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        probe := probe + 1;
+    EXCEPTION
+        WHEN others THEN
+            RAISE EXCEPTION
+                'CHECK 115 FAILED: a touchpoint written up three days late was refused, and '
+                'a salesperson writes up Friday''s open day on Monday';
+    END;
+
+    IF probe <> 18 THEN
+        RAISE EXCEPTION
+            'CHECK 115 FAILED: % cases ran, expected 18 -- a case that stops running is a '
+            'rule with no evidence behind it', probe;
+    END IF;
+END $$;
+ROLLBACK;
+
+\echo 'tenant isolation: 115/115 checks passed'

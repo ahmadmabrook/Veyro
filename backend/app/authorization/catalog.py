@@ -830,6 +830,24 @@ PERMISSIONS: dict[str, Permission] = dict([
     # are prose, and MOD-019 learned that a reason column is where a health fact goes in
     # practice -- so those two are masked unless the caller holds the matching write
     # permission, the same trade `scheduling.session.change` makes.
+    # MOD-027, the lead pipeline. **Routine throughout**, for MOD-026's reason: raising,
+    # claiming and writing up a lead is the ordinary work of a sales shift, and refusing a
+    # step-up every time somebody logs a phone call would make the pipeline wrong instead.
+    # Nothing here moves money or opens a door -- a lead is a `ppl_persons` row with a sales
+    # stage on it, and every name, number and address on these screens is MOD-014's and is
+    # read through its own gate.
+    _p("crm.source.read", "See where leads are recorded as coming from", "data_access"),
+    _p("crm.source.write", "Declare or retire a lead source", "configuration"),
+    _p("crm.lead.read", "See leads, the pipeline board and a lead's timeline", "data_access"),
+    _p("crm.lead.write", "Open a lead, move its stage, claim it or set its next action",
+       "data_access"),
+    # **Its own permission, and the mask on a touchpoint's prose keys on it.** A summary is
+    # where a health fact goes in practice -- MOD-017 and MOD-019 each paid for discovering
+    # that about a free-text column -- so a reader who could not have written one does not read
+    # them. The same trade `scheduling.session.change` makes, and it is only worth anything
+    # because this is separate from `crm.lead.read`: a mask keyed on the cheapest permission in
+    # a module masks nothing, which is MOD-020's finding.
+    _p("crm.touchpoint.write", "Write up a conversation with a lead", "data_access"),
     _p("tasks.task.read", "See tasks, their checklists and what blocks them", "data_access"),
     _p("tasks.task.write", "Raise, assign, progress or settle a task", "data_access"),
     _p("tasks.case.read", "See cases and their timeline", "data_access"),

@@ -2341,3 +2341,31 @@ times before it was accepted, each time naming exactly what had changed. Budget 
 adding a column: the refusals are the cheap half, and the expensive half is the constraint
 cases, because a biconditional needs one per side and only the side the weakened constraint
 *admits* catches a weakening.
+
+
+**A test cannot change PostgreSQL role, because no role is a member of any other.** That is
+this file's rule 4 -- runtime roles "are members of no role (no `SET ROLE` path)" -- and it
+means a fixture cannot borrow the owner's privileges to set up a state the service is not
+allowed to write. MOD-027's cold-lead rule runs from `crm_leads.created_at`, which is outside
+every runtime role's UPDATE grant on purpose (age is the column the design says matters, and a
+lead whose age could be reset is a lead that never goes cold), so there is no way to age a lead
+by writing to it. **Ask from a later moment instead**: the read takes an `at`, the service test
+passes one, and the HTTP test asserts what a request can -- which is also why no *route* takes
+an instant, since a caller-supplied "now" would decide which leads a manager is told are going
+cold. MOD-020 split its settlement tests the same way and for the same reason.
+
+**A sort is a rule, and a case proves it only if the two orders disagree.** MOD-027's lead list
+is ordered oldest-*contact*-first because the canvas says a lead's value decays by the hour, and
+the first test for it created the untouched lead first and touched the second -- where ordering
+by `created_at` and ordering by last contact give the same answer. The mutation sweep reported
+the ordering as uncaught, correctly: the case that bites touches the lead created *first*, so
+the two keys fall on opposite sides. That is this file's "a case catches a weakening only if the
+weakened rule admits the row", applied to an `ORDER BY`, and it is worth stating separately
+because a sort has no constraint name to anchor a case to.
+
+**The stale-excuse direction fires on a whole module the moment its package appears, and that
+is the check working at its widest.** `design:coverage` refused eight screens at once when
+`backend/app/crm/` was created -- every `MOD-027:` reason naming a module that now exists. The
+remedy is not a token change: each reason has to say what is *left* in the module, which is a
+different sentence per screen and is exactly the information a reader needs. Budget for it when
+a new module's first slice lands, and read each reason rather than editing the prefix.

@@ -64,6 +64,9 @@ backend/app/            service code
                         own connection, so a decision and the unlock it caused commit
                         together -- and no path writes a decision at an exit
   errors.py             the five service errors every module's service raises
+  crm/                  MOD-027: pipeline.py decides the sales stage, the board column
+                        and when a lead goes cold; service.py does the I/O and holds no
+                        name, number or address -- a lead is a MOD-014 person
   worker/               the scheduled jobs: names.py is the closed set both the registry and
                         MOD-011's catalogue read, registry.py says what each job calls and the
                         role it needs, runner.py owns the tick and the failure isolation
@@ -4659,6 +4662,112 @@ Known gaps, deliberate:
 - **An escalation will end in a notification request and will not claim anybody was told**,
   because MOD-013 authors a message and sends nothing.
 
+**MOD-027 (CRM) slice 1 -- implemented: the lead, its pipeline, its interests and its
+touchpoints.** Four `crm_` tables in `plt01` under the same forced RLS, `app/crm/` beside them,
+five permissions and twelve HTTP routes under `/crm`. Design record:
+`knowledge/00-Decisions/ADR-0010-mod027-crm-lead-pipeline-and-trial.md`. Proven: isolation
+check 115 with 18 constraint cases, each naming the constraint that refused it, and 27 schema
+mutations in `tests/sql/sweep_crm.py` -- all caught; 25 domain tests with no database; 38 HTTP
+tests; 15 mutations in `tests/mutate_crm.py`, all caught.
+
+**The module holds no name, no phone number and no address, and that is the requirement rather
+than a nicety.** ADM-CRM-01 states it structurally -- "a lead, a trialist and a member are one
+record at three stages, never three records" -- and ADM-CRM-06 repeats it: "the lead ID becomes
+the member ID. This is the duplicate-entry fix from the UX review, enforced structurally rather
+than by discipline." So a lead is a row *attached to* a `ppl_persons` row, every person fact on
+these screens is read through MOD-014's gate and masked by its rules, and
+`test_the_lead_holds_no_name_number_or_address` asserts it by field *name*, because a field
+called `legal_name` is as much a leak as the name in it.
+
+Six decisions carry the slice:
+
+- **Creating a lead for a person who already has one returns theirs**, so there is no
+  idempotency key at all: the person is the key, `crm_leads_one_per_person` is the control, and
+  a retried request, a second salesperson and a receptionist who did not check all get one
+  record. That is ADM-CRM-04's own behaviour -- "if this number already existed, that record
+  would open instead of a second one being created" -- rather than an idempotency convenience,
+  and `GET /people/contact-match` is the check at the door while this is the race.
+- **The board's last two columns are derived from MOD-017 and are not stored.** "On trial" is
+  "this person has an active membership on a trial product" and "Joined" is one that is not; a
+  stored `on_trial` would be a second definition of whether somebody has a membership and would
+  go stale the moment a trial lapsed. A membership outranks the sales stage, because it is the
+  later fact: the stage is what somebody typed and the membership is what happened.
+- **`lost` is deliberately absent from the stage domain.** ADM-CRM-07 is slice 3, and a
+  declared value nothing writes is this build's most-repeated finding -- MOD-012, MOD-013,
+  MOD-016, MOD-017, MOD-020 and MOD-022 each shipped one. The slice that writes it adds it.
+- **Recording a touchpoint moves the stage, in the same transaction.** The board's first two
+  moves are facts somebody records rather than buttons, so a call that left the stage at `new`
+  would make "Contacted · 9" a count the profile contradicts -- MOD-018's
+  one-module-two-definitions finding across two screens instead of two functions. The stage
+  never moves *back*: a note on a toured lead leaves it toured, or this would be the one writer
+  that defeats `EDGES`.
+- **A source is a tenant's own row, not a string.** The canvas draws a dropdown and ADM-RPT-03
+  groups conversions by it, so free text would make the one report the field exists for a
+  group-by over typos -- MOD-026's queue finding. Retired rather than deleted, because a club
+  that ran one open day in March still ran it.
+- **A touchpoint's prose is masked for a reader who could not have written one**, and
+  `crm.touchpoint.write` is a separate permission from `crm.lead.read` for exactly that reason:
+  a mask keyed on the cheapest permission in a module masks nothing, which is MOD-020's
+  finding. A summary is where a health fact goes in practice -- MOD-017 and MOD-019 each paid
+  for discovering that about a free-text reason -- and the entry stays visible with the prose
+  withheld, because a timeline missing its rows reads as a lead nobody has spoken to.
+
+Things worth knowing before extending it:
+
+- **The pipeline runs forward only, and the design gives no affordance for going back.** A tour
+  that fell through is a *touchpoint* saying so, which is the record ADM-CRM-07 says survives a
+  lead being lost. Stated in `EDGES`' own comment because a sales team will ask for the
+  backwards move, and the answer is that it would make "Toured · 6" a count nobody can
+  reconstruct.
+- **An untouched lead's clock runs from when it was created**, which is the uncomfortable
+  direction and the canvas's own: "Rana Sabbagh NO CONTACT · 2 DAYS" sits beside "open day ·
+  2d". Treating an untouched lead as warm would hide exactly the ones the chip exists to
+  surface.
+- **`gym_only` is not combined with another interest**, which the words say, and the second
+  request is checked against what is already recorded -- a control defeated by the order of two
+  requests is not a control, which is MOD-020's quota finding.
+- **The list is ordered oldest-contact-first**, which is the opposite of every other listing
+  read in this build and is the canvas's instruction: "Age is the sortable column that matters
+  -- a lead's value decays by the hour."
+- **The cold rule is asked from a later moment rather than written into the past.** No route
+  takes an instant, because a caller-supplied "now" would decide which leads a manager is told
+  are going cold -- MOD-011's unbounded `observed_at` -- and `created_at` is outside every
+  runtime role's UPDATE grant, so the fixture cannot age a lead either. The service tests pass
+  `at`; the HTTP tests assert what a request can.
+
+Known gaps, deliberate:
+
+- **No screens.** ADM-CRM-01, 02, 03 and 04 are answered by the reads and writes this slice
+  built and none of them is drawn yet; `design:coverage` carries each with what is left in it.
+  Eight screens, which is more than any other unbuilt module's.
+- **No trial, so the `On trial` column is always empty** and the board says so rather than
+  hiding it. Nothing in this build marks a product as a trial -- neither
+  `cat_products.product_type` nor `mem_membership_terms.membership_kind` has such a value --
+  which is the first thing slice 2 has to decide. MOD-017's `change_membership_plan` is the
+  conversion and is built.
+- **No lost and no reopen**, which is slice 3, and `crm_lead_interests` has no withdrawal for
+  the same reason: there is no UPDATE and no DELETE grant on it, so an interest recorded by
+  mistake is uncorrectable on a routine permission. That is MOD-013's "an irreversible act must
+  not be declarable on a routine permission" at its mildest -- three values on a sales record
+  rather than a rota somebody is turned away by -- and the slice that adds `lost` adds the
+  withdrawal.
+- **No AI suggestion.** ADM-CRM-01 draws "VEYRO SUGGESTS · YOU SEND IT" with a rationale; the
+  permission exists and is `privileged`, the record is slice 4's work, and the text needs a
+  model nobody has an account with. The ADR leaves open whether that is an eighth external
+  blocker or a seam with a deterministic local suggester behind it.
+- **No conversation record and no inbound message.** MOD-027's own title is "CRM + Unified
+  Inbox Pilot": the thread is slice 4's work and both ends of the message are the seam --
+  MOD-013 authors one and sends nothing, and MOD-012 has no inbound receiver.
+- **Nothing publishes an event.** The TSD's CRM list names `lead.created`, `trial.attended` and
+  `opportunity.won`, which MOD-010's catalogue does not declare; declaring and producing them
+  is work rather than a blocker, and `lead.created` is the obvious first one.
+- **A lead's stage move is unattributed on the lead row.** Who moved it is a touchpoint, which
+  is the record that survives; the row carries the stage and not a history of it. The same
+  asymmetry MOD-026 records for a task's reassignment, and the same remedy would close both.
+- **A source's `location_id` is a scope, not a boundary**, because `permit` resolves
+  tenant-wide -- MOD-014's standing gap, said on the read rather than implied by a column that
+  looks like it restricts something.
+
 ## The worker runtime
 
 `backend/app/worker/` is the thing this file asked for in fifteen places. Every one of those
@@ -6139,11 +6248,14 @@ Member, Coach, Console and POS have no implementation at all. **Closing this hon
 resolving the mapping before claiming a module is done**, not counting routes -- and the
 backlog is now the half of that mapping which exists: every unbuilt screen on those two
 surfaces names the module that owns it, checked against the catalogue, so the modules with
-Admin and Front Desk screens still owed are MOD-027 (8), MOD-055 (3), MOD-058 (1) and
-MOD-059 (1), plus 15 screens that are work inside modules already built. **MOD-026 came off
-that list by building its three**, which is the first time a module has: its backlog entries
-had been rewritten twice as the slices landed, because the check validates the module id and
-cannot read the sentence beside it.
+Admin and Front Desk screens still owed are MOD-055 (3), MOD-058 (1) and MOD-059 (1), plus 23
+screens that are work inside modules already built. **MOD-026 came off that list by building
+its three**, which is the first time a module has: its backlog entries had been rewritten twice
+as the slices landed, because the check validates the module id and cannot read the sentence
+beside it. **MOD-027 came off it a different way** -- its first slice landed, so its eight
+screens moved from "waiting on a module" to "work inside a module that exists", which the
+check enforced the moment `backend/app/crm/` appeared: eight entries refused at once, each
+naming the screen whose excuse had gone stale.
 
 So "implemented" above is accurate about the server plane and incomplete about the product
 everywhere, and the backlog has two halves.
@@ -6292,10 +6404,15 @@ on it. The one requirement fragment with nothing to point at is R04's payroll ac
 which waits on a payroll module this build does not have: a policy naming it would be a policy
 for an action nothing can perform.
 
-**MOD-027 is next and its design record is written**:
-`knowledge/00-Decisions/ADR-0010-mod027-crm-lead-pipeline-and-trial.md`. It is unblocked --
-MOD-013, MOD-014 and MOD-026 are its dependencies and all three are built -- and eight
-backlogged Admin screens are its, more than any other module's. Four things that record
+**MOD-027's first slice is built** -- see its section above --
+and its design record is `knowledge/00-Decisions/ADR-0010-mod027-crm-lead-pipeline-and-trial.md`.
+**Slice 2 is the next piece and it has one decision in front of it**: what marks a product as
+a trial. "A trial is an active membership on a trial product" is the ADR's own shape and
+neither `cat_products.product_type` nor `mem_membership_terms.membership_kind` carries such a
+value, so the board's `On trial` column is empty until that is settled -- and
+`change_membership_plan`, which the conversion goes through, is built. The eight backlogged
+Admin screens are still MOD-027's, more than any other module's, and each now says what is
+left in it rather than that the module does not exist. Four things that record
 settles, because the canvas is unusually explicit about them:
 
 - **A lead, a trialist and a member are one `ppl_persons` row**, which the canvas states as a
