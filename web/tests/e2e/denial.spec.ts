@@ -89,7 +89,13 @@ test.describe("a refusal at an ordinary sign-in", () => {
     // changed before you lead with the renewal." A gap means nothing until you know what it
     // is a gap from.
     const block = page.locator("section").filter({ hasText: "Their pattern" });
-    await expect(block).toContainText(/Last in (today|1 day ago)/);
+    // **Exactly one day, not "today or one day".** The allowance was covering a fixture bug
+    // rather than a real range: the seed subtracted whole days from a UTC instant while this
+    // page counts them in the club's zone, so a run after 21:00 UTC produced "2 days ago"
+    // and the allowance did not stretch that far anyway -- it just hid the smaller drift
+    // until the larger one arrived. `clubLocalInstant` seeds the most recent visit on the
+    // club's own yesterday at every hour of the run, so the figure is now one value.
+    await expect(block).toContainText("Last in 1 day ago");
     // **Rounded, and the sentence says "about".** The fixture's fourteen entries over nine
     // weeks is about one and a half a week, and this app has one number-rendering path which
     // refuses a fraction outright -- `formatInteger` throws, which is a 500 rather than a

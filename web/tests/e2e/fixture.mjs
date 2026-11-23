@@ -29,6 +29,45 @@ import { browserFingerprint } from "./device.mjs";
 const api = process.env.VEYRO_API_ORIGIN ?? "http://127.0.0.1:8000";
 
 /** A correlation id per call, so a decision here is traceable to one there. */
+/**
+ * The club's own timezone, and the one fact about it a seed has to know.
+ *
+ * Amman has been permanently UTC+3 since it abolished DST in 2022, which is why a fixed
+ * offset is honest here rather than a shortcut. The *reason* it has to be stated at all is
+ * the bug below.
+ */
+const CLUB_TZ = "Asia/Amman";
+const CLUB_OFFSET_HOURS = 3;
+
+/**
+ * The UTC instant for a local hour on the local day `daysBack` days before the club's today.
+ *
+ * **Seeding days by subtracting 86,400,000 milliseconds counts days in UTC, and every read
+ * that renders them counts days in the club's zone.** Those agree for twenty-one hours out
+ * of twenty-four and disagree for the three after 21:00 UTC, when Amman has already turned
+ * over: `Date.now() - 86400000` with the UTC hour pinned then lands two local days back, so
+ * FD-03's "Last in 1 day ago" renders "2 days ago" and the suite goes red for a reason that
+ * has nothing to do with the commit under test. It did, on a documentation-only commit
+ * pushed at 21:05 UTC.
+ *
+ * **The old comment claimed immunity from exactly this** -- "mid-morning local, so an entry
+ * never lands on a neighbouring day by accident of the hour the fixture runs". Mid-morning
+ * was right and insufficient: the hour within the day was safe and the day itself was not,
+ * because it was picked in the wrong frame. This repository already records the service
+ * version of the same mistake twice, and a fixture is where it is hardest to see, since the
+ * number it produces looks like data rather than like arithmetic.
+ *
+ * So the day is chosen on the club's calendar and the clock is set from it, which is stable
+ * at every hour of the run.
+ */
+function clubLocalInstant(daysBack, localHour, localMinute = 0) {
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: CLUB_TZ }).format(new Date());
+  const when = new Date(`${today}T00:00:00Z`);
+  when.setUTCDate(when.getUTCDate() - daysBack);
+  when.setUTCHours(localHour - CLUB_OFFSET_HOURS, localMinute, 0, 0);
+  return when;
+}
+
 function cid() {
   return randomUUID();
 }
@@ -721,10 +760,10 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
   // API field so a fixture could backdate it would be inventing surface for a seed, which is
   // the wrong trade.
   for (const daysBack of [1, 9, 12, 16, 19, 23, 26, 33, 37, 44, 51, 58, 65, 72]) {
-    const when = new Date(Date.now() - daysBack * 86400000);
-    // Mid-morning local, so an entry never lands on a neighbouring day by accident of the
-    // hour the fixture runs -- the trap the visits read itself was caught by.
-    when.setUTCHours(7, 30, 0, 0);
+    // Mid-morning on the club's *local* calendar day, `daysBack` days before the club's
+    // local today -- see `clubLocalInstant`, and the comment there for the evening this
+    // was found.
+    const when = clubLocalInstant(daysBack, 10, 30);
     await call("/access/events", {
       method: "POST", ...as(token),
       body: {
@@ -759,8 +798,7 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
   const SHAPE_OF_A_DAY = [[19, 10], [18, 9], [17, 6], [7, 3]];
   for (const [localHour, howMany] of SHAPE_OF_A_DAY) {
     for (let i = 0; i < howMany; i += 1) {
-      const when = new Date(Date.now() - (2 + (i % 4)) * 86400000);
-      when.setUTCHours(localHour - 3, 0, 0, 0);
+      const when = clubLocalInstant(2 + (i % 4), localHour);
       await call("/access/events", {
         method: "POST", ...as(token),
         body: {
