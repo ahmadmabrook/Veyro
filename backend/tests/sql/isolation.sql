@@ -48097,6 +48097,15 @@ BEGIN
             ('tsk_cases', 'status'), ('tsk_cases', 'resolved_at'),
             ('tsk_cases', 'resolved_by'), ('tsk_cases', 'resolution_reason'),
             ('tsk_cases', 'resolve_correlation_id'),
+            -- `0024`: the owner ADM-CC-06's four assignment states need, and the snooze
+            -- five. **Not `source`** -- where work came from does not change.
+            ('tsk_cases', 'assignee_person_id'), ('tsk_cases', 'snoozed_at'),
+            ('tsk_cases', 'snoozed_until'), ('tsk_cases', 'snooze_reason'),
+            ('tsk_cases', 'snoozed_by'), ('tsk_cases', 'snooze_correlation_id'),
+            ('tsk_case_affected', 'withdrawn_at'),
+            ('tsk_case_affected', 'withdrawn_by'),
+            ('tsk_case_affected', 'withdraw_reason'),
+            ('tsk_case_affected', 'withdraw_correlation_id'),
             ('tsk_tasks', 'queue_id'), ('tsk_tasks', 'case_id'), ('tsk_tasks', 'title'),
             ('tsk_tasks', 'assignee_person_id'), ('tsk_tasks', 'priority'),
             ('tsk_tasks', 'status'), ('tsk_tasks', 'due_at'),
@@ -48157,7 +48166,11 @@ BEGIN
             ('tsk_cases', 'priority'), ('tsk_cases', 'status'),
             ('tsk_cases', 'opened_at'), ('tsk_cases', 'opened_by'),
             ('tsk_cases', 'open_correlation_id'),
-            ('tsk_cases', 'idempotency_key'),
+            ('tsk_cases', 'idempotency_key'), ('tsk_cases', 'source'),
+            ('tsk_case_affected', 'tenant_id'), ('tsk_case_affected', 'case_id'),
+            ('tsk_case_affected', 'affected_kind'), ('tsk_case_affected', 'affected_id'),
+            ('tsk_case_affected', 'added_at'), ('tsk_case_affected', 'added_by'),
+            ('tsk_case_affected', 'correlation_id'),
             ('tsk_case_entries', 'tenant_id'), ('tsk_case_entries', 'entry_id'),
             ('tsk_case_entries', 'case_id'), ('tsk_case_entries', 'entry_kind'),
             ('tsk_case_entries', 'summary'), ('tsk_case_entries', 'occurred_at'),
@@ -48168,7 +48181,7 @@ BEGIN
             ('tsk_tasks', 'subject_kind'), ('tsk_tasks', 'priority'),
             ('tsk_tasks', 'status'), ('tsk_tasks', 'created_at'),
             ('tsk_tasks', 'created_by'), ('tsk_tasks', 'create_correlation_id'),
-            ('tsk_tasks', 'idempotency_key'),
+            ('tsk_tasks', 'idempotency_key'), ('tsk_tasks', 'source'),
             ('tsk_checklist_items', 'tenant_id'), ('tsk_checklist_items', 'item_id'),
             ('tsk_checklist_items', 'task_id'), ('tsk_checklist_items', 'ordinal'),
             ('tsk_checklist_items', 'label'), ('tsk_checklist_items', 'created_at'),
@@ -48257,6 +48270,9 @@ BEGIN
             ('tsk_cases', 'FOREIGN KEY (tenant_id) REFERENCES plt01_platform.tenants(tenant_id)'),
             ('tsk_cases', 'FOREIGN KEY (tenant_id, queue_id) REFERENCES plt01.tsk_queues(tenant_id, queue_id)'),
             ('tsk_cases', 'FOREIGN KEY (tenant_id, recurs_from_case_id) REFERENCES plt01.tsk_cases(tenant_id, case_id)'),
+            ('tsk_cases', 'FOREIGN KEY (tenant_id, assignee_person_id) REFERENCES plt01.ppl_persons(tenant_id, person_id)'),
+            ('tsk_case_affected', 'FOREIGN KEY (tenant_id) REFERENCES plt01_platform.tenants(tenant_id)'),
+            ('tsk_case_affected', 'FOREIGN KEY (tenant_id, case_id) REFERENCES plt01.tsk_cases(tenant_id, case_id)'),
             ('tsk_case_entries', 'FOREIGN KEY (tenant_id) REFERENCES plt01_platform.tenants(tenant_id)'),
             ('tsk_case_entries', 'FOREIGN KEY (tenant_id, case_id) REFERENCES plt01.tsk_cases(tenant_id, case_id)'),
             ('tsk_tasks', 'FOREIGN KEY (tenant_id) REFERENCES plt01_platform.tenants(tenant_id)'),
@@ -48764,6 +48780,8 @@ SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
 DO $$
 DECLARE
     probe integer := 0;
+    cases integer := 0;
+    offender text;
     declared integer;
     t constant uuid := '11111111-1111-4111-8111-111111111111';
     loc constant uuid := 'eeeeeeee-1000-4000-8000-000000000001';
@@ -48792,26 +48810,27 @@ BEGIN
      WHERE queue_id = dead;
 
     INSERT INTO plt01.tsk_cases (tenant_id, case_number, title, queue_id, subject_kind,
-                                 opened_by, open_correlation_id, idempotency_key)
-    VALUES (t, 'P114-OPEN', 'Card not working', qa, 'tenant', actor, gen_random_uuid(),
-            'p114-open') RETURNING case_id INTO open_case;
+                                 source, opened_by, open_correlation_id, idempotency_key)
+    VALUES (t, 'P114-OPEN', 'Card not working', qa, 'tenant', 'manual', actor,
+            gen_random_uuid(), 'p114-open') RETURNING case_id INTO open_case;
     INSERT INTO plt01.tsk_cases (tenant_id, case_number, title, queue_id, subject_kind,
-                                 opened_by, open_correlation_id, idempotency_key)
-    VALUES (t, 'P114-SHUT', 'Settled last month', qa, 'tenant', actor, gen_random_uuid(),
-            'p114-shut') RETURNING case_id INTO shut_case;
+                                 source, opened_by, open_correlation_id, idempotency_key)
+    VALUES (t, 'P114-SHUT', 'Settled last month', qa, 'tenant', 'automation', actor,
+            gen_random_uuid(), 'p114-shut') RETURNING case_id INTO shut_case;
     UPDATE plt01.tsk_cases SET status = 'resolved', resolved_at = now(),
            resolved_by = actor, resolution_reason = 'replaced the card',
            resolve_correlation_id = gen_random_uuid()
      WHERE case_id = shut_case;
     UPDATE plt01.tsk_cases SET status = 'closed' WHERE case_id = shut_case;
 
-    INSERT INTO plt01.tsk_tasks (tenant_id, queue_id, title, subject_kind, created_by,
-                                 create_correlation_id, idempotency_key)
-    VALUES (t, qa, 'Call the member', 'tenant', actor, gen_random_uuid(), 'p114-task')
+    INSERT INTO plt01.tsk_tasks (tenant_id, queue_id, title, subject_kind, source,
+                                 created_by, create_correlation_id, idempotency_key)
+    VALUES (t, qa, 'Call the member', 'tenant', 'manual', actor, gen_random_uuid(),
+            'p114-task')
     RETURNING task_id INTO task;
-    INSERT INTO plt01.tsk_tasks (tenant_id, queue_id, title, subject_kind, created_by,
-                                 create_correlation_id, idempotency_key)
-    VALUES (t, qa, 'Already done', 'tenant', actor, gen_random_uuid(), 'p114-settled')
+    INSERT INTO plt01.tsk_tasks (tenant_id, queue_id, title, subject_kind, source,
+                                 created_by, create_correlation_id, idempotency_key)
+    VALUES (t, qa, 'Already done', 'tenant', 'ai', actor, gen_random_uuid(), 'p114-settled')
     RETURNING task_id INTO settled;
     UPDATE plt01.tsk_tasks SET status = 'done', settled_at = now(), settled_by = actor,
            settle_reason = 'spoke to them', settle_correlation_id = gen_random_uuid()
@@ -48823,8 +48842,9 @@ BEGIN
     -- had no case only it could answer. See `0023`.
     BEGIN
         INSERT INTO plt01.tsk_tasks (tenant_id, queue_id, case_id, title, subject_kind,
-                                     created_by, create_correlation_id, idempotency_key)
-        VALUES (t, qb, open_case, 'In the wrong backlog', 'tenant', actor,
+                                     source, created_by, create_correlation_id,
+                                     idempotency_key)
+        VALUES (t, qb, open_case, 'In the wrong backlog', 'tenant', 'manual', actor,
                 gen_random_uuid(), 'p114-2');
         RAISE EXCEPTION 'CHECK 114 FAILED: one piece of work was counted in two backlogs';
     EXCEPTION WHEN raise_exception THEN
@@ -48838,8 +48858,10 @@ BEGIN
     -- ---- branch 2: a new task on a closed case is work nobody will see.
     BEGIN
         INSERT INTO plt01.tsk_tasks (tenant_id, queue_id, case_id, title, subject_kind,
-                                     created_by, create_correlation_id, idempotency_key)
-        VALUES (t, qa, shut_case, 'Too late', 'tenant', actor, gen_random_uuid(), 'p114-3');
+                                     source, created_by, create_correlation_id,
+                                     idempotency_key)
+        VALUES (t, qa, shut_case, 'Too late', 'tenant', 'manual', actor, gen_random_uuid(),
+                'p114-3');
         RAISE EXCEPTION 'CHECK 114 FAILED: a task was added to a closed case';
     EXCEPTION WHEN raise_exception THEN
         IF sqlerrm LIKE 'CHECK 114 FAILED%' THEN RAISE; END IF;
@@ -48990,6 +49012,259 @@ BEGIN
             'CHECK 114 FAILED: target_seconds was refused by the grant rather than by the '
             'trigger, so that branch has no evidence: %', sqlerrm;
     END;
+
+    -- ---- `0024`'s constraints, each case naming the constraint that refused it.
+    --
+    -- **`GET STACKED DIAGNOSTICS`, because `check_violation` is the same exception for every
+    -- CHECK on a table.** A case that counts the class proves whichever rule fires first --
+    -- the trap this repository has shipped in five modules and found by sweeping afterwards
+    -- each time. Here it is cheap: the fixture rows above are valid, so each case moves one
+    -- field and the companion columns its siblings demand.
+
+    -- A source outside the three the canvas names. ADM-TSK-01: "the source is always named
+    -- -- a task nobody can account for gets ignored", so a fourth value is not a new kind of
+    -- work, it is a row nobody can file.
+    BEGIN
+        UPDATE plt01.tsk_tasks SET source = 'telepathy' WHERE task_id = task;
+        RAISE EXCEPTION 'CHECK 114 FAILED: a task carries a source nobody declared';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender <> 'tsk_tasks_source' THEN
+                RAISE EXCEPTION 'CHECK 114 FAILED: answered by %', offender;
+            END IF;
+            cases := cases + 1;
+        WHEN insufficient_privilege THEN
+            -- The point of the column being outside every UPDATE grant. Proved as a
+            -- permission rather than counted as a constraint case.
+            cases := cases + 1;
+    END;
+
+    BEGIN
+        UPDATE plt01.tsk_cases SET source = 'telepathy' WHERE case_id = open_case;
+        RAISE EXCEPTION 'CHECK 114 FAILED: a case carries a source nobody declared';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender <> 'tsk_cases_source' THEN
+                RAISE EXCEPTION 'CHECK 114 FAILED: answered by %', offender;
+            END IF;
+            cases := cases + 1;
+        WHEN insufficient_privilege THEN
+            cases := cases + 1;
+    END;
+
+    -- A snooze with no account of why. The canvas: "an exception cannot be dismissed, only
+    -- deferred with an account of why."
+    BEGIN
+        UPDATE plt01.tsk_cases
+           SET snoozed_at = now(), snoozed_until = now() + interval '3 days',
+               snoozed_by = actor, snooze_correlation_id = gen_random_uuid()
+         WHERE case_id = open_case;
+        RAISE EXCEPTION 'CHECK 114 FAILED: a case was deferred with no stated reason';
+    EXCEPTION WHEN check_violation THEN
+        GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+        IF offender <> 'tsk_cases_snooze_attributed' THEN
+            RAISE EXCEPTION 'CHECK 114 FAILED: answered by %', offender;
+        END IF;
+        cases := cases + 1;
+    END;
+
+    -- A single tab, not two spaces: `btrim` strips spaces and nothing else, which is why
+    -- every "states a reason" control in this build is `~ '[^[:space:]]'` and why a
+    -- space-only case cannot tell the two forms apart.
+    BEGIN
+        UPDATE plt01.tsk_cases
+           SET snoozed_at = now(), snoozed_until = now() + interval '3 days',
+               snooze_reason = E'\t', snoozed_by = actor,
+               snooze_correlation_id = gen_random_uuid()
+         WHERE case_id = open_case;
+        RAISE EXCEPTION 'CHECK 114 FAILED: a tab counted as an account of why';
+    EXCEPTION WHEN check_violation THEN
+        GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+        IF offender <> 'tsk_cases_snooze_attributed' THEN
+            RAISE EXCEPTION 'CHECK 114 FAILED: answered by %', offender;
+        END IF;
+        cases := cases + 1;
+    END;
+
+    -- And the NULL case, which is what proves the `coalesce`. MOD-014 shipped three of these
+    -- removable because every case sent a blank string and none sent NULL.
+    BEGIN
+        UPDATE plt01.tsk_cases
+           SET snoozed_at = now(), snoozed_until = now() + interval '3 days',
+               snooze_reason = NULL, snoozed_by = actor,
+               snooze_correlation_id = gen_random_uuid()
+         WHERE case_id = open_case;
+        RAISE EXCEPTION 'CHECK 114 FAILED: a NULL reason passed the coalesce';
+    EXCEPTION WHEN check_violation THEN
+        GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+        IF offender <> 'tsk_cases_snooze_attributed' THEN
+            RAISE EXCEPTION 'CHECK 114 FAILED: answered by %', offender;
+        END IF;
+        cases := cases + 1;
+    END;
+
+    -- A deferral stamped in the future: the bound that stops `snoozed_until` being measured
+    -- between two values the same writer supplies, which is MOD-021's parked unlock.
+    BEGIN
+        UPDATE plt01.tsk_cases
+           SET snoozed_at = now() + interval '2 days',
+               snoozed_until = now() + interval '3 days',
+               snooze_reason = 'waiting on the member', snoozed_by = actor,
+               snooze_correlation_id = gen_random_uuid()
+         WHERE case_id = open_case;
+        RAISE EXCEPTION 'CHECK 114 FAILED: a deferral was stamped in the future';
+    EXCEPTION WHEN check_violation THEN
+        GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+        IF offender <> 'tsk_cases_snooze_not_in_the_future' THEN
+            RAISE EXCEPTION 'CHECK 114 FAILED: answered by %', offender;
+        END IF;
+        cases := cases + 1;
+    END;
+
+    -- Both sides of the window, because a case catches a weakening only if the weakened
+    -- constraint admits the row: a return date before the deferral, and one beyond a year.
+    BEGIN
+        UPDATE plt01.tsk_cases
+           SET snoozed_at = now(), snoozed_until = now() - interval '1 day',
+               snooze_reason = 'waiting on the member', snoozed_by = actor,
+               snooze_correlation_id = gen_random_uuid()
+         WHERE case_id = open_case;
+        RAISE EXCEPTION 'CHECK 114 FAILED: a case returns before it was deferred';
+    EXCEPTION WHEN check_violation THEN
+        GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+        IF offender <> 'tsk_cases_snooze_is_bounded' THEN
+            RAISE EXCEPTION 'CHECK 114 FAILED: answered by %', offender;
+        END IF;
+        cases := cases + 1;
+    END;
+    BEGIN
+        UPDATE plt01.tsk_cases
+           SET snoozed_at = now(), snoozed_until = now() + interval '400 days',
+               snooze_reason = 'waiting on the member', snoozed_by = actor,
+               snooze_correlation_id = gen_random_uuid()
+         WHERE case_id = open_case;
+        RAISE EXCEPTION 'CHECK 114 FAILED: a deferral past a year is a dismissal';
+    EXCEPTION WHEN check_violation THEN
+        GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+        IF offender <> 'tsk_cases_snooze_is_bounded' THEN
+            RAISE EXCEPTION 'CHECK 114 FAILED: answered by %', offender;
+        END IF;
+        cases := cases + 1;
+    END;
+
+    -- A resolved case is not deferred: the two say opposite things about whether anybody
+    -- still has to look. `shut_case` is closed and carries its resolution, so the only rule
+    -- in the way is this one.
+    BEGIN
+        UPDATE plt01.tsk_cases
+           SET snoozed_at = now(), snoozed_until = now() + interval '3 days',
+               snooze_reason = 'waiting on the member', snoozed_by = actor,
+               snooze_correlation_id = gen_random_uuid()
+         WHERE case_id = shut_case;
+        RAISE EXCEPTION 'CHECK 114 FAILED: a closed case was deferred';
+    EXCEPTION WHEN check_violation THEN
+        GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+        IF offender <> 'tsk_cases_snooze_is_not_a_resolution' THEN
+            RAISE EXCEPTION 'CHECK 114 FAILED: answered by %', offender;
+        END IF;
+        cases := cases + 1;
+    END;
+
+    -- An affected record of a kind the vocabulary does not carry. `tenant` is deliberately
+    -- out of it: an affected record is a specific thing, and a case about the tenant is
+    -- about the row's own `tenant_id`, which RLS already bounds.
+    BEGIN
+        INSERT INTO plt01.tsk_case_affected (tenant_id, case_id, affected_kind, affected_id,
+                                             added_by, correlation_id)
+        VALUES (t, open_case, 'tenant', gen_random_uuid(), actor, gen_random_uuid());
+        RAISE EXCEPTION 'CHECK 114 FAILED: an affected record names no specific thing';
+    EXCEPTION WHEN check_violation THEN
+        GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+        IF offender <> 'tsk_case_affected_kind' THEN
+            RAISE EXCEPTION 'CHECK 114 FAILED: answered by %', offender;
+        END IF;
+        cases := cases + 1;
+    END;
+
+    -- The same member twice, which is what the subject being in the key refuses -- and that
+    -- is the figure the sheet's header states and a batch action is sized by.
+    INSERT INTO plt01.tsk_case_affected (tenant_id, case_id, affected_kind, affected_id,
+                                         added_by, correlation_id)
+    VALUES (t, open_case, 'member', 'cccccccc-0000-4000-8000-00000000000a', actor,
+            gen_random_uuid());
+    -- **The second one carries its own `added_at`, which took a sweep to learn.** `now()` is
+    -- the transaction timestamp, so two defaulted inserts inside this block share an instant
+    -- -- and a key weakened by *adding* `added_at` would still refuse them, so the case
+    -- passed while the weakening was admitted in real life, where the two requests are
+    -- seconds apart. A case catches a weakening only if the weakened constraint admits the
+    -- row, and here the row had to be made admissible by hand.
+    BEGIN
+        INSERT INTO plt01.tsk_case_affected (tenant_id, case_id, affected_kind, affected_id,
+                                             added_at, added_by, correlation_id)
+        VALUES (t, open_case, 'member', 'cccccccc-0000-4000-8000-00000000000a',
+                now() + interval '1 second', actor, gen_random_uuid());
+        RAISE EXCEPTION 'CHECK 114 FAILED: one member was counted twice on one exception';
+    EXCEPTION WHEN unique_violation THEN
+        GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+        IF offender <> 'tsk_case_affected_pkey' THEN
+            RAISE EXCEPTION 'CHECK 114 FAILED: answered by %', offender;
+        END IF;
+        cases := cases + 1;
+    END;
+
+    -- A withdrawal with nobody's name on it. Adding a record is routine, so the remedy has
+    -- to exist and has to be accounted for.
+    BEGIN
+        UPDATE plt01.tsk_case_affected SET withdrawn_at = now()
+         WHERE case_id = open_case;
+        RAISE EXCEPTION 'CHECK 114 FAILED: an affected record was withdrawn by nobody';
+    EXCEPTION WHEN check_violation THEN
+        GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+        IF offender <> 'tsk_case_affected_withdrawal_attributed' THEN
+            RAISE EXCEPTION 'CHECK 114 FAILED: answered by %', offender;
+        END IF;
+        cases := cases + 1;
+    END;
+
+    -- A clock started in the future never breaches. MOD-011's unbounded `observed_at` let a
+    -- routine caller hold an objective green through an outage still to come.
+    BEGIN
+        INSERT INTO plt01.tsk_sla_clocks (tenant_id, task_id, location_id, target_seconds,
+                                          started_at, created_by, create_correlation_id)
+        VALUES (t, task, loc, 3600, now() + interval '2 days', actor, gen_random_uuid());
+        RAISE EXCEPTION 'CHECK 114 FAILED: a clock was started in the future';
+    EXCEPTION WHEN check_violation THEN
+        GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+        IF offender <> 'tsk_sla_clocks_start_not_in_the_future' THEN
+            RAISE EXCEPTION 'CHECK 114 FAILED: answered by %', offender;
+        END IF;
+        cases := cases + 1;
+    END;
+
+    -- ---- and the two entry kinds `0024` admits, which no refusal case can see.
+    --
+    -- A handover and a deferral are neither a note nor a status change, and the canvas makes
+    -- both first-class acts with their own accounts. A widening is only provable from the
+    -- permitted side.
+    BEGIN
+        INSERT INTO plt01.tsk_case_entries (tenant_id, case_id, entry_kind, summary,
+                                            recorded_by, correlation_id)
+        VALUES (t, open_case, 'assignment', 'handed to the duty manager', actor,
+                gen_random_uuid()),
+               (t, open_case, 'deferral', 'deferred to Monday, waiting on the member', actor,
+                gen_random_uuid());
+        cases := cases + 1;
+    EXCEPTION WHEN OTHERS THEN
+        RAISE EXCEPTION
+            'CHECK 114 FAILED: a handover or a deferral cannot be recorded, so the canvas''s '
+            'two first-class acts have nowhere to go: %', sqlerrm;
+    END;
+
+    IF cases <> 14 THEN
+        RAISE EXCEPTION 'CHECK 114 FAILED: ran % of 14 MOD-026 constraint cases', cases;
+    END IF;
 
     IF probe <> 10 THEN
         RAISE EXCEPTION 'CHECK 114 FAILED: ran % of 10 MOD-026 trigger probes', probe;

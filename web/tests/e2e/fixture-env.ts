@@ -22,6 +22,32 @@ export type Fixture = {
   /** One unused code, for the device challenge a browser gets on its first sign-in. */
   recoveryCode: string;
   zoneId: string;
+  /**
+   * MOD-026's three screens.
+   *
+   * **`taskEmail` is the only session in this fixture whose identity is a person**, which is
+   * what makes ADM-TSK-01's `Mine` chip and ADM-CC-06's "assigned to me" renderable at all --
+   * both are derived from `ppl_identity_links`, and the owner is nobody in this tenant, which
+   * is the ordinary state of a staff login. The owner then reads the same item as *somebody
+   * else's*, which is the one state ADM-CC-06 is most specific about.
+   */
+  taskEmail: string;
+  taskPassword: string;
+  dutyPersonId: string;
+  deskQueueId: string;
+  /** ADM-CC-06's own subject: "6 payments failed overnight", unassigned, with six records. */
+  moneyCaseId: string;
+  moneyCaseNumber: string;
+  /** Assigned to the duty manager: "mine" for that session, "someone else's" for the owner. */
+  assignedCaseId: string;
+  snoozedCaseId: string;
+  snoozedReturnOn: string;
+  overdueTaskId: string;
+  mineTaskId: string;
+  /** Settled: the in-hand list must not show it and the overdue filter must not return it. */
+  settledTaskId: string;
+  /** Blocked: the one in-hand status the bulk selection must not offer a checkbox for. */
+  blockedTaskId: string;
   /** ADM-SCH-04's subject: the coach with a weekly rota and one exception. */
   coachResourceId: string;
   /** The substitute coach: holds a booking and has no rota at all, which is the
@@ -158,6 +184,21 @@ export function fixture(): Fixture {
     "VEYRO_E2E_BUY_OUT_PERSON_ID",
     "VEYRO_E2E_HELD_TO_TERM_PERSON_ID",
     "VEYRO_E2E_SERVED_TERM_PERSON_ID",
+    // MOD-026's three screens. Required rather than optional, for the reason above: a spec
+    // that skipped on a missing id would go green against a stale fixture.
+    "VEYRO_E2E_TASK_EMAIL",
+    "VEYRO_E2E_TASK_PASSWORD",
+    "VEYRO_E2E_DUTY_PERSON_ID",
+    "VEYRO_E2E_DESK_QUEUE_ID",
+    "VEYRO_E2E_MONEY_CASE_ID",
+    "VEYRO_E2E_MONEY_CASE_NUMBER",
+    "VEYRO_E2E_ASSIGNED_CASE_ID",
+    "VEYRO_E2E_SNOOZED_CASE_ID",
+    "VEYRO_E2E_SNOOZED_RETURN_ON",
+    "VEYRO_E2E_OVERDUE_TASK_ID",
+    "VEYRO_E2E_MINE_TASK_ID",
+    "VEYRO_E2E_SETTLED_TASK_ID",
+    "VEYRO_E2E_BLOCKED_TASK_ID",
     "VEYRO_E2E_OVERRIDDEN_PERSON_ID",
     "VEYRO_E2E_DEVICE_ID",
     "VEYRO_E2E_PENDING_DEVICE_ID",
@@ -186,6 +227,19 @@ export function fixture(): Fixture {
     password: env.VEYRO_E2E_PASSWORD!,
     recoveryCode: env.VEYRO_E2E_RECOVERY_CODE!,
     zoneId: env.VEYRO_E2E_ZONE_ID!,
+    taskEmail: env.VEYRO_E2E_TASK_EMAIL!,
+    taskPassword: env.VEYRO_E2E_TASK_PASSWORD!,
+    dutyPersonId: env.VEYRO_E2E_DUTY_PERSON_ID!,
+    deskQueueId: env.VEYRO_E2E_DESK_QUEUE_ID!,
+    moneyCaseId: env.VEYRO_E2E_MONEY_CASE_ID!,
+    moneyCaseNumber: env.VEYRO_E2E_MONEY_CASE_NUMBER!,
+    assignedCaseId: env.VEYRO_E2E_ASSIGNED_CASE_ID!,
+    snoozedCaseId: env.VEYRO_E2E_SNOOZED_CASE_ID!,
+    snoozedReturnOn: env.VEYRO_E2E_SNOOZED_RETURN_ON!,
+    overdueTaskId: env.VEYRO_E2E_OVERDUE_TASK_ID!,
+    mineTaskId: env.VEYRO_E2E_MINE_TASK_ID!,
+    settledTaskId: env.VEYRO_E2E_SETTLED_TASK_ID!,
+    blockedTaskId: env.VEYRO_E2E_BLOCKED_TASK_ID!,
     coachResourceId: env.VEYRO_E2E_COACH_RESOURCE_ID!,
     standInResourceId: env.VEYRO_E2E_STANDIN_RESOURCE_ID!,
     noRotaResourceId: env.VEYRO_E2E_NO_ROTA_RESOURCE_ID!,

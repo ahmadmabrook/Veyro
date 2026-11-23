@@ -623,7 +623,7 @@ class SlaJobTests(WorkerTestCase):
             self._tenant_pool, tenant_id, queue_id=queue_id, case_id=None,
             title="Call about the card", subject_kind="tenant", subject_id=None,
             assignee_person_id=None, priority="normal", due_at=None, evidence_ref=None,
-            idempotency_key=str(uuid.uuid4()), actor_id=actor,
+            idempotency_key=str(uuid.uuid4()), source="manual", actor_id=actor,
             correlation_id=str(uuid.uuid4()))["task_id"])
         with tenant_scope(self._tenant_pool, tenant_id) as conn:
             clock_id = str(conn.execute(

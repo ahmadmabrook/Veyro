@@ -274,6 +274,51 @@ sweep. The order follows what the next thing needs rather than the requirement n
    "one module, two definitions" and the reason `remaining_seconds` is returned rather than
    derived from two instants.
 
+   *Landed as 4a and 4b: `0024`, `app/tasks/attention.py` and eight routes.* The four items
+   above are built and the amendment held — each one was a drawing's requirement rather than a
+   guess, and the one that changed on contact with the schema was the snooze's erasure
+   mechanism: `tsk_cases_snooze_attributed` admits all five snooze columns or none, so the
+   two subject columns among them are residue rather than cleared, because clearing all five
+   un-defers the case and an erasure must not change what a tenant has to do today.
+
+   *Landed as 4c: `/tasks`, `/tasks/cases/{case_id}` and `/tasks/resolved`, argued screen by
+   screen in `contracts/ui/design-compliance.md`.* **The Reopen button two paragraphs up is
+   the one prediction this record got wrong, and the reason is the case number.** A recurrence
+   is a new case citing the old one, and `case_number` is caller-supplied — the tenant's own
+   human-facing reference, like `membership_number` — so nothing in this build mints one. A
+   form asking a reader to type a case number would be asking them to do the product's job,
+   and a client inventing a scheme would be MOD-017's "two human-facing member numbers" again.
+   The resolved list already carries the canvas's own "there is no un-resolve", so the screens
+   agree with each other; what is owed is a decision about how a recurrence is numbered.
+
+   **Three defects came out of building the screens, and all three were one shape: a figure
+   with two definitions.** The chips counted work in hand while the list showed every status,
+   so the board read `Team · 7` over eight rows; `dueState` bucketed lateness by calendar day
+   while the server's filter compares instants, so a task due this morning read "due today"
+   this afternoon beside an Overdue chip that counted it; and a hand-written type called the
+   queue's name field `name` where the route sends `display_name`, so every queue rendered as
+   a fallback word. `in_hand`, an instant comparison and reading the response are the three
+   fixes. **None was visible to any assertion**: the first two were found by rendering the page
+   and reading it, and the third by looking at the queue column.
+
+   **ADM-CC-06 is a page rather than a side sheet, and the wiring gap is why.** It is "the side
+   sheet every Command Center row opens into", and this build's attention queue is derived from
+   live state in MOD-017's collections, MOD-019's staffing and MOD-022's doors rather than from
+   `tsk_cases` — so nothing routes into the sheet from there, and there is no originating row
+   for the canvas's Esc to return focus to. `SideSheet` is also named in Batch F's component
+   list and specified nowhere, so building one would be inventing the missing part of the
+   design. The task list and the resolved board both link into the page, which is what makes it
+   reachable. Closing the Command Center half means deciding which computed item becomes a
+   case, which is a product decision about what an exception *is* and is not settled here.
+
+   **Two routes gained a derived flag, because two of the canvas's controls cannot be expressed
+   in a client at all.** A session carries an `identity_id` and the link to a person is
+   MOD-014's, so a browser has no person id for its own reader: `GET /tasks` takes `mine=true`
+   and `POST /tasks/cases/{id}/assign` takes `to_self`, both resolved through
+   `actor_person_id` — the same derivation `/tasks/workload` already made for the count the
+   chip shows. Accepting a person id for either would let a reader ask the question as somebody
+   else, which is MOD-020's four caller-supplied person ids in one route.
+
 **A half-written migration is worse than none**, so each slice lands whole: schema, privileges,
 isolation checks run against deliberate mutations, domain functions with no I/O, the service,
 the routes through `permit`, and the tests. The standard is the one the owner directive of

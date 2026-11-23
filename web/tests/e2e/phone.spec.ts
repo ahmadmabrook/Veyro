@@ -96,6 +96,14 @@ const surfaces: [string, string][] = [
   ["the catalog board", "/catalog"],
   ["a product", `/catalog?product=${creds.productId}`],
   ["the reports index", "/reports"],
+  // **MOD-026's three.** The task list is a six-column grid whose primary cell stacks a title
+  // over a meta line, which is the shape that duplicated every droppable value on three other
+  // grids below 600px; the sheet is four `MetricCell`s over a `Timeline` and five forms, which
+  // is the densest stack of components on any screen here; and the resolved board is a grid
+  // whose outcome column holds a tenant's own prose.
+  ["the task list", "/tasks"],
+  ["an attention item", `/tasks/cases/${creds.moneyCaseId}`],
+  ["resolved today", "/tasks/resolved"],
   // **The revenue report's grid grows a column per legal entity**, so it is the one table
   // here whose width depends on the tenant rather than on the design. The entity columns are
   // priority 3 and drop first, which is what this asserts in practice.

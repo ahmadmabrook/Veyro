@@ -2060,3 +2060,88 @@ something *present*, written as a literal with a stated reason, is a review prom
 right answer is to visit the file rather than to soften the check. Both look identical in a
 red log, and only the comment beside the literal tells them apart -- which is the argument for
 writing that comment when the literal goes in.
+
+
+**A per-column clear has to answer every constraint the column sits under, and sometimes the
+answer is that no clear belongs there at all.** This file already records that MOD-009's
+tombstones are per-column "because every entry answers a real constraint" -- that is the
+direction where a NULL would be refused and a tombstone is needed. MOD-026's `0024` found the
+other direction. Three new subject columns on a case looked like `anonymize`, and the obvious
+clear table would have NULLed `assignee_person_id`, `snoozed_by` and `snooze_reason` --
+which `tsk_cases_snooze_attributed` refuses, because the five snooze columns are all-or-none.
+And clearing all five would have been **worse than the refusal**: it un-defers the case,
+moving it back into a queue somebody has to work, so the erasure would have changed what a
+tenant has to do today. An erasure with an operational side effect is not a stronger erasure.
+So the assignee clears and the two prose columns are declared `write_once` residue with that
+reason on the row -- which is the registry being a statement about what the privileges and the
+constraints *together* permit, rather than about what one would like to be true.
+
+**And `anonymize` needs `clears` as well as a grant, which is a second thing the test
+checks.** The declaration names the mechanism and the executor names the columns actually
+overwritten, and a mechanism with an empty `clears` is a promise with nothing behind it:
+`test_an_anonymize_declaration_names_columns_that_exist_and_can_be_cleared` is the one that
+fires, with the column name in the message. Worth knowing because the grant half passes first,
+so the failure arrives after the part that looked like the work.
+
+
+**A static scan of SQL text cannot tell a constraint from a comment about one.**
+`test_migration_shape` hunts for `length(btrim(x)) > 0`, the form this repository banned across
+118 constraints, and `0024`'s header explains *why* it is banned — so the header quoted it and
+the check reported the migration as an offender. A check that names a defect the schema does not
+have costs the same trust as one that misses a defect it does. `sql_only` strips the `--`
+comment portion of each line and not the whole line, so `CHECK (length(btrim(x)) > 0) -- note`
+is still caught, and it tracks single-quoted literals because the replacement shape itself
+carries a quoted regex. **Mutation-proven the long way round**: the first attempt replaced a
+string that is not in the file, the file was unchanged, and the harness's own check for "did
+the text already contain the banned form" was satisfied by the comment — so it reported a catch
+that never happened. Compare the file's bytes.
+
+**A hand-written type over an untyped JSON response is invisible to every typecheck, and the
+tell is a fallback rendered everywhere.** `QueueRow.name` was the field this app read and
+`display_name` is the field the route sends, so every queue on the task board rendered as the
+fallback word "Queue" — `tsc` is happy, the lint is happy, and the page is wrong in a way no
+assertion about a label can see. This is the `AccessDecision.masked` finding already recorded
+here, met again in the same session that recorded it. **Read the response; do not name the
+field.** And a fallback that appears on *every* row is the signature: a type that is wrong about
+one field renders one wrong cell, and a type that is wrong about the field a whole column reads
+renders the fallback down the column.
+
+**Two definitions of one figure on a single screen, three times in one slice.** MOD-018's
+"one module, two definitions of the same balance" is usually about two functions in a module;
+ADM-TSK-01 produced it three times in one page, and all three were found by rendering the page
+and reading it rather than by any assertion:
+
+- **A chip counted work in hand and the table listed every status**, so the board read
+  `Team · 7` over eight rows with one already done. The server grew the same restriction the
+  chip uses (`in_hand`), rather than the client filtering what it was given — which is the
+  members list's own finding, where summing the page was honest and still the wrong number.
+- **Lateness was an instant on the server and a calendar day in the client.** The overdue
+  filter is `due_at < now()`; the label bucketed by date on both sides, so a task due at nine
+  this morning read "due today" at five in the afternoon beside an Overdue chip that counted
+  it. **And the corrected rule needs a second message**: zero whole days late is "overdue" with
+  no count, because "overdue 0 days" is not a sentence and English's plural rules pick `other`
+  for 0.
+- **A count under a grid and the same count in the sub-line above it.** §25 asks a grid to
+  state its count and the canvas states it in the sub-line, so both is the sentence said twice
+  — the rule the `DataGrid` caption and the field shell's message slot both already carry.
+
+**A locator inside a `DataGrid` row resolves to two elements, and `.first()` picks the hidden
+one.** Every droppable value is in the DOM twice and visible once; that is the component's
+documented mechanism and `phone.spec.ts` asserts it. So a spec about *content* has to ask for
+the cell (`getByRole("cell", { name })`), and five assertions in one new spec failed on this at
+once — four as strict-mode violations, which are loud, and one as `Received: hidden`, which
+reads like a product defect. The quiet one is the dangerous shape.
+
+**`getByRole("button")` without a container asserts the app shell.** The language and theme
+switches are buttons on every screen here, so a document-wide count on a read-only board
+reported four where none of them belongs to the board — and a spec that asserted four would
+then break the day the shell grew a fifth control, for a reason that has nothing to do with the
+screen under test. Scope it to `main`.
+
+**A branch that `in_hand` makes unreachable is not the branch that was worth keeping.** The
+task list's checkbox was gated on "not settled", which the server-side filter made always true
+— a branch no fixture can reach. The reachable case is a *blocked* task, which is in hand and
+which `blocked -> done` refuses in the Python table and in the trigger alike: so the gate is
+the status the state machine refuses, and the fixture seeds one. Same judgement as deleting a
+constraint subsumed by a sibling, arrived at from the surface: when a filter makes a client-side
+check vacuous, ask which case the *server* still refuses and gate on that one.

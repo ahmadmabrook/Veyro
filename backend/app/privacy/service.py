@@ -975,6 +975,18 @@ _CLEAR_SQL: dict[tuple[str, str], str] = {
     # to count, so clearing it says exactly what is true -- this work is nobody's. Who
     # actually finished it survives on `settled_by`, which is write-once.
     ("tsk_tasks", "assignee_person_id"): "NULL",
+    # `0024`. The assignee clears for the reason above, one table over: an exception owned by
+    # somebody who has been erased is unowned work.
+    #
+    # **The deferral's two subject columns deliberately do not**, and the constraint is what
+    # decided it. `tsk_cases_snooze_attributed` admits all five of the snooze columns or
+    # none, so clearing `snoozed_by` and `snooze_reason` alone is a row the schema refuses --
+    # and clearing all five would *un-defer the case*, which moves it back into a queue
+    # somebody has to work. An erasure that changes what a tenant has to do today is an
+    # erasure with a side effect, so the two are declared `write_once` residue instead. That
+    # is this file's own "tombstones are per-column, not a generic NULL -- every entry
+    # answers a real constraint", read in the direction that says no entry belongs here.
+    ("tsk_cases", "assignee_person_id"): "NULL",
     # `identities_has_an_identifier` requires one of the two contact columns to survive, so the
     # email is replaced with a per-row tombstone rather than emptied. The unique index permits
     # it because the identity id makes it unique; the phone can then go to NULL.

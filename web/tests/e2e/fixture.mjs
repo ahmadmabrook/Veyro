@@ -2382,6 +2382,223 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
             started_on: "2026-02-10", correlation_id: cid() },
   });
 
+  // ---------------------------------------------------------------------------------------
+  // MOD-026: ADM-TSK-01's list, ADM-CC-06's sheet and ADM-CC-07's record.
+  //
+  // **An identity that is somebody, because two of the three screens depend on it.** The
+  // sheet's five states include "assigned to me" and ADM-TSK-01's first chip is "Mine", and
+  // both are derived from `ppl_identity_links` -- so a fixture whose only session is the
+  // owner (who is nobody in this tenant, which is ordinary for staff) could render neither
+  // branch. That is this repository's own "a surface branch no fixture can reach" trap, which
+  // it has paid for four times, so this seeds the identity rather than leaving the state to a
+  // component test. The owner then reads the same item as *somebody else's*, which is the one
+  // state ADM-CC-06 is most specific about -- so both halves have a fixture.
+  const taskEmail = `tasks+${Date.now()}@veyro.invalid`;
+  const taskPassword = `e2e-${randomUUID()}`;
+  await call("/identities", {
+    method: "POST", tenant: tenantId,
+    body: {
+      display_name: "E2E Duty Manager", correlation_id: cid(), email: taskEmail,
+      password: taskPassword,
+    },
+  });
+  const taskSession = await call("/auth/login", {
+    method: "POST", tenant: tenantId,
+    body: { identifier: taskEmail, password: taskPassword, correlation_id: cid() },
+  });
+  const taskWho = await call("/auth/session", { tenant: tenantId, token: taskSession.token });
+  const taskRole = await call("/authz/roles", {
+    method: "POST", ...as(token),
+    body: {
+      role_key: `duty_${Date.now()}`, display_name: "Duty manager",
+      // Every MOD-026 permission is routine, which is why these three screens have working
+      // write forms where every other write in this app is a stepped-up financial one.
+      permissions: ["tasks.task.read", "tasks.task.write", "tasks.case.read",
+                    "tasks.case.write", "tasks.queue.read", "tasks.sla.read"],
+      correlation_id: cid(),
+    },
+  });
+  await call("/authz/assignments", {
+    method: "POST", ...as(token),
+    body: { identity_id: taskWho.identity_id, role_key: taskRole.role_key,
+            correlation_id: cid() },
+  });
+  // **This app's device, confirmed**, so a spec signing in as this identity is not challenged.
+  // A challenge would have to be answered with a recovery code, which is single-use -- the
+  // trap this suite has recorded three times: a green that depends on how many times the
+  // suite has been run.
+  await confirmWebDevice(tenantId, taskWho.identity_id, taskSession.token, taskEmail,
+                         taskPassword);
+
+  const dutyPerson = await call("/people", {
+    method: "POST", ...as(token),
+    body: { legal_name: "Nadia Suleiman", correlation_id: cid() },
+  });
+  await call(`/people/${dutyPerson.person_id}/identity-links`, {
+    method: "POST", ...as(token),
+    body: { identity_id: taskWho.identity_id, correlation_id: cid() },
+  });
+
+  const deskQueue = await call("/tasks/queues", {
+    method: "POST", ...as(token),
+    body: { queue_key: `front_desk_${Date.now()}`, display_name: "Front desk",
+            location_id: location.location_id, correlation_id: cid() },
+  });
+  const dutyQueue = await call("/tasks/queues", {
+    method: "POST", ...as(token),
+    body: { queue_key: `duty_${Date.now()}`, display_name: "Duty manager",
+            location_id: location.location_id, correlation_id: cid() },
+  });
+
+  const openCase = (number, title, over = {}) => call("/tasks/cases", {
+    method: "POST", ...as(token),
+    body: {
+      case_number: number, title, queue_id: deskQueue.queue_id, subject_kind: "tenant",
+      priority: "high", source: "automation", idempotency_key: `c-${randomUUID()}`,
+      correlation_id: cid(), ...over,
+    },
+  });
+
+  // ADM-CC-06's own subject: "6 payments failed overnight · JOD 312.00". Unassigned as drawn.
+  const moneyCase = await openCase("EXC-8841", "6 payments failed overnight");
+  // **The records it is about, which is the fact a batch action is sized by.** Five that
+  // resolve against a real person and one `lead`, which resolves against nothing in this
+  // build -- so the sheet's "nothing here can confirm this reference" marker has a row.
+  const affected = [person.person_id, twin.person_id, layla.person_id, omar.person_id,
+                    dana.person_id];
+  for (const who of affected) {
+    await call(`/tasks/cases/${moneyCase.case_id}/affected`, {
+      method: "POST", ...as(token),
+      body: { affected_kind: "member", affected_id: who, correlation_id: cid() },
+    });
+  }
+  await call(`/tasks/cases/${moneyCase.case_id}/affected`, {
+    method: "POST", ...as(token),
+    body: { affected_kind: "lead", affected_id: randomUUID(), correlation_id: cid() },
+  });
+  // **And one taken off, because a withdrawal is not a deletion.** "Was this member ever on
+  // this exception" is asked exactly when somebody was contacted by mistake, so the row stays
+  // and the sheet lists it separately from the count the batch is sized by.
+  const mistaken = await call("/people", {
+    method: "POST", ...as(token),
+    body: { legal_name: "Faris Alami", correlation_id: cid() },
+  });
+  await call(`/tasks/cases/${moneyCase.case_id}/affected`, {
+    method: "POST", ...as(token),
+    body: { affected_kind: "member", affected_id: mistaken.person_id, correlation_id: cid() },
+  });
+  await call(`/tasks/cases/${moneyCase.case_id}/affected/withdraw`, {
+    method: "POST", ...as(token),
+    body: { affected_kind: "member", affected_id: mistaken.person_id,
+            reason: "his card went through on the retry", correlation_id: cid() },
+  });
+  // The canvas's "WHAT VEYRO HAS ALREADY DONE", in its own words and at its own times.
+  //
+  // **`occurred_at` is the caller's and `recorded_at` is not**, which is what makes a
+  // timeline readable here: the three lines are 06:12 and 06:13 on the canvas, and a fixture
+  // writing them all at `now()` would render three identical clocks in a 66px gutter whose
+  // whole purpose is a vertical scan.
+  for (const [kind, summary, minutes] of [
+    ["status_change", "Billing run \u00b7 6 of 214 charges declined", 0],
+    ["communication", "6 reminder messages drafted, held for approval", 1],
+    ["escalation", "Exception raised to the Command Center", 1],
+  ]) {
+    await call(`/tasks/cases/${moneyCase.case_id}/entries`, {
+      method: "POST", ...as(token),
+      body: {
+        entry_kind: kind, summary, correlation_id: cid(),
+        occurred_at: clubLocalInstant(1, 6, 12 + minutes),
+      },
+    });
+  }
+  // A running target, so the header's "a target is running on this item" has a row behind it.
+  await call("/tasks/clocks", {
+    method: "POST", ...as(token),
+    body: { case_id: moneyCase.case_id, target_seconds: 4 * 3600,
+            escalate_to_queue_id: dutyQueue.queue_id, warn_at_basis_points: 8000,
+            correlation_id: cid() },
+  });
+
+  // Assigned to the duty manager, which is "mine" for that session and "someone else's" for
+  // the owner -- the one state whose rule is that every action stays visible and inert.
+  const assignedCase = await openCase(
+    "EXC-8842", "Lead not contacted \u00b7 3 from Friday", { priority: "normal" });
+  await call(`/tasks/cases/${assignedCase.case_id}/assign`, {
+    method: "POST", ...as(token),
+    body: { assignee_person_id: dutyPerson.person_id, correlation_id: cid() },
+  });
+
+  // Deferred, with the reason and the return date the canvas requires.
+  const snoozedCase = await openCase("EXC-8843", "Document expiring \u00b7 2 waivers");
+  const returnOn = new Date(Date.now() + 9 * 86400000).toISOString().slice(0, 10);
+  await call(`/tasks/cases/${snoozedCase.case_id}/snooze`, {
+    method: "POST", ...as(token),
+    body: { snoozed_until: `${returnOn}T00:00:00Z`,
+            reason: "the member is away until the ninth", correlation_id: cid() },
+  });
+
+  // **Two resolved, so ADM-CC-07's median is a median of something.** The elapsed times are
+  // all under a minute here and that is a property of the fixture rather than of the screen:
+  // `tsk_cases.opened_at` is `now()` and no route backdates it, which is right for the product
+  // -- a case is opened when it is opened. The *format* of the figure is proven against the
+  // canvas's own `12m` / `1h 20m` / `2h 04m` in `tests/component/tasks.test.ts`.
+  for (const [number, title, outcome] of [
+    ["EXC-8839", "Low stock \u00b7 protein bars, Khalda", "Ordered"],
+    ["EXC-8840", "Access denial \u00b7 Sweifieh card reader", "Manual entry"],
+  ]) {
+    const done = await openCase(number, title);
+    await call(`/tasks/cases/${done.case_id}/settle`, {
+      method: "POST", ...as(token),
+      body: { target: "resolved", resolution_reason: outcome, correlation_id: cid() },
+    });
+  }
+
+  // ADM-TSK-01's rows, one per shape its meta line has to render.
+  const raise = (title, over = {}) => call("/tasks", {
+    method: "POST", ...as(token),
+    body: {
+      queue_id: deskQueue.queue_id, title, subject_kind: "tenant", priority: "normal",
+      source: "manual", idempotency_key: `t-${randomUUID()}`, correlation_id: cid(), ...over,
+    },
+  });
+  const day = (offset) => new Date(Date.now() + offset * 86400000).toISOString();
+  const overdueTask = await raise("Call Tareq Odeh about his lapsed membership", {
+    case_id: moneyCase.case_id, due_at: day(-2), priority: "high",
+    subject_kind: "member", subject_id: person.person_id,
+  });
+  await raise("Chase Omar for 22 unverified sessions", { due_at: day(0) });
+  await raise("Renew Dana\u2019s spin certification", {
+    source: "automation", due_at: day(18),
+  });
+  await raise("Review the Sweifieh reader replacement quote", { due_at: day(3) });
+  // Assigned to the duty manager, so that session's `Mine` chip is not zero.
+  const mineTask = await raise("Confirm September class timetable", {
+    assignee_person_id: dutyPerson.person_id, due_at: day(6),
+  });
+  // **And one blocked by another, which is the row the bulk selection must not offer.**
+  // `blocked -> done` is not an edge, in the Python table and in the trigger -- a blocked task
+  // is unblocked before it is finished -- so the screen draws no checkbox on it, and without
+  // this seed that branch would be a branch no fixture reaches. It also gives R07's
+  // bottleneck a blocker to name, which is the figure a count of blocked work cannot answer.
+  const blocker = await raise("Get the landlord's sign-off on the riser", { due_at: day(4) });
+  const blockedTask = await raise("Install the second turnstile", { due_at: day(5) });
+  await call(`/tasks/${blockedTask.task_id}/dependencies`, {
+    method: "POST", ...as(token),
+    body: { depends_on_task_id: blocker.task_id, correlation_id: cid() },
+  });
+  await call(`/tasks/${blockedTask.task_id}/status`, {
+    method: "POST", ...as(token),
+    body: { target: "blocked", reason: "waiting on the riser", correlation_id: cid() },
+  });
+
+  // And one already settled, so the overdue filter has a row it must *not* return -- a task
+  // finished late is not overdue work -- and the in-hand list has one it must not show.
+  const settledTask = await raise("Order the replacement turnstile board", { due_at: day(-5) });
+  await call(`/tasks/${settledTask.task_id}/status`, {
+    method: "POST", ...as(token),
+    body: { target: "done", reason: "ordered on the fourteenth", correlation_id: cid() },
+  });
+
   // Last, so it sees everything above. The timeline, the dispatched outbox and the sweeps on
   // the operations board are all these ticks' work.
   //
@@ -2436,6 +2653,21 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
     staffNoLoginPersonId: dana.person_id,
     staffNeverSignedInPersonId: rami.person_id,
     locationId: location.location_id,
+    // MOD-026's three screens. `taskEmail` is the only session in this fixture whose identity
+    // is a person, which is what makes "assigned to me" and the `Mine` chip renderable.
+    taskEmail,
+    taskPassword,
+    dutyPersonId: dutyPerson.person_id,
+    deskQueueId: deskQueue.queue_id,
+    moneyCaseId: moneyCase.case_id,
+    moneyCaseNumber: "EXC-8841",
+    assignedCaseId: assignedCase.case_id,
+    snoozedCaseId: snoozedCase.case_id,
+    snoozedReturnOn: returnOn,
+    overdueTaskId: overdueTask.task_id,
+    mineTaskId: mineTask.task_id,
+    settledTaskId: settledTask.task_id,
+    blockedTaskId: blockedTask.task_id,
     zoneId: zone.zone_id,
     pointId: point.point_id,
     personId: person.person_id,
@@ -2512,6 +2744,21 @@ if (invokedDirectly) {
       `VEYRO_E2E_STAFF_OFFBOARDED_PERSON_ID=${fixture.staffOffboardedPersonId}`,
       `VEYRO_E2E_STAFF_NO_LOGIN_PERSON_ID=${fixture.staffNoLoginPersonId}`,
       `VEYRO_E2E_STAFF_NEVER_SIGNED_IN_PERSON_ID=${fixture.staffNeverSignedInPersonId}`,
+      "# MOD-026's three screens. `TASK_EMAIL` is the only session here whose identity is a",
+      "# person, which is what makes `Mine` and `assigned to me` renderable at all.",
+      `VEYRO_E2E_TASK_EMAIL=${fixture.taskEmail}`,
+      `VEYRO_E2E_TASK_PASSWORD=${fixture.taskPassword}`,
+      `VEYRO_E2E_DUTY_PERSON_ID=${fixture.dutyPersonId}`,
+      `VEYRO_E2E_DESK_QUEUE_ID=${fixture.deskQueueId}`,
+      `VEYRO_E2E_MONEY_CASE_ID=${fixture.moneyCaseId}`,
+      `VEYRO_E2E_MONEY_CASE_NUMBER=${fixture.moneyCaseNumber}`,
+      `VEYRO_E2E_ASSIGNED_CASE_ID=${fixture.assignedCaseId}`,
+      `VEYRO_E2E_SNOOZED_CASE_ID=${fixture.snoozedCaseId}`,
+      `VEYRO_E2E_SNOOZED_RETURN_ON=${fixture.snoozedReturnOn}`,
+      `VEYRO_E2E_OVERDUE_TASK_ID=${fixture.overdueTaskId}`,
+      `VEYRO_E2E_MINE_TASK_ID=${fixture.mineTaskId}`,
+      `VEYRO_E2E_SETTLED_TASK_ID=${fixture.settledTaskId}`,
+      `VEYRO_E2E_BLOCKED_TASK_ID=${fixture.blockedTaskId}`,
       "# A person can type these. Nothing in the suite uses them; they exist so the product",
       "# can be opened and looked at, which is how four of this surface's defects were found.",
       `VEYRO_E2E_EASY_EMAIL=${fixture.easyEmail}`,

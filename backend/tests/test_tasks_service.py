@@ -21,6 +21,7 @@ from psycopg import errors as pg
 
 from app.db import tenant_scope
 from app.errors import Conflict, InvalidRequest, NotFound
+from app.people import service as people
 from app.tasks import service as tasks
 from app.tasks import subjects, workflow
 from tests.support import GatedApiTestCase
@@ -47,7 +48,10 @@ class TasksTestCase(GatedApiTestCase):
         body: dict = {
             "case_id": None, "title": "Call about the card", "subject_kind": "tenant",
             "subject_id": None, "assignee_person_id": None, "priority": "normal",
-            "due_at": None, "evidence_ref": None, "idempotency_key": self.key()}
+            "due_at": None, "evidence_ref": None, "idempotency_key": self.key(),
+            # `0024`: required with no default, because ADM-TSK-01's own line is "the source
+            # is always named -- a task nobody can account for gets ignored".
+            "source": "manual"}
         body.update(kwargs)
         return str(tasks.create_task(
             self._tenant_pool, tenant_id, queue_id=queue_id, actor_id=ACTOR,
@@ -57,7 +61,8 @@ class TasksTestCase(GatedApiTestCase):
         body: dict = {
             "case_number": f"C-{uuid.uuid4().hex[:8].upper()}", "title": "Card not working",
             "subject_kind": "tenant", "subject_id": None, "priority": "normal",
-            "recurs_from_case_id": None, "idempotency_key": self.key()}
+            "recurs_from_case_id": None, "idempotency_key": self.key(),
+            "source": "manual"}
         body.update(kwargs)
         return str(tasks.open_case(
             self._tenant_pool, tenant_id, queue_id=queue_id, actor_id=ACTOR,
@@ -206,7 +211,8 @@ class SubjectTests(TasksTestCase):
             self._tenant_pool, tenant_id, queue_id=queue_id, case_id=None,
             title="Chase the lead", subject_kind="lead", subject_id=str(uuid.uuid4()),
             assignee_person_id=None, priority="normal", due_at=None, evidence_ref=None,
-            idempotency_key=self.key(), actor_id=ACTOR, correlation_id=self.cid())
+            idempotency_key=self.key(), source="manual", actor_id=ACTOR,
+            correlation_id=self.cid())
         self.assertTrue(out["subject_is_a_recorded_claim"])
         read = tasks.read_task(self._tenant_pool, tenant_id, out["task_id"],
                                may_read_reasons=True)
@@ -231,12 +237,12 @@ class TaskLifecycleTests(TasksTestCase):
             self._tenant_pool, tenant_id, queue_id=queue_id, case_id=None, title="First",
             subject_kind="tenant", subject_id=None, assignee_person_id=None,
             priority="normal", due_at=None, evidence_ref=None, idempotency_key=key,
-            actor_id=ACTOR, correlation_id=self.cid())
+            source="manual", actor_id=ACTOR, correlation_id=self.cid())
         again = tasks.create_task(
             self._tenant_pool, tenant_id, queue_id=queue_id, case_id=None, title="Second",
             subject_kind="tenant", subject_id=None, assignee_person_id=None,
             priority="normal", due_at=None, evidence_ref=None, idempotency_key=key,
-            actor_id=ACTOR, correlation_id=self.cid())
+            source="manual", actor_id=ACTOR, correlation_id=self.cid())
         self.assertEqual(first["task_id"], again["task_id"])
         self.assertTrue(again["repeated"])
         self.assertEqual(again["title"], "First")
@@ -870,3 +876,396 @@ class CaseResolutionTests(TasksTestCase):
         with self.assertRaises(NotFound) as caught:
             self.task(tenant_id, queue_id, case_id=str(uuid.uuid4()))
         self.assertEqual(str(caught.exception), "case_not_found")
+
+
+class AttentionItemTests(TasksTestCase):
+    """ADM-CC-06 and ADM-CC-07 against a real database: `0024`'s four fields and the sheet.
+
+    The decisions are `test_tasks_attention.py`; what is here is whether the right inputs
+    reach them and whether the writes the sheet's actions make land where they say.
+    """
+
+    def person(self, tenant_id: str, name: str = "Hala Barakat") -> str:
+        return str(people.create_person(
+            self._tenant_pool, tenant_id, legal_name=name, actor_id=ACTOR,
+            correlation_id=self.cid())["person_id"])
+
+    def sheet(self, tenant_id: str, case_id: str, *, viewer: str | None = None,
+              reasons: bool = True) -> dict:
+        return tasks.read_attention_item(
+            self._tenant_pool, tenant_id, case_id, viewer_person_id=viewer,
+            may_read_reasons=reasons)
+
+    def entries(self, sheet: dict, kind: str) -> list[dict]:
+        return [e for e in sheet["entries"] if e["entry_kind"] == kind]
+
+    # ---- the owner, and ADM-CC-06's four assignment states
+
+    def test_the_four_assignment_states_the_canvas_draws(self):
+        tenant_id = self.tenant()
+        queue_id = self.queue(tenant_id)
+        case_id = self.case(tenant_id, queue_id)
+        me, them = self.person(tenant_id), self.person(tenant_id, "Nadia Suleiman")
+
+        self.assertEqual(self.sheet(tenant_id, case_id, viewer=me)["state"], "unassigned")
+        tasks.assign_case(self._tenant_pool, tenant_id, case_id, assignee_person_id=me,
+                          actor_id=ACTOR, correlation_id=self.cid())
+        self.assertEqual(self.sheet(tenant_id, case_id, viewer=me)["state"], "mine")
+        self.assertEqual(
+            self.sheet(tenant_id, case_id, viewer=them)["state"], "someone_else")
+        tasks.settle_case(self._tenant_pool, tenant_id, case_id, target="resolved",
+                          resolution_reason="replaced the card", actor_id=ACTOR,
+                          correlation_id=self.cid())
+        self.assertEqual(self.sheet(tenant_id, case_id, viewer=me)["state"], "resolved")
+
+    def test_which_assignment_act_it_was_is_derived_rather_than_declared(self):
+        """One route sets the column and the entry says which act it was, so a caller cannot
+        report a release and perform a handover."""
+        tenant_id = self.tenant()
+        queue_id = self.queue(tenant_id)
+        case_id = self.case(tenant_id, queue_id)
+        me, them = self.person(tenant_id), self.person(tenant_id, "Nadia Suleiman")
+
+        first = tasks.assign_case(self._tenant_pool, tenant_id, case_id,
+                                  assignee_person_id=me, actor_id=ACTOR,
+                                  correlation_id=self.cid())
+        self.assertEqual(first["act"], "assigned")
+        over = tasks.assign_case(self._tenant_pool, tenant_id, case_id,
+                                 assignee_person_id=them, actor_id=ACTOR,
+                                 correlation_id=self.cid())
+        self.assertEqual(over["act"], "handed_over")
+        released = tasks.assign_case(self._tenant_pool, tenant_id, case_id,
+                                     assignee_person_id=None, actor_id=ACTOR,
+                                     correlation_id=self.cid())
+        self.assertEqual(released["act"], "released")
+        # **The handover is on the timeline, which is where the history lives.** The column
+        # answers "who has it"; an entry answers "who handed it over and to whom".
+        kinds = self.entries(self.sheet(tenant_id, case_id), "assignment")
+        self.assertEqual(len(kinds), 3)
+        self.assertIn(them, kinds[1]["summary"])
+        self.assertIn(me, kinds[1]["summary"])
+
+    def test_assigning_to_who_already_has_it_writes_no_second_entry(self):
+        tenant_id = self.tenant()
+        queue_id = self.queue(tenant_id)
+        case_id = self.case(tenant_id, queue_id)
+        me = self.person(tenant_id)
+        for _ in range(2):
+            out = tasks.assign_case(self._tenant_pool, tenant_id, case_id,
+                                    assignee_person_id=me, actor_id=ACTOR,
+                                    correlation_id=self.cid())
+        self.assertTrue(out["repeated"])
+        self.assertEqual(len(self.entries(self.sheet(tenant_id, case_id), "assignment")), 1)
+
+    def test_an_unknown_assignee_and_a_closed_case_are_both_refused(self):
+        tenant_id = self.tenant()
+        queue_id = self.queue(tenant_id)
+        case_id = self.case(tenant_id, queue_id)
+        with self.assertRaises(NotFound):
+            tasks.assign_case(self._tenant_pool, tenant_id, case_id,
+                              assignee_person_id=str(uuid.uuid4()), actor_id=ACTOR,
+                              correlation_id=self.cid())
+        tasks.settle_case(self._tenant_pool, tenant_id, case_id, target="resolved",
+                          resolution_reason="done", actor_id=ACTOR,
+                          correlation_id=self.cid())
+        tasks.settle_case(self._tenant_pool, tenant_id, case_id, target="closed",
+                          resolution_reason=None, actor_id=ACTOR,
+                          correlation_id=self.cid())
+        with self.assertRaises(Conflict):
+            tasks.assign_case(self._tenant_pool, tenant_id, case_id,
+                              assignee_person_id=self.person(tenant_id), actor_id=ACTOR,
+                              correlation_id=self.cid())
+
+    # ---- the deferral, which the canvas says cannot be a dismissal
+
+    def test_a_deferral_carries_a_date_and_an_account_of_why(self):
+        tenant_id = self.tenant()
+        queue_id = self.queue(tenant_id)
+        case_id = self.case(tenant_id, queue_id)
+        until = datetime.now(UTC) + timedelta(days=3)
+        out = tasks.snooze_case(self._tenant_pool, tenant_id, case_id, until=until,
+                                reason="waiting on the member", actor_id=ACTOR,
+                                correlation_id=self.cid())
+        self.assertEqual(out["state"], "snoozed")
+        sheet = self.sheet(tenant_id, case_id)
+        self.assertEqual(sheet["state"], "snoozed")
+        self.assertIsNotNone(sheet["snoozed_at"])
+        self.assertIn("waiting on the member", sheet["snooze_reason"])
+        self.assertEqual(len(self.entries(sheet, "deferral")), 1)
+
+    def test_a_date_that_is_past_or_beyond_a_year_and_a_blank_reason_are_refused(self):
+        """The schema bounds the far end at a year from the deferral and the service bounds
+        the near one, because `snoozed_until <= now()` is a deferral that is over before it
+        starts -- `item_state` reads it as open and the caller is told it worked."""
+        tenant_id = self.tenant()
+        queue_id = self.queue(tenant_id)
+        case_id = self.case(tenant_id, queue_id)
+        now = datetime.now(UTC)
+        for until, reason in ((now - timedelta(minutes=1), "fine"),
+                              (now, "fine"),
+                              (now + timedelta(days=400), "fine"),
+                              (now + timedelta(days=3), "\t")):
+            with self.assertRaises(InvalidRequest):
+                tasks.snooze_case(self._tenant_pool, tenant_id, case_id, until=until,
+                                  reason=reason, actor_id=ACTOR,
+                                  correlation_id=self.cid())
+
+    def test_a_settled_case_has_nothing_to_defer(self):
+        tenant_id = self.tenant()
+        queue_id = self.queue(tenant_id)
+        case_id = self.case(tenant_id, queue_id)
+        tasks.settle_case(self._tenant_pool, tenant_id, case_id, target="resolved",
+                          resolution_reason="replaced the card", actor_id=ACTOR,
+                          correlation_id=self.cid())
+        with self.assertRaises(Conflict):
+            tasks.snooze_case(self._tenant_pool, tenant_id, case_id,
+                              until=datetime.now(UTC) + timedelta(days=1),
+                              reason="later", actor_id=ACTOR, correlation_id=self.cid())
+
+    def test_a_deferral_can_be_ended_early_and_the_account_survives_on_the_timeline(self):
+        """The remedy a routine act needs: a return date typed as next year would otherwise
+        hide an exception for eleven months. Clearing the columns takes the reason with
+        them, which is why every deferral writes an entry."""
+        tenant_id = self.tenant()
+        queue_id = self.queue(tenant_id)
+        case_id = self.case(tenant_id, queue_id)
+        until = datetime.now(UTC) + timedelta(days=300)
+        tasks.snooze_case(self._tenant_pool, tenant_id, case_id, until=until,
+                          reason="mistyped the year", actor_id=ACTOR,
+                          correlation_id=self.cid())
+        back = tasks.return_case_to_queue(
+            self._tenant_pool, tenant_id, case_id, reason="brought forward",
+            actor_id=ACTOR, correlation_id=self.cid())
+        self.assertEqual(back["state"], "open")
+        sheet = self.sheet(tenant_id, case_id)
+        self.assertEqual(sheet["state"], "unassigned")
+        self.assertIsNone(sheet["snoozed_until"])
+        self.assertIsNone(sheet["snooze_reason"])
+        deferrals = self.entries(sheet, "deferral")
+        self.assertEqual(len(deferrals), 2)
+        self.assertIn("mistyped the year", deferrals[0]["summary"])
+        self.assertIn("brought forward", deferrals[1]["summary"])
+
+    def test_a_case_that_is_not_deferred_cannot_be_brought_back(self):
+        tenant_id = self.tenant()
+        queue_id = self.queue(tenant_id)
+        case_id = self.case(tenant_id, queue_id)
+        with self.assertRaises(Conflict):
+            tasks.return_case_to_queue(self._tenant_pool, tenant_id, case_id,
+                                       reason="why", actor_id=ACTOR,
+                                       correlation_id=self.cid())
+        with self.assertRaises(InvalidRequest):
+            tasks.return_case_to_queue(self._tenant_pool, tenant_id, case_id,
+                                       reason="  ", actor_id=ACTOR,
+                                       correlation_id=self.cid())
+
+    # ---- the records an exception is about, which a single subject cannot hold
+
+    def test_an_exception_is_about_many_records_and_the_count_cannot_be_inflated(self):
+        tenant_id = self.tenant()
+        queue_id = self.queue(tenant_id)
+        case_id = self.case(tenant_id, queue_id)
+        hala = self.person(tenant_id)
+        first = tasks.add_affected(self._tenant_pool, tenant_id, case_id,
+                                   affected_kind="member", affected_id=hala,
+                                   actor_id=ACTOR, correlation_id=self.cid())
+        self.assertFalse(first["repeated"])
+        self.assertFalse(first["subject_is_a_recorded_claim"])
+        again = tasks.add_affected(self._tenant_pool, tenant_id, case_id,
+                                   affected_kind="member", affected_id=hala,
+                                   actor_id=ACTOR, correlation_id=self.cid())
+        self.assertTrue(again["repeated"])
+        self.assertEqual(self.sheet(tenant_id, case_id)["affected_count"], 1)
+
+    def test_an_affected_record_of_a_resolvable_kind_has_to_exist(self):
+        """`_resolve_subject` is the same function the case's own subject goes through, so an
+        exception cannot be about an invoice nobody issued."""
+        tenant_id = self.tenant()
+        queue_id = self.queue(tenant_id)
+        case_id = self.case(tenant_id, queue_id)
+        with self.assertRaises(NotFound):
+            tasks.add_affected(self._tenant_pool, tenant_id, case_id,
+                               affected_kind="member", affected_id=str(uuid.uuid4()),
+                               actor_id=ACTOR, correlation_id=self.cid())
+        # A lead is a recorded claim -- MOD-027's, with nothing here to resolve against --
+        # and the answer says which it was rather than presenting it as verified.
+        claim = tasks.add_affected(self._tenant_pool, tenant_id, case_id,
+                                   affected_kind="lead", affected_id=str(uuid.uuid4()),
+                                   actor_id=ACTOR, correlation_id=self.cid())
+        self.assertTrue(claim["subject_is_a_recorded_claim"])
+
+    def test_the_tenant_is_not_an_affected_record(self):
+        """An affected record names a specific thing, and a case about the tenant is about
+        the row's own `tenant_id`, which RLS already bounds."""
+        tenant_id = self.tenant()
+        queue_id = self.queue(tenant_id)
+        case_id = self.case(tenant_id, queue_id)
+        with self.assertRaises(InvalidRequest):
+            tasks.add_affected(self._tenant_pool, tenant_id, case_id,
+                               affected_kind="tenant", affected_id=str(uuid.uuid4()),
+                               actor_id=ACTOR, correlation_id=self.cid())
+
+    def test_a_record_is_withdrawn_rather_than_deleted_and_only_once(self):
+        """"Was this member ever on this exception, and who said so" is asked precisely
+        when somebody was contacted by mistake."""
+        tenant_id = self.tenant()
+        queue_id = self.queue(tenant_id)
+        case_id = self.case(tenant_id, queue_id)
+        hala = self.person(tenant_id)
+        tasks.add_affected(self._tenant_pool, tenant_id, case_id, affected_kind="member",
+                           affected_id=hala, actor_id=ACTOR, correlation_id=self.cid())
+        with self.assertRaises(InvalidRequest):
+            tasks.withdraw_affected(self._tenant_pool, tenant_id, case_id,
+                                    affected_kind="member", affected_id=hala, reason="\t",
+                                    actor_id=ACTOR, correlation_id=self.cid())
+        tasks.withdraw_affected(self._tenant_pool, tenant_id, case_id,
+                                affected_kind="member", affected_id=hala,
+                                reason="wrong member", actor_id=ACTOR,
+                                correlation_id=self.cid())
+        sheet = self.sheet(tenant_id, case_id)
+        self.assertEqual(sheet["affected_count"], 0)
+        self.assertEqual(len(sheet["withdrawn"]), 1)
+        self.assertIn("wrong member", sheet["withdrawn"][0]["withdraw_reason"])
+        # The row recedes rather than disappearing, so the second attempt finds nothing live.
+        with self.assertRaises(NotFound):
+            tasks.withdraw_affected(self._tenant_pool, tenant_id, case_id,
+                                    affected_kind="member", affected_id=hala,
+                                    reason="again", actor_id=ACTOR,
+                                    correlation_id=self.cid())
+
+    def test_a_withdrawal_reason_is_masked_like_every_other_reason_here(self):
+        tenant_id = self.tenant()
+        queue_id = self.queue(tenant_id)
+        case_id = self.case(tenant_id, queue_id)
+        hala = self.person(tenant_id)
+        tasks.add_affected(self._tenant_pool, tenant_id, case_id, affected_kind="member",
+                           affected_id=hala, actor_id=ACTOR, correlation_id=self.cid())
+        tasks.withdraw_affected(self._tenant_pool, tenant_id, case_id,
+                                affected_kind="member", affected_id=hala,
+                                reason="she is not on the policy", actor_id=ACTOR,
+                                correlation_id=self.cid())
+        masked = self.sheet(tenant_id, case_id, reasons=False)
+        self.assertEqual(masked["withdrawn"][0]["withdraw_reason"], tasks.WITHHELD)
+
+    # ---- ADM-CC-07, and R07's five questions
+
+    def test_the_resolved_record_carries_the_median_and_no_un_resolve(self):
+        tenant_id = self.tenant()
+        queue_id = self.queue(tenant_id)
+        for n in range(3):
+            case_id = self.case(tenant_id, queue_id, case_number=f"R-{n}0000")
+            tasks.settle_case(self._tenant_pool, tenant_id, case_id, target="resolved",
+                              resolution_reason=f"handled {n}", actor_id=ACTOR,
+                              correlation_id=self.cid())
+        out = tasks.list_resolved(self._tenant_pool, tenant_id, may_read_reasons=True)
+        self.assertEqual(out["resolved"], 3)
+        self.assertEqual(out["window_hours"], tasks.RESOLVED_WINDOW_HOURS)
+        self.assertIsNotNone(out["median_seconds"])
+        self.assertIn("appears in this list as a new row", out["no_un_resolve"])
+        self.assertTrue(all(c["took_seconds"] is not None for c in out["cases"]))
+        self.assertTrue(all(c["source"] == "manual" for c in out["cases"]))
+
+    def test_an_empty_window_has_no_median_rather_than_a_median_of_zero(self):
+        """MOD-011's rule: a dashboard reporting a median of zero reads as a team resolving
+        everything instantly."""
+        tenant_id = self.tenant()
+        out = tasks.list_resolved(self._tenant_pool, tenant_id, may_read_reasons=True)
+        self.assertEqual(out["resolved"], 0)
+        self.assertIsNone(out["median_seconds"])
+
+    def test_the_outcome_is_masked_like_every_other_reason_here(self):
+        tenant_id = self.tenant()
+        queue_id = self.queue(tenant_id)
+        case_id = self.case(tenant_id, queue_id)
+        tasks.settle_case(self._tenant_pool, tenant_id, case_id, target="resolved",
+                          resolution_reason="she is having chemotherapy on Tuesdays",
+                          actor_id=ACTOR, correlation_id=self.cid())
+        masked = tasks.list_resolved(self._tenant_pool, tenant_id, may_read_reasons=False)
+        self.assertEqual(masked["cases"][0]["outcome"], tasks.WITHHELD)
+        self.assertTrue(masked["cases"][0]["reason_masked"])
+        # And the row is still there: an absent row says nothing was resolved, which is a
+        # different and wrong fact.
+        self.assertEqual(masked["resolved"], 1)
+
+    def test_a_window_outside_its_bounds_is_refused_rather_than_clamped(self):
+        tenant_id = self.tenant()
+        for bad in (0, 24 * 91):
+            with self.assertRaises(InvalidRequest):
+                tasks.list_resolved(self._tenant_pool, tenant_id, window_hours=bad,
+                                    may_read_reasons=True)
+
+    def test_the_workload_answers_the_three_chips_the_canvas_draws(self):
+        tenant_id = self.tenant()
+        queue_id = self.queue(tenant_id)
+        me = self.person(tenant_id)
+        mine = self.task(tenant_id, queue_id)
+        # `assign_task` takes no actor, unlike `assign_case`: a task has no timeline to
+        # write a handover to, which is a gap the module records rather than one this test
+        # works around.
+        tasks.assign_task(self._tenant_pool, tenant_id, mine, assignee_person_id=me)
+        self.task(tenant_id, queue_id)
+        self.task(tenant_id, queue_id,
+                  due_at=datetime.now(UTC) - timedelta(days=1))
+        out = tasks.workload(self._tenant_pool, tenant_id, viewer_person_id=me)
+        self.assertEqual(out["mine"], 1)
+        self.assertEqual(out["team"], 3)
+        self.assertEqual(out["overdue"], 1)
+        self.assertFalse(out["mine_is_zero_without_a_person_record"])
+
+    def test_mine_is_zero_without_a_person_record_rather_than_everybodys_work(self):
+        """Staff hold permissions and do not have to be anybody in particular, so an
+        unlinked identity is not an error -- but it is also not the team count, which is
+        what a fallback would have made it."""
+        tenant_id = self.tenant()
+        queue_id = self.queue(tenant_id)
+        self.task(tenant_id, queue_id)
+        out = tasks.workload(self._tenant_pool, tenant_id, viewer_person_id=None)
+        self.assertEqual(out["mine"], 0)
+        self.assertEqual(out["team"], 1)
+        self.assertTrue(out["mine_is_zero_without_a_person_record"])
+
+    def test_the_bottleneck_names_the_blockers_rather_than_counting_blocked_work(self):
+        """MOD-005's "a rule id is not a reason" one level up: a count of blocked tasks is
+        what a reader cannot act on, and the blocker is where somebody should look."""
+        tenant_id = self.tenant()
+        queue_id = self.queue(tenant_id)
+        blocker = self.task(tenant_id, queue_id)
+        for _ in range(2):
+            waiting = self.task(tenant_id, queue_id)
+            tasks.add_dependency(self._tenant_pool, tenant_id, task_id=waiting,
+                                 depends_on_task_id=blocker, actor_id=ACTOR,
+                                 correlation_id=self.cid())
+        out = tasks.workload(self._tenant_pool, tenant_id, viewer_person_id=None)
+        self.assertEqual(out["bottleneck"], [{"task_id": blocker, "blocking": 2}])
+
+    def test_a_settled_blocker_blocks_nothing(self):
+        tenant_id = self.tenant()
+        queue_id = self.queue(tenant_id)
+        blocker = self.task(tenant_id, queue_id)
+        waiting = self.task(tenant_id, queue_id)
+        tasks.add_dependency(self._tenant_pool, tenant_id, task_id=waiting,
+                             depends_on_task_id=blocker, actor_id=ACTOR,
+                             correlation_id=self.cid())
+        tasks.change_task_status(self._tenant_pool, tenant_id, blocker, target="done",
+                                 reason="finished", actor_id=ACTOR,
+                                 correlation_id=self.cid())
+        out = tasks.workload(self._tenant_pool, tenant_id, viewer_person_id=None)
+        self.assertEqual(out["bottleneck"], [])
+
+    def test_compliance_has_no_share_until_something_has_been_judged(self):
+        """MOD-011's rule again: a window in which nothing was judged is a window with no
+        measurement, not one in which nothing was kept."""
+        tenant_id = self.tenant()
+        out = tasks.workload(self._tenant_pool, tenant_id, viewer_person_id=None)
+        self.assertEqual(out["compliance"]["met"], 0)
+        self.assertEqual(out["compliance"]["breached"], 0)
+        self.assertIsNone(out["compliance"]["met_basis_points"])
+
+    def test_the_aging_buckets_are_the_declared_ones(self):
+        tenant_id = self.tenant()
+        queue_id = self.queue(tenant_id)
+        self.task(tenant_id, queue_id)
+        out = tasks.workload(self._tenant_pool, tenant_id, viewer_person_id=None)
+        self.assertEqual(out["aging"]["bucket_days"], list(tasks.AGING_DAYS))
+        self.assertEqual(out["aging"]["under_a_day"], 1)
+        self.assertEqual(out["aging"]["older"], 0)

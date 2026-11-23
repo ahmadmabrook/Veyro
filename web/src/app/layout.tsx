@@ -96,7 +96,7 @@ export default async function RootLayout({
     // per-identity budget. Same evaluator, same assurance weighing, one scope resolution.
     const [
       organization, people, access, permissions, devices, operations, schedule, configuration,
-      finance, catalog, privacy, messages, integrations, payments,
+      finance, catalog, privacy, messages, integrations, payments, tasks,
     ] = await gateAll([
       "tenancy.organization.read",
       "people.person.read",
@@ -112,6 +112,7 @@ export default async function RootLayout({
       "notifications.notification.read",
       "integrations.install.read",
       "finance.payment.read",
+      "tasks.task.read",
     ] as const);
     // **Grouped, iconed and counted, which is what the rail actually is.** The Command
     // Center canvas draws thirteen items under four headings -- OPERATE, PEOPLE, MONEY,
@@ -176,6 +177,20 @@ export default async function RootLayout({
 
       { href: "/notifications", label: "nav.notifications", allowed: messages.allowed,
         group: "nav.groupDeliver", icon: "messages" },
+      // **The design's DELIVER group holds `Automations` (ADM-AUT-01), and this is the work
+      // half of the same domain.** The sources call it "Automations & Work" and put four
+      // screens in it, of which "Tasks, cases & approvals" is the only V1 one and the only
+      // one this build has: the automation library, the workflow builder and the run history
+      // are MOD-055's and unbuilt. So the rail points at the half that exists rather than at
+      // nothing, which is this file's own rule -- "the items are the sections this build has,
+      // placed in the group the design puts their subject in".
+      //
+      // **The design reaches tasks from an exception and from a notification rather than from
+      // the rail**, and neither of those exists here: the Command Center's queue is computed
+      // live rather than filed as cases, and nothing sends a notification. A screen with no
+      // route to it is unreachable, so the rail is the route.
+      { href: "/tasks", label: "nav.tasks", allowed: tasks.allowed,
+        group: "nav.groupDeliver", icon: "automations" },
       { href: "/integrations", label: "nav.integrations", allowed: integrations.allowed,
         group: "nav.groupDeliver", icon: "integrations" },
 

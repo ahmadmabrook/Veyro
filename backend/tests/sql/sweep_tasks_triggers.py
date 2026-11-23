@@ -1,4 +1,4 @@
-"""Break each MOD-026 trigger branch on purpose and watch CHECK 114 fail.
+"""Break each MOD-026 trigger branch and each of `0024`'s constraints, and watch CHECK 114 fail.
 
 A plpgsql branch is invisible to every structural sweep in this suite: a generated
 `ALTER TABLE` mutation touches nothing in `pg_proc`, and a definition pin over `md5(prosrc)`
@@ -82,6 +82,75 @@ MUTATIONS: list[tuple[str, str, str, str]] = [
 ]
 
 
+#: (name, the SQL that breaks it). A constraint drop or weakening, applied the same way as a
+#: function replacement -- `verify_db.sh` runs it after the build and before the suite.
+#:
+#: **A weakening as well as a drop, one per side.** A case catches a weakening only if the
+#: weakened constraint *admits* the row, which is the subtlest trap in this repository's rules
+#: file: an invoice line over-stating its gross is refused by `gross <= net + tax` as surely as
+#: by the equality, so the case that bites is the one charging less. Both sides of the snooze
+#: window and both halves of its reason test are mutated for that reason.
+SQL_MUTATIONS: list[tuple[str, str]] = [
+    ("a task may carry a source nobody declared",
+     "ALTER TABLE plt01.tsk_tasks DROP CONSTRAINT tsk_tasks_source"),
+    ("a case may carry a source nobody declared",
+     "ALTER TABLE plt01.tsk_cases DROP CONSTRAINT tsk_cases_source"),
+    ("a deferral needs no account of why",
+     "ALTER TABLE plt01.tsk_cases DROP CONSTRAINT tsk_cases_snooze_attributed"),
+    ("the reason may be whitespace (the regex goes)",
+     "ALTER TABLE plt01.tsk_cases DROP CONSTRAINT tsk_cases_snooze_attributed;"
+     " ALTER TABLE plt01.tsk_cases ADD CONSTRAINT tsk_cases_snooze_attributed CHECK ("
+     " (snoozed_at IS NULL AND snoozed_until IS NULL AND snooze_reason IS NULL"
+     "  AND snoozed_by IS NULL AND snooze_correlation_id IS NULL)"
+     " OR (snoozed_at IS NOT NULL AND snoozed_until IS NOT NULL"
+     "     AND snoozed_by IS NOT NULL AND snooze_correlation_id IS NOT NULL))"),
+    ("the reason may be NULL (the coalesce goes)",
+     "ALTER TABLE plt01.tsk_cases DROP CONSTRAINT tsk_cases_snooze_attributed;"
+     " ALTER TABLE plt01.tsk_cases ADD CONSTRAINT tsk_cases_snooze_attributed CHECK ("
+     " (snoozed_at IS NULL AND snoozed_until IS NULL AND snooze_reason IS NULL"
+     "  AND snoozed_by IS NULL AND snooze_correlation_id IS NULL)"
+     " OR (snoozed_at IS NOT NULL AND snoozed_until IS NOT NULL"
+     "     AND snooze_reason ~ '[^[:space:]]'"
+     "     AND snoozed_by IS NOT NULL AND snooze_correlation_id IS NOT NULL))"),
+    ("a deferral may be stamped in the future",
+     "ALTER TABLE plt01.tsk_cases DROP CONSTRAINT tsk_cases_snooze_not_in_the_future"),
+    ("the return date is unbounded in both directions",
+     "ALTER TABLE plt01.tsk_cases DROP CONSTRAINT tsk_cases_snooze_is_bounded"),
+    ("the return date may precede the deferral (upper side only)",
+     "ALTER TABLE plt01.tsk_cases DROP CONSTRAINT tsk_cases_snooze_is_bounded;"
+     " ALTER TABLE plt01.tsk_cases ADD CONSTRAINT tsk_cases_snooze_is_bounded CHECK ("
+     " snoozed_until IS NULL OR snoozed_until <= snoozed_at + interval '1 year')"),
+    ("a deferral may run past a year (lower side only)",
+     "ALTER TABLE plt01.tsk_cases DROP CONSTRAINT tsk_cases_snooze_is_bounded;"
+     " ALTER TABLE plt01.tsk_cases ADD CONSTRAINT tsk_cases_snooze_is_bounded CHECK ("
+     " snoozed_until IS NULL OR snoozed_until > snoozed_at)"),
+    ("a resolved case may be deferred",
+     "ALTER TABLE plt01.tsk_cases DROP CONSTRAINT tsk_cases_snooze_is_not_a_resolution"),
+    ("an affected record may name no specific thing",
+     "ALTER TABLE plt01.tsk_case_affected DROP CONSTRAINT tsk_case_affected_kind"),
+    # **A weakening, not a drop, and that took a round to get right.** Dropping the key is
+    # caught by CHECK 61's prefix-free "every plt01 table has a primary key" sweep, which
+    # answers first -- so the mutation proves the sibling and says nothing about the shape
+    # of the key. What CHECK 61 cannot see is a key with the right prefix and an extra
+    # column: `added_at` in it admits the same member twice at two instants, which is "6
+    # affected" inflated, and that is the figure the sheet's header states.
+    ("one member may be counted twice on one exception (added_at joins the key)",
+     "ALTER TABLE plt01.tsk_case_affected DROP CONSTRAINT tsk_case_affected_pkey CASCADE;"
+     " ALTER TABLE plt01.tsk_case_affected ADD PRIMARY KEY"
+     " (tenant_id, case_id, affected_kind, affected_id, added_at)"),
+    ("an affected record may be withdrawn by nobody",
+     "ALTER TABLE plt01.tsk_case_affected"
+     " DROP CONSTRAINT tsk_case_affected_withdrawal_attributed"),
+    ("a clock may be started in the future",
+     "ALTER TABLE plt01.tsk_sla_clocks"
+     " DROP CONSTRAINT tsk_sla_clocks_start_not_in_the_future"),
+    ("a handover and a deferral have nowhere to go (the widening is reverted)",
+     "ALTER TABLE plt01.tsk_case_entries DROP CONSTRAINT tsk_case_entries_kind;"
+     " ALTER TABLE plt01.tsk_case_entries ADD CONSTRAINT tsk_case_entries_kind CHECK ("
+     " entry_kind IN ('note', 'communication', 'document', 'status_change', 'escalation'))"),
+]
+
+
 def definitions() -> dict[str, str]:
     """The *last* definition of each trigger function across the migrations, in order.
 
@@ -132,7 +201,23 @@ def main() -> int:
                 continue
             caught += 1
             print(f"caught    {function}: {what}\n            -> {line.strip()[:140]}")
-    total = len(MUTATIONS)
+    for what, statement in SQL_MUTATIONS:
+        done = subprocess.run(
+            [str(VERIFY)], capture_output=True, text=True,
+            env={**_env(), "MUTATE": statement, "PSQL": PSQL})
+        if done.returncode == 0:
+            print(f"UNCAUGHT  schema: {what}")
+        else:
+            line = next((ln for ln in done.stdout.splitlines() + done.stderr.splitlines()
+                         if "CHECK 114" in ln), "")
+            if "CHECK 114" not in line:
+                print(f"MUTERR    schema: {what}  (a check other than 114 answered)")
+                not_run += 1
+                continue
+            caught += 1
+            print(f"caught    schema: {what}\n            -> {line.strip()[:140]}")
+
+    total = len(MUTATIONS) + len(SQL_MUTATIONS)
     # **Leave the database as the migrations describe it.** Every other mutation harness in
     # this repository restores a *file*; this one mutates the database, and `verify_db.sh`
     # applies `MUTATE` after the build with nothing putting it back -- so the last run's

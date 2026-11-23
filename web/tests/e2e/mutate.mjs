@@ -43,6 +43,132 @@ const web = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
  */
 const MUTATIONS = [
   {
+    id: "task-meta-tenant-subject",
+    why: "a task about the organization itself carries `subject_kind = \"tenant\"` by design --"
+      + " its subject is the row's own tenant_id, which RLS already bounds -- so printing"
+      + " \"This organization\" against every row is the canvas's two-part meta line padded"
+      + " with noise",
+    file: "src/lib/tasks.ts",
+    from: '  if (subject !== null && task.subject_kind !== "tenant") parts.push(t(locale, subject));',
+    to: "  if (subject !== null) parts.push(t(locale, subject));",
+    grep: "leaves out the tenant subject",
+    runner: "vitest",
+  },
+  {
+    id: "task-meta-exception-reference",
+    why: "`tasks.case.read` is a separate permission, so a reader without it must get the fact"
+      + " that there is an exception rather than a uuid printed where a human reference belongs",
+    file: "src/lib/tasks.ts",
+    from: '          ? t(locale, "tasks.fromExceptionUnnamed")',
+    to: '          ? task.case_id',
+    grep: "names the exception without a reference",
+    runner: "vitest",
+  },
+  {
+    id: "task-overdue-zero-days",
+    why: "\"overdue 0 days\" is not a sentence, and English's plural rules pick it for 0 -- so"
+      + " the no-whole-days case needs its own message rather than the counted one",
+    file: "src/lib/tasks.ts",
+    from: "        ? t(locale, \"tasks.overdueToday\")",
+    to: '        ? fill(locale, "tasks.overdueDays", { count: due.days })',
+    grep: "renders all five due forms",
+    runner: "vitest",
+  },
+  {
+    id: "task-overdue-is-the-instant",
+    why: "the server's overdue filter is `due_at < now()`, so a label that buckets by calendar"
+      + " day reads \"due today\" at five in the afternoon on a task due at nine that morning --"
+      + " one board with two definitions of late, which is what the browser layer caught",
+    file: "src/lib/tasks.ts",
+    from: "  if (at < now.getTime()) {",
+    to: "  if (false && at < now.getTime()) {",
+    grep: "calls a passed instant overdue",
+    runner: "vitest",
+  },
+  {
+    id: "task-duration-pad",
+    why: "a column of durations is scanned vertically and `2h 4m` breaks the alignment that"
+      + " makes the scan work -- the canvas's own fixture sets `2h 04m` beside `1h 20m`",
+    file: "src/lib/tasks.ts",
+    from: 'const pad = formatInteger(minutes % 60, numbering).padStart(2, "0");',
+    to: "const pad = formatInteger(minutes % 60, numbering);",
+    grep: "pads the minutes after an hour",
+    runner: "vitest",
+  },
+  {
+    id: "task-duration-floor",
+    why: "`formatInteger` throws on a NaN and `fill` is how every figure on these pages is"
+      + " rendered, so an unparseable instant in the sheet's age is a 500 on the screen rather"
+      + " than a wrong number on it -- and the sweep is what showed that the obvious guards,"
+      + " flooring the seconds and clamping them at zero, were both redundant",
+    file: "src/lib/tasks.ts",
+    from: "  if (!Number.isFinite(seconds) || seconds <= 0) return 0;",
+    to: "  if (seconds <= 0) return 0;",
+    grep: "never puts a fraction or a NaN",
+    runner: "vitest",
+  },
+  {
+    id: "task-duration-joiner",
+    why: "English puts a space between two units and Arabic puts a conjunction, so a page"
+      + " joining two plural phrases itself would put English structure into an Arabic line",
+    file: "src/lib/tasks.ts",
+    from: "  return fill(\n    locale, \"tasks.hoursAndMinutes\"",
+    to: "  return `${hourWords} ${minuteWords(rest)}`; return fill(\n    locale, \"tasks.hoursAndMinutes\"",
+    grep: "joins the two units with the conjunction",
+    runner: "vitest",
+  },
+  {
+    id: "task-sheet-handover",
+    why: "ADM-CC-06: somebody else's item keeps every action visible but read-only, with a Take"
+      + " over that records the handover -- so the handover is the one live control in the one"
+      + " state that is otherwise inert, and without it the sheet is a dead end",
+    file: "src/lib/tasks.ts",
+    from: "      return { ...inert, takeOver: true };",
+    to: "      return inert;",
+    grep: "renders every action in every state",
+    runner: "vitest",
+  },
+  {
+    id: "task-sheet-return",
+    why: "a routine permission whose every act is uncorrectable is MOD-013's rule from the other"
+      + " side: a return date typed as next year would hide an exception for eleven months",
+    file: "src/lib/tasks.ts",
+    from: '      return { ...inert, live: true, returnToQueue: true, resolve: true };',
+    to: "      return { ...inert, live: true, resolve: true };",
+    grep: "offers the return a deferral needs",
+    runner: "vitest",
+  },
+  {
+    id: "task-view-closed-set",
+    why: "a query string that could name a fourth view would be a filter nothing applies,"
+      + " reported to the reader as the view they asked for",
+    file: "src/lib/tasks.ts",
+    from: "  return typeof value === \"string\" && (TASK_VIEWS as readonly string[]).includes(value);",
+    to: "  return typeof value === \"string\";",
+    grep: "refuse anything else",
+    runner: "vitest",
+  },
+  {
+    id: "task-overdue-whole-days",
+    why: "the canvas's `overdue 2d` is a count of whole days, and a sub-day difference rounding"
+      + " up reports a task due this evening as already a day late",
+    file: "src/lib/tasks.ts",
+    from: "  if (days === 1) return { kind: \"tomorrow\" };",
+    to: "  if (days === 1) return { kind: \"days\", days };",
+    grep: "reads today, tomorrow, a count, or a date",
+    runner: "vitest",
+  },
+  {
+    id: "task-vocabulary-fallthrough",
+    why: "the set is MOD-026's and may grow, and these are the screens somebody filters and"
+      + " acts on -- hiding an unrecognised state behind a catch-all would hide the row",
+    file: "src/lib/tasks.ts",
+    from: '  return SOURCE_WORDS[stored] ?? null;',
+    to: '  return SOURCE_WORDS[stored] ?? "tasks.sourceManual";',
+    grep: "returns null for a value it does not know",
+    runner: "vitest",
+  },
+  {
     id: "dispute-rejected-filing",
     why: "an invoice whose fiscal filing was rejected has only half the evidence the canvas's"
       + " line names, and ticking both puts an accountant in front of a scheme expecting a"

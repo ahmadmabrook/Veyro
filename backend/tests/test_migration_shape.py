@@ -26,12 +26,35 @@ MIGRATIONS = pathlib.Path(__file__).resolve().parent.parent / "migrations"
 ONE_ARG_BTRIM = re.compile(r"\bbtrim\(\s*[^,()]+\)")
 
 
+def sql_only(line: str) -> str:
+    """The part of a line PostgreSQL will execute, with any `--` comment removed.
+
+    **A static scan of migration text cannot tell a constraint from a comment about one**, and
+    that is not hypothetical: `0024`'s header explains why the banned form is banned, quotes
+    it, and was reported as an offender -- a check naming a defect the schema does not have,
+    which costs the same trust as missing one. The rules file records the same shape for
+    `design:coverage`, where a structured field was checked and the prose beside it was not;
+    this is the mirror, where prose was checked as though it were the structured thing.
+
+    **The comment portion only, never the whole line**, so `CHECK (length(btrim(x)) > 0) --
+    note` is still caught. A `--` inside a single-quoted literal is not a comment, which
+    matters here because the replacement shape itself contains a quoted regex.
+    """
+    quoted = False
+    for index in range(len(line)):
+        if line[index] == "'":
+            quoted = not quoted
+        elif not quoted and line.startswith("--", index):
+            return line[:index]
+    return line
+
+
 class BlankCheckShapeTests(unittest.TestCase):
     def test_no_migration_tests_for_blankness_with_btrim(self):
         offenders: list[str] = []
         for path in sorted(MIGRATIONS.rglob("*.sql")):
             for number, line in enumerate(path.read_text().splitlines(), start=1):
-                if ONE_ARG_BTRIM.search(line):
+                if ONE_ARG_BTRIM.search(sql_only(line)):
                     offenders.append(f"{path.name}:{number}: {line.strip()}")
         self.assertEqual(
             offenders, [],
@@ -39,6 +62,18 @@ class BlankCheckShapeTests(unittest.TestCase):
             "PostgreSQL's one-argument btrim strips spaces only. Write "
             "`x ~ '[^[:space:]]'`, which says what was meant: the value contains at least "
             "one character that is not whitespace.")
+
+    def test_a_comment_is_not_sql_and_a_trailing_comment_hides_nothing(self):
+        """The two halves of `sql_only`, because a scan that skipped whole lines would hide
+        the real thing behind a note at the end of it."""
+        self.assertEqual(sql_only("-- length(btrim(x)) > 0 is banned"), "")
+        self.assertIsNone(
+            ONE_ARG_BTRIM.search(sql_only("-- never length(btrim(x)) > 0")))
+        self.assertIsNotNone(
+            ONE_ARG_BTRIM.search(sql_only("CHECK (length(btrim(x)) > 0) -- a note")))
+        # The replacement shape carries a quoted regex, and `--` has no meaning inside it.
+        self.assertEqual(
+            sql_only("CHECK (x ~ '[^[:space:]]--')"), "CHECK (x ~ '[^[:space:]]--')")
 
     def test_the_replacement_shape_is_the_one_in_use(self):
         """And the test above cannot pass by there being no blankness checks at all."""

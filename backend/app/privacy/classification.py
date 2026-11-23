@@ -1578,6 +1578,41 @@ SUBJECT_COLUMNS: tuple[Reachability, ...] = (
     Reachability("plt01", "tsk_cases", "resolution_reason", "write_once",
                  "**what happened in the end.** Prose, and the one field a case exists for; "
                  "the trigger makes it final"),
+    # `0024`, ADM-CC-06's own fields. The assignee is the one here that moves on every
+    # reassignment, so `write_once` would be accepted by every test while being plainly
+    # false -- the judgement MOD-026's task assignee already cost once. `anonymize` is the
+    # true one: a case owned by somebody who has been erased is unowned work, and who
+    # actually resolved it survives on the write-once `resolved_by`.
+    Reachability("plt01", "tsk_cases", "assignee_person_id", "anonymize",
+                 "**who owns this exception now.** It moves on every handover, so the "
+                 "erasure clears it: an exception owned by an erased person is unowned work, "
+                 "and who resolved it survives on `resolved_by`",
+                 clears=("assignee_person_id",), locate_by="assignee_person_id"),
+    # **These two are not cleared, and the constraint is why.**
+    # `tsk_cases_snooze_attributed` admits all five snooze columns or none, so clearing these
+    # alone is a row the schema refuses -- and clearing all five would un-defer the case,
+    # moving it back into a queue somebody has to work. An erasure that changes what a tenant
+    # has to do today has a side effect, so these are residue and say so.
+    Reachability("plt01", "tsk_cases", "snoozed_by", "write_once",
+                 "who deferred it. Cleared by an early return, which is a product act, and "
+                 "never by an erasure: the five snooze columns are all-or-none and dropping "
+                 "them all would put the case back in somebody's queue"),
+    Reachability("plt01", "tsk_cases", "snooze_reason", "write_once",
+                 "**why it was deferred.** Prose -- waiting on the member's consultant is "
+                 "how one gets written -- and residue no erasure reaches, for the reason "
+                 "beside it"),
+    Reachability("plt01", "tsk_case_affected", "affected_id", "unreachable",
+                 "**one of the records an exception is about.** Insert-only and in the "
+                 "primary key, which is what makes the count of affected records one a "
+                 "batch action can be sized by"),
+    Reachability("plt01", "tsk_case_affected", "added_by", "unreachable",
+                 "who put this record on the exception. Insert-only"),
+    Reachability("plt01", "tsk_case_affected", "withdrawn_by", "write_once",
+                 "who took it off again. The withdrawal is written once and no erasure path "
+                 "clears it, because a record taken off by mistake is what the row answers"),
+    Reachability("plt01", "tsk_case_affected", "withdraw_reason", "write_once",
+                 "**why a record was taken off an exception.** Prose, written once, and "
+                 "residue no erasure can reach"),
     Reachability("plt01", "tsk_case_entries", "recorded_by", "unreachable",
                  "who wrote a line on the case. Insert-only: the table has no UPDATE grant "
                  "at all, because an entry nobody can rely on is no use in the dispute it "
