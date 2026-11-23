@@ -3988,6 +3988,36 @@ one, which an absent-delegation probe would pass), and four constraint cases nam
 constraint that refused them. 11 mutations, 10 caught by check 113 and one by check 28's
 prefix-free `iam` sweep. 14 service and HTTP tests.
 
+**AUT-02-R06's arithmetic is built, which is slice 3a: `app/tasks/sla.py`, pure, with no
+clock table yet.** INV-AUT-02's other half is "SLA calculation is time-zone and
+business-calendar aware", and that sentence is this module. Nothing is stored: a clock is its
+target, the calendar and its pauses, and the remaining time is a function of those and
+`now()` -- MOD-018's no-stored-balance for the fifth time. 25 unit tests with no database and
+11 mutations, all caught.
+
+**Every span is measured in the location's own zone and the answer is real elapsed time**,
+which is what makes a clock-change day come out right with no special case: a local
+`00:00-23:00` window is 22 real hours on Britain's spring-forward Sunday, 24 on the autumn
+one and 23 on an ordinary one, because those are the instants a member actually waited.
+MOD-019 paid for the inverse -- a rota read in the session's zone rather than the resource's
+made a London coach available at six in the morning.
+
+Three decisions carry it. **A dated row replaces the weekly pattern for its date rather than
+adding to it**, because otherwise a half-day before a holiday is unexpressible: you could
+lengthen a day and never shorten one. **A pause is subtracted where it overlaps open time**,
+not whole, because a clock paused overnight was not running anyway and subtracting it twice
+is how a target silently doubles. And **an empty calendar raises rather than answering
+zero** -- MOD-019's "no rota is not never available", in the direction that matters here,
+because a clock that never advances is a breach that never fires.
+
+**A mutation came back uncaught and the guard it removed turned out to be subsumed by
+accident.** A `kind == "open"` filter was redundant because a closed window has no hours --
+except that `Window` did not actually forbid one carrying hours, though the schema does. So a
+`Window` the database cannot hold was constructible, which is this build's "fixture encoding
+a state the system cannot produce" shape appearing in a *production* type. The invariant now
+mirrors the schema and the redundant filter is deleted, which is the judgement MOD-016's
+redundant kind domain already set.
+
 **The sweep found three uncaught and two of my own mutations malformed**, which is the
 harness rule paid again: the three were the delegation table's own CHECKs, which the trigger
 probes could not reach -- "a constraint nobody has broken on purpose is a constraint nobody
