@@ -48028,4 +48028,174 @@ BEGIN
 END $$;
 ROLLBACK;
 
-\echo 'tenant isolation: 111/111 checks passed'
+-- ========================================================= CHECK 112 (MOD-026)
+--
+-- The module's own structure, because the prefix-free sweeps prove the schema-wide rules --
+-- RLS, the policy predicate, the tenant foreign key, the tenant-leading key, the privilege
+-- bans and the forbidden names -- and nothing about *this* module. What is here is the three
+-- pins this file has learned to require per module, each compared as a set in both
+-- directions: the column-level UPDATE grants per role, every NOT NULL, and every foreign key.
+--
+-- A per-table list is the thing that goes stale when a module adds a table, and that edit is
+-- the moment an unprotected one slips through -- so each comparison is against the catalogue.
+BEGIN;
+DO $$
+DECLARE
+    wrong text;
+BEGIN
+    -- ---- the UPDATE grants, per role and per column, both directions.
+    --
+    -- MOD-016 claimed in three places that a table carried no UPDATE grant while
+    -- `effective_to` was in it, and MOD-019 granted three rota columns no service ever wrote.
+    -- A granted column nothing writes is an unattributed edit path, so the list is pinned.
+    FOR wrong IN
+        WITH expected(t, c) AS (VALUES
+            ('tsk_queues', 'display_name'), ('tsk_queues', 'status'),
+            ('tsk_queues', 'retired_at'), ('tsk_queues', 'retired_by'),
+            ('tsk_queues', 'retire_reason'), ('tsk_queues', 'retire_correlation_id'),
+            ('tsk_business_hours', 'withdrawn_at'), ('tsk_business_hours', 'withdrawn_by'),
+            ('tsk_business_hours', 'withdraw_reason'),
+            ('tsk_business_hours', 'withdraw_correlation_id'),
+            ('tsk_cases', 'title'), ('tsk_cases', 'queue_id'), ('tsk_cases', 'priority'),
+            ('tsk_cases', 'status'), ('tsk_cases', 'resolved_at'),
+            ('tsk_cases', 'resolved_by'), ('tsk_cases', 'resolution_reason'),
+            ('tsk_cases', 'resolve_correlation_id'),
+            ('tsk_tasks', 'queue_id'), ('tsk_tasks', 'case_id'), ('tsk_tasks', 'title'),
+            ('tsk_tasks', 'assignee_person_id'), ('tsk_tasks', 'priority'),
+            ('tsk_tasks', 'status'), ('tsk_tasks', 'due_at'),
+            ('tsk_tasks', 'evidence_ref'), ('tsk_tasks', 'settled_at'),
+            ('tsk_tasks', 'settled_by'), ('tsk_tasks', 'settle_reason'),
+            ('tsk_tasks', 'settle_correlation_id'),
+            ('tsk_checklist_items', 'label'), ('tsk_checklist_items', 'completed_at'),
+            ('tsk_checklist_items', 'completed_by'),
+            ('tsk_checklist_items', 'complete_correlation_id')),
+        actual(role, t, c) AS (
+            SELECT r.rolname, cl.relname::text, a.attname::text
+              FROM pg_class cl
+              JOIN pg_attribute a ON a.attrelid = cl.oid AND a.attnum > 0 AND NOT a.attisdropped
+              CROSS JOIN (VALUES ('veyro_cp_app'), ('veyro_cp_worker')) AS rr(rolname)
+              JOIN pg_roles r ON r.rolname = rr.rolname
+             WHERE cl.relnamespace = 'plt01'::regnamespace
+               AND cl.relkind IN ('r', 'p')
+               AND cl.relname LIKE 'tsk\_%'
+               AND has_column_privilege(r.rolname, cl.oid, a.attname, 'UPDATE'))
+        SELECT format('%s has UPDATE on %s.%s which is not in the pin', role, t, c)
+          FROM actual WHERE (t, c) NOT IN (SELECT t, c FROM expected)
+        UNION ALL
+        SELECT format('%s.%s is pinned as updatable and no role holds it', t, c)
+          FROM expected e
+         WHERE NOT EXISTS (SELECT 1 FROM actual a WHERE a.t = e.t AND a.c = e.c)
+    LOOP
+        RAISE EXCEPTION 'CHECK 112 FAILED: %', wrong;
+    END LOOP;
+
+    -- ---- every NOT NULL, as a set.
+    --
+    -- Nothing in this file had read `attnotnull` until MOD-016, where 80 of 84 missed
+    -- mutations were `DROP NOT NULL`. It matters twice over: a NOT NULL is what makes a
+    -- sibling CHECK bite (a NULL operand makes the whole predicate NULL and a CHECK passes on
+    -- NULL), and under MATCH SIMPLE a NULL in any column of a composite foreign key skips the
+    -- whole check -- so dropping it from `tsk_tasks.queue_id` silently switches off a
+    -- tenant-carrying parent reference the foreign-key set comparison cannot see.
+    FOR wrong IN
+        WITH expected(t, c) AS (VALUES
+            ('tsk_queues', 'tenant_id'), ('tsk_queues', 'queue_id'),
+            ('tsk_queues', 'queue_key'), ('tsk_queues', 'display_name'),
+            ('tsk_queues', 'status'), ('tsk_queues', 'created_at'),
+            ('tsk_queues', 'created_by'), ('tsk_queues', 'create_correlation_id'),
+            ('tsk_business_hours', 'tenant_id'), ('tsk_business_hours', 'window_id'),
+            ('tsk_business_hours', 'location_id'), ('tsk_business_hours', 'kind'),
+            ('tsk_business_hours', 'created_at'), ('tsk_business_hours', 'created_by'),
+            ('tsk_business_hours', 'create_correlation_id'),
+            ('tsk_cases', 'tenant_id'), ('tsk_cases', 'case_id'),
+            ('tsk_cases', 'case_number'), ('tsk_cases', 'title'),
+            ('tsk_cases', 'queue_id'), ('tsk_cases', 'subject_kind'),
+            ('tsk_cases', 'priority'), ('tsk_cases', 'status'),
+            ('tsk_cases', 'opened_at'), ('tsk_cases', 'opened_by'),
+            ('tsk_cases', 'open_correlation_id'),
+            ('tsk_case_entries', 'tenant_id'), ('tsk_case_entries', 'entry_id'),
+            ('tsk_case_entries', 'case_id'), ('tsk_case_entries', 'entry_kind'),
+            ('tsk_case_entries', 'summary'), ('tsk_case_entries', 'occurred_at'),
+            ('tsk_case_entries', 'recorded_at'), ('tsk_case_entries', 'recorded_by'),
+            ('tsk_case_entries', 'correlation_id'),
+            ('tsk_tasks', 'tenant_id'), ('tsk_tasks', 'task_id'),
+            ('tsk_tasks', 'queue_id'), ('tsk_tasks', 'title'),
+            ('tsk_tasks', 'subject_kind'), ('tsk_tasks', 'priority'),
+            ('tsk_tasks', 'status'), ('tsk_tasks', 'created_at'),
+            ('tsk_tasks', 'created_by'), ('tsk_tasks', 'create_correlation_id'),
+            ('tsk_checklist_items', 'tenant_id'), ('tsk_checklist_items', 'item_id'),
+            ('tsk_checklist_items', 'task_id'), ('tsk_checklist_items', 'ordinal'),
+            ('tsk_checklist_items', 'label'), ('tsk_checklist_items', 'created_at'),
+            ('tsk_checklist_items', 'created_by'),
+            ('tsk_checklist_items', 'create_correlation_id'),
+            ('tsk_dependencies', 'tenant_id'), ('tsk_dependencies', 'dependency_id'),
+            ('tsk_dependencies', 'task_id'), ('tsk_dependencies', 'depends_on_task_id'),
+            ('tsk_dependencies', 'created_at'), ('tsk_dependencies', 'created_by'),
+            ('tsk_dependencies', 'create_correlation_id')),
+        actual(t, c) AS (
+            SELECT cl.relname::text, a.attname::text
+              FROM pg_class cl
+              JOIN pg_attribute a ON a.attrelid = cl.oid AND a.attnum > 0
+                                 AND NOT a.attisdropped AND a.attnotnull
+             WHERE cl.relnamespace = 'plt01'::regnamespace
+               AND cl.relkind IN ('r', 'p') AND cl.relname LIKE 'tsk\_%')
+        SELECT format('%s.%s is NOT NULL and the pin does not say so', t, c)
+          FROM actual WHERE (t, c) NOT IN (SELECT t, c FROM expected)
+        UNION ALL
+        SELECT format('%s.%s is pinned NOT NULL and is nullable', t, c)
+          FROM expected WHERE (t, c) NOT IN (SELECT t, c FROM actual)
+    LOOP
+        RAISE EXCEPTION 'CHECK 112 FAILED: %', wrong;
+    END LOOP;
+
+    -- ---- every foreign key, as a set.
+    --
+    -- MOD-012's lesson: a sweep of one *kind* of reference is not a sweep. Its check swept the
+    -- tenant-registry key across every table and sampled the intra-module parents, which left
+    -- two droppable in silence -- including the self-reference that was the only thing keeping
+    -- a credential's predecessor inside its own tenant. `tsk_cases.recurs_from_case_id` is
+    -- exactly that shape here.
+    -- **No separate count, because the set comparison below is strictly stronger and a
+    -- literal beside it is a second statement that can disagree.** The first version of this
+    -- check carried `IF n <> 13`, which was simply a miscount -- the pinned list has 18
+    -- entries -- and the suite failed on the literal rather than on anything about the
+    -- schema. A subsumed check is deleted rather than tested harder, which is the judgement
+    -- this file records for MOD-016's redundant kind domain and MOD-020's three siblings.
+    FOR wrong IN
+        WITH expected(t, def) AS (VALUES
+            ('tsk_queues', 'FOREIGN KEY (tenant_id) REFERENCES plt01_platform.tenants(tenant_id)'),
+            ('tsk_queues', 'FOREIGN KEY (tenant_id, location_id) REFERENCES plt01.locations(tenant_id, location_id)'),
+            ('tsk_business_hours', 'FOREIGN KEY (tenant_id) REFERENCES plt01_platform.tenants(tenant_id)'),
+            ('tsk_business_hours', 'FOREIGN KEY (tenant_id, location_id) REFERENCES plt01.locations(tenant_id, location_id)'),
+            ('tsk_cases', 'FOREIGN KEY (tenant_id) REFERENCES plt01_platform.tenants(tenant_id)'),
+            ('tsk_cases', 'FOREIGN KEY (tenant_id, queue_id) REFERENCES plt01.tsk_queues(tenant_id, queue_id)'),
+            ('tsk_cases', 'FOREIGN KEY (tenant_id, recurs_from_case_id) REFERENCES plt01.tsk_cases(tenant_id, case_id)'),
+            ('tsk_case_entries', 'FOREIGN KEY (tenant_id) REFERENCES plt01_platform.tenants(tenant_id)'),
+            ('tsk_case_entries', 'FOREIGN KEY (tenant_id, case_id) REFERENCES plt01.tsk_cases(tenant_id, case_id)'),
+            ('tsk_tasks', 'FOREIGN KEY (tenant_id) REFERENCES plt01_platform.tenants(tenant_id)'),
+            ('tsk_tasks', 'FOREIGN KEY (tenant_id, queue_id) REFERENCES plt01.tsk_queues(tenant_id, queue_id)'),
+            ('tsk_tasks', 'FOREIGN KEY (tenant_id, case_id) REFERENCES plt01.tsk_cases(tenant_id, case_id)'),
+            ('tsk_tasks', 'FOREIGN KEY (tenant_id, assignee_person_id) REFERENCES plt01.ppl_persons(tenant_id, person_id)'),
+            ('tsk_checklist_items', 'FOREIGN KEY (tenant_id) REFERENCES plt01_platform.tenants(tenant_id)'),
+            ('tsk_checklist_items', 'FOREIGN KEY (tenant_id, task_id) REFERENCES plt01.tsk_tasks(tenant_id, task_id)'),
+            ('tsk_dependencies', 'FOREIGN KEY (tenant_id) REFERENCES plt01_platform.tenants(tenant_id)'),
+            ('tsk_dependencies', 'FOREIGN KEY (tenant_id, task_id) REFERENCES plt01.tsk_tasks(tenant_id, task_id)'),
+            ('tsk_dependencies', 'FOREIGN KEY (tenant_id, depends_on_task_id) REFERENCES plt01.tsk_tasks(tenant_id, task_id)')),
+        actual(t, def) AS (
+            SELECT cl.relname::text, pg_get_constraintdef(c.oid)
+              FROM pg_constraint c
+              JOIN pg_class cl ON cl.oid = c.conrelid
+             WHERE cl.relnamespace = 'plt01'::regnamespace
+               AND cl.relname LIKE 'tsk\_%' AND c.contype = 'f')
+        SELECT format('%s carries %s which is not pinned', t, def)
+          FROM actual WHERE (t, def) NOT IN (SELECT t, def FROM expected)
+        UNION ALL
+        SELECT format('%s is pinned to carry %s and does not', t, def)
+          FROM expected WHERE (t, def) NOT IN (SELECT t, def FROM actual)
+    LOOP
+        RAISE EXCEPTION 'CHECK 112 FAILED: %', wrong;
+    END LOOP;
+END $$;
+ROLLBACK;
+
+\echo 'tenant isolation: 112/112 checks passed'

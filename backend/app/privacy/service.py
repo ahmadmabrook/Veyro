@@ -970,6 +970,11 @@ def _advance(
 #     it with something unrelated, not emptying it: the column is what joins this person's
 #     identities in other tenants, and a NULL there would read as "never linked".
 _CLEAR_SQL: dict[tuple[str, str], str] = {
+    # MOD-026. **NULL rather than a tombstone**, which is the one case in this table where
+    # emptying is right: the column is nullable because an unassigned task is a state R07 has
+    # to count, so clearing it says exactly what is true -- this work is nobody's. Who
+    # actually finished it survives on `settled_by`, which is write-once.
+    ("tsk_tasks", "assignee_person_id"): "NULL",
     # `identities_has_an_identifier` requires one of the two contact columns to survive, so the
     # email is replaced with a per-row tombstone rather than emptied. The unique index permits
     # it because the identity id makes it unique; the phone can then go to NULL.

@@ -950,10 +950,17 @@ Known gaps, deliberate:
   existed nowhere before: `plan_dsar` surfaced the same fact per request, so the honest
   answer to "what can you delete" was reachable only after somebody had asked you to delete
   something, and the registry behind it lived in Python and in a test.
-  **The number is worth knowing: 17 of 392 subject-bearing columns are erased or anonymised
-  and 375 survive.** (It was 17 of 388 until MOD-019's `0017` added four withdrawal columns,
-  every one of which the registry's own sweep refused to let through undeclared -- which is
-  what MOD-009 built it for.)
+  **The number is worth knowing: 18 of 418 subject-bearing columns are erased or anonymised
+  and 400 survive.** (It was 17 of 388 until MOD-019's `0017` added four withdrawal columns,
+  then 17 of 392, and MOD-026's first slice added twenty-six more -- fifteen of which the
+  registry's own sweep refused to let through undeclared, which is what MOD-009 built it for.
+  The eighteenth reached column is MOD-026's task assignee, and **choosing its mechanism is
+  where the registry earned its keep twice over**: `covered` was refused by the guard that
+  requires a covered reference to point into `iam`, and `write_once` would have been accepted
+  by every test while being plainly false, because an assignee moves on every reassignment.
+  `anonymize` is the true one, so the executor now clears it -- a task assigned to somebody
+  who has been erased is unassigned work, and who actually finished it survives on the
+  write-once `settled_by`.)
 - **No crypto-shred, so erasure is incomplete** -- the disclosure above. Closing it needs a key
   vault and per-subject key material, which is a different module's work.
 - **Only a deletion has an executor.** Access, portability, correction and restriction can be
@@ -3866,6 +3873,123 @@ Known gaps, deliberate:
 - **The timeline does not know about any of this.** MOD-014 projects nine event types and none
   of MOD-022's six is among them, so a member's timeline shows no door they walked through.
 
+**MOD-026 (AUT-02 tasks, cases, approvals and SLA) -- slice 1 of 4, and the rest is named
+rather than implied.** Seven `tsk_` tables in `plt01` under the same forced RLS, three trigger
+functions, and `app/tasks/` beside them: a business calendar, work queues, tasks with their
+checklists and dependencies, and cases with an insert-only timeline. Design record:
+`knowledge/00-Decisions/ADR-0009-mod026-tasks-cases-approvals-sla.md`. **There is no service
+layer and no route yet** -- that is slice 1's honest boundary, and a half-wired module would
+be worse than a named one. Proven: isolation check 112, mutation-tested with 5 mutations, all
+caught; 19 domain unit tests with no database; 9 domain mutations, all caught.
+
+**The decision that shaped the module is that there is one approval engine and it is
+MOD-008's.** `iam.approval_policies` already carries `action`, `threshold_minor`,
+`required_permission`, `required_approvals` and `separation_of_duties`, and its requests
+snapshot those terms and carry `expires_at` -- so of AUT-02-R05's five named behaviours,
+**quorum, amount-based and expiry are already built and tested**. A second engine in `plt01`
+would be two tables able to disagree about whether a refund was approved, which is this
+build's "one module, two definitions" at its worst. So MOD-026 extends `iam` in slice 2 and
+spans two planes as MOD-012 does, and what it adds is stages (R05's "sequential, parallel"),
+delegation, and the action-class catalogue.
+
+**Checking that claim found two things the ADR's first draft had wrong**, and both are worth
+carrying:
+
+- **R04 names seven action classes and six are permissions.** Refunds, discounts, price
+  overrides, data export, access exceptions and deletion all exist in
+  `app/authorization/catalog.py`; **payroll does not, because there is no payroll module in
+  this build**, so a policy naming it would be a policy for an action nothing can perform --
+  MOD-020's "declared value nothing writes" before the value is declared.
+- **INV-AUT-02's separation of duties is enforced in Python only.** The draft said a CHECK
+  forbids approving one's own request; `iam.approval_decisions` carries exactly one CHECK, on
+  the decision domain, plus a unique index stopping one person pressing the button twice. The
+  rule lives in the service, which is correct and is the *service* -- and this build's premise
+  is that the schema is the half that holds when the service is wrong. It cannot be a CHECK,
+  because `requested_by` is on the parent row; it is a trigger, which is `sec_legal_holds`'
+  precedent. **Writing it is slice 2's first job**, because a module cannot claim an invariant
+  whose only enforcement is a layer it does not own.
+
+Four decisions carry the slice:
+
+- **A task's subject is a closed nine-name vocabulary with an id and no foreign key.** R01
+  names member, lead, tenant, invoice, incident, device, booking, asset and workflow; a lead
+  is MOD-027's, a workflow MOD-055's, and nothing here owns an asset. Free text would make
+  R07's "how many tasks are about invoices" a group-by over typos, which is MOD-010's
+  restricted-field argument pointed at a discriminator; nine nullable key columns with eight
+  NULL per row is MOD-021's supersession shape, and under MATCH SIMPLE a NULL in a composite
+  key skips the check entirely. So `subjects.py` declares the five that resolve, the three
+  that are claims with the module that would fix each, and `tenant` -- which resolves against
+  nothing and is **not** a gap, because a task about the tenant is about the row's own
+  `tenant_id`, which RLS already bounds.
+- **Business hours are this module's own table, and that is the one new fact the build
+  needed.** INV-AUT-02 wants SLA arithmetic "time-zone and business-calendar aware", and
+  nothing here records when a club is open -- MOD-022's attendance report says so and refuses
+  to derive it, because MOD-019's rota is a *resource's* rather than a site's. The weekly and
+  dated split is MOD-019's, reused rather than re-chosen. **A location with no rows has no
+  business hours, which is not the same as being closed all week**: MOD-019's first version
+  read an empty rota as "never available" and nothing could be scheduled in a tenant at all,
+  so here the consequence is an SLA on wall-clock time and slice 3's response will say so.
+- **No countdown is stored anywhere.** An SLA clock is its target, its pauses and this
+  calendar, evaluated at read time -- MOD-018's no-stored-balance, MOD-019's no-`held_count`
+  and MOD-016's derived `in_window` for the fourth time. The consequence is stated rather than
+  discovered: a breach is computed, so nothing fires when it happens and slice 3 needs a
+  worker job whose announcement window is floored to the clock's own target, which is the
+  decision MOD-011's objective evaluation already answered for itself.
+- **A case moves forward only, and `recurs_from_case_id` is why it does not have to reopen.**
+  The first draft of the migration let a resolved case return to `open` and claimed in a
+  comment that its first resolution's attribution stayed put -- which the attribution CHECK
+  makes false, since an `open` case must carry no resolution, so reopening would erase exactly
+  what the trigger was written to protect. **Two encodings of one rule that disagree is
+  MOD-020's waitlist edge**, caught here by reading the file rather than by a reviewer. A
+  recurrence is a new case citing the old, which is this build's answer everywhere else.
+
+Things worth knowing before extending it:
+
+- **The Python status tables are compared against the migration's own CHECK text**, by a test
+  that reads the `.sql` file. MOD-020 shipped a state machine that admitted an edge its
+  trigger refused and "both encodings agreed with each other and neither agreed with the
+  service"; from the moment one member failed to answer an offer nobody was promoted again
+  while places sat free. A regex over the migration is what makes that drift fail in CI.
+- **A cancelled dependency stops blocking.** Treating called-off work as a blocker leaves
+  every downstream task stuck with no way to clear it, which is MOD-016's bundle-fulfilment
+  finding -- a transient failure made an obligation permanently unsatisfiable.
+- **`blocking` names the blockers rather than counting them**, because a count is what a
+  reader cannot act on: MOD-005's "a rule id is not a reason".
+- **The cycle walk is iterative and the schema only sees self-reference.** A longer cycle
+  spans rows, so the service is the half that holds, and the walk is iterative because
+  `edges` is caller-supplied -- a recursive version answers 500 on input somebody can send,
+  which is MOD-019's `str.isdigit` finding in another shape.
+- **A blocked task is unblocked before it is finished.** Finishing one leaves a dependency
+  that was never satisfied or removed, so R07 cannot say whether the blocker mattered.
+  Cancelling a blocked task is allowed, because calling off blocked work is ordinary.
+- **Twenty-six privacy declarations, fifteen of which the registry demanded.** The rest are
+  the free-text columns the name-matching sweep will never find -- a task title is the
+  likeliest place in this module for a member's name, because "call Hala about her card" is
+  how one gets written.
+
+Known gaps, deliberate:
+
+- **No service, no routes and no screens.** Slice 1 is the schema and the decisions. The
+  three screens AUT-02 owns -- ADM-TSK-01, ADM-CC-06 and ADM-CC-07 -- are slice 4, and the
+  owner directive of 2026-11-18 makes them part of the module rather than an afterthought.
+- **Approvals, SLA clocks and the reporting read are slices 2, 3 and 4**: R04 and R05 extend
+  `iam` with stages and delegation, R06 adds the clock, its pauses and escalation, and R07 is
+  the workload read the three screens draw.
+- **A case's documents are references, not files.** There is no object store -- the isolation
+  rules name one beside regions and keys -- so `document_ref` has to look like a locator,
+  which is MOD-012's `vault_ref` rule: a non-blank text column beside a comment promising it
+  holds no payload is a naming convention rather than a control, and a reviewer disproved
+  exactly that claim once with a card number.
+- **A longer dependency cycle is the service's to refuse and there is no service yet**, so
+  today nothing stops one. The schema refuses self-reference; `workflow.check_no_cycle` is
+  written and tested and has no caller until slice 2 -- which is this build's "a writer with
+  no reader" shape, named here rather than discovered later.
+- **A queue's `location_id` is a scope, not a boundary.** `permit` resolves tenant-wide, so a
+  club manager sees every queue -- MOD-014's standing scope gap, said here rather than implied
+  by a column that looks like it restricts something.
+- **An escalation will end in a notification request and will not claim anybody was told**,
+  because MOD-013 authors a message and sends nothing.
+
 ## The worker runtime
 
 `backend/app/worker/` is the thing this file asked for in fourteen places. Every one of those
@@ -5464,10 +5588,13 @@ financial write with no form in this app, and a button that answered 403 is wors
 absence. The rest need modules this repository does not have (CRM, automation, tasks, search).
 
 Within those, the work is per module rather than per screen, because each one needs its gate,
-its masked fields and its failure states wired the way those are. The second is the modules themselves: MOD-023 (Coach Workspace, which
-needs MOD-014 and MOD-008, both built) is the next eligible one, and MOD-006 is the Compose
-Multiplatform qualification, which is a client-side proof the server plane does not need and
-the mobile half does.
+its masked fields and its failure states wired the way those are. The second is the modules themselves. **MOD-026 is under way** -- slice 1 of
+4 has landed, see its entry above -- and it was chosen by dependency order rather than by
+screen count: MOD-027, MOD-047 and MOD-055 all depend on it, and three backlogged Admin
+screens wait on it directly. MOD-023 (Coach Workspace, which needs MOD-014 and MOD-008, both
+built) unblocks nothing and so comes after it. MOD-006 is the Compose Multiplatform
+qualification, which is a client-side proof the server plane does not need and the mobile half
+does.
 
 Two things named rather than done remain open across the build: the platform plane is
 unauthenticated -- and MOD-012 makes that worse, since the definition catalogue decides which

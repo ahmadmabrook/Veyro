@@ -1535,6 +1535,100 @@ SUBJECT_COLUMNS: tuple[Reachability, ...] = (
                  "who withdrew a live policy. Written once"),
     Reachability("plt01", "acc_policies", "retire_reason", "write_once",
                  "**why terms were withdrawn.** Prose, written once"),
+
+    # ---------------------------------------------------- MOD-026, slice 1
+    #
+    # **The sweep found fifteen of these and the rest are declared by hand**, which is the
+    # division MOD-021 records: the actor columns match on their names and the free-text ones
+    # never will. A task title is the clearest case in this module -- "call Hala about her
+    # card" is the ordinary way somebody writes one -- and a settlement reason is where "she
+    # asked us to stop contacting her" goes.
+    Reachability("plt01", "tsk_queues", "created_by", "unreachable",
+                 "who opened a work queue. Insert-only"),
+    Reachability("plt01", "tsk_queues", "retired_by", "write_once",
+                 "who closed a queue. Written once with the retirement"),
+    Reachability("plt01", "tsk_queues", "retire_reason", "write_once",
+                 "**why a queue stopped taking work.** Prose, written once"),
+    Reachability("plt01", "tsk_business_hours", "created_by", "unreachable",
+                 "who stated when a club's people are at work. Insert-only, because the "
+                 "window is what an SLA was measured against"),
+    Reachability("plt01", "tsk_business_hours", "withdrawn_by", "write_once",
+                 "who took a calendar window back. Written once with the withdrawal"),
+    Reachability("plt01", "tsk_business_hours", "withdraw_reason", "write_once",
+                 "**why a window was withdrawn.** Prose, written once"),
+    Reachability("plt01", "tsk_business_hours", "note", "unreachable",
+                 "**prose on a calendar window**, where 'closed for Khalid's wedding' is the "
+                 "ordinary thing to write. Insert-only: no runtime role holds UPDATE on it"),
+    # **`unreachable`, not `covered`, and the registry's own guard is why.** `covered` is
+    # defined as "names the subject only by `identity_id`, and the row that identifier points
+    # at is itself anonymized", and its test requires the reference to be into `iam`. These
+    # are `ppl_persons` ids. The argument still holds -- MOD-014 extended the executor to
+    # anonymise that row -- but `unreachable` is the stronger and truer statement about *this*
+    # column: no runtime role can write it at all.
+    Reachability("plt01", "tsk_cases", "subject_id", "unreachable",
+                 "**who or what this case is about.** Insert-only: moving it would keep the "
+                 "case's whole history and start describing somebody else"),
+    Reachability("plt01", "tsk_cases", "title", "write_once",
+                 "**the case's own sentence**, which names the member it is about as often "
+                 "as not. Editable, and no erasure path clears it"),
+    Reachability("plt01", "tsk_cases", "opened_by", "unreachable",
+                 "who opened the case. Insert-only"),
+    Reachability("plt01", "tsk_cases", "resolved_by", "write_once",
+                 "who resolved it. The one-way trigger admits no second resolution"),
+    Reachability("plt01", "tsk_cases", "resolution_reason", "write_once",
+                 "**what happened in the end.** Prose, and the one field a case exists for; "
+                 "the trigger makes it final"),
+    Reachability("plt01", "tsk_case_entries", "recorded_by", "unreachable",
+                 "who wrote a line on the case. Insert-only: the table has no UPDATE grant "
+                 "at all, because an entry nobody can rely on is no use in the dispute it "
+                 "exists for"),
+    Reachability("plt01", "tsk_case_entries", "summary", "unreachable",
+                 "**the line itself**, which is where a conversation with a member is "
+                 "written down. No UPDATE grant, so nothing can clear it -- the same residue "
+                 "MOD-014's notes carry, and declared for the same reason"),
+    Reachability("plt01", "tsk_case_entries", "document_ref", "unreachable",
+                 "a locator for a file this build does not hold, whose path may name the "
+                 "member. No UPDATE grant"),
+    Reachability("plt01", "tsk_tasks", "subject_id", "unreachable",
+                 "what the task is about; see `tsk_cases.subject_id`. Insert-only"),
+    # **`anonymize`, which means the executor really clears it.** This column is the one in
+    # the module that is neither insert-only nor written once: it moves every time work is
+    # reassigned. So `write_once` would be a false sentence that the test would nonetheless
+    # accept -- the mechanism name saying one thing while the reason corrected it, which is
+    # the "a docstring is not an attribution" shape. Clearing is also the right behaviour: a
+    # task assigned to somebody who has been erased is unassigned work, and who actually did
+    # it survives on `settled_by`.
+    Reachability("plt01", "tsk_tasks", "assignee_person_id", "anonymize",
+                 "**the staff member the work sits with.** Set to NULL, which un-assigns "
+                 "their open tasks -- the column is nullable because an unassigned task is "
+                 "the queue's whole purpose, so there is no tombstone to invent",
+                 clears=("assignee_person_id",), locate_by="assignee_person_id"),
+    Reachability("plt01", "tsk_tasks", "title", "write_once",
+                 "**the task's own sentence**, and the likeliest place in this module for a "
+                 "member's name: 'call Hala about her card' is how one gets written. "
+                 "Editable, and no erasure path clears it"),
+    Reachability("plt01", "tsk_tasks", "created_by", "unreachable",
+                 "who raised the task. Insert-only"),
+    Reachability("plt01", "tsk_tasks", "settled_by", "write_once",
+                 "who finished or called it off. The settlement trigger makes it final"),
+    Reachability("plt01", "tsk_tasks", "settle_reason", "write_once",
+                 "**why it was not done**, which is the question R07's outcome reporting is "
+                 "for. Prose, made final by the same trigger"),
+    Reachability("plt01", "tsk_tasks", "evidence_ref", "write_once",
+                 "a locator whose path may name the member. Editable while the task is open "
+                 "and cleared by nothing"),
+    Reachability("plt01", "tsk_checklist_items", "created_by", "unreachable",
+                 "who wrote the checklist. Insert-only"),
+    Reachability("plt01", "tsk_checklist_items", "completed_by", "write_once",
+                 "**who ticked the step.** Written once with the tick, because a checklist "
+                 "whose ticks nobody owns is a checklist nobody can be asked about"),
+    Reachability("plt01", "tsk_checklist_items", "label", "write_once",
+                 "**the step's own words**, which name a member as readily as a task title "
+                 "does. Editable, and cleared by nothing"),
+    Reachability("plt01", "tsk_dependencies", "created_by", "unreachable",
+                 "who said this task waits on that one. Insert-only, because the table has "
+                 "no UPDATE grant: changing which task blocks which is two edges and both "
+                 "should be visible"),
 )
 
 
