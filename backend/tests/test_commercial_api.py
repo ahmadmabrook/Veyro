@@ -738,6 +738,88 @@ class LifecycleTests(CommercialApiTestCase):
         # Access ends at the minimum term, not after the notice.
         self.assertEqual(body["effective_on"], body["commitment"]["ends_on"])
         self.assertFalse(body["commitment"]["leaving_early"])
+        # **And the commitment is still running, which is the other fact entirely.** See
+        # the test below: these two disagree here and a reader of the first alone concluded
+        # the term was over.
+        self.assertTrue(body["commitment"]["term_is_running"])
+
+    def test_a_running_commitment_says_so_even_where_access_does_not_end_early(self):
+        """**Two questions one boolean cannot answer, and the surface read the wrong one.**
+
+        `leaving_early` is "access ends before the term does", which is what the buy-out is
+        charged on. It is false for a member held to their term, because the lifecycle pushes
+        the effective date *to* the term end precisely when the contract forbids an early
+        exit -- so it goes false exactly when the commitment is most firmly binding.
+        ADM-MSH-07 keyed its commitment sentence and its freeze offer on it, and told a
+        member nine months inside a twelve-month term that the commitment "has been served"
+        while withholding the freeze offer whose whole subject is keeping one intact.
+
+        `term_is_running` is the question a screen actually asks, and it cannot work it out:
+        `today` is on no response, and a client comparing `ends_on` against its own clock
+        counts days in a frame this build has three recorded defects from. So the server says
+        it -- MOD-016's `in_window` and MOD-018's `admits_trade` for the same reason.
+
+        The assertion that matters is that the two fields **disagree** on this contract.
+        Equality here would mean one of them had stopped being needed."""
+        tenant_id = self.tenant()
+        owner = self.headers(tenant_id)
+        held = self.membership(tenant_id, contract={
+            "minimum_term_months": 12, "notice_days": 30,
+            "cancellation_mode": "end_of_notice"})
+        body = self.client.get(
+            f"/memberships/{held['membership_id']}/cancellation-preview",
+            headers=owner).json()
+        self.assertTrue(body["commitment"]["term_is_running"])
+        self.assertFalse(body["commitment"]["leaving_early"])
+        self.assertNotEqual(
+            body["commitment"]["term_is_running"], body["commitment"]["leaving_early"],
+            "the two fields answer different questions and this contract is where they part")
+
+        # On a contract that sells the exit, both are true: access does end early and the
+        # commitment is still running. So the distinction is not "one is always the other
+        # negated" -- it is a genuine second fact.
+        bought = self.membership(tenant_id, contract={
+            "minimum_term_months": 12, "notice_days": 30,
+            "cancellation_mode": "end_of_notice", "early_termination_months": 2})
+        other = self.client.get(
+            f"/memberships/{bought['membership_id']}/cancellation-preview",
+            headers=owner).json()
+        self.assertTrue(other["commitment"]["term_is_running"])
+        self.assertTrue(other["commitment"]["leaving_early"])
+
+    def test_a_term_that_is_not_running_says_so_whether_served_or_absent(self):
+        """**Both ways a commitment is not running**, so `term_is_running` is proved in both
+        directions rather than asserted true twice.
+
+        A one-month term on a membership that started ninety days ago has been served, and
+        that is the one case where "has been served" is the true sentence. A contract with no
+        minimum term at all never had one -- **and that case was uncaught until a mutation
+        said so.** `commitmentLine` guards on `ends_on` before it reads this field, so the
+        sentence was safe either way; `freezeOffer` reads it directly, so a rolling member
+        would have been told a freeze "leaves the commitment standing" about a commitment
+        that does not exist, which is the defect that function's own docstring exists to
+        prevent."""
+        tenant_id = self.tenant()
+        owner = self.headers(tenant_id)
+        served = self.membership(tenant_id, contract={
+            "minimum_term_months": 1, "notice_days": 30,
+            "cancellation_mode": "end_of_notice"})
+        body = self.client.get(
+            f"/memberships/{served['membership_id']}/cancellation-preview",
+            headers=owner).json()
+        self.assertIsNotNone(body["commitment"]["ends_on"])
+        self.assertFalse(body["commitment"]["term_is_running"])
+        self.assertFalse(body["commitment"]["leaving_early"])
+
+        rolling = self.membership(tenant_id, contract={"notice_days": 30,
+                                                       "cancellation_mode": "end_of_notice"})
+        other = self.client.get(
+            f"/memberships/{rolling['membership_id']}/cancellation-preview",
+            headers=owner).json()
+        self.assertEqual(other["commitment"]["minimum_term_months"], 0)
+        self.assertIsNone(other["commitment"]["ends_on"])
+        self.assertFalse(other["commitment"]["term_is_running"])
+        self.assertFalse(other["commitment"]["leaving_early"])
 
     def test_the_buy_out_reaches_the_recorded_cancellation(self):
         """**The disclosure is only worth anything if the command charges what was quoted.**

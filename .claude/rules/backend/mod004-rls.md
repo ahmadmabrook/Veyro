@@ -1706,3 +1706,104 @@ kind that gets left off one. `?tab=membership&cancel=1` had to be added by hand.
 is now covered and the *content* is not — nothing in the browser suite reads the sheet's
 figures off the page — which is a real distinction and the sort that a single sentence saying
 "the browser layer covers this" would bury.
+
+
+**A hand-written fixture for a pure function can encode a state the system cannot produce,
+and then the test proves a branch nothing reaches.** This file already records the surface
+version -- "a surface branch no fixture can reach is the same vacuity, one layer up", found
+four times in four modules. The unit version is quieter and was found a fifth way.
+ADM-MSH-07's `commitmentLine` has four answers; its component test reached the `held_to_term`
+one with `leaving_early: true` beside `may_leave_early: false`, which the server **cannot
+emit** -- where a contract forbids an early exit the lifecycle pushes the effective date *to*
+the term end, so access never ends before it. The branch passed its assertion and was dead in
+the product, and the member it describes was told their commitment "has been served" nine
+months inside it.
+
+Nothing in four layers could see it. The component test was green because the quote was
+written by hand; the backend tests asserted the fields and not what a screen concluded from
+them; the e2e fixture had no contract with a term at all, so the branch never rendered; and
+the type system is happy with any combination of booleans.
+
+**The remedy is a builder that refuses an impossible state**, which is the cheapest thing
+that notices and is the same shape as the backend's `check_split` and `check_summary_fields`
+running at import. Each implication the server's own arithmetic guarantees becomes a throw --
+here three of them -- and one test proves the builder throws, because a guard nothing
+exercises is a guard with no evidence. Written as `quote()` wrapping a raw builder, so every
+existing case is checked without being rewritten.
+
+**And the field that was misread is worth keeping rather than renaming.** `leaving_early`
+answers "does access end before the term", which is what the buy-out is charged on;
+`term_is_running` answers "is there a commitment at all". One boolean answering two questions
+is right only while the two agree. This is the `reachable` lesson with one difference worth
+noting: `reachable` was right by coincidence until a gap closed and pulled the two apart,
+whereas this one was wrong for one of its callers from the first commit and invisible because
+no fixture rendered the case where they differ. **So the pin is a test asserting the two
+fields disagree**, on the contract where they do -- an assertion that they are equal, or a
+comment saying they differ, would both have survived the defect.
+
+**A derived fact the client cannot compute belongs on the response.** `term_is_running` needs
+`today`, which is on no response, and a client comparing a date against its own clock counts
+days in a frame this file records three defects from. MOD-016's `in_window` and MOD-018's
+`admits_trade` are the precedents: the implication is the fact, and a reader deriving it from
+two timestamps gets the open-ended case wrong.
+
+**A mutation that comes back uncaught is sometimes pointing at a hole in the evidence rather
+than at a redundant guard, and the two read alike.** Three mutations were written against
+`term_is_running` and the third -- making a contract with *no* term report a running
+commitment -- was uncaught. It was not redundant: `commitmentLine` guards on `ends_on` first,
+so the sentence was safe, but `freezeOffer` reads the flag directly, so a rolling member
+would have been offered a freeze that "leaves the commitment standing" about a commitment
+that does not exist -- the defect that function's own docstring exists to prevent. The test
+had asserted the field true twice and false once, never for the absent case. **Ask of an
+uncaught mutation which reader is unguarded before concluding the guard is unnecessary.**
+
+**A seed is a schema reader of last resort.** The fixture for those four contracts was
+refused `409 this_product_already_has_membership_terms`: `mem_membership_terms` admits one
+set per product, which no amount of reading the surface would have surfaced and which the
+migration states plainly. Worth noting because the refusal also improved the fixture -- three
+contracts on three products is what a gym actually sells, not three contracts on one.
+
+
+**Piping a suite through `tail` throws away its exit code and can throw away its verdict, so
+a green shell says nothing.** `python -m unittest ... 2>&1 | tail -6; echo $?` reports
+**`tail`'s** status, which is 0 whether 2,500 tests passed or forty failed -- and the window
+is the wrong place to look anyway: unittest writes `Ran N tests` and `OK` to stderr while
+tests write their own notes to stdout, and stdout is block-buffered through a pipe, so the
+buffered notes flush *after* the verdict and the last six lines can be three PERF timings
+from a test that ran ten minutes earlier. That is exactly what one run of this repository's
+backend suite produced: ruff's "All checks passed", mypy's "Success", three PERF lines, and
+`[exited with code 0]`, with no verdict anywhere and nothing wrong-looking about it.
+
+**The tell is an absence rather than an error**, which is what makes it worse than a crash:
+there is no `OK`, no `FAILED`, no `Ran N tests`, and a reader who is looking for a failure
+sees none and moves on. The same shape as `verify_db.sh` exiting 3 with no checks run -- the
+proof that did not happen looks nothing like the proof that passed, and also nothing like a
+red.
+
+So redirect to a file and read the verdict out of it, or at minimum take
+`${PIPESTATUS[0]}`. And `grep -E '^(OK|FAILED|Ran [0-9]+ tests)'` is the thing to assert on:
+it fails loudly when the verdict is missing, where `tail` fails silently. This is the file's
+own closing rule -- "state a PASS when a command produced it, naming the command" -- and the
+failure mode is that a *pipeline* can produce a PASS the command did not.
+
+
+**Rendering a page and grepping the HTML is a real verification layer, with one trap that
+makes it lie in the safe-looking direction.** When the browser suite cannot run -- another
+session holding port 3000, a config whose `webServer.url` is hard-coded -- a dev server on a
+spare port plus `curl` with a real session cookie still proves the *content* of a screen,
+which is the half a backend test cannot reach. It proves nothing about geometry, focus order
+or the accessibility tree, so it supplements the browser layer and never replaces it.
+
+The trap: **React writes `<!-- -->` between adjacent JSX expressions**, so a figure composed
+of several -- `{code} {sign}{major}{minor}` -- is `JOD<!-- --> <!-- -->80<!-- -->.00` in the
+markup and contiguous text in the DOM. Playwright reads the DOM and matches; a raw-HTML
+`includes` does not, and reports a figure that is plainly on screen as absent. Strip
+`<!--[^>]*-->` before matching, or the check reports defects the app does not have -- which
+costs the same trust as missing one.
+
+It earned its place immediately: of two mismatches it found, one was that trap and the other
+was a genuine bug in a spec I was about to push. A member on a contract with no notice period
+cancels *immediately*, so the sheet says "Access ends today." and not "Access ends on {date}"
+-- two different messages, and the spec asserted the dated one. **The pair of messages is the
+thing to look for**: where a screen picks between two sentences on a condition the fixture
+happens to fix, an assertion on either one is an assertion about the fixture.

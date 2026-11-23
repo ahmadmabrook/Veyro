@@ -2489,6 +2489,19 @@ part and swapping it for the remainder passed; 5 HTTP tests including the canvas
 to end; migration `0018`, whose two constraints are three named isolation cases and 6
 mutations, all caught.
 
+**`preview_cancellation` carries a fifth fact, and the reason is a defect this module's own
+shape caused on the surface.** `commitment.leaving_early` is "access ends before the term
+does" -- the buy-out's own condition -- and it is false for a member a contract holds to the
+term, because `cancellation_effective_on` pushes the effective date **to** the term end
+precisely then. ADM-MSH-07 read it as "is there a commitment", so a member nine months inside
+a twelve-month term was told theirs "has been served" and was the one member denied the
+freeze offer that keeps a commitment intact. `commitment.term_is_running` is the other
+question -- `today < minimum_term_ends_on` -- derived here because `today` is on no response
+and a client comparing dates against its own clock counts days in the wrong frame, which is
+MOD-016's `in_window` and MOD-018's `admits_trade` for the same reason. Both fields stay, and
+what pins the difference is a test asserting they **disagree** on a held-to-term contract: 3
+HTTP tests over all three states and 3 mutations, all caught.
+
 **And the gap note that sent me here was wrong, which is the lesson worth more than the
 feature.** ADM-MSH-07's backlog entry said the fee had no reader and was learnable only by
 cancelling. `GET /memberships/{id}/cancellation-preview` has existed since the module was
@@ -4558,12 +4571,64 @@ sheet renders in a real browser at 375px without pushing the page sideways, whic
 passed -- `phone.spec.ts` carries its route, and a surface reachable only with a query string
 is exactly the kind that gets left out of a list of paths.
 
-**What has *not* been asserted in a browser is the sheet's content**, and the distinction is
-worth keeping: the geometry is covered and the figures are not. Nothing in the browser suite
-reads the commitment sentence, the fee lines or the button's figure off the page, and the
-fixture seeds no contract with a term and a buy-out, so the canvas's own case -- the one that
-renders two fee lines rather than one -- has never been drawn. That seed is the piece still
-owed, and `fixture.mjs` is where it goes.
+**The sheet's content is asserted now, and seeding it found a defect in this very screen.**
+The geometry was covered and the figures were not; the fixture carried one contract, with no
+minimum term, so of `commitmentLine`'s four sentences exactly one -- "this member has no
+commitment" -- had ever rendered. The two-fee-line breakdown is gated on there being more
+than one part and had therefore never rendered at all, and neither had "Before you cancel",
+because the fixture's member visited yesterday and so is not dormant. Five branches, nothing
+drawing any of them.
+
+**Of the three unrendered sentences, one was unreachable, and the member it describes was
+being told the opposite of the truth.** `commitmentLine` and `freezeOffer` both asked
+`commitment.leaving_early`, which is "access ends before the term does" -- the buy-out's own
+condition. Where a contract forbids an early exit `cancellation_effective_on` pushes the
+effective date **to** the term end, so that flag goes false exactly when the member is most
+firmly held: a member nine months inside a twelve-month commitment read **"The commitment to
+2027-08-25 has been served"**, and was the one member denied the freeze offer whose whole
+subject is keeping a commitment intact. `held_to_term` could not be produced by any input.
+
+**And a component test had "proved" that branch with a quote the server cannot emit** --
+`leaving_early: true` beside `may_leave_early: false`. So the dead branch sat behind a green
+assertion, which is this build's vacuous-evidence shape arriving from a direction it had not
+arrived from before: not a surface branch no fixture reaches, but a *hand-written unit
+fixture* encoding a state the system cannot reach. The quote builder now throws on all three
+combinations the server's own arithmetic forbids, and a test proves it throws.
+
+The fix is a second fact rather than a cleverer branch, which is the lesson `reachable` taught
+one module over: `commitment.term_is_running` is "is the commitment running today", derived
+on the server because `today` is on no response and a client comparing `ends_on` against its
+own clock counts days in a frame this build has three recorded defects from -- MOD-016's
+`in_window` and MOD-018's `admits_trade` for the same reason. `leaving_early` stays, because
+the buy-out is charged on precisely it, and what pins the distinction is a test asserting the
+two **disagree** on a held-to-term contract rather than a comment saying they might.
+
+`cancel.offerCommitted` was reworded in both locales for the same reason: "where cancelling
+inside it is charged for" is false for a member held to term, where nothing is charged and
+access simply runs to the term's end. It now states what is true of both and leaves the money
+to the consequence block, which already says it exactly -- one claim in one place rather than
+one case's version of it twice.
+
+Proven: the fixture seeds a member for each of the four sentences -- a twelve-month term with
+a two-month buy-out at JOD 40.00 a month, so the canvas's "two-month fee of JOD 80.00" is the
+figure the real lifecycle computes; the same term with no buy-out; a one-month term that has
+been served; and the rolling member. Read off the live API, the four answer
+`leaving_early` / `held_to_term` / `served` / `none` with 2, 1, 1 and 1 fee lines. Four
+browser tests read those sentences off the page, 3 backend tests pin the field in both
+directions, 3 service mutations and 3 client mutations, every one caught.
+
+**One assertion was deliberately not written: the headline total.** It is the buy-out plus
+the part of the current period already used, and monthly periods tiling from a start ninety
+days back put the period boundary near the notice date on some calendar days and not others
+-- so the total is JOD 120.00 most of the year and a few fils under it the rest. A test
+asserting it would be green depending on the day it ran. The buy-out is `months x
+amount_minor` and never moves, so that is the figure the browser asserts.
+
+**And the seed found a constraint by being refused rather than by anybody reading the
+migration**: `mem_membership_terms` admits one set per product, so each contract needed its
+own product. That is also the truer shape -- a twelve-month deal that sells an exit, one that
+does not, and a rolling monthly are three things a gym sells, not three contracts on one
+product.
 
 **This paragraph claimed the browser layer had not run at all, which was wrong**, and the
 error is worth recording rather than quietly fixing: the local suite needs port 3000 and the

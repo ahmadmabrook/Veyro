@@ -1913,6 +1913,41 @@ const MUTATIONS = [
     grep: "says so where the membership cannot be cancelled by anybody",
     runner: "vitest",
   },
+  {
+    id: "commit-line-reads-the-wrong-flag",
+    why: "this is the defect, restored: `leaving_early` is false for a member a contract"
+      + " forbids leaving early, because the lifecycle pushes the effective date to the term"
+      + " end -- so keyed on it, `held_to_term` is unreachable and a member nine months into"
+      + " a twelve-month commitment is told it has been served",
+    file: "src/lib/cancellation.ts",
+    from: '  if (!quote.commitment.term_is_running) return "served";',
+    to: '  if (!quote.commitment.leaving_early) return "served";',
+    grep: "says the term holds where the contract sells no way out of it",
+    runner: "vitest",
+  },
+  {
+    id: "commit-freeze-offer-reads-the-wrong-flag",
+    why: "the same flag one function over, where it withheld the freeze offer from the only"
+      + " member whose commitment a freeze would preserve",
+    file: "src/lib/cancellation.ts",
+    from: "  const committed = quote.commitment.term_is_running;",
+    to: "  const committed = quote.commitment.leaving_early;",
+    grep: "keeps the commitment half for the member who is held to one",
+    runner: "vitest",
+  },
+  {
+    id: "commit-quote-admits-an-impossible-state",
+    why: "the guard that would have caught the dead branch: without it a hand-written quote"
+      + " can carry `leaving_early` beside `may_leave_early: false`, which the server cannot"
+      + " emit, and a unit test then proves a branch nothing reaches",
+    file: "tests/component/cancellation.test.ts",
+    from: '  if (!c.may_leave_early && c.leaving_early) {\n'
+      + '    throw new Error(',
+    to: '  if (false) {\n'
+      + '    throw new Error(',
+    grep: "cannot be given a commitment the server would never send",
+    runner: "vitest",
+  },
 ];
 
 const only = process.argv[2];

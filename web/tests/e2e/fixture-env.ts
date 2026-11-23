@@ -45,6 +45,10 @@ export type Fixture = {
   deskSessionId: string;
   /** The seeded member: a tag, a contact point, two notes and a health custom field. */
   personId: string;
+  /** ADM-MSH-07's four commitment sentences, one member each; `personId` is the fourth. */
+  buyOutPersonId: string;
+  heldToTermPersonId: string;
+  servedTermPersonId: string;
   /**
    * The near-duplicate, who also carries a refusal **somebody has already overridden**.
    *
@@ -148,6 +152,12 @@ export function fixture(): Fixture {
     "VEYRO_E2E_ROTA_EXCEPTION_DAY",
     "VEYRO_E2E_POINT_ID",
     "VEYRO_E2E_PERSON_ID",
+    // ADM-MSH-07's commitment sentences, one member each. Required rather than optional,
+    // because a spec that skipped on a missing id would go green against a stale fixture --
+    // which is how a branch nobody renders stays unrendered.
+    "VEYRO_E2E_BUY_OUT_PERSON_ID",
+    "VEYRO_E2E_HELD_TO_TERM_PERSON_ID",
+    "VEYRO_E2E_SERVED_TERM_PERSON_ID",
     "VEYRO_E2E_OVERRIDDEN_PERSON_ID",
     "VEYRO_E2E_DEVICE_ID",
     "VEYRO_E2E_PENDING_DEVICE_ID",
@@ -191,6 +201,9 @@ export function fixture(): Fixture {
     bookedSessionId: env.VEYRO_E2E_BOOKED_SESSION_ID!,
     deskSessionId: env.VEYRO_E2E_DESK_SESSION_ID!,
     personId: env.VEYRO_E2E_PERSON_ID!,
+    buyOutPersonId: env.VEYRO_E2E_BUY_OUT_PERSON_ID!,
+    heldToTermPersonId: env.VEYRO_E2E_HELD_TO_TERM_PERSON_ID!,
+    servedTermPersonId: env.VEYRO_E2E_SERVED_TERM_PERSON_ID!,
     overriddenPersonId: env.VEYRO_E2E_OVERRIDDEN_PERSON_ID!,
     deviceId: env.VEYRO_E2E_DEVICE_ID!,
     pendingDeviceId: env.VEYRO_E2E_PENDING_DEVICE_ID!,

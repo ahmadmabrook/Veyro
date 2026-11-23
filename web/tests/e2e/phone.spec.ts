@@ -68,8 +68,15 @@ const surfaces: [string, string][] = [
   //    `.facts` grid of fee parts. Neither is wide on a desktop and both are the shape
   //    this sweep exists for -- and a surface reachable only with a query string is
   //    exactly the kind that gets left out of a list of paths.
+  // **The committed member, not the rolling one, because only they draw the grid.** The
+  // comment above has claimed the `.facts` grid of fee parts since this entry was added and
+  // it was not being measured: the breakdown is gated on there being more than one fee part,
+  // and the rolling member has one. This member renders everything that one does plus the
+  // two-row grid and the "Before you cancel" interruption, so it is a strict superset for a
+  // geometry sweep -- and the grid is the component this repository already records a
+  // row-wrapping defect in.
   ["a membership cancellation",
-   `/people/${creds.personId}?tab=membership&cancel=1`],
+   `/people/${creds.buyOutPersonId}?tab=membership&cancel=1`],
   ["a member's billing", `/people/${creds.personId}?tab=billing`],
   // MOD-018's board is the widest table in the app -- four money columns over a chart of
   // thirteen accounts -- so it is the one most likely to push the page sideways.

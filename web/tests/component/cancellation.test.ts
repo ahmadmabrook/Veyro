@@ -13,9 +13,46 @@ import {
  * ADM-MSH-07's decisions. Every figure is the server's; what is here is which of several
  * sentences the sheet says, and each one is a branch with a test because the canvas's own
  * wording is true of its member and false of three others.
+ *
+ * **`quote` refuses a commitment the server cannot emit, and that guard is the point of
+ * this file.** The first version of these tests reached `held_to_term` with
+ * `leaving_early: true` beside `may_leave_early: false` -- an impossible pair, because where
+ * a contract forbids an early exit the lifecycle pushes the effective date *to* the term
+ * end, so access never ends before it. The branch passed its test and was **dead in the
+ * product**: `commitmentLine` asked `leaving_early`, which is false for exactly that member,
+ * so a member nine months inside a twelve-month term was told the commitment "has been
+ * served".
+ *
+ * This repository already records that a surface branch no fixture can reach is vacuity one
+ * layer up. This is the inverse and is quieter: a hand-written fixture for a *pure* function
+ * can encode a state the system cannot produce, and then the test proves a branch nothing
+ * reaches. A builder that throws is the cheapest thing that notices -- the same shape as the
+ * backend's `check_split` and `check_summary_fields`, which run at import for the same
+ * reason.
  */
 
-const quote = (over: Partial<CancellationQuote> = {}): CancellationQuote => ({
+/** The three implications the server's own arithmetic guarantees. */
+function refuseAnImpossibleCommitment(c: CancellationQuote["commitment"]): void {
+  if (c.ends_on === null && (c.leaving_early || c.term_is_running)) {
+    throw new Error("no minimum term: neither flag can be true");
+  }
+  if (!c.may_leave_early && c.leaving_early) {
+    throw new Error(
+      "a contract with no buy-out pushes the effective date to the term end, so "
+      + "leaving_early cannot be true -- this is the pair that hid a dead branch");
+  }
+  if (c.leaving_early && !c.term_is_running) {
+    throw new Error("access ending before the term means the term is still running");
+  }
+}
+
+const quote = (over: Partial<CancellationQuote> = {}): CancellationQuote => {
+  const built = buildQuote(over);
+  refuseAnImpossibleCommitment(built.commitment);
+  return built;
+};
+
+const buildQuote = (over: Partial<CancellationQuote> = {}): CancellationQuote => ({
   membership_id: "m-1",
   status: "active",
   version: 3,
@@ -34,6 +71,7 @@ const quote = (over: Partial<CancellationQuote> = {}): CancellationQuote => ({
     minimum_term_months: 12,
     ends_on: "2027-03-01",
     leaving_early: true,
+    term_is_running: true,
     early_termination_months: 2,
     may_leave_early: true,
   },
@@ -54,6 +92,7 @@ describe("which commitment sentence the sheet says", () => {
     expect(commitmentLine(quote({
       commitment: {
         minimum_term_months: 0, ends_on: null, leaving_early: false,
+        term_is_running: false,
         early_termination_months: null, may_leave_early: false,
       },
     }))).toBe("none");
@@ -62,6 +101,7 @@ describe("which commitment sentence the sheet says", () => {
     expect(commitmentLine(quote({
       commitment: {
         minimum_term_months: 12, ends_on: null, leaving_early: false,
+        term_is_running: false,
         early_termination_months: null, may_leave_early: false,
       },
     }))).toBe("none");
@@ -71,6 +111,7 @@ describe("which commitment sentence the sheet says", () => {
     expect(commitmentLine(quote({
       commitment: {
         minimum_term_months: 12, ends_on: "2026-01-01", leaving_early: false,
+        term_is_running: false,
         early_termination_months: 2, may_leave_early: true,
       },
     }))).toBe("served");
@@ -80,12 +121,30 @@ describe("which commitment sentence the sheet says", () => {
     // **The state every contract in this build was in until the buy-out existed**, and the
     // sentence is different in kind: access ends at the term rather than after notice, so a
     // screen saying "this leaves it early" would be describing something that cannot happen.
+    //
+    // **`leaving_early` is false here, and that is what made this branch dead.** The server
+    // pushes the effective date to the term end precisely because the contract forbids an
+    // early exit, so the flag the first version of `commitmentLine` asked goes false exactly
+    // when the member is most firmly held -- and "served" was printed at them instead.
     expect(commitmentLine(quote({
       commitment: {
-        minimum_term_months: 12, ends_on: "2027-03-01", leaving_early: true,
+        minimum_term_months: 12, ends_on: "2027-03-01", leaving_early: false,
+        term_is_running: true,
         early_termination_months: null, may_leave_early: false,
       },
     }))).toBe("held_to_term");
+  });
+
+  it("cannot be given a commitment the server would never send", () => {
+    // The guard itself, because a builder that throws is only evidence if something proves
+    // it throws. This is the exact pair the dead branch was reached with.
+    expect(() => quote({
+      commitment: {
+        minimum_term_months: 12, ends_on: "2027-03-01", leaving_early: true,
+        term_is_running: true,
+        early_termination_months: null, may_leave_early: false,
+      },
+    })).toThrow(/no buy-out/);
   });
 });
 
@@ -149,11 +208,28 @@ describe("whether a freeze is offered instead", () => {
     const rolling = quote({
       commitment: {
         minimum_term_months: 0, ends_on: null, leaving_early: false,
+        term_is_running: false,
         early_termination_months: null, may_leave_early: false,
       },
     });
     expect(freezeOffer(rolling, 30)).toBe("dormant");
     expect(freezeOffer(rolling, 1)).toBeNull();
+  });
+
+  it("keeps the commitment half for the member who is held to one", () => {
+    // **The member this offer mattered most to was the one who never saw it.** Keyed on
+    // `leaving_early`, a contract with no buy-out reads as uncommitted -- because the
+    // effective date is pushed to the term end -- so the freeze was offered to everybody
+    // except the member whose commitment a freeze would actually preserve.
+    const held = quote({
+      commitment: {
+        minimum_term_months: 12, ends_on: "2027-03-01", leaving_early: false,
+        term_is_running: true,
+        early_termination_months: null, may_leave_early: false,
+      },
+    });
+    expect(freezeOffer(held, 1)).toBe("committed");
+    expect(freezeOffer(held, 30)).toBe("dormant_and_committed");
   });
 
   it("offers nothing where the contract allows no freezing", () => {
@@ -173,6 +249,7 @@ describe("whether a freeze is offered instead", () => {
     expect(freezeOffer(quote({
       commitment: {
         minimum_term_months: 0, ends_on: null, leaving_early: false,
+        term_is_running: false,
         early_termination_months: null, may_leave_early: false,
       },
     }), null)).toBeNull();

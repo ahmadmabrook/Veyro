@@ -47,7 +47,21 @@ export type CancellationQuote = {
   commitment: {
     minimum_term_months: number;
     ends_on: string | null;
+    /**
+     * Whether access ends before the term does -- the buy-out's own condition, and **not**
+     * "is there still a commitment".
+     *
+     * Those read as one sentence and are two. Where a contract forbids an early exit the
+     * server pushes the effective date *to* the term end, so this is false precisely when
+     * the member is most firmly held -- and both readers here were keyed on it, so such a
+     * member was told their commitment "has been served" nine months early and was denied
+     * the freeze offer that exists to keep a commitment intact. One boolean answering two
+     * questions is right only while the two agree.
+     */
     leaving_early: boolean;
+    /** Is the commitment running today. The server's day, because the client's is the
+     *  wrong frame and `today` is on no response. */
+    term_is_running: boolean;
     /** `null` is "this contract has no buy-out", which is not the same as a buy-out of 0. */
     early_termination_months: number | null;
     may_leave_early: boolean;
@@ -99,7 +113,11 @@ export function freezeOffer(
   if (!quote.freeze_is_an_alternative) return null;
   const dormant =
     daysSinceLastVisit !== null && daysSinceLastVisit >= DORMANT_AFTER_DAYS;
-  const committed = quote.commitment.leaving_early;
+  // **Is there a commitment to keep, not does access end before it.** See
+  // `leaving_early` above: keyed on that, the member held to their term -- the one for whom
+  // "a freeze keeps the commitment intact" is most worth saying -- was the one member who
+  // never heard it.
+  const committed = quote.commitment.term_is_running;
   if (dormant && committed) return "dormant_and_committed";
   if (committed) return "committed";
   if (dormant) return "dormant";
@@ -151,7 +169,11 @@ export function commitmentLine(quote: CancellationQuote): CommitmentLine {
   if (quote.commitment.ends_on === null || quote.commitment.minimum_term_months === 0) {
     return "none";
   }
-  if (!quote.commitment.leaving_early) return "served";
+  // **`term_is_running`, and the first version asked `leaving_early`** -- which made
+  // `held_to_term` unreachable by construction and printed "the commitment has been served"
+  // at a member nine months inside one. A declared state nothing can produce, and the
+  // sentence it should have produced saying the opposite of the truth.
+  if (!quote.commitment.term_is_running) return "served";
   return quote.commitment.may_leave_early ? "leaving_early" : "held_to_term";
 }
 

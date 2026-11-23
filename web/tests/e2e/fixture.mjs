@@ -1362,6 +1362,106 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
             idempotency_key: randomUUID(), correlation_id: cid() },
   });
 
+  // **ADM-MSH-07's other three commitments, and seeding them is what found the defect.**
+  // `commitmentLine` says one of four sentences and this fixture produced exactly one of
+  // them -- the rolling member above, who has no commitment at all. So three of the four
+  // branches had never rendered in a browser, the two-fee-line block had never rendered at
+  // all (it is gated on `lines.length > 1`), and `beforeYouCancel` had never rendered
+  // either, because the member above last visited yesterday and is therefore not dormant.
+  //
+  // Building them is how the dead branch surfaced: `held_to_term` was unreachable, and the
+  // member it describes was being told their commitment "has been served" nine months
+  // early. A hand-written unit fixture had proved that branch with a quote the server
+  // cannot emit. **Only a real membership, priced by the real lifecycle, could say so.**
+  //
+  // The figures are the canvas's own -- JOD 40.00 a month and a two-month buy-out, which is
+  // its "two-month fee of JOD 80.00" exactly -- so a screen can be put beside its drawing
+  // and the comparison is arithmetic rather than judgement.
+  const commitments = {};
+  for (const [label, months, buyOut, who] of [
+    // The canvas's member: inside a twelve-month term, and the contract sells the way out.
+    // Renders `termEarly`, both fee lines, and the committed freeze offer.
+    ["buyOut", 12, 2, "Tareq Odeh"],
+    // The same term with no buy-out: access runs to the term rather than to notice. This is
+    // the state every contract in this build was in until the buy-out existed, and it is the
+    // one that was rendering the wrong sentence.
+    ["heldToTerm", 12, null, "Nadia Haddad"],
+    // A term that has run out. The one member for whom "has been served" is true.
+    ["served", 1, null, "Faris Qasem"],
+  ]) {
+    const key = `${label.toLowerCase()}${Date.now().toString(36)}`;
+    const draft = await call("/memberships/contract-versions", {
+      method: "POST", ...as(token),
+      body: { contract_key: key, body: `Terms: ${label}.`,
+              minimum_term_months: months, notice_days: 30,
+              cancellation_mode: "end_of_notice", freeze_days_per_year: 30,
+              // **Omitted, not zero.** `null` holds the member to the term and `0` lets them
+              // leave free -- the whole reason the column is nullable, and a fixture that
+              // sent 0 here would seed the wrong one of three states.
+              ...(buyOut === null ? {} : { early_termination_months: buyOut }),
+              correlation_id: cid() },
+    });
+    // Published by the second identity, because an author cannot publish their own.
+    await call(`/memberships/contract-versions/${draft.contract_version_id}/publish`, {
+      method: "POST", ...as(publisherToken), body: { correlation_id: cid() },
+    });
+    // **A product each, because `mem_membership_terms` admits one set per product** -- which
+    // the seed found by being refused 409 rather than by anybody reading the migration. It
+    // is also the truer shape: a twelve-month contract that sells an exit, one that does
+    // not, and a one-month rolling one are three different things a gym sells, not three
+    // contracts on one product.
+    const theirProduct = await call("/catalog/products", {
+      method: "POST", ...as(token),
+      body: { product_key: `${key}p`, product_type: "membership",
+              texts: [{ locale: "en", display_name: `${who}'s plan` }],
+              variants: [{ variant_key: "monthly", display_name: "Monthly",
+                           term_days: 30 }],
+              correlation_id: cid() },
+    });
+    await call("/catalog/prices", {
+      method: "POST", ...as(token),
+      body: { price_book_id: priceBook.price_book_id,
+              variant_id: theirProduct.variants[0].variant_id, amount_minor: 40000,
+              effective_from: "2026-01-01T00:00:00+00:00", correlation_id: cid() },
+    });
+    await call(`/catalog/products/${theirProduct.product_id}/publish`, {
+      method: "POST", ...as(token),
+      body: { expected_version: 1, correlation_id: cid() },
+    });
+    const committedTerms = await call("/memberships/terms", {
+      method: "POST", ...as(token),
+      body: { product_id: theirProduct.product_id, contract_key: key,
+              membership_kind: "recurring", billing_period: "monthly",
+              correlation_id: cid() },
+    });
+    const member = await call("/people", {
+      method: "POST", ...as(token),
+      body: { legal_name: who, date_of_birth: "1990-03-14", correlation_id: cid() },
+    });
+    const theirAgreement = await call("/memberships/agreements", {
+      method: "POST", ...as(token),
+      body: { person_id: member.person_id,
+              membership_terms_id: committedTerms.membership_terms_id,
+              variant_id: theirProduct.variants[0].variant_id,
+              // JOD 40.00 a month, so the two-month buy-out is the canvas's JOD 80.00.
+              amount_minor: 40000, currency: "JOD", starts_on: startedOn,
+              correlation_id: cid() },
+    });
+    await call(`/memberships/agreements/${theirAgreement.agreement_id}/sign`, {
+      method: "POST", ...as(token),
+      body: { signature_kind: "click_through",
+              signature_evidence_ref: `s3://signatures/${theirAgreement.agreement_id}`,
+              signed_by_person_id: member.person_id, correlation_id: cid() },
+    });
+    await call("/memberships", {
+      method: "POST", ...as(token),
+      body: { agreement_id: theirAgreement.agreement_id,
+              membership_number: `${label.slice(0, 4).toUpperCase()}-00001`,
+              idempotency_key: randomUUID(), correlation_id: cid() },
+    });
+    commitments[label] = member.person_id;
+  }
+
   const entitlementPolicy = await call("/member-entitlements/policies", {
     method: "POST", ...as(token),
     body: { policy_key: "classes", display_name: "Group classes",
@@ -2339,6 +2439,12 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
     zoneId: zone.zone_id,
     pointId: point.point_id,
     personId: person.person_id,
+    // ADM-MSH-07's four commitment sentences, one member each, named so a spec asserts the
+    // case it means rather than whichever membership sorts first. `person` above is the
+    // fourth -- a rolling contract with no commitment at all.
+    buyOutPersonId: commitments.buyOut,
+    heldToTermPersonId: commitments.heldToTerm,
+    servedTermPersonId: commitments.served,
     membershipId: membership.membership_id,
     retiredAccountId: retiring.account_id,
     productId: product.product_id,
@@ -2385,6 +2491,9 @@ if (invokedDirectly) {
       `VEYRO_E2E_ROTA_EXCEPTION_DAY=${fixture.rotaExceptionDay}`,
       `VEYRO_E2E_POINT_ID=${fixture.pointId}`,
       `VEYRO_E2E_PERSON_ID=${fixture.personId}`,
+      `VEYRO_E2E_BUY_OUT_PERSON_ID=${fixture.buyOutPersonId}`,
+      `VEYRO_E2E_HELD_TO_TERM_PERSON_ID=${fixture.heldToTermPersonId}`,
+      `VEYRO_E2E_SERVED_TERM_PERSON_ID=${fixture.servedTermPersonId}`,
       `VEYRO_E2E_OVERRIDDEN_PERSON_ID=${fixture.overriddenPersonId}`,
       `VEYRO_E2E_DEVICE_ID=${fixture.deviceId}`,
       `VEYRO_E2E_PENDING_DEVICE_ID=${fixture.pendingDeviceId}`,

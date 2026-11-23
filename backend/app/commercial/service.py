@@ -1079,8 +1079,24 @@ def preview_cancellation(
             "minimum_term_months": terms.minimum_term_months,
             "ends_on": (
                 minimum_term_ends_on.isoformat() if minimum_term_ends_on else None),
+            # **Whether access ends before the term does, which is the fee's own condition
+            # and is NOT "is there still a commitment".** Those are the same sentence only
+            # while a contract allows an early exit: where it does not, the clause above
+            # pushes `effective_on` *to* the term end, so this goes false exactly when the
+            # member is most firmly held. A surface reading it as "the term is over" told
+            # such a member their commitment had been served nine months early, and the
+            # freeze offer that keeps a commitment intact was withheld from the only member
+            # it mattered to. Kept, because the buy-out is charged on precisely this, and
+            # pinned by a test rather than by this comment.
             "leaving_early": (
                 minimum_term_ends_on is not None and effective_on < minimum_term_ends_on),
+            # **Is the commitment running today**, which is the question a screen asks and
+            # the one it cannot work out for itself: `today` is not on this response, and a
+            # client comparing `ends_on` against its own clock would be counting days in a
+            # frame this build has three recorded defects from. MOD-016's `in_window` and
+            # MOD-018's `admits_trade` for the same reason -- the implication is the fact.
+            "term_is_running": (
+                minimum_term_ends_on is not None and today < minimum_term_ends_on),
             # Three states, as the column has them: no early exit, a free one, or a priced
             # one. A screen reading a null as a zero would tell a member they may walk away
             # free from a contract that holds them to March.
