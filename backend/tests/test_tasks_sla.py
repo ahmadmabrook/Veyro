@@ -11,7 +11,7 @@ available at six in the morning.
 from __future__ import annotations
 
 import unittest
-from datetime import UTC, date, datetime, time, timedelta
+from datetime import UTC, date, datetime, time
 from zoneinfo import ZoneInfo
 
 from app.tasks import sla
@@ -214,28 +214,65 @@ class DueAtTests(unittest.TestCase):
 
 
 class StateTests(unittest.TestCase):
-    def test_a_breach_is_computed_rather_than_stored(self):
-        due = at(AMMAN, 2026, 11, 24, 12)
-        self.assertEqual(sla.state(due=due, now=due + timedelta(seconds=1)), "breached")
-        self.assertEqual(sla.state(due=due, now=due - timedelta(hours=1)), "running")
+    """`state` is two integers and a fraction, and the reason is a defect rather than taste.
 
-    def test_a_warning_needs_the_start_and_says_running_without_it(self):
-        """A fraction of what, is the question -- so with no start there is no warning
-        threshold to be past, and saying `running` is the honest answer rather than
-        guessing a window."""
-        started = at(AMMAN, 2026, 11, 23, 10)
-        due = at(AMMAN, 2026, 11, 23, 20)
-        near = at(AMMAN, 2026, 11, 23, 19)
-        self.assertEqual(sla.state(due=due, now=near), "running")
-        self.assertEqual(sla.state(due=due, now=near, started_at=started), "warning")
-        early = at(AMMAN, 2026, 11, 23, 11)
-        self.assertEqual(sla.state(due=due, now=early, started_at=started), "running")
+    It used to take a due instant and `now`, which could not see a pause -- `due_at` knows
+    nothing about `tsk_sla_pauses` -- and measured the warning threshold in wall-clock time
+    inside the module whose whole subject is that wall-clock and business hours are not the
+    same thing. Both are pinned below.
+    """
+
+    def test_a_breach_is_computed_rather_than_stored(self):
+        self.assertEqual(
+            sla.state(consumed_seconds=3601, target_seconds=3600), "breached")
+        self.assertEqual(
+            sla.state(consumed_seconds=3600, target_seconds=3600), "breached")
+        # Not 3599: that is 99.97% of the target and so correctly `warning`. The boundary
+        # under test here is the breach, and the warning has its own case below.
+        self.assertEqual(
+            sla.state(consumed_seconds=3599, target_seconds=3600), "warning")
+        self.assertEqual(
+            sla.state(consumed_seconds=100, target_seconds=3600), "running")
+
+    def test_the_warning_is_a_fraction_of_the_target_and_not_of_an_interval(self):
+        """The old signature took `(now - started) / (due - started)`, so a target opened at
+        five on Friday was 80% of the way to a Monday deadline by Sunday evening with no
+        business second spent. There is no interval here to measure the wrong one of."""
+        self.assertEqual(sla.state(consumed_seconds=7999, target_seconds=10_000), "running")
+        self.assertEqual(sla.state(consumed_seconds=8000, target_seconds=10_000), "warning")
+        self.assertEqual(
+            sla.state(consumed_seconds=5000, target_seconds=10_000, warn_at_fraction=0.5),
+            "warning")
 
     def test_the_threshold_is_a_fraction(self):
-        due = at(AMMAN, 2026, 11, 23, 20)
         for bad in (0.0, 1.0, -0.5, 2.0):
             with self.assertRaises(sla.SlaError):
-                sla.state(due=due, now=due - timedelta(hours=1), warn_at_fraction=bad)
+                sla.state(consumed_seconds=1, target_seconds=3600, warn_at_fraction=bad)
+
+    def test_a_target_of_zero_has_no_state(self):
+        """A fraction of nothing is not a number, and `due_at` refuses the same input for
+        the same reason -- so the two halves of the module agree about what a target is."""
+        for bad in (0, -1):
+            with self.assertRaises(sla.SlaError):
+                sla.state(consumed_seconds=0, target_seconds=bad)
+
+    def test_a_paused_clock_is_judged_on_what_it_actually_spent(self):
+        """The property the rewrite exists for, end to end through the real calendar.
+
+        Nine hours of wall-clock against an eight-hour target, seven of them stopped: the
+        pause-blind version read this `breached` while `remaining_seconds` was still most of
+        the target -- two fields of one response contradicting each other, and the one a
+        sweep acts on was the wrong one.
+        """
+        started = at(AMMAN, 2026, 11, 23, 9)
+        now = at(AMMAN, 2026, 11, 23, 18)
+        paused = ((at(AMMAN, 2026, 11, 23, 10), at(AMMAN, 2026, 11, 23, 17)),)
+        spent = sla.open_seconds(WEEKDAYS, AMMAN, frm=started, to=now, paused=paused)
+        self.assertEqual(sla.state(consumed_seconds=spent, target_seconds=8 * 3600),
+                         "running")
+        unpaused = sla.open_seconds(WEEKDAYS, AMMAN, frm=started, to=now)
+        self.assertEqual(sla.state(consumed_seconds=unpaused, target_seconds=8 * 3600),
+                         "breached")
 
 
 if __name__ == "__main__":  # pragma: no cover

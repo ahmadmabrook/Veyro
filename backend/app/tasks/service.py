@@ -29,9 +29,10 @@ from datetime import UTC, date, datetime, time
 from typing import Any
 
 from psycopg import Connection
+from psycopg import Error as PsycopgError
 
 from app.db import Pool, tenant_scope
-from app.errors import Conflict, InvalidRequest, NotFound
+from app.errors import Conflict, InvalidRequest, NotFound, ServiceError
 from app.tasks import sla, subjects, workflow
 
 #: Every listing read is bounded and ordered. Unbounded is a bulk export and a denial of
@@ -496,6 +497,20 @@ def create_task(
             raise NotFound("queue_not_found")
         if str(queue[0]) != "active":
             raise Conflict("this queue is retired, so it takes no new work")
+        # **Resolved here, because nothing in this application handles a psycopg error.**
+        # There is no handler for `ForeignKeyViolation` or `RaiseException`, so an unknown
+        # `case_id` answered 500 whether the composite key or the trigger spoke -- an id
+        # shape-checked and never resolved, which is MOD-009's finding and the reason the
+        # queue and the assignee two lines either side of this are looked up. The *other*
+        # two refusals stay with the trigger, which is the half that holds for a writer this
+        # service is not: a task may not be filed under a different queue from its case, and
+        # a closed case takes no new work.
+        if case_id is not None:
+            holds = conn.execute(
+                "SELECT 1 FROM plt01.tsk_cases WHERE case_id = %s", (case_id,),
+            ).fetchone()
+            if holds is None:
+                raise NotFound("case_not_found")
         is_claim = _resolve_subject(conn, subject_kind, subject_id)
         if assignee_person_id is not None:
             known = conn.execute(
@@ -937,6 +952,29 @@ def settle_clock(
         return {"clock_id": clock_id, "status": status, "repeated": False}
 
 
+def _consumed(
+    windows: tuple[sla.Window, ...], zone: str, *, started_at: datetime, now: datetime,
+    paused: tuple[tuple[datetime, datetime], ...],
+) -> tuple[int, str]:
+    """How much of a target has been spent, and in which frame it was measured.
+
+    One definition, because the read and the sweep both need it. MOD-018 shipped two
+    expressions for one till balance -- one bounded by a date and one not -- and a journal
+    dated next year made the drawer balance; the shape here is the same, and worse, because
+    the figure a screen shows and the figure a job settles a missed promise on have to be
+    the same figure or the screen is wrong about what is about to happen.
+
+    A location with no stated business hours falls back to elapsed wall-clock time and says
+    which it did. MOD-019 read an empty rota as "never available" and nothing could be
+    scheduled in a tenant at all; the same silence here is a clock that never advances,
+    which is a breach that never fires.
+    """
+    if not sla.has_hours(windows):
+        return int((now - started_at).total_seconds()), "elapsed_time"
+    return (sla.open_seconds(windows, zone, frm=started_at, to=now, paused=paused),
+            "business_hours")
+
+
 def read_clock(pool: Pool, tenant_id: str, clock_id: str) -> dict[str, Any]:
     """What this target is, and where it stands. **Computed, never stored.**
 
@@ -980,27 +1018,182 @@ def read_clock(pool: Pool, tenant_id: str, clock_id: str) -> dict[str, Any]:
             for p in pauses],
         "is_paused": any(p[1] is None for p in pauses),
     }
-    if not sla.has_hours(windows):
-        # Stated, not silently zero -- and the figure offered is the honest one.
-        elapsed = int((now - row[5]).total_seconds())
-        out["measured_in"] = "elapsed_time"
+    consumed, measured_in = _consumed(
+        windows, zone, started_at=row[5], now=now, paused=spans)
+    out["measured_in"] = measured_in
+    out["consumed_seconds"] = consumed
+    # **Returned rather than left to a reader**, because remaining time is the number a
+    # surface renders and computing it from two instants is where a second definition
+    # starts -- and it is the number `state` is derived from, so the two cannot disagree.
+    out["remaining_seconds"] = max(0, int(row[3]) - consumed)
+    out["state"] = sla.state(
+        consumed_seconds=consumed, target_seconds=int(row[3]),
+        warn_at_fraction=int(row[4]) / 10_000)
+    if measured_in == "elapsed_time":
         out["no_calendar"] = (
             "this club states no business hours, so the target is measured against elapsed "
             "wall-clock time; a business-hours clock against an empty calendar would never "
             "advance, which is a breach that never fires")
-        out["consumed_seconds"] = elapsed
-        out["state"] = "breached" if elapsed >= int(row[3]) else "running"
         return out
 
-    out["measured_in"] = "business_hours"
-    out["consumed_seconds"] = sla.open_seconds(
-        windows, zone, frm=row[5], to=now, paused=spans)
-    due = sla.due_at(windows, zone, started_at=row[5], target_seconds=int(row[3]))
-    out["due_at"] = due.isoformat()
-    out["state"] = sla.state(
-        due=due, now=now, started_at=row[5],
-        warn_at_fraction=int(row[4]) / 10_000)
-    # **Returned rather than left to a reader**, because remaining time is the number a
-    # surface renders and computing it from two instants is where a second definition starts.
-    out["remaining_seconds"] = max(0, int(row[3]) - out["consumed_seconds"])
+    # **The due instant is projected from now on what is left, so a pause moves it.**
+    # Walking forward from the start answers "when would this have been due had it never
+    # stopped", which is not a question anybody asks of a clock that has stopped. A clock
+    # that is paused right now has no due instant at all -- it depends on when somebody
+    # resumes it -- so the field is absent rather than guessed, and `remaining_seconds` is
+    # the honest answer in that case.
+    out["due_at"] = None if out["is_paused"] or not out["remaining_seconds"] else \
+        sla.due_at(windows, zone, started_at=now,
+                   target_seconds=out["remaining_seconds"]).isoformat()
     return out
+
+
+def sweep_breaches(
+    pool: Pool, tenant_id: str, *, actor_id: str, correlation_id: str, limit: int = 200,
+) -> dict[str, Any]:
+    """Judge every running target whose time has gone, and escalate where a route says to.
+
+    AUT-02-R06's "breach warning and escalation routes", and the half a read cannot do. The
+    arithmetic says in as many words that a breach is *computed*, so until something looked,
+    a missed promise stayed `running` for ever and `escalate_to_queue_id` was a column
+    implying a control nobody implemented -- this build's own most-repeated finding, in the
+    module whose subject is work nobody is doing.
+
+    **Idempotent, which is what makes the schedule disposable.** `tsk_sla_settlement_is_final`
+    admits one judgement per clock, and the escalation task carries a key derived from the
+    clock, so a second pass over the same row settles nothing and raises nothing. That is the
+    worker runtime's standing rule -- a second pass is free by construction, so there is no
+    table recording what has run.
+
+    **An escalation raises a task rather than claiming anybody was told.** MOD-013 authors a
+    message and no provider collects it, so a job recording "notified" would be the
+    fabricated-evidence shape this codebase has been bitten by six times. A task in the
+    escalation queue is a thing somebody actually opens.
+
+    **Each clock is judged inside its own savepoint.** MOD-010 shipped a relay whose failure
+    handler raised, so one poison row aborted every healthy delivery behind it -- permanently,
+    since it sorted first. The unit of failure here is one clock, and a clock whose
+    escalation could not be written is left `running` rather than settled with nobody told,
+    so the next pass tries again.
+    """
+    judged: list[str] = []
+    escalated: list[str] = []
+    skipped: list[dict[str, str]] = []
+    considered = 0
+    with tenant_scope(pool, tenant_id) as conn:
+        running = conn.execute(
+            "SELECT clock_id, task_id, case_id, location_id, target_seconds, started_at,"
+            "       escalate_to_queue_id"
+            " FROM plt01.tsk_sla_clocks WHERE status = 'running'"
+            " ORDER BY started_at LIMIT %s",
+            (limit,),
+        ).fetchall()
+        considered = len(running)
+        now = _now()
+        for row in running:
+            clock_id = str(row[0])
+            try:
+                with conn.transaction():
+                    outcome = _judge(
+                        conn, row, now=now, tenant_id=tenant_id, actor_id=actor_id,
+                        correlation_id=correlation_id)
+            except (ServiceError, PsycopgError) as exc:
+                # Recorded and left running. A breach settled with nobody told would be a
+                # missed promise that reads as handled.
+                skipped.append({"clock_id": clock_id, "why": str(exc)})
+                continue
+            if outcome is None:
+                continue
+            judged.append(clock_id)
+            if outcome.get("escalated"):
+                escalated.append(clock_id)
+            elif outcome.get("why"):
+                skipped.append({"clock_id": clock_id, "why": str(outcome["why"])})
+    return {"considered": considered, "breached": len(judged),
+            "escalated": len(escalated), "skipped": skipped}
+
+
+def _judge(
+    conn: Connection[Any], row: Any, *, now: datetime, tenant_id: str, actor_id: str,
+    correlation_id: str,
+) -> dict[str, Any] | None:
+    """Settle one clock if its target has gone, and raise its escalation. None if not due."""
+    clock_id, task_id, case_id, location_id, target, started_at, queue_id = row
+    windows, zone = _calendar(conn, str(location_id))
+    pauses = conn.execute(
+        "SELECT paused_at, resumed_at FROM plt01.tsk_sla_pauses WHERE clock_id = %s",
+        (clock_id,),
+    ).fetchall()
+    # **A currently-open pause is counted to now and the clock is judged anyway**, which
+    # took a second look to get right. The first version returned early for any open pause,
+    # reasoning that a stopped clock is not spending its target -- true, and already handled
+    # by `_consumed`, which subtracts the pause. What the early return added was an escape:
+    # a clock whose target had *already* gone could be kept out of the sweep for ever by
+    # pausing it afterwards, and pausing a clock does not un-break a promise that is already
+    # broken. The arithmetic is the whole rule; a guard beside it was a second one that
+    # disagreed.
+    spans = tuple((p[0], p[1] or now) for p in pauses)
+    consumed, _frame = _consumed(
+        windows, zone, started_at=started_at, now=now, paused=spans)
+    if sla.state(consumed_seconds=consumed, target_seconds=int(target)) != "breached":
+        return None
+    conn.execute(
+        "UPDATE plt01.tsk_sla_clocks SET status = 'breached', settled_at = %s,"
+        " settled_by = %s, settle_reason = %s, settle_correlation_id = %s"
+        " WHERE clock_id = %s AND status = 'running'",
+        (now, actor_id,
+         f"a target of {int(target)} seconds was judged against {consumed} seconds of "
+         f"{_frame.replace('_', ' ')} and had gone",
+         correlation_id, clock_id),
+    )
+    if queue_id is None:
+        return {"escalated": False}
+    queue = conn.execute(
+        "SELECT status FROM plt01.tsk_queues WHERE queue_id = %s", (queue_id,),
+    ).fetchone()
+    if queue is None or str(queue[0]) != "active":
+        # **A route checked once is a route with a window.** The write-time trigger refuses
+        # an escalation to a retired queue; nothing stops the queue being retired
+        # afterwards, and an alarm wired to a bell nobody answers is worse than none. The
+        # breach stands -- it is true whatever the route says -- and the skip is reported.
+        return {"escalated": False,
+                "why": "the escalation queue is retired, so nothing was raised"}
+    subject_kind, subject_id, title = _subject_of(conn, task_id, case_id)
+    conn.execute(
+        "INSERT INTO plt01.tsk_tasks"
+        " (tenant_id, queue_id, title, subject_kind, subject_id, priority,"
+        "  evidence_ref, idempotency_key, created_by, create_correlation_id)"
+        " VALUES (%s, %s, %s, %s, %s, 'high', %s, %s, %s, %s)"
+        " ON CONFLICT (tenant_id, idempotency_key) DO NOTHING",
+        (tenant_id, queue_id, f"Escalated: {title}", subject_kind, subject_id,
+         f"veyro://sla-clocks/{clock_id}", f"sla-breach-{clock_id}", actor_id,
+         correlation_id),
+    )
+    return {"escalated": True}
+
+
+def _subject_of(
+    conn: Connection[Any], task_id: Any, case_id: Any,
+) -> tuple[str, Any, str]:
+    """What the escalated work is about, derived from the work rather than invented.
+
+    **The escalation task does not cite the case**, and the schema is what decided that:
+    `tsk_task_matches_its_case` refuses a task filed under a different queue from its case,
+    "so the same work would not be counted in two backlogs" -- and an escalation is by
+    definition filed somewhere else. So the link is the clock, through `evidence_ref`, and
+    what travels is the subject: whoever the missed promise was to is who the escalation is
+    about, which is what makes it answerable without opening three screens.
+    """
+    if task_id is not None:
+        found = conn.execute(
+            "SELECT subject_kind, subject_id, title FROM plt01.tsk_tasks WHERE task_id = %s",
+            (task_id,),
+        ).fetchone()
+    else:
+        found = conn.execute(
+            "SELECT subject_kind, subject_id, title FROM plt01.tsk_cases WHERE case_id = %s",
+            (case_id,),
+        ).fetchone()
+    if found is None:  # pragma: no cover - the clock carries a foreign key to both
+        raise NotFound("clock_subject_not_found")
+    return str(found[0]), found[1], str(found[2])

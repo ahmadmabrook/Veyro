@@ -48727,4 +48727,307 @@ BEGIN
 END $$;
 ROLLBACK;
 
-\echo 'tenant isolation: 113/113 checks passed'
+-- ========================================================= CHECK 114 (MOD-026)
+--
+-- The module's five trigger functions, branch by branch.
+--
+-- CHECK 112 pins this module's structure -- the grants, the NOT NULLs, the foreign keys --
+-- and a plpgsql branch is invisible to all of it: a generated `ALTER TABLE` sweep touches
+-- nothing in `pg_proc`, and a definition pin over `md5(prosrc)` says a body changed without
+-- saying whether it still bites. MOD-018 paid for exactly that, where a reviewer deleted the
+-- balance trigger's mixed-currency branch and the suite reported 84/84. So MOD-026 shipped
+-- eleven refusals with no isolating probe behind any of them, which is "a constraint nobody
+-- has broken on purpose is a constraint nobody has tested" one layer in. Two of the eleven
+-- turned out to have no case *available* -- every row reaching them is already refused by a
+-- sibling CHECK or by the composite foreign key -- and `0023` deletes those rather than
+-- testing them harder, which is MOD-016's judgement for a constraint subsumed by a sibling.
+--
+-- Each probe asserts **the sentence**, not the exception class. These functions are BEFORE
+-- triggers, so they fire ahead of every CHECK and every foreign key on the table, and three
+-- of the eleven guard a lookup that the key beside them would also refuse -- MOD-021's three
+-- `NOT EXISTS` branches, where the branch above answered for the branch below and all three
+-- were droppable in silence.
+--
+-- And the count is compared against the catalogue rather than against itself, so a refusal
+-- added later with no probe fails here instead of at the next sweep.
+--
+-- **Run as the table owner, not as the service's role**, which took one failed run to
+-- learn. `target_seconds` and `started_at` are outside every runtime role's UPDATE grant --
+-- deliberately, because the trigger refuses them and the grant means it never has to -- so
+-- under `veyro_cp_app` the branch that refuses a re-measured promise is answered by the
+-- privilege layer and has no evidence of its own. The writer that branch exists for is the
+-- owner, and a trigger that refuses the owner refuses everybody; FORCE RLS still applies
+-- here, so the tenant predicate is in force too.
+BEGIN;
+SET LOCAL ROLE veyro_cp_migrator;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+DECLARE
+    probe integer := 0;
+    declared integer;
+    t constant uuid := '11111111-1111-4111-8111-111111111111';
+    loc constant uuid := 'eeeeeeee-1000-4000-8000-000000000001';
+    actor constant uuid := 'eeeeeeee-0000-4000-8000-000000000001';
+    qa uuid; qb uuid; dead uuid;
+    open_case uuid; shut_case uuid;
+    task uuid; settled uuid;
+    clock uuid;
+BEGIN
+    -- ---- the fixture, built through the schema rather than assumed.
+    INSERT INTO plt01.tsk_queues (tenant_id, queue_key, display_name, location_id,
+                                  created_by, create_correlation_id)
+    VALUES (t, 'p114a', 'Front desk', loc, actor, gen_random_uuid()) RETURNING queue_id
+      INTO qa;
+    INSERT INTO plt01.tsk_queues (tenant_id, queue_key, display_name, location_id,
+                                  created_by, create_correlation_id)
+    VALUES (t, 'p114b', 'Back office', loc, actor, gen_random_uuid()) RETURNING queue_id
+      INTO qb;
+    INSERT INTO plt01.tsk_queues (tenant_id, queue_key, display_name, location_id,
+                                  created_by, create_correlation_id)
+    VALUES (t, 'p114d', 'Merged away', loc, actor, gen_random_uuid()) RETURNING queue_id
+      INTO dead;
+    UPDATE plt01.tsk_queues SET status = 'retired', retired_at = now(), retired_by = actor,
+           retire_reason = 'merged into the back office',
+           retire_correlation_id = gen_random_uuid()
+     WHERE queue_id = dead;
+
+    INSERT INTO plt01.tsk_cases (tenant_id, case_number, title, queue_id, subject_kind,
+                                 opened_by, open_correlation_id, idempotency_key)
+    VALUES (t, 'P114-OPEN', 'Card not working', qa, 'tenant', actor, gen_random_uuid(),
+            'p114-open') RETURNING case_id INTO open_case;
+    INSERT INTO plt01.tsk_cases (tenant_id, case_number, title, queue_id, subject_kind,
+                                 opened_by, open_correlation_id, idempotency_key)
+    VALUES (t, 'P114-SHUT', 'Settled last month', qa, 'tenant', actor, gen_random_uuid(),
+            'p114-shut') RETURNING case_id INTO shut_case;
+    UPDATE plt01.tsk_cases SET status = 'resolved', resolved_at = now(),
+           resolved_by = actor, resolution_reason = 'replaced the card',
+           resolve_correlation_id = gen_random_uuid()
+     WHERE case_id = shut_case;
+    UPDATE plt01.tsk_cases SET status = 'closed' WHERE case_id = shut_case;
+
+    INSERT INTO plt01.tsk_tasks (tenant_id, queue_id, title, subject_kind, created_by,
+                                 create_correlation_id, idempotency_key)
+    VALUES (t, qa, 'Call the member', 'tenant', actor, gen_random_uuid(), 'p114-task')
+    RETURNING task_id INTO task;
+    INSERT INTO plt01.tsk_tasks (tenant_id, queue_id, title, subject_kind, created_by,
+                                 create_correlation_id, idempotency_key)
+    VALUES (t, qa, 'Already done', 'tenant', actor, gen_random_uuid(), 'p114-settled')
+    RETURNING task_id INTO settled;
+    UPDATE plt01.tsk_tasks SET status = 'done', settled_at = now(), settled_by = actor,
+           settle_reason = 'spoke to them', settle_correlation_id = gen_random_uuid()
+     WHERE task_id = settled;
+
+    -- ---- tsk_task_matches_its_case, branch 1 (`0023`): a task filed under a different
+    -- queue from its case. The missing-case branch above it is gone -- it duplicated the
+    -- composite foreign key, which refuses that row in this tenant and in any other, so it
+    -- had no case only it could answer. See `0023`.
+    BEGIN
+        INSERT INTO plt01.tsk_tasks (tenant_id, queue_id, case_id, title, subject_kind,
+                                     created_by, create_correlation_id, idempotency_key)
+        VALUES (t, qb, open_case, 'In the wrong backlog', 'tenant', actor,
+                gen_random_uuid(), 'p114-2');
+        RAISE EXCEPTION 'CHECK 114 FAILED: one piece of work was counted in two backlogs';
+    EXCEPTION WHEN raise_exception THEN
+        IF sqlerrm LIKE 'CHECK 114 FAILED%' THEN RAISE; END IF;
+        IF sqlerrm NOT LIKE '%different queue from its case%' THEN
+            RAISE EXCEPTION 'CHECK 114 FAILED: refused by something else: %', sqlerrm;
+        END IF;
+        probe := probe + 1;
+    END;
+
+    -- ---- branch 2: a new task on a closed case is work nobody will see.
+    BEGIN
+        INSERT INTO plt01.tsk_tasks (tenant_id, queue_id, case_id, title, subject_kind,
+                                     created_by, create_correlation_id, idempotency_key)
+        VALUES (t, qa, shut_case, 'Too late', 'tenant', actor, gen_random_uuid(), 'p114-3');
+        RAISE EXCEPTION 'CHECK 114 FAILED: a task was added to a closed case';
+    EXCEPTION WHEN raise_exception THEN
+        IF sqlerrm LIKE 'CHECK 114 FAILED%' THEN RAISE; END IF;
+        IF sqlerrm NOT LIKE '%case is closed%' THEN
+            RAISE EXCEPTION 'CHECK 114 FAILED: refused by something else: %', sqlerrm;
+        END IF;
+        probe := probe + 1;
+    END;
+
+    -- ---- tsk_settlement_is_final, branch 1: the attribution does not move.
+    BEGIN
+        UPDATE plt01.tsk_tasks SET settle_reason = 'something else entirely'
+         WHERE task_id = settled;
+        RAISE EXCEPTION 'CHECK 114 FAILED: a settled task''s reason was rewritten';
+    EXCEPTION WHEN raise_exception THEN
+        IF sqlerrm LIKE 'CHECK 114 FAILED%' THEN RAISE; END IF;
+        IF sqlerrm NOT LIKE '%already settled%' THEN
+            RAISE EXCEPTION 'CHECK 114 FAILED: refused by something else: %', sqlerrm;
+        END IF;
+        probe := probe + 1;
+    END;
+
+    -- ---- tsk_case_resolution_is_final, branch 1: a case moves forward only.
+    --
+    -- **Closed to *resolved*, not closed to open.** Both statuses satisfy
+    -- `tsk_cases_resolution_attributed`, so the trigger is the only thing in the way; going
+    -- back to `open` needs the four resolution columns NULL, which the CHECK refuses first
+    -- and the probe would then prove the CHECK. The companion-column discipline CHECK 110 is
+    -- built on, in the direction where the companion is a *status* rather than a column.
+    BEGIN
+        UPDATE plt01.tsk_cases SET status = 'resolved' WHERE case_id = shut_case;
+        RAISE EXCEPTION 'CHECK 114 FAILED: a closed case went back to resolved';
+    EXCEPTION WHEN raise_exception THEN
+        IF sqlerrm LIKE 'CHECK 114 FAILED%' THEN RAISE; END IF;
+        IF sqlerrm NOT LIKE '%not back%' THEN
+            RAISE EXCEPTION 'CHECK 114 FAILED: refused by something else: %', sqlerrm;
+        END IF;
+        probe := probe + 1;
+    END;
+
+    -- ---- branch 2: who resolved it, when and why do not move.
+    BEGIN
+        UPDATE plt01.tsk_cases SET resolution_reason = 'a different story'
+         WHERE case_id = shut_case;
+        RAISE EXCEPTION 'CHECK 114 FAILED: a resolved case''s reason was rewritten';
+    EXCEPTION WHEN raise_exception THEN
+        IF sqlerrm LIKE 'CHECK 114 FAILED%' THEN RAISE; END IF;
+        IF sqlerrm NOT LIKE '%already resolved%' THEN
+            RAISE EXCEPTION 'CHECK 114 FAILED: refused by something else: %', sqlerrm;
+        END IF;
+        probe := probe + 1;
+    END;
+
+    -- ---- tsk_sla_escalation_is_live: a route may not be pointed at a dead bell.
+    BEGIN
+        INSERT INTO plt01.tsk_sla_clocks (tenant_id, task_id, location_id, target_seconds,
+                                          escalate_to_queue_id, started_at, created_by,
+                                          create_correlation_id)
+        VALUES (t, task, loc, 3600, dead, now(), actor, gen_random_uuid());
+        RAISE EXCEPTION 'CHECK 114 FAILED: a clock escalates to a retired queue';
+    EXCEPTION WHEN raise_exception THEN
+        IF sqlerrm LIKE 'CHECK 114 FAILED%' THEN RAISE; END IF;
+        IF sqlerrm NOT LIKE '%bell nobody answers%' THEN
+            RAISE EXCEPTION 'CHECK 114 FAILED: refused by something else: %', sqlerrm;
+        END IF;
+        probe := probe + 1;
+    END;
+
+    -- ---- and the permission `0022` restored, which no refusal probe can see.
+    --
+    -- The trigger is BEFORE INSERT **OR UPDATE** and re-judged the route on every write, so
+    -- retiring a queue refused every later update to every clock pointing at it -- the
+    -- settlement included, which is the one write that makes the record true. A guard that
+    -- admits a state nothing can leave is worse than no guard. Written as a bare statement
+    -- this would abort the block under the trigger's own message, which a sweep cannot tell
+    -- from an unrelated error: a probe proving a permission needs a handler exactly as much
+    -- as one proving a refusal.
+    INSERT INTO plt01.tsk_sla_clocks (tenant_id, task_id, location_id, target_seconds,
+                                      escalate_to_queue_id, started_at, created_by,
+                                      create_correlation_id)
+    VALUES (t, task, loc, 3600, qb, now(), actor, gen_random_uuid())
+    RETURNING clock_id INTO clock;
+    UPDATE plt01.tsk_queues SET status = 'retired', retired_at = now(), retired_by = actor,
+           retire_reason = 'merged after the clock started',
+           retire_correlation_id = gen_random_uuid()
+     WHERE queue_id = qb;
+    BEGIN
+        UPDATE plt01.tsk_sla_clocks
+           SET status = 'breached', settled_at = now(), settled_by = actor,
+               settle_reason = 'the target had gone',
+               settle_correlation_id = gen_random_uuid()
+         WHERE clock_id = clock;
+        probe := probe + 1;
+    EXCEPTION WHEN OTHERS THEN
+        RAISE EXCEPTION
+            'CHECK 114 FAILED: retiring the escalation queue froze the clock pointing at '
+            'it, so a missed target can never be judged: %', sqlerrm;
+    END;
+
+    -- ---- tsk_sla_settlement_is_final, branch 1: a target is judged once.
+    BEGIN
+        UPDATE plt01.tsk_sla_clocks SET status = 'met' WHERE clock_id = clock;
+        RAISE EXCEPTION 'CHECK 114 FAILED: a settled clock was re-judged';
+    EXCEPTION WHEN raise_exception THEN
+        IF sqlerrm LIKE 'CHECK 114 FAILED%' THEN RAISE; END IF;
+        IF sqlerrm NOT LIKE '%judged once%' THEN
+            RAISE EXCEPTION 'CHECK 114 FAILED: refused by something else: %', sqlerrm;
+        END IF;
+        probe := probe + 1;
+    END;
+
+    -- ---- branch 2: who settled it, when and why do not move.
+    BEGIN
+        UPDATE plt01.tsk_sla_clocks SET settle_reason = 'it was fine really'
+         WHERE clock_id = clock;
+        RAISE EXCEPTION 'CHECK 114 FAILED: a settled clock''s reason was rewritten';
+    EXCEPTION WHEN raise_exception THEN
+        IF sqlerrm LIKE 'CHECK 114 FAILED%' THEN RAISE; END IF;
+        IF sqlerrm NOT LIKE '%do not move once it is settled%' THEN
+            RAISE EXCEPTION 'CHECK 114 FAILED: refused by something else: %', sqlerrm;
+        END IF;
+        probe := probe + 1;
+    END;
+
+    -- ---- branch 3: a target and its start do not move.
+    --
+    -- Re-measuring a promise after the fact is how a missed one becomes a met one, and this
+    -- branch fires on a running clock as well as a settled one -- so the probe uses a fresh
+    -- one, leaving the settled row to prove the two branches above it.
+    INSERT INTO plt01.tsk_sla_clocks (tenant_id, case_id, location_id, target_seconds,
+                                      started_at, created_by, create_correlation_id)
+    VALUES (t, open_case, loc, 3600, now(), actor, gen_random_uuid())
+    RETURNING clock_id INTO clock;
+    BEGIN
+        UPDATE plt01.tsk_sla_clocks SET target_seconds = 86400 WHERE clock_id = clock;
+        RAISE EXCEPTION 'CHECK 114 FAILED: a target was re-measured after the fact';
+    EXCEPTION WHEN raise_exception THEN
+        IF sqlerrm LIKE 'CHECK 114 FAILED%' THEN RAISE; END IF;
+        IF sqlerrm NOT LIKE '%do not move%' THEN
+            RAISE EXCEPTION 'CHECK 114 FAILED: refused by something else: %', sqlerrm;
+        END IF;
+        probe := probe + 1;
+    WHEN insufficient_privilege THEN
+        -- Named rather than counted: a probe answered by the privilege layer proves the
+        -- grant and says nothing about the trigger, which is why this block runs as the
+        -- owner in the first place.
+        RAISE EXCEPTION
+            'CHECK 114 FAILED: target_seconds was refused by the grant rather than by the '
+            'trigger, so that branch has no evidence: %', sqlerrm;
+    END;
+
+    IF probe <> 10 THEN
+        RAISE EXCEPTION 'CHECK 114 FAILED: ran % of 10 MOD-026 trigger probes', probe;
+    END IF;
+    SELECT sum((length(prosrc) - length(replace(prosrc, 'RAISE EXCEPTION', '')))
+               / length('RAISE EXCEPTION'))
+      INTO declared
+      FROM pg_proc
+     WHERE pronamespace = 'plt01'::regnamespace AND proname LIKE 'tsk\_%';
+    -- Nine refusals and ten probes: the extra one is the permission above, which no `RAISE`
+    -- can account for and which is the whole of `0022`.
+    IF declared <> probe - 1 THEN
+        RAISE EXCEPTION
+            'CHECK 114 FAILED: MOD-026 trigger functions raise % refusals and this block '
+            'probes % of them: a branch was added or removed without its probe',
+            declared, probe - 1;
+    END IF;
+    -- And the properties `md5(prosrc)` cannot see, swept rather than named: nothing in this
+    -- file had ever read `proconfig`, `prosecdef` or `tgenabled` until MOD-020's review.
+    FOR declared IN
+        SELECT 1 FROM pg_proc
+         WHERE pronamespace = 'plt01'::regnamespace AND proname LIKE 'tsk\_%'
+           AND (proconfig IS DISTINCT FROM ARRAY['search_path=pg_catalog, pg_temp']
+                OR prosecdef
+                OR has_function_privilege('public', oid, 'EXECUTE'))
+    LOOP
+        RAISE EXCEPTION
+            'CHECK 114 FAILED: a MOD-026 trigger function has no pinned search_path, is '
+            'SECURITY DEFINER, or is executable by PUBLIC';
+    END LOOP;
+    FOR declared IN
+        SELECT 1 FROM pg_trigger g JOIN pg_class c ON c.oid = g.tgrelid
+         WHERE c.relnamespace = 'plt01'::regnamespace AND c.relname LIKE 'tsk\_%'
+           AND NOT g.tgisinternal AND g.tgenabled <> 'O'
+    LOOP
+        RAISE EXCEPTION 'CHECK 114 FAILED: a MOD-026 trigger is disabled';
+    END LOOP;
+END $$;
+ROLLBACK;
+
+\echo 'tenant isolation: 114/114 checks passed'

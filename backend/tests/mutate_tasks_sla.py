@@ -3,7 +3,7 @@
 INV-AUT-02's "time-zone and business-calendar aware" is one module, and the ways it goes
 wrong are quiet: an hour counted twice, a clock change ignored, a pause subtracted from the
 wrong total. None of those raises; each returns a plausible number. So the arithmetic earns
-eleven mutations, each one a defect this repository has shipped somewhere else.
+thirteen mutations, each one a defect this repository has shipped somewhere else.
 
 Each mutation is checked for having *applied* -- the file's bytes have to change -- because a
 harness reporting a never-applied mutation as UNCAUGHT manufactures the gap it then reports.
@@ -85,9 +85,22 @@ MUTATIONS: list[tuple[str, str, str]] = [
         "    for _ in range(10_000_000):",
     ),
     (
-        "a warning fires with no start, against a window nobody stated",
-        "    if started_at is None:\n        return \"running\"",
-        "    if started_at is None:\n        return \"warning\"",
+        "a breach is called one second late, so a target met exactly reads as missed",
+        "    if consumed_seconds >= target_seconds:",
+        "    if consumed_seconds > target_seconds:",
+    ),
+    (
+        "the warning threshold is measured against the consumed time instead of the target",
+        "    return \"warning\" if consumed_seconds / target_seconds >= warn_at_fraction "
+        "else \"running\"",
+        "    return \"warning\" if 1.0 >= warn_at_fraction else \"running\"",
+    ),
+    (
+        "a pause is ignored once the clock is judged on what it spent",
+        "                for pause in paused:\n"
+        "                    total -= _overlap(span, (max(pause[0], frm), "
+        "min(pause[1], to)))",
+        "                for pause in paused:\n                    pass",
     ),
 ]
 

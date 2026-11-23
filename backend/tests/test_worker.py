@@ -30,6 +30,7 @@ from app.notifications import service as notifications
 from app.observability import catalog as metric_catalog
 from app.observability import metrics
 from app.observability import service as observability
+from app.tasks import service as tasks
 from app.worker import names, registry, runner
 from tests.support import DSN
 from tests.test_access_api import AccessApiTestCase
@@ -594,6 +595,85 @@ class AttributionTests(WorkerTestCase):
         self.assertEqual(str(settled_by), registry.WORKER_ACTOR)
         # And a correlation id per run, so one sweep's rows can be found together.
         self.assertIsNotNone(correlation)
+
+
+class SlaJobTests(WorkerTestCase):
+    """MOD-026's job: a missed target is judged, and the escalation is raised.
+
+    **The clock is aged by inserting the row rather than by passing an instant.** MOD-020's
+    settlement takes no caller-supplied `now` because a settlement time a caller chooses
+    decides who is recorded as having failed, and `sweep_breaches` is the same shape -- so
+    the fixture builds the state that waiting would have built. The club here has no stated
+    business hours, which puts the job on the elapsed-time fallback: the two frames are
+    `test_tasks_service.py`'s subject, and what this file is for is whether the tick reaches
+    the service at all, attributes what it writes, and does it once.
+    """
+
+    def breached(self, tenant_id: str, location_id: str) -> tuple[str, str, str]:
+        actor = "33333333-3333-4333-8333-333333333333"
+        queue_id = str(tasks.create_queue(
+            self._tenant_pool, tenant_id, queue_key=f"q{uuid.uuid4().hex[:8]}",
+            display_name="Front desk", location_id=location_id, actor_id=actor,
+            correlation_id=str(uuid.uuid4()))["queue_id"])
+        escalation = str(tasks.create_queue(
+            self._tenant_pool, tenant_id, queue_key=f"e{uuid.uuid4().hex[:8]}",
+            display_name="Duty manager", location_id=location_id, actor_id=actor,
+            correlation_id=str(uuid.uuid4()))["queue_id"])
+        task_id = str(tasks.create_task(
+            self._tenant_pool, tenant_id, queue_id=queue_id, case_id=None,
+            title="Call about the card", subject_kind="tenant", subject_id=None,
+            assignee_person_id=None, priority="normal", due_at=None, evidence_ref=None,
+            idempotency_key=str(uuid.uuid4()), actor_id=actor,
+            correlation_id=str(uuid.uuid4()))["task_id"])
+        with tenant_scope(self._tenant_pool, tenant_id) as conn:
+            clock_id = str(conn.execute(
+                "INSERT INTO plt01.tsk_sla_clocks"
+                " (tenant_id, task_id, location_id, target_seconds, started_at,"
+                "  escalate_to_queue_id, created_by, create_correlation_id)"
+                " VALUES (%s, %s, %s, 3600, now() - interval '48 hours', %s, %s, %s)"
+                " RETURNING clock_id",
+                (tenant_id, task_id, location_id, escalation, actor,
+                 str(uuid.uuid4()))).fetchone()[0])
+        return clock_id, escalation, task_id
+
+    def test_the_job_judges_a_missed_target_and_raises_its_escalation(self):
+        floor = self.floor()
+        tenant_id = str(floor["tenant_id"])
+        clock_id, escalation, _ = self.breached(tenant_id, str(floor["location_id"]))
+
+        report = self.tick(tenant_id, "tasks.evaluate_slas")
+        self.assertEqual(report.failures, ())
+        self.assertGreaterEqual(report.units, 1)
+
+        read = tasks.read_clock(self._tenant_pool, tenant_id, clock_id)
+        self.assertEqual(read["status"], "breached")
+        # **Evidence with nobody's name on it answers nothing**, and a missed promise is
+        # exactly the row somebody asks about later.
+        with tenant_scope(self._tenant_pool, tenant_id) as conn:
+            settled_by, correlation = conn.execute(
+                "SELECT settled_by, settle_correlation_id FROM plt01.tsk_sla_clocks"
+                " WHERE clock_id = %s", (clock_id,)).fetchone()
+        self.assertEqual(str(settled_by), registry.WORKER_ACTOR)
+        self.assertIsNotNone(correlation)
+
+        raised = tasks.list_tasks(self._tenant_pool, tenant_id, queue_id=escalation,
+                                  may_read_reasons=True)["tasks"]
+        self.assertEqual(len(raised), 1)
+        self.assertEqual(raised[0]["evidence_ref"], f"veyro://sla-clocks/{clock_id}")
+
+    def test_a_second_tick_judges_nothing_and_raises_nothing(self):
+        """What makes the schedule disposable: the runner keeps due-times in memory, so a
+        restart makes every job due at once and a second pass has to be free."""
+        floor = self.floor()
+        tenant_id = str(floor["tenant_id"])
+        _, escalation, _ = self.breached(tenant_id, str(floor["location_id"]))
+        first = self.tick(tenant_id, "tasks.evaluate_slas")
+        second = self.tick(tenant_id, "tasks.evaluate_slas")
+        self.assertGreaterEqual(first.units, 1)
+        self.assertEqual(second.units, 0)
+        self.assertEqual(
+            len(tasks.list_tasks(self._tenant_pool, tenant_id, queue_id=escalation,
+                                 may_read_reasons=True)["tasks"]), 1)
 
 
 class MetricTests(WorkerTestCase):

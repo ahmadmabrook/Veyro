@@ -294,3 +294,29 @@ class ClockRouteTests(TasksApiTestCase):
                     "task_id": task_id, "target_seconds": seconds, **self.correlation()},
                     headers=self.headers(tenant_id))
                 self.assertEqual(answer.status_code, 422, answer.text)
+
+
+class SweepRouteTests(TasksApiTestCase):
+    def test_there_is_no_route_that_settles_breaches(self):
+        """Deliberate, and this is the test that keeps it deliberate.
+
+        `sweep_breaches` decides whether somebody failed to answer in time, and it reads its
+        own clock: MOD-020's settlement takes no caller-supplied instant for the same reason,
+        because a settlement time a caller chooses decides who is recorded as having failed.
+        A route would be the other half of that -- a caller choosing *when* the judgement is
+        made, which is the same thing said differently -- so the only caller is the worker,
+        and there is no permission for it in the catalogue.
+
+        The clock routes that do exist are the asserted other half: a target can be set,
+        paused, resumed, read and settled **by a person who says why**, which is the ordinary
+        path and is nothing like a sweep.
+        """
+        routes = {
+            (method, getattr(route, "path", ""))
+            for route in self.client.app.routes  # type: ignore[attr-defined]
+            for method in getattr(route, "methods", set())
+        }
+        self.assertIn(("POST", "/tasks/clocks"), routes)
+        self.assertIn(("POST", "/tasks/clocks/{clock_id}/settle"), routes)
+        self.assertNotIn(("POST", "/tasks/clocks/sweep"), routes)
+        self.assertFalse([r for r in routes if "breach" in r[1]])

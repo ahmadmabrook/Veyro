@@ -195,9 +195,15 @@ def due_at(
 ) -> datetime:
     """When a target expires, walking forward through open time.
 
-    Returned as an instant, because that is what a breach is compared against and a local
-    time would have to be re-converted by every reader -- the ambiguity the schedule board
-    was bitten by.
+    Returned as an instant, because that is what a reader renders and a local time would
+    have to be re-converted by every one of them -- the ambiguity the schedule board was
+    bitten by.
+
+    **This walks forward from whatever instant it is given, which is what makes it usable on
+    a clock that has stopped.** Called with the start and the whole target it answers "when
+    would this have been due had it never paused", which is not a question anybody asks of a
+    paused clock; `service.read_clock` calls it with *now* and what is *left*, so a pause
+    moves the date rather than being subtracted from a figure beside one that ignores it.
     """
     if target_seconds <= 0:
         raise SlaError("an SLA target is a positive number of seconds")
@@ -224,25 +230,33 @@ def due_at(
 
 
 def state(
-    *, due: datetime, now: datetime, warn_at_fraction: float = 0.8,
-    started_at: datetime | None = None,
+    *, consumed_seconds: int, target_seconds: int, warn_at_fraction: float = 0.8,
 ) -> str:
-    """`running`, `warning` or `breached`.
+    """`running`, `warning` or `breached`, measured in the frame the target is stated in.
 
-    **A breach is computed, so nothing fires at the moment it happens.** That is stated here
-    rather than discovered: an escalation needs the worker to evaluate it, and the
-    announcement window is floored to the clock's own target so a breach is announced once
-    rather than once per tick -- which is the decision MOD-011's objective evaluation already
-    made for itself.
+    **Two integers, because a state derived from a different pair of numbers than the
+    remaining time can contradict it.** The first version compared `now` against a due
+    instant walked forward from the start, and got two things wrong in one expression --
+    neither of which this module's own tests could see, because both readers of that state
+    did not exist yet.
+
+    A pause was invisible to it: `due_at` knows nothing about `tsk_sla_pauses`, so a clock
+    stopped for a week read `breached` beside a `remaining_seconds` well above zero, which
+    makes the pause decorative on the one field anybody acts on -- MOD-019's "a field stored
+    beside a decision and never read is not a parameter, it is a comment". And the warning
+    was `(now - started) / (due - started)`, wall-clock over wall-clock, in the module whose
+    entire subject is that those are not the same thing: a target opened at five on Friday
+    is 80% of the way to a Monday deadline by Sunday evening with no business second spent.
+
+    So the inputs are what `open_seconds` already answers and what the row already states,
+    and the threshold is a fraction of the target rather than of an interval. The "a
+    fraction of what" question the previous signature had to answer with `started_at`
+    disappears, because the denominator is now the only number that was ever a promise.
     """
     if not 0 < warn_at_fraction < 1:
         raise SlaError("the warning threshold is a fraction between 0 and 1")
-    if now >= due:
+    if target_seconds <= 0:
+        raise SlaError("an SLA target is a positive number of seconds")
+    if consumed_seconds >= target_seconds:
         return "breached"
-    if started_at is None:
-        return "running"
-    whole = (due - started_at).total_seconds()
-    if whole <= 0:
-        return "breached"
-    return "warning" if (now - started_at).total_seconds() / whole >= warn_at_fraction \
-        else "running"
+    return "warning" if consumed_seconds / target_seconds >= warn_at_fraction else "running"

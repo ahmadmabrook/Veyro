@@ -187,6 +187,16 @@ MOD-011's objective evaluation already answered for itself, and the same reasoni
 announce on a window floored to the clock's own target so a breach is announced once rather
 than once per tick.
 
+*Corrected on implementation (slice 3c).* The floored window was MOD-011's answer to
+MOD-011's problem, borrowed before this one had been looked at: an objective is evaluated
+repeatedly and stays breached, so it needs a window to be announced once. A clock is settled
+*once* — `tsk_sla_settlement_is_final` admits one judgement — so the row is its own dedupe
+and the escalation task's idempotency key is derived from the clock id. No window, no
+announcement table and no cadence decision; the job's interval is only how long a breach
+waits before somebody is told. The prediction is left standing above rather than rewritten,
+because what it got wrong is worth more than what it got right: it named a mechanism before
+the mechanism was needed.
+
 ## D5 — Build order, and why the slices are these
 
 Four slices, each shippable on its own and each with its own isolation checks and mutation
@@ -228,6 +238,41 @@ sweep. The order follows what the next thing needs rather than the requirement n
 2. **Approval stages and delegation** (R04, R05), extending `iam`.
 3. **SLA clocks, pauses, breach warning and escalation** (R06), plus the worker job.
 4. **The reporting read** (R07) and the three screens ADM-TSK-01, ADM-CC-06 and ADM-CC-07.
+
+   *Amended before building, on reading the canvases.* This line said "the workload read the
+   three screens draw", which understated it: the drawings need four things the schema from
+   slice 1 does not carry, and the owner directive's "when the design requires missing backend
+   functionality, implement it" makes them part of this slice rather than a deviation to note.
+
+   - **A snooze.** ADM-CC-06: "Snoozing requires a reason and a return date — an exception
+     cannot be dismissed, only deferred with an account of why." There is no `snoozed` status
+     on a case, no return date and no reason for one. The constraint the canvas states is the
+     one to encode: both or neither, and a snooze is not a resolution.
+   - **An owner on a case.** ADM-CC-06's states are *unassigned*, *assigned to me*, *assigned
+     to someone else* (every action visible and read-only) and a **Take over that records the
+     handover**. A task carries `assignee_person_id`; a case carries none, so four of the
+     sheet's five states are unrepresentable.
+   - **A source.** ADM-TSK-01's columns are "assigned, due, source (manual, automation, AI)"
+     and ADM-CC-06's header field is "SOURCE · Billing run · automatic". Neither table has
+     one, and it is the column that separates work a person raised from work the product did
+     -- which is the first thing a manager filters on. A closed vocabulary, for the reason
+     `subject_kind` is closed: free text makes "how much of this queue is automation" a
+     group-by over typos.
+   - **Affected records, plural.** "6 payments failed overnight ... THE SIX RECORDS · EACH
+     LINKS TO ITS MEMBER". A case has exactly one subject, which is right for the ordinary
+     case and cannot express an exception that is *about* six members. This is the one that
+     needs a table rather than a column.
+
+   **Reopen is already satisfied and needs nothing.** ADM-CC-06 offers it on a resolved item
+   and ADM-CC-07 settles what it means: "there is no un-resolve — reopening happens on the
+   item itself and appears here as a new row, so this list is a record rather than a state."
+   That is `recurs_from_case_id` exactly, decided in slice 1 for a different reason and
+   agreeing with the drawing. The Reopen button creates the recurrence.
+
+   **ADM-CC-07's "Median 41 minutes" is the read's job**, not the screen's: a median computed
+   in a client is a second definition of a figure a manager quotes, which is this build's
+   "one module, two definitions" and the reason `remaining_seconds` is returned rather than
+   derived from two instants.
 
 **A half-written migration is worse than none**, so each slice lands whole: schema, privileges,
 isolation checks run against deliberate mutations, domain functions with no I/O, the service,

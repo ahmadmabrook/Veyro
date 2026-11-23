@@ -19,6 +19,7 @@ from datetime import UTC, datetime, time, timedelta
 
 from psycopg import errors as pg
 
+from app.db import tenant_scope
 from app.errors import Conflict, InvalidRequest, NotFound
 from app.tasks import service as tasks
 from app.tasks import subjects, workflow
@@ -472,9 +473,13 @@ if __name__ == "__main__":  # pragma: no cover
     unittest.main()
 
 
-class ClockTests(TasksTestCase):
-    """AUT-02-R06 against a real database. The arithmetic is `test_tasks_sla.py`; what is
-    here is whether the right inputs reach it."""
+class ClockFixture:
+    """A club with a calendar, shared by the two clock suites.
+
+    A mixin rather than a base class, because `BreachSweepTests` inheriting `ClockTests`
+    would silently re-run every one of its cases under a second name -- twice the wall-clock
+    for no second assertion, and a count that reads as more evidence than there is.
+    """
 
     def location(self, tenant_id: str, *, timezone: str = "Asia/Amman") -> str:
         owner = self.headers(tenant_id)
@@ -509,6 +514,10 @@ class ClockTests(TasksTestCase):
         return str(tasks.start_clock(
             self._tenant_pool, tenant_id, task_id=task_id, actor_id=ACTOR,
             correlation_id=self.cid(), **body)["clock_id"])
+
+class ClockTests(ClockFixture, TasksTestCase):
+    """AUT-02-R06 against a real database. The arithmetic is `test_tasks_sla.py`; what is
+    here is whether the right inputs reach it."""
 
     def test_the_location_comes_from_the_queue_and_not_the_caller(self):
         """A caller able to name one could measure a promise against a calendar the work is
@@ -630,3 +639,234 @@ class ClockTests(TasksTestCase):
         self.assertEqual(read["measured_in"], "elapsed_time")
         self.assertIn("never advance", read["no_calendar"])
         self.assertNotIn("due_at", read)
+
+
+class BreachSweepTests(ClockFixture, TasksTestCase):
+    """AUT-02-R06's other half: a breach is computed, so until something looks, a missed
+    promise stays `running` for ever and `escalate_to_queue_id` is a column implying a
+    control nobody implemented.
+
+    **The clocks here are aged by inserting the row, not by passing an instant.** MOD-020's
+    settlement takes no caller-supplied `now` because a settlement time a caller chooses
+    decides who is recorded as having failed, and this judgement is the same shape -- so the
+    sweep reads its own clock and a test builds the state that waiting would have built.
+
+    **Two weeks and not two days, because a green that depends on the hour is not a green.**
+    The first version aged by 48 hours against a Monday-to-Friday 09:00-17:00 calendar, and
+    it was written at 08:45 on a Monday: from Saturday to that moment the club had been open
+    for zero seconds, so four cases reported nothing breached and read as a defect in the
+    sweep. Fourteen days spans at least ten working days in any week and from any hour, which
+    is this repository's own rule about a fixture whose answer moves with the clock.
+    """
+
+    def aged(
+        self, tenant_id: str, *, location_id: str, hours_ago: int = 24 * 14,
+        target_seconds: int = 3600, escalate_to: str | None = None,
+        task_id: str | None = None, case_id: str | None = None,
+    ) -> str:
+        location = location_id
+        with tenant_scope(self._tenant_pool, tenant_id) as conn:
+            made = conn.execute(
+                "INSERT INTO plt01.tsk_sla_clocks"
+                " (tenant_id, task_id, case_id, location_id, target_seconds,"
+                "  warn_at_basis_points, started_at, escalate_to_queue_id, created_by,"
+                "  create_correlation_id)"
+                " VALUES (%s, %s, %s, %s, %s, 8000, now() - %s * interval '1 hour', %s,"
+                "         %s, %s) RETURNING clock_id",
+                (tenant_id, task_id, case_id, location, target_seconds, hours_ago,
+                 escalate_to, ACTOR, self.cid()),
+            ).fetchone()
+        assert made is not None
+        return str(made[0])
+
+    def sweep(self, tenant_id: str) -> dict:
+        return tasks.sweep_breaches(
+            self._tenant_pool, tenant_id, actor_id=ACTOR, correlation_id=self.cid())
+
+    def escalations(self, tenant_id: str, queue_id: str) -> list[dict]:
+        return list(tasks.list_tasks(
+            self._tenant_pool, tenant_id, queue_id=queue_id, status=None,
+            assignee_person_id=None, may_read_reasons=True)["tasks"])
+
+    def test_a_missed_target_is_judged_and_the_judgement_names_the_worker(self):
+        tenant_id = self.tenant()
+        location_id, queue_id = self.club(tenant_id)
+        clock_id = self.aged(tenant_id, location_id=location_id,
+                             task_id=self.task(tenant_id, queue_id))
+        out = self.sweep(tenant_id)
+        self.assertEqual(out["breached"], 1)
+        read = tasks.read_clock(self._tenant_pool, tenant_id, clock_id)
+        self.assertEqual(read["status"], "breached")
+        self.assertEqual(read["state"], "breached")
+        self.assertIn("business hours", read["settle_reason"])
+
+    def test_a_target_still_inside_its_time_is_left_alone(self):
+        tenant_id = self.tenant()
+        location_id, queue_id = self.club(tenant_id)
+        clock_id = self.aged(tenant_id, location_id=location_id, hours_ago=0,
+                             target_seconds=4 * 3600,
+                             task_id=self.task(tenant_id, queue_id))
+        self.assertEqual(self.sweep(tenant_id)["breached"], 0)
+        self.assertEqual(
+            tasks.read_clock(self._tenant_pool, tenant_id, clock_id)["status"], "running")
+
+    def pause(self, tenant_id: str, clock_id: str, *, from_start: bool) -> None:
+        """An open pause, optionally reaching back to just after the clock started.
+
+        Inserted rather than taken through `pause_clock`, which stamps `now()`: what is
+        being tested is a clock that was stopped almost as soon as it started, which is the
+        state the product reaches by somebody pausing it and a fortnight passing.
+        """
+        with tenant_scope(self._tenant_pool, tenant_id) as conn:
+            conn.execute(
+                "INSERT INTO plt01.tsk_sla_pauses"
+                " (tenant_id, clock_id, paused_at, reason, paused_by, pause_correlation_id)"
+                " SELECT %s, clock_id,"
+                "        CASE WHEN %s THEN started_at + interval '1 minute' ELSE now() END,"
+                "        'waiting on the member', %s, %s"
+                "   FROM plt01.tsk_sla_clocks WHERE clock_id = %s",
+                (tenant_id, from_start, ACTOR, self.cid(), clock_id))
+
+    def test_a_pause_that_keeps_a_clock_under_its_target_keeps_it_out_of_the_sweep(self):
+        """The arithmetic is the whole rule: `_consumed` subtracts the pause, so a clock
+        stopped before its time ran out has not spent it."""
+        tenant_id = self.tenant()
+        location_id, queue_id = self.club(tenant_id)
+        clock_id = self.aged(tenant_id, location_id=location_id,
+                             task_id=self.task(tenant_id, queue_id))
+        self.pause(tenant_id, clock_id, from_start=True)
+        self.assertEqual(self.sweep(tenant_id)["breached"], 0)
+        self.assertEqual(
+            tasks.read_clock(self._tenant_pool, tenant_id, clock_id)["status"], "running")
+
+    def test_pausing_a_clock_whose_target_has_already_gone_does_not_un_break_it(self):
+        """The first version of the sweep returned early for any open pause, which read as
+        "a stopped clock is not spending its target" -- true, and already handled by
+        `_consumed`. What the guard actually added was an escape: a missed promise could be
+        kept out of the sweep for ever by pausing it afterwards. Two rules for one question,
+        and the one written as a guard was the wrong one."""
+        tenant_id = self.tenant()
+        location_id, queue_id = self.club(tenant_id)
+        clock_id = self.aged(tenant_id, location_id=location_id,
+                             task_id=self.task(tenant_id, queue_id))
+        self.pause(tenant_id, clock_id, from_start=False)
+        self.assertEqual(self.sweep(tenant_id)["breached"], 1)
+        self.assertEqual(
+            tasks.read_clock(self._tenant_pool, tenant_id, clock_id)["status"], "breached")
+
+    def test_a_second_pass_settles_nothing_and_raises_nothing(self):
+        """What makes the schedule disposable: the runner keeps due-times in memory, so a
+        restart makes every job due at once."""
+        tenant_id = self.tenant()
+        location_id, queue_id = self.club(tenant_id)
+        escalation = self.queue(tenant_id)
+        self.aged(tenant_id, location_id=location_id, escalate_to=escalation,
+                  task_id=self.task(tenant_id, queue_id))
+        first = self.sweep(tenant_id)
+        second = self.sweep(tenant_id)
+        self.assertEqual((first["breached"], first["escalated"]), (1, 1))
+        self.assertEqual((second["breached"], second["escalated"]), (0, 0))
+        self.assertEqual(len(self.escalations(tenant_id, escalation)), 1)
+
+    def test_the_escalation_carries_the_subject_and_points_at_the_clock(self):
+        """**It does not cite the case**, and the schema decided that: a task filed under a
+        different queue from its case is refused, "so the same work would not be counted in
+        two backlogs" -- and an escalation is by definition filed somewhere else. What
+        travels is who the missed promise was to."""
+        tenant_id = self.tenant()
+        location_id, queue_id = self.club(tenant_id)
+        # A `lead` rather than a member: it is a recorded claim, so no MOD-014
+        # row is needed and what the test is about -- that the subject travels --
+        # is unchanged.
+        person = str(uuid.uuid4())
+        case_id = self.case(tenant_id, queue_id, subject_kind="lead",
+                            subject_id=person, title="Card not working")
+        escalation = self.queue(tenant_id)
+        clock_id = self.aged(tenant_id, location_id=location_id, escalate_to=escalation,
+                             case_id=case_id)
+        self.sweep(tenant_id)
+        raised = self.escalations(tenant_id, escalation)
+        self.assertEqual(len(raised), 1)
+        self.assertEqual(raised[0]["subject_kind"], "lead")
+        self.assertEqual(raised[0]["subject_id"], person)
+        self.assertEqual(raised[0]["priority"], "high")
+        self.assertIn("Card not working", raised[0]["title"])
+        self.assertEqual(raised[0]["evidence_ref"], f"veyro://sla-clocks/{clock_id}")
+        self.assertIsNone(raised[0]["case_id"])
+
+    def test_a_clock_with_no_route_is_judged_and_nothing_is_raised(self):
+        tenant_id = self.tenant()
+        location_id, queue_id = self.club(tenant_id)
+        self.aged(tenant_id, location_id=location_id, task_id=self.task(tenant_id, queue_id))
+        out = self.sweep(tenant_id)
+        self.assertEqual((out["breached"], out["escalated"], out["skipped"]), (1, 0, []))
+
+    def test_a_route_retired_after_the_clock_started_is_reported_rather_than_rung(self):
+        """**A route checked once is a route with a window.** The write-time trigger refuses
+        an escalation to a retired queue and nothing stops the queue being retired
+        afterwards. The breach stands -- it is true whatever the route says."""
+        tenant_id = self.tenant()
+        location_id, queue_id = self.club(tenant_id)
+        escalation = self.queue(tenant_id)
+        clock_id = self.aged(tenant_id, location_id=location_id, escalate_to=escalation,
+                             task_id=self.task(tenant_id, queue_id))
+        tasks.retire_queue(self._tenant_pool, tenant_id, escalation, reason="team merged",
+                           actor_id=ACTOR, correlation_id=self.cid())
+        out = self.sweep(tenant_id)
+        self.assertEqual((out["breached"], out["escalated"]), (1, 0))
+        self.assertIn("retired", out["skipped"][0]["why"])
+        self.assertEqual(out["skipped"][0]["clock_id"], clock_id)
+        self.assertEqual(self.escalations(tenant_id, escalation), [])
+
+    def test_retiring_the_route_does_not_freeze_the_clock_it_pointed_at(self):
+        """`0022`. The escalation trigger is `BEFORE INSERT OR UPDATE` and re-judged the
+        route on every write, so retiring a queue refused **every** later update to every
+        clock pointing at it -- the settlement included. A target whose escalation team was
+        merged into another could never be judged: it stayed `running` for ever and R07
+        counted it as still in hand.
+
+        A guard that admits a state nothing can leave is worse than no guard. Setting or
+        moving a route to a retired queue is still refused, which the sibling case above
+        this one proves.
+        """
+        tenant_id = self.tenant()
+        location_id, queue_id = self.club(tenant_id)
+        escalation = self.queue(tenant_id)
+        clock_id = self.aged(tenant_id, location_id=location_id, escalate_to=escalation,
+                             hours_ago=0, target_seconds=4 * 3600,
+                             task_id=self.task(tenant_id, queue_id))
+        tasks.retire_queue(self._tenant_pool, tenant_id, escalation, reason="team merged",
+                           actor_id=ACTOR, correlation_id=self.cid())
+        out = tasks.settle_clock(
+            self._tenant_pool, tenant_id, clock_id, status="met",
+            reason="answered the member the same morning", actor_id=ACTOR,
+            correlation_id=self.cid())
+        self.assertEqual(out["status"], "met")
+
+    def test_a_club_with_no_calendar_is_judged_on_elapsed_time(self):
+        """The fallback is the same one the read states, because both go through
+        `_consumed`: a business-hours clock against an empty calendar never advances, which
+        is a breach that never fires."""
+        tenant_id = self.tenant()
+        location_id = self.location(tenant_id)
+        queue_id = self.queue(tenant_id, location_id=location_id)
+        clock_id = self.aged(tenant_id, location_id=location_id,
+                             task_id=self.task(tenant_id, queue_id))
+        self.assertEqual(self.sweep(tenant_id)["breached"], 1)
+        self.assertIn(
+            "elapsed time",
+            tasks.read_clock(self._tenant_pool, tenant_id, clock_id)["settle_reason"])
+
+
+class CaseResolutionTests(TasksTestCase):
+    def test_a_task_naming_a_case_that_does_not_exist_is_refused_with_a_reason(self):
+        """`0023` deleted the trigger branch that duplicated the composite foreign key, and
+        this application has no handler for a psycopg error at all -- only
+        `RequestValidationError` and `ServiceError` -- so an unknown `case_id` answered 500
+        whether the key or the trigger spoke. An id shape-checked and never resolved is
+        MOD-009's finding; the queue and the assignee beside it were already looked up."""
+        tenant_id = self.tenant()
+        queue_id = self.queue(tenant_id)
+        with self.assertRaises(NotFound) as caught:
+            self.task(tenant_id, queue_id, case_id=str(uuid.uuid4()))
+        self.assertEqual(str(caught.exception), "case_not_found")

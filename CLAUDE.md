@@ -4044,6 +4044,88 @@ field it is on a task. Proven by adding `seconds_remaining` and `breached` and w
 fail. That is the "a doc claiming a control it does not have" shape, caught by writing the
 control.
 
+**3c is the tenth worker job, and it is what makes a target mean anything.**
+`sla.state`'s own docstring already said a breach is computed and that an escalation needs
+the worker to evaluate it -- so until `tasks.evaluate_slas` existed, a missed promise stayed
+`running` for ever and `escalate_to_queue_id` was a column implying a control nobody
+implemented, which is this build's most-repeated finding in the module whose subject is work
+nobody is doing. Five minutes, because an SLA is stated in hours and the finest grain anyone
+writes is minutes. Four decisions carry it:
+
+- **Idempotent by construction, so the schedule stays disposable.** The settlement trigger
+  admits one judgement per clock and the escalation task carries a key derived from it, so a
+  second pass settles nothing and raises nothing. No table records what has run.
+- **It takes no caller-supplied instant**, which is MOD-020's settlement rule: a time a
+  caller chooses decides who is recorded as having failed. The service tests age a clock by
+  inserting the row that waiting would have left.
+- **An escalation raises a task rather than claiming anybody was told.** MOD-013 sends
+  nothing, so a job recording "notified" would be the fabricated-evidence shape. And **the
+  task does not cite the case**: `tsk_task_matches_its_case` refuses a task filed under a
+  different queue from its case, "so the same work would not be counted in two backlogs", and
+  an escalation is by definition filed somewhere else -- so the link is the clock through
+  `evidence_ref` and what travels is the subject.
+- **Each clock is judged in its own savepoint and a failed escalation leaves it running.** A
+  breach settled with nobody told is a missed promise that reads as handled.
+
+**And one of the four decisions was wrong when first written, which the second test found.**
+The sweep returned early for any clock with an open pause -- "a stopped clock is not spending
+its target", which is true and is already what `_consumed` does, since it subtracts the
+pause. What the guard added was an escape: a clock whose target had *already* gone could be
+kept out of the sweep for ever by pausing it afterwards, and pausing does not un-break a
+promise that is already broken. Two rules for one question, and the one written as a guard
+was the wrong one. Deleted, with a test on each side of the distinction.
+
+**And `create_task` never resolved its `case_id`.** This application has no handler for a
+psycopg error at all -- only `RequestValidationError` and `ServiceError` -- so an unknown
+case answered 500 whether the composite key or the trigger spoke, which is MOD-009's "an id
+shape-checked and never resolved" in a route whose two sibling lookups were already there.
+
+**Writing the second reader found that the first one contradicted itself.** `read_clock`
+returned `consumed_seconds` and `remaining_seconds` computed from the business calendar
+*minus the pauses*, and a `state` computed by comparing `now` against a due instant walked
+forward from the start -- and `due_at` knows nothing about `tsk_sla_pauses`. So a clock
+stopped for a week read `breached` beside a `remaining_seconds` well above zero, which makes
+a pause decorative on the one field anybody acts on; and the warning threshold was
+`(now - started) / (due - started)`, wall-clock over wall-clock, in the module whose entire
+subject is that those are not the same thing -- a target opened at five on Friday is 80% of
+the way to a Monday deadline by Sunday evening with no business second spent. **Both were
+invisible while the only reader was the read itself**, whose test asserted `state` was one
+of three strings. `sla.state` now takes the consumed seconds and the target, so the verdict
+and the remaining time are the same two numbers; `due_at` is projected from *now* on what is
+left, and is absent entirely for a paused clock, because when it resumes is nobody's to
+guess. `service._consumed` is the one definition both callers read.
+
+**And a guard that admitted a state nothing could leave.** `tsk_sla_escalation_is_live` is
+`BEFORE INSERT OR UPDATE` and re-judged the route on every write, so retiring a queue refused
+every later update to every clock pointing at it -- the settlement included, which is the one
+write that makes the record true. A target whose escalation team was merged into another
+could never be judged. The control is "a clock may not be pointed at a dead bell"; what it
+did was "a clock pointed at a dead bell is frozen". `0022` re-checks only on an insert or
+when the pointer moves -- **the clause was already in this module's own sibling trigger**,
+three files earlier.
+
+**And the branches had no probes at all.** CHECK 112 pins this module's grants, NOT NULLs and
+foreign keys, and a plpgsql branch is invisible to every one of them -- MOD-018 paid for that
+when a reviewer deleted a trigger branch and the suite reported 84/84. CHECK 114 is one probe
+per branch, asserting the *sentence* and running as the **table owner**: `target_seconds` and
+`started_at` are outside every runtime role's UPDATE grant, so under `veyro_cp_app` the
+branch refusing a re-measured promise is answered by the privilege layer and proves the
+grant. It carries one probe for a *permission* too, which is the only thing that can see a
+guard refusing too much. Two of the eleven refusals turned out to have no case available at
+all -- every row reaching them is already refused by a sibling CHECK or by the composite
+foreign key -- so `0023` deletes those, which is MOD-016's judgement for a constraint
+subsumed by a sibling.
+
+**And four of the sweep's own mutations were ill-formed in a way worth naming**: `IF false
+AND a OR b` is `(false AND a) OR b`, because `AND` binds tighter, so a prefix mutation on a
+multi-line disjunction disables one term and leaves the branch firing. All four came back
+UNCAUGHT and all four were the harness's fault -- the third distinct form of
+"a mutation that changes nothing is not evidence" this module has paid for. **And the sweep
+left the database mutated when it finished**, because `verify_db.sh` applies `MUTATE` after
+the build and nothing puts it back: a full backend suite then reported 2,648 tests OK
+against a trigger branch the sweep had disabled, with a green suite, passing checks and a
+clean diff, because the stale artefact was in the database rather than in the tree.
+
 **A mutation came back uncaught and the guard it removed turned out to be subsumed by
 accident.** A `kind == "open"` filter was redundant because a closed window has no hours --
 except that `Window` did not actually forbid one carrying hours, though the schema does. So a
@@ -4109,9 +4191,12 @@ Four decisions carry the slice:
 - **No countdown is stored anywhere.** An SLA clock is its target, its pauses and this
   calendar, evaluated at read time -- MOD-018's no-stored-balance, MOD-019's no-`held_count`
   and MOD-016's derived `in_window` for the fourth time. The consequence is stated rather than
-  discovered: a breach is computed, so nothing fires when it happens and slice 3 needs a
-  worker job whose announcement window is floored to the clock's own target, which is the
-  decision MOD-011's objective evaluation already answered for itself.
+  discovered: a breach is computed, so nothing fires when it happens. `tasks.evaluate_slas`
+  is that job now -- and the announcement window this bullet predicted it would need turned
+  out not to exist: the settlement is one-way by trigger, so the clock itself is the dedupe
+  and the escalation task's key is derived from it. A prediction about a mechanism is a claim
+  like any other, and this one was a borrowed answer to MOD-011's problem rather than this
+  module's.
 - **A case moves forward only, and `recurs_from_case_id` is why it does not have to reopen.**
   The first draft of the migration let a resolved case return to `open` and claimed in a
   comment that its first resolution's attribution stayed put -- which the attribution CHECK
@@ -4164,9 +4249,18 @@ Known gaps, deliberate:
 - **Nothing publishes an event.** AUT-02 names none in the catalogue this build carries, and
   inventing one would be inventing product -- but a task raised and settled is exactly the
   kind of thing MOD-014's timeline projects, and it projects none of them.
-- **Approvals, SLA clocks and the reporting read are slices 2, 3 and 4**: R04 and R05 extend
-  `iam` with stages and delegation, R06 adds the clock, its pauses and escalation, and R07 is
-  the workload read the three screens draw.
+- **R06 is built end to end; R05's stages and R07's reporting read are what is left.** R04
+  and R05's quorum, amount thresholds, expiry and delegation are done -- stages (sequential
+  and parallel) need the approval request to carry more than one, which is a change to the
+  snapshot MOD-008's review put there. R07 is the workload, aging, bottleneck, outcome and
+  compliance read the three screens draw.
+- **Nothing announces a breach *warning*.** `sla.state` returns `warning` past the threshold
+  and only a reader sees it; the sweep acts on the breach. Two reasons, and the first is a
+  product judgement rather than a wait: a warning task per clock at eighty per cent doubles
+  what the escalation queue holds and the breach task behind it says the same thing later, so
+  a warning's natural form is a message to whoever is answering -- and MOD-013 authors one
+  and sends nothing. The threshold is stored and evaluated, so closing it is a dispatcher and
+  a decision about who hears it, not a change here.
 - **A case's documents are references, not files.** There is no object store -- the isolation
   rules name one beside regions and keys -- so `document_ref` has to look like a locator,
   which is MOD-012's `vault_ref` rule: a non-blank text column beside a comment promising it
@@ -4184,13 +4278,13 @@ Known gaps, deliberate:
 
 ## The worker runtime
 
-`backend/app/worker/` is the thing this file asked for in fourteen places. Every one of those
+`backend/app/worker/` is the thing this file asked for in fifteen places. Every one of those
 bullets named a decision function that was written, tested and reachable from a route, waiting
 for something to call it without a person asking -- and until now the honest answer was that no
-such thing existed. Nine jobs are wired: MOD-010's relay, MOD-011's objective evaluation,
+such thing existed. Ten jobs are wired: MOD-010's relay, MOD-011's objective evaluation,
 MOD-013's digest close, MOD-014's timeline projection, MOD-017's ended-membership grant
-revocation, MOD-021's offline sweep and command expiry, MOD-020's waitlist-offer expiry and
-MOD-022's replay-cache sweep. `python -m app.worker --once` runs one tick and prints what it did;
+revocation, MOD-021's offline sweep and command expiry, MOD-020's waitlist-offer expiry,
+MOD-022's replay-cache sweep and MOD-026's SLA breach sweep. `python -m app.worker --once` runs one tick and prints what it did;
 without `--once` it loops until a signal.
 
 Five decisions carry it, and three of them are refusals:
@@ -4289,8 +4383,8 @@ What is deliberately **not** a job, each for a stated reason:
   to wire at all. MOD-013's was starker: its note said closing a digest window needed the
   digest template format, and that format renders a batch into a *message* -- it has nothing
   to do with whether an elapsed window is marked closed, which needed no decision at all.
-  **Ask of each remaining one which judgement it actually needs**, because twice now the
-  obvious reading of "this needs a decision" named a decision that was not in the way -- and
+  **Ask of each remaining one which judgement it actually needs**, because three times now
+  the obvious reading of "this needs a decision" named a decision that was not in the way -- and
   the second time the blocker named was a true sentence about a different half of the feature,
   which is the harder kind to see past. **And the third reading found no job at all**:
   MOD-018's bullet listed wallet expiry among its undriven sweeps and claimed lapsed value
@@ -5801,7 +5895,7 @@ the user's authenticator, so verifying an assertion needs no secret of ours at a
 exactly why that gap could be closed while this one cannot. A device certificate is the
 opposite shape -- it is a secret this build would have to hold.
 
-**The worker runtime is no longer on that list, and nine of the fourteen schedules are
+**The worker runtime is no longer on that list, and ten of the fifteen schedules are
 driven.**
 `backend/app/worker/` has its own section above. What closing it took is worth the same note
 `Decision.mask` gets below: no new table, because every wired job is idempotent and a durable
@@ -5815,6 +5909,8 @@ cadence decided and recorded, which the delegation covers. **MOD-011's objective
 came off that list by making its decision**, and the shape is worth knowing before the next:
 the judgement it looked like it needed (which objective is due) did not exist, and the one it
 really needed (how often a breach is announced) was a different and smaller question.
+**MOD-026's SLA sweep is the third of those**: a target is a number of seconds somebody wrote
+on the row, so there was no deadline to decide at all -- what was missing was a reader.
 
 `Decision.mask` is no longer on that list. MOD-014 applies it, which closes the five-module gap
 -- and note what closing it took: `permit` had to return the gate rather than the session, and

@@ -1,6 +1,6 @@
 """What the scheduled jobs are, what each one calls, and how often it is worth calling.
 
-**Fourteen module entries in `CLAUDE.md` end with some version of "nothing drives this on a
+**Fifteen module entries in `CLAUDE.md` end with some version of "nothing drives this on a
 schedule".** Each of those is a decision function that is written, tested and reachable from a
 route, waiting for something to call it without a person asking. This registry is that
 something, and the shape of it matters more than the list:
@@ -30,10 +30,24 @@ something, and the shape of it matters more than the list:
 activity with no effect, which is worse than the gap it claims to close. MOD-010's
 `deliver_pending`, because this process registers no handlers and the function refuses a
 consumer that has none; a relay that drove an empty registry would read as a control and do
-nothing. MOD-009's retention sweep, MOD-011's objective evaluation, MOD-013's digest close and
-MOD-018's revenue recognition, each of which needs a decision this registry would have to
-invent -- which deadline, which objective, which period -- and inventing product is the one
-thing the delegation does not cover.
+nothing. And MOD-009's retention sweep, which is the one genuinely external entry on the
+list: retention is owner policy, and destroying records on a schedule is the one sweep where
+being wrong is unrecoverable.
+
+**Everything else absent from this file is work rather than a wait**, and this paragraph used
+to say otherwise about four jobs that are now wired. It named "a decision this registry would
+have to invent -- which deadline, which objective, which period" and called inventing product
+the one thing the delegation does not cover, which is false twice: the delegation hands over
+product decisions as well as engineering ones, and in three of those four cases the judgement
+named was not the one in the way. MOD-011's objective evaluation needed no choice of *which*
+objective, because every objective carries its own window; MOD-013's digest close needed no
+template format, because closing an elapsed window is not rendering a message; MOD-026's SLA
+sweep needed no deadline at all, because a target is a number on the row. So what is left --
+MOD-007's challenge sweep (a grant decision), MOD-012's rotation announcement (a record of
+what has been announced), MOD-020's session settlement (which sessions are due),
+MOD-017's renewals and dunning, MOD-018's recognition and period close (a cadence written
+down) -- is unwired because nobody has done it yet. **Ask of each one which judgement it
+actually needs**, because three times now the obvious reading named a decision that was not.
 """
 
 from __future__ import annotations
@@ -53,6 +67,7 @@ from app.events import service as events
 from app.notifications import service as notifications
 from app.observability import service as observability
 from app.people import service as people
+from app.tasks import service as tasks
 from app.worker.names import JOB_NAMES
 
 #: The actor every attributed job writes into the rows it moves.
@@ -137,6 +152,11 @@ def _booking_expire_offers(ctx: JobContext) -> dict[str, Any]:
                                  correlation_id=ctx.correlation_id, at=ctx.at, limit=200)
 
 
+def _tasks_evaluate_slas(ctx: JobContext) -> dict[str, Any]:
+    return tasks.sweep_breaches(ctx.pool, ctx.tenant_id, actor_id=ctx.actor_id,
+                                correlation_id=ctx.correlation_id, limit=200)
+
+
 def _access_replay_sweep(ctx: JobContext) -> dict[str, Any]:
     return access.sweep_replay_tokens(ctx.pool, ctx.tenant_id, at=ctx.at, limit=5000)
 
@@ -191,6 +211,21 @@ JOBS: tuple[Job, ...] = (
         run=_notifications_close_digests),
     # MOD-014. The absence changed the product: a timeline nobody projects stays empty, and the
     # Member 360 shows a member with no history.
+    # MOD-026, and the third off this file's "needs a judgement this registry would have to
+    # invent". It needed none: a target is a number of seconds somebody wrote on the row, and
+    # whether it has gone is arithmetic. What was missing was a reader -- `sla.state`'s own
+    # docstring says a breach is computed and that an escalation needs the worker to evaluate
+    # it, so until this existed a missed promise stayed `running` for ever and
+    # `escalate_to_queue_id` was a column implying a control nobody implemented.
+    # **Five minutes**, because an SLA is stated in hours or days and the finest grain anyone
+    # states is minutes; a tighter cadence re-reads the same calendar for an answer that
+    # cannot have changed, and a looser one is an escalation sitting unraised while the
+    # promise is already broken.
+    Job(name="tasks.evaluate_slas", every=timedelta(minutes=5), role="app",
+        units="breached",
+        summary="Judge every running SLA target whose time has gone, and raise its "
+                "escalation where a route says to",
+        run=_tasks_evaluate_slas),
     Job(name="people.project_timeline", every=timedelta(seconds=60), role="app",
         units="projected",
         summary="Project outbox events into member timelines",

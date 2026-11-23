@@ -33,7 +33,7 @@ through an ADR so the lint, the migrations and the pool configuration keep agree
 ## Verification evidence
 
 `backend/tests/sql/isolation.sql` is the live half, run by `backend/scripts/verify_db.sh` and by
-CI. It carries 113 checks covering every track's tables -- MOD-004's hierarchy, MOD-005's `cfg_`,
+CI. It carries 114 checks covering every track's tables -- MOD-004's hierarchy, MOD-005's `cfg_`,
 MOD-015's `bil_`, MOD-007's and MOD-008's `iam`, MOD-009's `sec_`, MOD-010's `evt_`,
 MOD-011's `ops_`, MOD-012's `int_`, MOD-013's `ntf_`, MOD-014's `ppl_`, MOD-016's `cat_`,
 MOD-017's `mem_` and `fin_`, MOD-018's `led_`, MOD-019's `sch_`, MOD-020's `bkg_` and
@@ -1957,3 +1957,90 @@ injecting `"card_brand": "Visa"` into a case row and watching it fail, then rest
 `assertNotIn("4500", read.text)` asserting that a product read returns no price. The field
 names were the real test there anyway -- a price reaching that read arrives in one of them --
 so the substring was never carrying the weight it appeared to.
+
+
+**A trigger that re-judges a parent on every write turns a retired parent into a lock on the
+row.** MOD-026's escalation guard is `BEFORE INSERT OR UPDATE` and re-read the queue each
+time, so retiring that queue refused **every** later update to every clock pointing at it --
+the settlement included, which is the one write that makes the record true. A target whose
+escalation team was merged into another could therefore never be judged: it stayed `running`
+for ever and the compliance read counted it as still in hand. The control is "a clock may not
+be pointed at a dead bell"; what it did was "a clock pointed at a dead bell is frozen", and
+the second is not a stricter version of the first. **The clause that fixes it was already in
+the module's own sibling trigger**, written three files earlier -- `tsk_task_matches_its_case`
+re-checks its parent only on an INSERT or when the pointer actually moves. So: a parent-status
+guard belongs on the write that *sets* the pointer, and `TG_OP = 'UPDATE' AND NEW.x IS NOT
+DISTINCT FROM OLD.x THEN RETURN NEW` is the shape.
+
+**And a probe for a permission is what finds it.** Every other probe in a trigger block
+asserts a refusal, and no number of refusal probes can see a guard that refuses too much --
+nor can the `RAISE`-counting assertion, since nothing was added or removed. The case is the
+ordinary write the module must still allow, wrapped so it fails under its own name.
+
+**Run a trigger-branch block as the table owner, not as the service's role.** A branch that
+guards a column outside every runtime role's UPDATE grant -- which is the ordinary shape for
+"a target and its start do not move", where the grant exists precisely so the trigger never
+has to speak -- is answered by the privilege layer under `veyro_cp_app`, so the probe proves
+the grant and says nothing about the branch. The owner is the writer that branch exists for,
+and a trigger that refuses the owner refuses everybody; FORCE RLS still applies, so the tenant
+predicate is in force either way. A probe that comes back `insufficient_privilege` is a probe
+with no evidence behind it and has to say so rather than counting.
+
+**A mutation that deletes a `RAISE` is caught by the count, not by the probe.** Where a block
+compares its probe count against the `RAISE EXCEPTION` count in the catalogue -- which is the
+shape this file requires -- deleting a refusal fails that assertion, so the mutation proves
+the counter and leaves the probe it was aimed at unproven. `IF false AND <condition> THEN`
+keeps the count and removes the refusal, which is the mutation that actually tests the probe.
+The opposite error is already recorded here: a dummy `RAISE` kept for the count and fired
+unconditionally kills the seed, and the sweep reports MUTERR for a mutation it never ran.
+
+**A state derived from a different pair of numbers than the figure beside it will contradict
+it, and only the second reader notices.** MOD-026's SLA read returned `consumed_seconds` and
+`remaining_seconds` computed from the business calendar *minus the pauses*, and a `state`
+computed by comparing `now` against a due instant walked forward from the start -- which knows
+nothing about the pause table. A clock stopped for a week read `breached` beside a
+`remaining_seconds` well above zero, which makes the pause decorative on the one field anybody
+acts on. The same expression measured the warning threshold as `(now - started) / (due -
+started)`, wall-clock over wall-clock, in the module whose entire subject is that those are
+not the same thing: a target opened at five on Friday is 80% of the way to a Monday deadline
+by Sunday evening with no business second spent. **Both were invisible for as long as the only
+reader was the read itself** -- the suite asserted `state` was one of three strings. Derive a
+verdict from the numbers the response already carries, and when a second caller appears, check
+that it would reach the same answer by the same route rather than writing it a second one.
+
+
+**A check that validates a structured field cannot validate the prose beside it, and the
+prose is what a reader believes.** `design:coverage` verifies that a backlog reason's
+`MOD-0NN` names a real module and that the module has not landed -- the stale-excuse
+direction, which this repository built on purpose and which has fired on its own author.
+What it cannot see is the sentence next to the token: three MOD-026 reasons went on saying
+the module had no service layer and no routes, and named slices as outstanding that had
+since landed, for as long as the module id stayed correct. That is MOD-010's "the
+restricted-field rule checks names, and a value can carry anything" in a governance check
+rather than an event payload. So when a slice lands, re-read every reason that mentions it
+rather than trusting the check that passed -- and prefer a reason that names *what is
+missing*, drawn from the design, over one that names *which slice it is in*, which goes
+stale by the calendar.
+
+
+**A mutation harness that mutates the *database* has to restore it, and this one did not.**
+Every sweep in this repository until now mutates a *file* and puts it back in a `finally` --
+and this file already records that a SIGKILL defeats that, so read the diff afterwards. A
+SQL sweep is different in a way nobody had hit: `verify_db.sh` applies `MUTATE` **after** the
+build, nothing puts it back, and the harness simply moves on to the next mutation. So the
+last mutation of the run sits in the development database when the sweep finishes, and every
+suite run afterwards judges a schema nobody wrote. It cost a full backend suite: 2,648 tests
+reported OK against a trigger branch the sweep had disabled, and the only reason it was
+caught is that the run afterwards was being checked against the tree it would be committed
+on. **The tells are nothing**: the suite is green, the checks pass, the diff is clean --
+because the artefact is in the database rather than in the tree. So a database-mutating
+sweep ends with one more clean rebuild, says it did, and says loudly when it could not;
+and after any interrupted one, rebuild before believing a suite.
+
+**And the sibling already did it.** `tests/sql/sweep_access.sh` rebuilds at the end of every
+loop iteration, which is why MOD-022's sweep never left anything behind. That is the second
+time in one session that the fix for a thing I had just written was already sitting in the
+file next to it -- the other being an escalation trigger whose "re-check only when the
+pointer moves" clause was in its own module's sibling, three files earlier. **Read the
+nearest existing instance before writing a new one**: this repository's rules are mostly
+recorded as prose, and prose is easy to agree with and hard to notice you have not applied.

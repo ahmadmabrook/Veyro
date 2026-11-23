@@ -31,4 +31,5 @@ JOB_NAMES: tuple[str, ...] = (
     "memberships.revoke_ended_grants",
     "notifications.close_digests",
     "people.project_timeline",
+    "tasks.evaluate_slas",
 )
