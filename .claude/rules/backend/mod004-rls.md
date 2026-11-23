@@ -2245,8 +2245,23 @@ year ago" answerable from the row. So two of its thirteen change kinds name an a
 privilege layer rules out, and the remedy is to delete them rather than to widen a grant that
 is load-bearing.
 
-**The check that distinguishes the two cases is one query**, and it is the one to run before
-writing a command for a declared state: ask `has_column_privilege` about every column the act
-would have to move. A kind whose columns are all writable is work; a kind whose effect needs an
-immutable column is a kind that should not be declared. Six of MOD-017's eight unwritten kinds
-turned out to be the first and two the second, and nothing in the module said which.
+**And that reading was wrong too, for a reason worth more than either.** `has_column_privilege`
+said `agreement_id` cannot move, so the act looked prohibited -- and the schema already carries
+`mem_agreements.supersedes_agreement_id`, a self-referencing chain whose own comment says it is
+"for an upgrade, downgrade or transfer". The immutable column is the chain's *root*, not a
+prohibition: what a membership originally agreed to does not move, and what it is on now is
+derived by walking forward. `create_agreement` takes the field and a route exposes it.
+
+**What is actually missing is a reader, and its absence is a trap rather than a gap.** All five
+readers of a membership's terms go straight to the root, so a superseding agreement written
+through the route that exists leaves the freeze allowance, the cancellation fee, the notice
+period and the early-termination buy-out all answering from the agreement the member left --
+every figure the module discloses, silently wrong, with no adversary and one route call.
+
+So the rule is **not** "ask whether the columns can move". It is: **when a declared state has
+no writer, look for the column that would record it before concluding anything about why.** A
+self-referencing pointer, a status, a supersession chain -- the schema often already carries
+the mechanism, and three readings of this one went wrong by reasoning from what could not be
+updated instead of looking for what had already been built. "A column implying a control nobody
+implemented" has an inverse this repository had not met: a column implying a *model* nobody
+reads, which is worse, because the write path exists and every reader disagrees with it.

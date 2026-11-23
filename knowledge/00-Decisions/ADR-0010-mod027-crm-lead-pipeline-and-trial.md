@@ -75,10 +75,22 @@ it as a trial is the agreement's own terms rather than a status. Two things foll
   person's, not the membership's, which is also exactly what "a lead, a trialist and a member
   are one record at three stages" says. ADM-CRM-06's "same ID" reads as the person.
 
-  **`upgrade` and `downgrade` should therefore be deleted from `lifecycle.EDGES`**, which is
-  MOD-017's work and the remedy this build applies elsewhere to a declared value nothing can
-  produce. Six of the other declared kinds *are* writable and want commands; MOD-017's gap
-  list now carries all of it.
+  **And the third reading is that an upgrade is buildable after all, which makes the second
+  reading wrong as well.** `mem_agreements.supersedes_agreement_id` exists -- "which agreement
+  this one replaces, for an upgrade, downgrade or transfer ... so the chain answers what did
+  this member have in March" -- `create_agreement` takes it and a route exposes it. What is
+  missing is a *reader*: all five readers of a membership's terms go to
+  `mem_memberships.agreement_id`, the chain's root, so a superseding agreement written today
+  leaves the freeze allowance, the cancellation fee, the notice period and the buy-out all
+  answering from the agreement the member left. MOD-017's gap list carries that now.
+
+  **None of which changes what a conversion is here.** A trial and a membership are different
+  *products* sold on different terms, and the canvas's "nothing is re-entered" is satisfied by
+  the person: her check-ins, her attendance and her coach's note are MOD-022, MOD-020 and
+  MOD-014 rows keyed on `person_id`. Whether MOD-027 converts by superseding the trial's
+  agreement or by selling a fresh membership is a decision for its slice 2, and it is better
+  made once MOD-017's chain has a reader -- so this record names the dependency rather than
+  guessing which side of it the conversion lands on.
 - **"Expiry with no conversion moves the record to lost with reason 'trial lapsed'"** is a
   sweep over memberships whose term ended with no change — and `memberships.revoke_ended_grants`
   is already the worker job that revokes an ended membership's grants on the same predicate.
@@ -87,16 +99,18 @@ it as a trial is the agreement's own terms rather than a status. Two things foll
 
 **What this needs from MOD-017 that it has not got**, checked rather than assumed:
 
-- **Nothing, which is the answer after two corrections.** `create_agreement` and
-  `activate_membership` exist and are what a conversion is; a 7-day trial is a `membership`
-  product with a term and `PRODUCT_TYPES` carries `membership` already, so the trial product
-  is configuration rather than a capability gap -- which is what FD-05's own gap note says.
-  `GET /people/contact-match` is built. `memberships.revoke_ended_grants` is a worker job on
-  the term-end predicate. **What MOD-017 owes is a deletion rather than a feature**: the two
-  change kinds whose effect its own privileges forbid.
-- Every one of those was a claim in this record's drafts and every one was checked against the
-  code. Two were wrong, and both were about the same thing -- which module owns the mechanism
-  for moving somebody onto a different product.
+- **A reader for the supersession chain**, which is one definition used by five call sites and
+  is MOD-017's work. Slice 2 waits on it rather than working around it.
+- **Nothing else.** `create_agreement` and `activate_membership` exist; a 7-day trial is a
+  `membership` product with a term and `PRODUCT_TYPES` carries `membership` already, so the
+  trial product is configuration rather than a capability gap -- which is what FD-05's own gap
+  note says. `GET /people/contact-match` is built. `memberships.revoke_ended_grants` is a
+  worker job on the term-end predicate.
+- **Every claim here was checked against the code and the first three readings of one of them
+  were wrong**, which is the argument for the checking rather than against it: `change_plan`
+  resolved in the wrong module, then `agreement_id`'s immutability looked like a prohibition
+  rather than a root, and only the third pass found the chain the schema already carries and
+  the readers that ignore it. A design record is a set of claims about other people's code.
 
 ## D3 — The pipeline is five columns and the stage is derived where it can be
 

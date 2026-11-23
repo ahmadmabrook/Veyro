@@ -2622,25 +2622,29 @@ Known gaps, deliberate:
   which is this build's most-repeated finding sitting in the module that records what a member
   agreed to. **Found by checking MOD-027's design record against the code**, which needed an
   upgrade to convert a trial and discovered there is none.
-  **Six of the eight are writable and want a command; two are not writable at all**, and that
-  second half is the finding rather than the count. `upgrade` and `downgrade` are declared
-  `active -> active`, and moving a member between products would have to move either
-  `mem_memberships.agreement_id` or `mem_agreements.variant_id` -- and **neither is in any
-  runtime role's UPDATE grant**, nor is `price_resolution_id`, nor is `person_id`. That is
-  deliberate and it is this module's own premise: what the member agreed to does not move, which
-  is what makes "what did this member agree to a year ago" answerable from the row. So the two
-  kinds are not merely unwritten, they are kinds whose effect the schema forbids -- a declared
-  value the privileges rule out, which is stronger than a declared value nothing writes.
-  **A product change is therefore a new agreement and a new membership on the same person**, and
-  that is also what makes the CRM canvas's "nothing is re-entered" true: everything it lists as
-  carrying forward -- her check-ins, her class attendance, her coach's first note -- is
-  person-scoped, so the person id is the id that matters and not the membership's. Deleting the
-  two kinds is the remedy this build applies elsewhere to a value nothing can produce; widening
-  the grant is the alternative and would be wrong for the reason above.
-  The other six are commands and jobs nobody has built, each writable with the grants that
-  exist: a renewal, a grace entry and an expiry are what the undriven sweeps above would write;
-  a suspension, a reinstatement and a transfer are commands. `_record_change` takes the kind
-  already and `check_transition` knows the statuses, so each is work rather than a blocker.
+  Each of the eight is writable with the grants that exist -- a renewal, a grace entry and an
+  expiry are what the undriven sweeps above would write; a suspension, a reinstatement, a
+  transfer, an upgrade and a downgrade are commands -- so each is work rather than a blocker:
+  `_record_change` takes the kind already and `check_transition` knows the statuses.
+- **And the upgrade is worse than unwritten: it is half-built, and the written half has no
+  reader.** `mem_agreements.supersedes_agreement_id` exists, its comment says "which agreement
+  this one replaces, for an upgrade, downgrade or transfer ... so the chain answers what did
+  this member have in March", `create_agreement` takes it, and
+  `POST /memberships/agreements` exposes it on the body. **Nothing reads it.** All five
+  readers of a membership's terms go straight to `mem_memberships.agreement_id`, which is the
+  chain's *root* and is immutable by grant -- so a superseding agreement can be written today
+  through a route that exists, and afterwards the freeze allowance is counted against the
+  original contract's `freeze_days_per_year`, the cancellation fee is computed from the
+  original `amount_minor` and `minimum_term_ends_on`, and the notice period and the
+  early-termination buy-out come from the contract version the member has moved off. Every
+  figure the module discloses to a member keeps answering from the agreement they left.
+  That is "a column implying a control nobody implemented" inverted -- a column implying a
+  *model* nobody reads -- and it is reachable with no adversary: one route call. **The fix is a
+  single definition of "this membership's current agreement"** that walks the chain, used by
+  all five readers, after which the upgrade command is the small part. Took three attempts to
+  see: the first reading of this said `change_plan` would do it, the second said the two kinds
+  were unwritable because `agreement_id` cannot move, and both missed that the schema already
+  carries the chain and the route already accepts it.
 - **No installment schedule generation.** `fin_billing_schedules` records the plan and its
   remaining count; nothing walks it.
 - **Nothing reverses a payment inside the module.** A payment has no UPDATE grant at all, so a
