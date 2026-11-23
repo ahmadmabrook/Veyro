@@ -2613,6 +2613,21 @@ Known gaps, deliberate:
 - **Nothing invoices the cancellation fee.** It is disclosed and recorded against the change,
   and no invoice is issued and no payment taken, which is why ADM-MSH-07 is buildable while
   ADM-MSH-01, 02, 04 and 05 are not: their buttons take money and this one does not.
+- **Eight of thirteen declared lifecycle change kinds have no writer, and this note is the
+  first thing in the repository to say so.** `lifecycle.EDGES` admits `activation`, `freeze`,
+  `medical_hold`, `resume`, `grace_entry`, `suspension`, `renewal`, `upgrade`, `downgrade`,
+  `transfer`, `cancellation`, `expiry` and `reinstatement`; the service writes five --
+  activation, both freezes, resume and cancellation -- and nothing anywhere writes the other
+  eight. So `mem_lifecycle_changes.change_kind` has eight values the product cannot produce,
+  which is this build's most-repeated finding sitting in the module that records what a member
+  agreed to. **Found by checking MOD-027's design record against the code**, which needed an
+  upgrade to convert a trial and discovered there is none.
+  Three of the eight are the undriven schedules the bullet above names -- a renewal, a grace
+  entry and an expiry are what a sweep would write -- and five are commands nobody has built:
+  an upgrade and a downgrade (moving a member between products, which is what converting a
+  trial *is*), a transfer to another person, a suspension, and a reinstatement from one. Each
+  is work rather than a blocker: `_record_change` takes the kind already, and
+  `check_transition` already knows which statuses each may move between.
 - **No installment schedule generation.** `fin_billing_schedules` records the plan and its
   remaining count; nothing walks it.
 - **Nothing reverses a payment inside the module.** A payment has no UPDATE grant at all, so a
@@ -6142,9 +6157,30 @@ on it. The one requirement fragment with nothing to point at is R04's payroll ac
 which waits on a payroll module this build does not have: a policy naming it would be a policy
 for an action nothing can perform.
 
-**MOD-027 is next by the same reasoning**, and it is now unblocked: eight backlogged Admin
-screens are its, more than any other module's, and MOD-026's case and queue are what its
-pipeline files work into. MOD-023 (Coach Workspace, which needs MOD-014 and MOD-008, both
+**MOD-027 is next and its design record is written**:
+`knowledge/00-Decisions/ADR-0010-mod027-crm-lead-pipeline-and-trial.md`. It is unblocked --
+MOD-013, MOD-014 and MOD-026 are its dependencies and all three are built -- and eight
+backlogged Admin screens are its, more than any other module's. Four things that record
+settles, because the canvas is unusually explicit about them:
+
+- **A lead, a trialist and a member are one `ppl_persons` row**, which the canvas states as a
+  structural requirement rather than a preference: "a lead, a trialist and a member are one
+  record at three stages, never three records". So MOD-027 owns the pipeline and MOD-014 keeps
+  owning the person, and ADM-CRM-04's phone duplicate check is `GET /people/contact-match`,
+  which exists.
+- **A trial is an `active` membership on a trial product**, not a CRM clock and not a new
+  status: "a real member record from the start -- access pass, app login, class booking
+  rights" is only true if the ordinary readers treat it as live, and a `trial` status would be
+  a new value MOD-022, MOD-020 and MOD-017's own lifecycle would all have to learn.
+- **Converting it is MOD-017's `upgrade`**, which is where checking the record against the
+  code found the gap two sections up: eight of thirteen declared change kinds have no writer,
+  `upgrade` among them. So the conversion is MOD-017's work and MOD-027's slice 2 depends on
+  it.
+- **Lost is reversible, which is the opposite of MOD-026's case.** A case moves forward only
+  and a problem that returns is a new case; a lost lead is re-contacted on the same record,
+  because a new one would defeat the first point.
+
+MOD-023 (Coach Workspace, which needs MOD-014 and MOD-008, both
 built) unblocks nothing and so comes after it. MOD-006 is the Compose Multiplatform
 qualification, which is a client-side proof the server plane does not need and the mobile half
 does.

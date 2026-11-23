@@ -2213,3 +2213,23 @@ staged policy could name an authority nobody is ever asked for. Refused at the w
 a declared value nothing reads caught before it exists -- and the refusal caught two of the
 slice's own test fixtures on its first run, which is the usual sign it was worth having. **When
 a check narrows its scope, ask what the old scope covered that the new one does not.**
+
+
+**A design record's claims about other modules are claims, and checking them is the point.**
+ADR-0009 produced two findings that way and ADR-0010 produced a third: it said converting a
+trial is `change_plan`, "which MOD-017 has". `change_plan` is **MOD-015's** -- the SaaS
+subscription a tenant buys from Veyro -- and a member's membership has no plan change at all.
+What it has is `upgrade` and `downgrade` in `lifecycle.EDGES`, declared as `active -> active`
+with `_record_change` already taking the kind and `check_transition` already knowing the
+statuses, and **nothing anywhere writes either**. Pulling that thread found that eight of
+MOD-017's thirteen declared change kinds have no writer and its gap list said nothing about it.
+
+Two rules fall out, and the second is the one worth carrying:
+
+- **Grep the writers of every value a state machine declares**, not only the ones the module's
+  own tests exercise. `grep -rhoE 'change_kind="[a-z_]+"' app/` answers it in one command, and
+  five of thirteen came back.
+- **A name that exists in one module is not the mechanism in another.** Two modules here both
+  sell something on a recurring basis to different customers, so "plan change" is a phrase that
+  resolves in both -- and a record written from the phrase rather than from the symbol put the
+  wrong module's machinery into a build order. The check is the import path, not the word.
