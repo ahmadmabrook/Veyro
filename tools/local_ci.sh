@@ -9,10 +9,17 @@
 # refused three backlog entries whose module had just landed -- the second being a check this
 # repository wrote specifically to catch a stale excuse, firing correctly on its author.
 #
-# It deliberately leaves out the three steps that need Docker (the container build, its smoke
-# test and the rollback rehearsal) and the browser suite, which needs a provisioned fixture
-# and a port. Those stay CI's. What is here is everything a local run can answer, so
-# "I ran the checks" and "I ran the checks CI runs" stop being different claims.
+# It deliberately leaves out four things, and says which rather than implying coverage: the
+# container build, its smoke test and the rollback rehearsal, which need Docker images; the
+# browser suite, which needs a provisioned fixture and a port; and **`verify_db.sh`, which
+# drops and rebuilds the development database** -- running that from a convenience script
+# would destroy whatever fixture another session in this checkout is holding, which this
+# repository's rules file records as a real hazard. Run it deliberately:
+#
+#     PSQL="docker exec -i <your container> psql -U postgres" backend/scripts/verify_db.sh
+#
+# What is here is everything a local run can answer without taking something away from
+# somebody, so "I ran the checks" and "I ran the checks CI runs" stop being different claims.
 #
 #     tools/local_ci.sh
 cd "$(dirname "$0")/.." || exit 1

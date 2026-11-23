@@ -33,7 +33,7 @@ through an ADR so the lint, the migrations and the pool configuration keep agree
 ## Verification evidence
 
 `backend/tests/sql/isolation.sql` is the live half, run by `backend/scripts/verify_db.sh` and by
-CI. It carries 112 checks covering every track's tables -- MOD-004's hierarchy, MOD-005's `cfg_`,
+CI. It carries 113 checks covering every track's tables -- MOD-004's hierarchy, MOD-005's `cfg_`,
 MOD-015's `bil_`, MOD-007's and MOD-008's `iam`, MOD-009's `sec_`, MOD-010's `evt_`,
 MOD-011's `ops_`, MOD-012's `int_`, MOD-013's `ntf_`, MOD-014's `ppl_`, MOD-016's `cat_`,
 MOD-017's `mem_` and `fin_`, MOD-018's `led_`, MOD-019's `sch_`, MOD-020's `bkg_` and
@@ -1856,3 +1856,48 @@ flipped to assert the permission and the second was left alone -- **was this tes
 the finding, or a consequence of the gate?** -- and a third case that used an absent review
 merely as a convenient way to make an ADR invalid had its *means* swapped for a malformed
 claim, keeping its own assertion intact.
+
+
+**A snapshot that a table-wide grant can rewrite is not a snapshot.** MOD-008's review found
+that re-deriving an approval's terms at decision time let somebody holding
+`authz.policy.write` switch separation of duties off for a request already in flight and then
+approve their own. The fix was to snapshot the terms onto `iam.approval_requests`. It closed
+the re-derivation and left the snapshot writable: the grant was `GRANT SELECT, INSERT, UPDATE`
+on the whole table, so `separation_of_duties`, `requested_by`, `required_approvals`,
+`required_permissions`, `amount_minor` and `expires_at` were all writable by the runtime role,
+and the same attack works one step over. The service writes exactly two of those columns, in
+one statement. That is MOD-016's `cat_prices.effective_to` for the third time -- **a granted
+column no service writes is an unattributed edit path** -- and here it ran through the one
+control an invariant names.
+
+**The wider finding is that the whole `iam` plane is table-wide.** Fifteen tables, zero
+column-scoped UPDATE grants, while every `plt01` module from MOD-005 onwards is column-scoped
+and MOD-010 records that in its module the column-scoped grant *is* the integrity mechanism.
+`iam` holds identities, sessions, credentials, roles, assignments, policies, approvals and the
+audit chain. Narrowing the approval path is MOD-026's business because INV-AUT-02 is its
+invariant; the other thirteen tables are MOD-008's and are named here rather than quietly
+left.
+
+**And `SELECT ... FOR UPDATE` does work under a column-scoped grant**, which this file
+previously only recorded in the negative ("needs the UPDATE privilege", from a table with no
+grant at all). Measured rather than reasoned about, and the reasoning would have got it wrong:
+`has_table_privilege(role, tbl, 'UPDATE')` reads **false** after narrowing, so a check derived
+from that would conclude the lock is unavailable. It is available, and a trigger that locks
+its parent row still works.
+
+**A new trigger refuses the seed before it refuses anything else.** Putting INV-AUT-02 in the
+database made `verify_db.sh` fail at *seed* time: `isolation.sql` had exactly one identity per
+tenant from MOD-008 onwards, so its approval was requested and decided by the same person with
+`separation_of_duties = true` -- a row `approval.py` refuses and the invariant forbids. **The
+suite had modelled a state the product cannot produce for as long as the table has existed**,
+and nothing noticed because nothing in the schema said so. That is the same vacuity as a
+hand-written unit fixture encoding an impossible quote, in SQL, in the module whose invariant
+it is. The seed gets a second identity, which is what the browser fixture needed for MOD-022's
+two-party publication and for the same reason.
+
+**Then it invalidated a case, which is the rule this file already states, met by its author.**
+CHECK 32's "one decision per approver per request" inserted a second decision by the
+*requester*, so the new trigger fired before the unique index and that case began proving the
+trigger -- leaving the index droppable in silence. Adding a constraint is a change to every
+case that inserts a row it touches. Here the suite refused to start at all, which is the loud
+version; the quiet version is a case that still passes and proves the wrong rule.

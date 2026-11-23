@@ -919,6 +919,18 @@ INSERT INTO iam.identities
     (tenant_id, identity_id, person_id, email_normalized, display_name)
 VALUES (:'tenant_a', 'eeeeeeee-0000-4000-8000-000000000002',
         'eeeeeeee-0000-4000-8000-000000000001', 'staff@acme.test', 'Acme Staff');
+-- **A second identity, because one cannot approve another's request.** This seed had exactly
+-- one identity from MOD-008 onwards, so the approval below was made and decided by the same
+-- person with `separation_of_duties = true` -- a row `app/authorization/approval.py` refuses
+-- and the whole of INV-AUT-02 forbids. It went unnoticed because nothing in the schema said
+-- so until MOD-026 put the rule in a trigger, and then the *seed* was the first thing that
+-- trigger refused. A fixture encoding a state the system cannot produce is this build's own
+-- vacuity shape, found the same day in a component test; this is the SQL version of it, in
+-- the module whose invariant it is.
+INSERT INTO iam.identities
+    (tenant_id, identity_id, person_id, email_normalized, display_name)
+VALUES (:'tenant_a', 'eeeeeeee-0000-4000-8000-00000000000a',
+        'eeeeeeee-0000-4000-8000-00000000000b', 'approver@acme.test', 'Acme Approver');
 INSERT INTO iam.credentials
     (tenant_id, credential_id, identity_id, kind, algorithm, salt, secret_hash)
 VALUES (:'tenant_a', 'eeeeeeee-0000-4000-8000-000000000003',
@@ -1113,7 +1125,12 @@ SET LOCAL ROLE veyro_iam_app;
 SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
 DO $$
 BEGIN
-    IF (SELECT count(*) FROM iam.identities) <> 1
+    -- **The literals are the seeded counts for tenant A**, and they are the assertion that
+    -- carries the weight: FORCE RLS makes "every visible row is mine" trivially true, so the
+    -- only thing that can show a leak is the number. `identities` is 2 because the approval
+    -- seed needs a second person to approve a request the first one made -- see the comment
+    -- beside it, and INV-AUT-02's trigger, which is what found that it did not have one.
+    IF (SELECT count(*) FROM iam.identities) <> 2
        OR (SELECT count(*) FROM iam.credentials) <> 1
        OR (SELECT count(*) FROM iam.sessions) <> 1 THEN
         RAISE EXCEPTION 'CHECK 28 FAILED: tenant A cannot see its own identity rows';
@@ -1252,9 +1269,10 @@ INSERT INTO iam.approval_requests
 VALUES (:'tenant_a', 'ffffffff-0000-4000-8000-000000000004', 'billing.refund.issue', 'invoice',
         'eeeeeeee-0000-4000-8000-000000000002', 2, true, ARRAY['billing.refund.approve'],
         now() + interval '1 day');
+-- Decided by the *other* identity. See the approver seeded above.
 INSERT INTO iam.approval_decisions (tenant_id, request_id, decided_by, decision)
 VALUES (:'tenant_a', 'ffffffff-0000-4000-8000-000000000004',
-        'eeeeeeee-0000-4000-8000-000000000002', 'approved');
+        'eeeeeeee-0000-4000-8000-00000000000a', 'approved');
 
 -- A short, valid chain. The digests here are fixed test values: check 31 verifies the **link**
 -- between entries, which holds whatever produced them, and `app.authorization.audit` is what
@@ -1306,6 +1324,18 @@ BEGIN
         RAISE EXCEPTION 'CHECK 30 FAILED: another tenant''s approval was decided';
     EXCEPTION
         WHEN foreign_key_violation THEN NULL;
+        -- **Named rather than left to propagate.** MOD-026's separation-of-duties trigger is
+        -- BEFORE INSERT on this table, so it sees this row before the key does; it returns
+        -- for a request it cannot find precisely so the key stays the thing that refuses a
+        -- cross-tenant decision. A version that raised there instead made this case die with
+        -- the trigger's own message, which is a red suite with a misleading cause -- the
+        -- thing this file says to avoid, found by a mutation that did exactly that.
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK %' THEN RAISE; END IF;
+            RAISE EXCEPTION
+                'CHECK 30 FAILED: a cross-tenant decision was refused by a trigger rather '
+                'than by the foreign key, so the two can no longer be told apart: %',
+                sqlerrm;
     END;
 END $$;
 ROLLBACK;
@@ -1372,11 +1402,18 @@ BEGIN
     END;
 
     -- One decision per approver per request: "two approvals" must mean two people.
+    --
+    -- **Decided by the approver, not the requester, and that is load-bearing.** This case
+    -- used the requester's id, so once INV-AUT-02's trigger existed it fired first and this
+    -- case began proving *that* instead -- leaving the unique index droppable in silence.
+    -- Adding a constraint invalidates every case that inserts a row it touches, and the
+    -- author of the constraint is the last person who will notice; the mutation sweep is
+    -- what notices, and here it was the suite refusing to start at all.
     BEGIN
         INSERT INTO iam.approval_decisions (tenant_id, request_id, decided_by, decision)
         VALUES ('11111111-1111-4111-8111-111111111111',
                 'ffffffff-0000-4000-8000-000000000004',
-                'eeeeeeee-0000-4000-8000-000000000002', 'rejected');
+                'eeeeeeee-0000-4000-8000-00000000000a', 'rejected');
         RAISE EXCEPTION 'CHECK 32 FAILED: one approver decided the same request twice';
     EXCEPTION
         WHEN unique_violation THEN NULL;
@@ -48198,4 +48235,157 @@ BEGIN
 END $$;
 ROLLBACK;
 
-\echo 'tenant isolation: 112/112 checks passed'
+-- ========================================================= CHECK 113 (MOD-026)
+--
+-- INV-AUT-02 in the database, and the snapshot it rests on.
+--
+-- Two halves, and neither is evidence without the other. The trigger refuses an approver who
+-- is the requester **when the request's snapshot says separation of duties applies** -- so a
+-- policy that permits self-approval still can, which is the invariant's own "unless explicit
+-- emergency policy applies". And the snapshot has to be a snapshot: MOD-008's review found
+-- that re-deriving the terms let somebody switch separation of duties off for a request
+-- already in flight, and the fix left the snapshotted column itself writable by a table-wide
+-- grant.
+BEGIN;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+DECLARE
+    probe integer := 0;
+    offender text;
+BEGIN
+    -- ---- the grant: two columns, and not the terms.
+    IF has_table_privilege('veyro_iam_app', 'iam.approval_requests', 'UPDATE') THEN
+        RAISE EXCEPTION
+            'CHECK 113 FAILED: iam.approval_requests carries a table-wide UPDATE grant, so '
+            'the snapshotted terms an approval rests on are rewritable';
+    END IF;
+    IF NOT has_column_privilege('veyro_iam_app', 'iam.approval_requests', 'state', 'UPDATE')
+       OR NOT has_column_privilege('veyro_iam_app', 'iam.approval_requests', 'decided_at',
+                                   'UPDATE') THEN
+        RAISE EXCEPTION
+            'CHECK 113 FAILED: the service settles a request by writing state and '
+            'decided_at, and one of them is not granted';
+    END IF;
+    FOR offender IN
+        SELECT a.attname::text
+          FROM pg_class c
+          JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped
+         WHERE c.relnamespace = 'iam'::regnamespace
+           AND c.relname = 'approval_requests'
+           AND a.attname NOT IN ('state', 'decided_at')
+           AND has_column_privilege('veyro_iam_app', c.oid, a.attname, 'UPDATE')
+    LOOP
+        RAISE EXCEPTION
+            'CHECK 113 FAILED: veyro_iam_app can write iam.approval_requests.%, which the '
+            'service never does -- a granted column no service writes is an unattributed '
+            'edit path, and this one is through the terms an approval cites', offender;
+    END LOOP;
+
+    -- ---- the trigger, branch by branch.
+    --
+    -- Branch 1: separation of duties applies and the decider is the requester. The seeded
+    -- request `...0004` is `separation_of_duties = true`, requested by `...0002`.
+    BEGIN
+        INSERT INTO iam.approval_decisions (tenant_id, request_id, decided_by, decision)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'ffffffff-0000-4000-8000-000000000004',
+                'eeeeeeee-0000-4000-8000-000000000002', 'approved');
+        RAISE EXCEPTION
+            'CHECK 113 FAILED: the requester decided their own request under separation of '
+            'duties';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 113 FAILED%' THEN RAISE; END IF;
+            -- **The sentence, not the exception class.** A `NOT EXISTS`-shaped branch above
+            -- answers for a missing parent, and the unique index answers for a repeat; a
+            -- probe counting any `raise_exception` would be satisfied by either.
+            IF sqlerrm NOT LIKE '%may not decide their own request%' THEN
+                RAISE EXCEPTION
+                    'CHECK 113 FAILED: the self-approval was refused by something else: %',
+                    sqlerrm;
+            END IF;
+            probe := probe + 1;
+    END;
+
+    -- Branch 2, the permission rather than the refusal: with the snapshot saying separation
+    -- of duties does **not** apply, the same person may decide. Without this the trigger
+    -- could refuse unconditionally and nothing would notice -- which is the version the
+    -- service does not implement, and two encodings that disagree is MOD-020's waitlist edge.
+    INSERT INTO iam.approval_requests
+        (tenant_id, request_id, action, resource_type, requested_by, required_approvals,
+         separation_of_duties, required_permissions, expires_at)
+    VALUES ('11111111-1111-4111-8111-111111111111',
+            'ffffffff-0000-4000-8000-00000000000e', 'billing.refund.issue', 'invoice',
+            'eeeeeeee-0000-4000-8000-000000000002', 1, false,
+            ARRAY['billing.refund.approve'], now() + interval '1 day');
+    -- **Wrapped, because a probe has to fail under its own name.** Written as a bare INSERT
+    -- this aborted the block with the *trigger's* message when the trigger was wrong, which
+    -- a sweep cannot tell from an unrelated error -- it reported MUTERR for a mutation this
+    -- branch had correctly caught. A probe that proves a permission needs a handler exactly
+    -- as much as one that proves a refusal.
+    BEGIN
+        INSERT INTO iam.approval_decisions (tenant_id, request_id, decided_by, decision)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'ffffffff-0000-4000-8000-00000000000e',
+                'eeeeeeee-0000-4000-8000-000000000002', 'approved');
+        probe := probe + 1;
+    EXCEPTION
+        WHEN OTHERS THEN
+            RAISE EXCEPTION
+                'CHECK 113 FAILED: a policy that permits self-approval was refused anyway, '
+                'so the trigger and app/authorization/approval.py disagree: %', sqlerrm;
+    END;
+
+    -- Branch 3: a decision naming a request that does not exist is the **foreign key's**
+    -- refusal and not the trigger's. The trigger returns rather than raising there precisely
+    -- so the two stay distinguishable -- MOD-019's two session triggers and MOD-021's three
+    -- `NOT EXISTS` branches are what that costs when they do not.
+    BEGIN
+        INSERT INTO iam.approval_decisions (tenant_id, request_id, decided_by, decision)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'ffffffff-0000-4000-8000-0000000000ff',
+                'eeeeeeee-0000-4000-8000-000000000002', 'approved');
+        RAISE EXCEPTION
+            'CHECK 113 FAILED: a decision was recorded against a request that does not exist';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 113 FAILED%' THEN RAISE; END IF;
+            RAISE EXCEPTION
+                'CHECK 113 FAILED: the missing request was refused by the trigger rather '
+                'than by the foreign key, so the two cannot be told apart: %', sqlerrm;
+        WHEN foreign_key_violation THEN
+            probe := probe + 1;
+    END;
+
+    IF probe <> 3 THEN
+        RAISE EXCEPTION 'CHECK 113 FAILED: ran % of 3 INV-AUT-02 probes', probe;
+    END IF;
+
+    -- ---- and the function itself, which `md5(prosrc)` cannot see.
+    --
+    -- Nothing in this file had ever read `proconfig`, `prosecdef` or `tgenabled` for `iam`:
+    -- those sweeps were written for `plt01` modules, and this is the first trigger function
+    -- the identity plane has ever had. A reset `search_path`, a `SECURITY DEFINER`, a PUBLIC
+    -- execute grant or a disabled trigger each defeat it while leaving the definition intact.
+    IF (SELECT proconfig FROM pg_proc
+         WHERE oid = 'iam.approval_decider_is_not_the_requester()'::regprocedure)
+        IS DISTINCT FROM ARRAY['search_path=pg_catalog, pg_temp'] THEN
+        RAISE EXCEPTION 'CHECK 113 FAILED: the trigger function has no pinned search_path';
+    END IF;
+    IF (SELECT prosecdef FROM pg_proc
+         WHERE oid = 'iam.approval_decider_is_not_the_requester()'::regprocedure) THEN
+        RAISE EXCEPTION 'CHECK 113 FAILED: the trigger function is SECURITY DEFINER';
+    END IF;
+    IF has_function_privilege('public', 'iam.approval_decider_is_not_the_requester()',
+                              'EXECUTE') THEN
+        RAISE EXCEPTION 'CHECK 113 FAILED: PUBLIC may execute the trigger function';
+    END IF;
+    IF (SELECT tgenabled FROM pg_trigger
+         WHERE tgrelid = 'iam.approval_decisions'::regclass
+           AND tgname = 'approval_decisions_decider_is_not_the_requester') <> 'O' THEN
+        RAISE EXCEPTION 'CHECK 113 FAILED: the trigger is disabled';
+    END IF;
+END $$;
+ROLLBACK;
+
+\echo 'tenant isolation: 113/113 checks passed'

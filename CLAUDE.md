@@ -3892,14 +3892,57 @@ Known gaps, deliberate:
 - **The timeline does not know about any of this.** MOD-014 projects nine event types and none
   of MOD-022's six is among them, so a member's timeline shows no door they walked through.
 
-**MOD-026 (AUT-02 tasks, cases, approvals and SLA) -- slice 1 of 4, and the rest is named
-rather than implied.** Seven `tsk_` tables in `plt01` under the same forced RLS, three trigger
+**MOD-026 (AUT-02 tasks, cases, approvals and SLA) -- slice 1 of 4 plus slice 2's first job,
+and the rest is named rather than implied.** Seven `tsk_` tables in `plt01` under the same forced RLS, three trigger
 functions, and `app/tasks/` beside them: a business calendar, work queues, tasks with their
 checklists and dependencies, and cases with an insert-only timeline. Design record:
 `knowledge/00-Decisions/ADR-0009-mod026-tasks-cases-approvals-sla.md`. **There is no service
 layer and no route yet** -- that is slice 1's honest boundary, and a half-wired module would
 be worse than a named one. Proven: isolation check 112, mutation-tested with 5 mutations, all
 caught; 19 domain unit tests with no database; 9 domain mutations, all caught.
+
+**INV-AUT-02 is in the database now, and putting it there found three things.** The invariant
+is "approvers cannot approve their own restricted actions unless explicit emergency policy
+applies", and it lived in `app/authorization/approval.py` and nowhere else --
+`iam.approval_decisions` carried one CHECK, on the decision domain. `product/0004_approval_
+integrity.sql` adds the trigger, and it is **conditional**, because `approval.py` reads
+`if policy.separation_of_duties and decided_by == requested_by`: a policy may legitimately
+permit self-approval, which is the invariant's own "unless" clause, and a trigger refusing it
+outright would be MOD-020's waitlist shape. It reads the request's **snapshot**, never the
+policy, because re-deriving is the defect the snapshot exists to prevent. Isolation check 113,
+with the trigger's two live branches probed by their sentence and the third deliberately left
+to the foreign key. **Proven: 9 mutations, 8 caught by check 113 and one by check 30** --
+which is reported that way rather than as nine, because a mutation caught by a sibling proves
+the sibling. That ninth makes the trigger raise for a request it cannot find instead of
+returning, and the cross-tenant case in check 30 is what sees it first; check 30 names the
+confusion now rather than dying with the trigger's message, which is this build's own remedy
+for a red suite with a misleading cause. The sweep also found a defect in check 113 itself:
+the branch proving a **permission** was a bare INSERT, so when the trigger was wrong the block
+aborted with the trigger's message and the harness reported MUTERR for a mutation the branch
+had correctly caught. **A probe that proves a permission needs a handler exactly as much as
+one that proves a refusal.**
+
+- **The snapshot was rewritable, which made it not a snapshot.** MOD-008's review stopped the
+  terms being re-derived at decision time; the grant was table-wide `UPDATE`, so
+  `separation_of_duties` and `requested_by` were writable and the same attack worked one step
+  over. The service writes `state` and `decided_at`, in one statement, and the grant says so
+  now. **The wider finding is named rather than fixed here: the whole `iam` plane is
+  table-wide -- fifteen tables, zero column-scoped grants** -- while every `plt01` module
+  since MOD-005 is column-scoped. The approval path is MOD-026's because the invariant is;
+  the other thirteen are MOD-008's.
+- **The new trigger refused the isolation suite's own seed.** `isolation.sql` had one identity
+  per tenant from MOD-008 onwards, so its approval was requested and decided by the same
+  person with separation of duties on -- a row the service refuses and the invariant forbids,
+  sitting in the evidence for as long as the table has existed. The seed has a second identity
+  now, which is what the browser fixture needed for MOD-022's two-party publication.
+- **And it invalidated a case, which is this build's own rule met by its author.** CHECK 32's
+  "one decision per approver per request" inserted a second decision by the *requester*, so
+  the trigger fired before the unique index and that case began proving the trigger, leaving
+  the index droppable in silence.
+
+**`SELECT ... FOR UPDATE` works under a column-scoped grant**, measured rather than reasoned
+about -- `has_table_privilege(..., 'UPDATE')` reads false afterwards, so deriving the answer
+from it would have been wrong, and the trigger's lock depends on it.
 
 **The decision that shaped the module is that there is one approval engine and it is
 MOD-008's.** `iam.approval_policies` already carries `action`, `threshold_minor`,
