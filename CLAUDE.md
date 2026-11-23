@@ -3892,13 +3892,28 @@ Known gaps, deliberate:
 - **The timeline does not know about any of this.** MOD-014 projects nine event types and none
   of MOD-022's six is among them, so a member's timeline shows no door they walked through.
 
-**MOD-026 (AUT-02 tasks, cases, approvals and SLA) -- slice 1 of 4 plus slice 2's first job,
-and the rest is named rather than implied.** Seven `tsk_` tables in `plt01` under the same forced RLS, three trigger
+**MOD-026 (AUT-02 tasks, cases, approvals and SLA) -- slice 1 complete plus slice 2's first
+job, and the rest is named rather than implied.** Seven `tsk_` tables in `plt01` under the same forced RLS, three trigger
 functions, and `app/tasks/` beside them: a business calendar, work queues, tasks with their
-checklists and dependencies, and cases with an insert-only timeline. Design record:
-`knowledge/00-Decisions/ADR-0009-mod026-tasks-cases-approvals-sla.md`. **There is no service
-layer and no route yet** -- that is slice 1's honest boundary, and a half-wired module would
-be worse than a named one. Proven: isolation check 112, mutation-tested with 5 mutations, all
+checklists and dependencies, and cases with an insert-only timeline, with a service and
+seventeen routes through `permit`. Design record:
+`knowledge/00-Decisions/ADR-0009-mod026-tasks-cases-approvals-sla.md`.
+
+**Slice 1 landed in two parts and the second was prompted by this file's own standard.** 1a
+was the schema and the pure decisions, and the ADR says a slice lands whole *including* the
+service and the routes -- so 1a was a schema with no reader, this build's most-repeated
+finding, written down rather than quietly redefined. 1b is the service, the routes, the eight
+permissions and the masking.
+
+**Writing the service found two defects in 1a**, which is the argument for not stopping at a
+schema. `0019` gave tasks and cases **no idempotency key**, so a timed-out retry would have
+created a second task -- every other module's create takes one, and MOD-017's review found
+exactly that in three commands at once. And the cycle check used `SELECT ... FOR UPDATE` on
+`tsk_dependencies`, which has no UPDATE grant: **that needs the UPDATE privilege and fails
+with `permission denied` at runtime**, which the rules file records and I wrote anyway. An
+advisory lock needs no table privilege, which is MOD-009's precedent, and the lock is wanted
+rather than incidental -- two concurrent inserts can each be acyclic alone and form a loop
+together. Proven: isolation check 112, mutation-tested with 5 mutations, all
 caught; 19 domain unit tests with no database; 9 domain mutations, all caught.
 
 **INV-AUT-02 is in the database now, and putting it there found three things.** The invariant
@@ -4028,12 +4043,27 @@ Things worth knowing before extending it:
   the free-text columns the name-matching sweep will never find -- a task title is the
   likeliest place in this module for a member's name, because "call Hala about her card" is
   how one gets written.
+- **A 422 here never names the field, and a test of mine asserted it did.** This application
+  replaced FastAPI's validation handler because the default echoed the offending input into
+  its own 422 and `json.dumps` then refused a `NaN` the parser had accepted -- a 500 from
+  inside a 422 on every route. So a `Literal` on a body buys a refusal at the boundary rather
+  than a 500 from a CHECK, and the answer is `{"error": "invalid_request"}` and nothing more.
+  Worth knowing before writing a route comment that promises otherwise, which two of mine did.
+- **The masking is decided by the gate, in the route.** A service test passing
+  `may_read_reasons=False` proves the service and not that the route computes it, which is
+  MOD-014's finding -- no test had ever called a `/people` route successfully, so the gate
+  return and the permission resolution were exercised by nothing and four defects passed a
+  green suite.
 
 Known gaps, deliberate:
 
-- **No service, no routes and no screens.** Slice 1 is the schema and the decisions. The
-  three screens AUT-02 owns -- ADM-TSK-01, ADM-CC-06 and ADM-CC-07 -- are slice 4, and the
-  owner directive of 2026-11-18 makes them part of the module rather than an afterthought.
+- **No screens.** The three AUT-02 owns -- ADM-TSK-01, ADM-CC-06 and ADM-CC-07 -- are
+  slice 4, and the owner directive of 2026-11-18 makes them part of the module rather than an
+  afterthought. Until they exist MOD-026 is a backend with no surface, which is the state
+  MOD-015 has been in since it was built.
+- **Nothing publishes an event.** AUT-02 names none in the catalogue this build carries, and
+  inventing one would be inventing product -- but a task raised and settled is exactly the
+  kind of thing MOD-014's timeline projects, and it projects none of them.
 - **Approvals, SLA clocks and the reporting read are slices 2, 3 and 4**: R04 and R05 extend
   `iam` with stages and delegation, R06 adds the clock, its pauses and escalation, and R07 is
   the workload read the three screens draw.

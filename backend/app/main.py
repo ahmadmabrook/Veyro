@@ -70,6 +70,7 @@ from app.observability import service as observability
 from app.people import service as people
 from app.privacy import service as privacy
 from app.scheduling import service as scheduling
+from app.tasks import service as tasks
 from app.tenancy import service
 from app.worker import registry as worker_registry
 
@@ -2835,6 +2836,132 @@ class AccessSnapshotBody(BaseModel):
     content_digest: str = Field(min_length=64, max_length=64, pattern=_SHA256)
     ttl_minutes: int = Field(ge=1, le=720)
     signature_ref: str | None = Field(default=None, max_length=500)
+    correlation_id: str
+
+
+# ---------------------------------------------------------------- MOD-026 (AUT-02)
+#
+# **Every subject and status is a `Literal`, not a string.** The schema carries the same
+# closed sets and `app/tasks/` carries them a third time; what a `Literal` adds is a refusal
+# at the boundary instead of a 500 from a CHECK, which is the id-validation lesson applied to
+# an enumeration. **It does not name the field**: this application replaced FastAPI's
+# validation handler because the default echoed the offending input into its own 422 and
+# `json.dumps` then refused a `NaN` the parser had accepted -- a 500 from inside a 422 on
+# every route -- so the answer is `{"error": "invalid_request"}` and nothing more. The three
+# encodings are compared by `test_tasks_domain.py` so they cannot drift: MOD-020 shipped two
+# that agreed with each other and not with the service.
+_SUBJECT_KIND = Literal[
+    "member", "lead", "tenant", "invoice", "incident", "device", "booking", "asset",
+    "workflow"]
+_WORK_PRIORITY = Literal["low", "normal", "high", "urgent"]
+
+
+class TaskQueueBody(BaseModel):
+    """A work queue. `location_id` is a label rather than a boundary; see the listing."""
+
+    queue_key: str = Field(min_length=2, max_length=63)
+    display_name: str = Field(min_length=1, max_length=200)
+    location_id: str | None = None
+    correlation_id: str
+
+
+class BusinessHoursBody(BaseModel):
+    """One window on a location's calendar.
+
+    **Exactly one of `weekday` and `on_date`**, which the schema also refuses: a row with both
+    is two rules and a row with neither binds nothing while reading as a calendar entry.
+    `opens_at` and `closes_at` are `HH:MM`, parsed at the boundary so a malformed one is a 422
+    naming the field rather than a 500 from `psycopg`.
+    """
+
+    location_id: str
+    kind: Literal["open", "closed"]
+    weekday: int | None = Field(default=None, ge=0, le=6)
+    on_date: date | None = None
+    opens_at: str | None = Field(default=None, max_length=8)
+    closes_at: str | None = Field(default=None, max_length=8)
+    note: str | None = Field(default=None, max_length=500)
+    correlation_id: str
+
+
+class TaskCaseBody(BaseModel):
+    """COM-02-R03's container. `idempotency_key` is required, because a create that is not
+    idempotent to the caller tells a client whose request timed out that the work failed."""
+
+    case_number: str = Field(min_length=2, max_length=32)
+    title: str = Field(min_length=1, max_length=500)
+    queue_id: str
+    subject_kind: _SUBJECT_KIND
+    subject_id: str | None = None
+    priority: _WORK_PRIORITY = "normal"
+    recurs_from_case_id: str | None = None
+    idempotency_key: str = Field(min_length=1, max_length=200)
+    correlation_id: str
+
+
+class CaseEntryBody(BaseModel):
+    """A line on a case's timeline. `document_ref` is a locator for a file this build does
+    not hold -- there is no object store -- so the shape is what keeps the absence of a
+    payload column a control rather than a naming convention."""
+
+    entry_kind: Literal["note", "communication", "document", "status_change", "escalation"]
+    summary: str = Field(min_length=1, max_length=5000)
+    document_ref: str | None = Field(default=None, max_length=500)
+    occurred_at: datetime | None = None
+    correlation_id: str
+
+
+class CaseSettleBody(BaseModel):
+    """Resolve or close. A case moves forward only; a problem that returns is a new case
+    citing this one."""
+
+    target: Literal["resolved", "closed"]
+    resolution_reason: str = Field(min_length=1, max_length=2000)
+    correlation_id: str
+
+
+class TaskBody(BaseModel):
+    """AUT-02-R01 and R02."""
+
+    queue_id: str
+    case_id: str | None = None
+    title: str = Field(min_length=1, max_length=500)
+    subject_kind: _SUBJECT_KIND
+    subject_id: str | None = None
+    assignee_person_id: str | None = None
+    priority: _WORK_PRIORITY = "normal"
+    due_at: datetime | None = None
+    evidence_ref: str | None = Field(default=None, max_length=500)
+    idempotency_key: str = Field(min_length=1, max_length=200)
+    correlation_id: str
+
+
+class TaskStatusBody(BaseModel):
+    """`reason` is required by the service for a settlement and refused as blank there, which
+    is where the rule can say why: "why was this not done" is the question the outcome
+    reporting exists to answer."""
+
+    target: Literal["open", "in_progress", "blocked", "done", "cancelled"]
+    reason: str | None = Field(default=None, max_length=2000)
+    correlation_id: str
+
+
+class TaskAssignBody(BaseModel):
+    """`None` is a real value: unassigning returns the work to its queue, which is a state the
+    workload report has to be able to count rather than an incomplete row."""
+
+    assignee_person_id: str | None = None
+    correlation_id: str
+
+
+class TaskDependencyBody(BaseModel):  # noqa: D101
+    depends_on_task_id: str
+    correlation_id: str
+
+
+class ChecklistItemBody(BaseModel):  # noqa: D101
+    ordinal: int = Field(ge=1, le=200)
+    label: str = Field(min_length=1, max_length=500)
     correlation_id: str
 
 
@@ -9136,6 +9263,256 @@ def create_app(
             credential_id=optional_uuid(credential_id, "credential_id"),
             person_id=optional_uuid(person_id, "person_id"),
             may_read_private=may_read_private, limit=max(1, min(limit, 500)))
+
+    # ------------------------------------------------------------ MOD-026 (AUT-02)
+    #
+    # **Every one of these is routine**, which is stated in the catalogue and worth repeating
+    # where somebody reads the routes: a queue and a calendar are edited by the people who
+    # run the floor, and raising or settling a task is the ordinary work of a shift. What
+    # bounds the write permissions is that both configuration acts are correctable -- a
+    # retirement can be lifted and a calendar window is withdrawn rather than deleted.
+    #
+    # **The two prose columns are masked by the gate, not by the caller.** A read asks
+    # `held_permissions` whether this session could write the thing it is reading the reason
+    # for, which is MOD-019's trade: whoever may settle a task may read why one was settled.
+
+    @app.post("/tasks/queues", status_code=201)
+    def create_task_queue(
+        tenant_id: TenantId, session: Session, body: TaskQueueBody
+    ) -> dict[str, Any]:
+        """Open a work queue. Idempotent on `queue_key`, which is the queue's identity."""
+        permit(session, "tasks.queue.write", body.correlation_id)
+        return tasks.create_queue(
+            tenant_pool, tenant_id, queue_key=body.queue_key,
+            display_name=body.display_name,
+            location_id=optional_uuid(body.location_id, "location_id"),
+            actor_id=session["identity_id"], correlation_id=body.correlation_id)
+
+    @app.post("/tasks/queues/{queue_id}/retire")
+    def retire_task_queue(
+        tenant_id: TenantId, session: Session, queue_id: str, body: ReasonBody
+    ) -> dict[str, Any]:
+        """Stop a queue taking work. The work left in it is counted, not refused."""
+        permit(session, "tasks.queue.write", body.correlation_id)
+        return tasks.retire_queue(
+            tenant_pool, tenant_id, require_uuid(queue_id, "queue_id"),
+            reason=body.reason, actor_id=session["identity_id"],
+            correlation_id=body.correlation_id)
+
+    @app.get("/tasks/queues")
+    def list_task_queues(
+        tenant_id: TenantId, session: Session, include_retired: bool = False,
+        limit: Annotated[int, Query(ge=1, le=100)] = 100,
+    ) -> dict[str, Any]:
+        """The tenant's queues. A retired one is a state a surface has to be able to show."""
+        permit(session, "tasks.queue.read")
+        return tasks.list_queues(
+            tenant_pool, tenant_id, include_retired=include_retired, limit=limit)
+
+    @app.post("/tasks/calendar", status_code=201)
+    def set_task_business_hours(
+        tenant_id: TenantId, session: Session, body: BusinessHoursBody
+    ) -> dict[str, Any]:
+        """When a club's people are at work. INV-AUT-02's calendar half."""
+        permit(session, "tasks.calendar.write", body.correlation_id)
+        try:
+            opens = clock_time.fromisoformat(body.opens_at) if body.opens_at else None
+            closes = clock_time.fromisoformat(body.closes_at) if body.closes_at else None
+        except ValueError:
+            raise InvalidRequest("a_calendar_time_is_hh_mm") from None
+        return tasks.set_business_hours(
+            tenant_pool, tenant_id,
+            location_id=require_uuid(body.location_id, "location_id"), kind=body.kind,
+            weekday=body.weekday, on_date=body.on_date, opens_at=opens, closes_at=closes,
+            note=body.note, actor_id=session["identity_id"],
+            correlation_id=body.correlation_id)
+
+    @app.post("/tasks/calendar/{window_id}/withdraw")
+    def withdraw_task_business_hours(
+        tenant_id: TenantId, session: Session, window_id: str, body: ReasonBody
+    ) -> dict[str, Any]:
+        """Take a window back. A withdrawal, not a delete."""
+        permit(session, "tasks.calendar.write", body.correlation_id)
+        return tasks.withdraw_business_hours(
+            tenant_pool, tenant_id, require_uuid(window_id, "window_id"),
+            reason=body.reason, actor_id=session["identity_id"],
+            correlation_id=body.correlation_id)
+
+    @app.get("/tasks/calendar")
+    def read_task_business_hours(
+        tenant_id: TenantId, session: Session, location_id: str,
+        include_withdrawn: bool = False,
+    ) -> dict[str, Any]:
+        """A location's calendar, read in the location's own timezone."""
+        permit(session, "tasks.calendar.read")
+        return tasks.read_business_hours(
+            tenant_pool, tenant_id,
+            location_id=require_uuid(location_id, "location_id"),
+            include_withdrawn=include_withdrawn)
+
+    @app.post("/tasks/cases", status_code=201)
+    def open_task_case(
+        tenant_id: TenantId, session: Session, body: TaskCaseBody
+    ) -> dict[str, Any]:
+        """AUT-02-R03's container."""
+        permit(session, "tasks.case.write", body.correlation_id)
+        return tasks.open_case(
+            tenant_pool, tenant_id, case_number=body.case_number, title=body.title,
+            queue_id=require_uuid(body.queue_id, "queue_id"),
+            subject_kind=body.subject_kind,
+            subject_id=optional_uuid(body.subject_id, "subject_id"),
+            priority=body.priority,
+            recurs_from_case_id=optional_uuid(
+                body.recurs_from_case_id, "recurs_from_case_id"),
+            idempotency_key=body.idempotency_key, actor_id=session["identity_id"],
+            correlation_id=body.correlation_id)
+
+    @app.post("/tasks/cases/{case_id}/entries", status_code=201)
+    def add_task_case_entry(
+        tenant_id: TenantId, session: Session, case_id: str, body: CaseEntryBody
+    ) -> dict[str, Any]:
+        """A line on the timeline. Insert-only: a correction is another entry."""
+        permit(session, "tasks.case.write", body.correlation_id)
+        return tasks.add_case_entry(
+            tenant_pool, tenant_id, require_uuid(case_id, "case_id"),
+            entry_kind=body.entry_kind, summary=body.summary,
+            document_ref=body.document_ref, occurred_at=body.occurred_at,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id)
+
+    @app.post("/tasks/cases/{case_id}/settle")
+    def settle_task_case(
+        tenant_id: TenantId, session: Session, case_id: str, body: CaseSettleBody
+    ) -> dict[str, Any]:
+        """Resolve or close. Forward only; the first resolution's attribution stays."""
+        permit(session, "tasks.case.write", body.correlation_id)
+        return tasks.settle_case(
+            tenant_pool, tenant_id, require_uuid(case_id, "case_id"), target=body.target,
+            resolution_reason=body.resolution_reason, actor_id=session["identity_id"],
+            correlation_id=body.correlation_id)
+
+    @app.get("/tasks/cases")
+    def list_task_cases(
+        tenant_id: TenantId, session: Session, queue_id: str | None = None,
+        status: str | None = None, limit: Annotated[int, Query(ge=1, le=100)] = 100,
+    ) -> dict[str, Any]:
+        """The tenant's cases, newest first."""
+        permit(session, "tasks.case.read")
+        return tasks.list_cases(
+            tenant_pool, tenant_id,
+            may_read_reasons=("tasks.case.write" in held_permissions(session)),
+            queue_id=optional_uuid(queue_id, "queue_id"), status=status, limit=limit)
+
+    @app.get("/tasks/cases/{case_id}")
+    def read_task_case(
+        tenant_id: TenantId, session: Session, case_id: str
+    ) -> dict[str, Any]:
+        """One case with its timeline and the tasks filed under it."""
+        permit(session, "tasks.case.read")
+        return tasks.read_case(
+            tenant_pool, tenant_id, require_uuid(case_id, "case_id"),
+            may_read_reasons=("tasks.case.write" in held_permissions(session)))
+
+    @app.post("/tasks", status_code=201)
+    def create_work_task(
+        tenant_id: TenantId, session: Session, body: TaskBody
+    ) -> dict[str, Any]:
+        """Raise a task. AUT-02-R01 and R02."""
+        permit(session, "tasks.task.write", body.correlation_id)
+        return tasks.create_task(
+            tenant_pool, tenant_id, queue_id=require_uuid(body.queue_id, "queue_id"),
+            case_id=optional_uuid(body.case_id, "case_id"), title=body.title,
+            subject_kind=body.subject_kind,
+            subject_id=optional_uuid(body.subject_id, "subject_id"),
+            assignee_person_id=optional_uuid(
+                body.assignee_person_id, "assignee_person_id"),
+            priority=body.priority, due_at=body.due_at, evidence_ref=body.evidence_ref,
+            idempotency_key=body.idempotency_key, actor_id=session["identity_id"],
+            correlation_id=body.correlation_id)
+
+    @app.post("/tasks/{task_id}/status")
+    def change_work_task_status(
+        tenant_id: TenantId, session: Session, task_id: str, body: TaskStatusBody
+    ) -> dict[str, Any]:
+        """Move a task. A settlement states why; an ordinary move does not."""
+        permit(session, "tasks.task.write", body.correlation_id)
+        return tasks.change_task_status(
+            tenant_pool, tenant_id, require_uuid(task_id, "task_id"), target=body.target,
+            reason=body.reason, actor_id=session["identity_id"],
+            correlation_id=body.correlation_id)
+
+    @app.post("/tasks/{task_id}/assign")
+    def assign_work_task(
+        tenant_id: TenantId, session: Session, task_id: str, body: TaskAssignBody
+    ) -> dict[str, Any]:
+        """Point a task at somebody, or at nobody."""
+        permit(session, "tasks.task.write", body.correlation_id)
+        return tasks.assign_task(
+            tenant_pool, tenant_id, require_uuid(task_id, "task_id"),
+            assignee_person_id=optional_uuid(
+                body.assignee_person_id, "assignee_person_id"))
+
+    @app.post("/tasks/{task_id}/dependencies", status_code=201)
+    def add_work_task_dependency(
+        tenant_id: TenantId, session: Session, task_id: str, body: TaskDependencyBody
+    ) -> dict[str, Any]:
+        """Say this task waits on that one. A cycle is refused here, not by the schema."""
+        permit(session, "tasks.task.write", body.correlation_id)
+        return tasks.add_dependency(
+            tenant_pool, tenant_id, require_uuid(task_id, "task_id"),
+            depends_on_task_id=require_uuid(
+                body.depends_on_task_id, "depends_on_task_id"),
+            actor_id=session["identity_id"], correlation_id=body.correlation_id)
+
+    @app.post("/tasks/{task_id}/checklist", status_code=201)
+    def add_work_task_checklist_item(
+        tenant_id: TenantId, session: Session, task_id: str, body: ChecklistItemBody
+    ) -> dict[str, Any]:
+        """One step on a task's checklist."""
+        permit(session, "tasks.task.write", body.correlation_id)
+        return tasks.add_checklist_item(
+            tenant_pool, tenant_id, require_uuid(task_id, "task_id"), ordinal=body.ordinal,
+            label=body.label, actor_id=session["identity_id"],
+            correlation_id=body.correlation_id)
+
+    @app.post("/tasks/checklist/{item_id}/complete")
+    def complete_work_task_checklist_item(
+        tenant_id: TenantId, session: Session, item_id: str, body: CommercialActionBody
+    ) -> dict[str, Any]:
+        """Tick a step, once, with a name on it."""
+        permit(session, "tasks.task.write", body.correlation_id)
+        return tasks.complete_checklist_item(
+            tenant_pool, tenant_id, require_uuid(item_id, "item_id"),
+            actor_id=session["identity_id"], correlation_id=body.correlation_id)
+
+    @app.get("/tasks")
+    def list_work_tasks(
+        tenant_id: TenantId, session: Session, queue_id: str | None = None,
+        assignee_person_id: str | None = None, status: str | None = None,
+        limit: Annotated[int, Query(ge=1, le=100)] = 100,
+    ) -> dict[str, Any]:
+        """The tenant's tasks: a queue's backlog, or one person's work.
+
+        **No name, no address and no birth date**: this permission is routine, so a legal
+        name here would be a lateral read path around `people.person.read`.
+        """
+        permit(session, "tasks.task.read")
+        return tasks.list_tasks(
+            tenant_pool, tenant_id,
+            may_read_reasons=("tasks.task.write" in held_permissions(session)),
+            queue_id=optional_uuid(queue_id, "queue_id"),
+            assignee_person_id=optional_uuid(
+                assignee_person_id, "assignee_person_id"),
+            status=status, limit=limit)
+
+    @app.get("/tasks/{task_id}")
+    def read_work_task(
+        tenant_id: TenantId, session: Session, task_id: str
+    ) -> dict[str, Any]:
+        """One task with its checklist and what is in its way."""
+        permit(session, "tasks.task.read")
+        return tasks.read_task(
+            tenant_pool, tenant_id, require_uuid(task_id, "task_id"),
+            may_read_reasons=("tasks.task.write" in held_permissions(session)))
 
     return app
 
