@@ -2703,6 +2703,65 @@ Proven: 16 HTTP tests, 9 domain tests with no database, 12 mutations in
 one per side -- and four schema mutations against it, every one caught by the case that names
 it.
 
+**A billing period can fall on a calendar boundary now, and the design needed it to.**
+ADR-0011. ADM-CRM-06 draws a conversion as "Club · monthly · JOD 55.00 / **Pro-rata to 31 Aug
+· JOD 21.29** / Then 55.00 from 1 Sep", and 21.29 is `55.00 × 12/31` -- twelve days left in a
+thirty-one-day August. There is no second reading: `renewal_period` tiles from the previous
+period's end and `activate_membership` set the first period to `starts_on` through
+`starts_on + 1 month - 1 day`, so a membership sold on the twentieth billed 20 Aug-19 Sep and
+the figure on the card was **not expressible**. `mem_membership_terms.billing_anchor` admits
+`agreement_start` and `calendar`, and five decisions carry it:
+
+- **The default is what this build already did, and that is load-bearing rather than
+  cautious.** `agreement_start` is today's behaviour exactly, so every membership already sold
+  keeps the periods it was sold on -- this module's premise is that a contract's figures do not
+  move, and a column that re-anchored live memberships on being added would have moved every
+  renewal date in the product, silently, for people who have been told a date. The mutation
+  that flips the default is caught by the regression asserting it, which is the only thing that
+  would have said so.
+- **Only the *first* period moves and `renewal_period` is untouched.** Under `calendar` the
+  first period ends at the end of the calendar unit containing its start, and the existing rule
+  -- the next period opens the day after the last one closed -- lands on calendar boundaries by
+  itself from then on: 20 Aug gives 20-31 Aug, then 1-30 Sep, then 1-31 Oct. A second tiling
+  rule would be a pair of dates that can disagree about when a member is billed, which is this
+  build's most-repeated finding, and a test walks three periods forward to say the one rule is
+  enough.
+- **`calendar` is refused for `weekly`, by the database.** A week has no calendar boundary this
+  build may name: whether one begins on Sunday or Monday is exactly the fact ADM-RPT-04 refuses
+  to assert, because no table or configuration key here records a working week -- and inventing
+  one to anchor a billing period would be that invention in the place it decides a charge.
+  `one_off` has no renewal to anchor. Both are a CHECK rather than a convention.
+- **The denominator is the full calendar unit, not the short period.** 21.29 is twelve days
+  over thirty-one, and prorating over the short period instead is twelve over twelve -- the
+  full price, disclosed as a pro-rata figure, which is the number a member would dispute.
+  `prorated_amount` is the one expression, imported rather than reimplemented, because MOD-016
+  shipped a second rounding rule once and a reviewer found it.
+- **`first_charge` answers four facts, because the design's own note says confusing two of
+  them is "the most common membership-sale complaint in the industry".** The part-period
+  amount, the boundary date, the day the recurring amount starts, and whether anything was
+  prorated at all -- the last stated rather than inferred, since a full first period returns
+  the full amount and a reader cannot otherwise tell "this contract does not prorate" from
+  "they happened to join on the first".
+
+Proven: 10 domain tests with no database; 12 Python mutations in
+`tests/mutate_billing_anchor.py`, all caught; three isolation cases in CHECK 78 -- two
+refusals and **a permission**, which is the only thing that can see a boundary rule refusing
+the ordinary monthly contract -- plus 8 schema mutations in
+`tests/sql/sweep_billing_anchor.py`, all caught; 5 HTTP tests, one of which asserts the
+constraint's own name in the 422.
+
+**And the permission case needed a product of its own, which is the finding beside it.** The
+four refusal cases already on `mem_membership_terms` all name a product the seed does not
+have: they pass because PostgreSQL evaluates a CHECK before the foreign-key trigger, so the
+reference is never reached. A case that needs its insert to *succeed* does reach it, and that
+is how the absence surfaced -- after a first attempt that moved the seeded row instead and
+came back `insufficient_privilege`, because the block runs as a role carrying
+`UPDATE (status, version)` only. Those four are weak rather than wrong, and the diagnostic
+reports the SQLSTATE now so the next one says which it is.
+
+**What this does not do is take the money.** The charge is disclosed and recorded; the payment
+provider is the external blocker, as it is for every other figure in this module.
+
 **A membership can end on a known date now, and the column for it was already there.**
 `mem_memberships.ends_on` existed from `0011`, was in the UPDATE grant, and was written only
 by a cancellation -- while three things that a fixed-length membership needs already honoured

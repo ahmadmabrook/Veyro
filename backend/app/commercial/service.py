@@ -189,7 +189,7 @@ def define_membership_terms(
     pool: Pool, tenant_id: str, *, product_id: str, contract_key: str,
     membership_kind: str, billing_period: str, actor_id: str, correlation_id: str,
     installment_count: int | None = None, prepaid_days: int | None = None,
-    trial_days: int | None = None,
+    trial_days: int | None = None, billing_anchor: str = "agreement_start",
 ) -> dict[str, Any]:
     """Attach membership terms to a catalogue product.
 
@@ -218,13 +218,13 @@ def define_membership_terms(
                 INSERT INTO plt01.mem_membership_terms
                     (tenant_id, product_id, contract_key, membership_kind, billing_period,
                      installment_count, prepaid_days, trial_days, is_off_peak, status,
-                     created_by, correlation_id)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'active', %s, %s)
+                     created_by, correlation_id, billing_anchor)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'active', %s, %s, %s)
                 RETURNING membership_terms_id
                 """,
                 (tenant_id, product_id, contract_key, membership_kind, billing_period,
                  installment_count, prepaid_days, trial_days,
-                 membership_kind == "off_peak", actor_id, correlation_id),
+                 membership_kind == "off_peak", actor_id, correlation_id, billing_anchor),
             ).fetchone()
         except errors.UniqueViolation:
             raise Conflict("this_product_already_has_membership_terms") from None
@@ -233,7 +233,11 @@ def define_membership_terms(
         assert row is not None
     return {"membership_terms_id": str(row[0]), "product_id": product_id,
             "membership_kind": membership_kind, "trial_days": trial_days,
-            "is_a_trial_product": trial_days is not None}
+            "is_a_trial_product": trial_days is not None,
+            # Answered because a retry reporting nothing about what it wrote is this build's
+            # most-repeated idempotency defect in its quietest form -- `activate_membership`
+            # pays for exactly that with `trial_days`.
+            "billing_anchor": billing_anchor}
 
 
 # ------------------------------------------------------------------ agreements
@@ -926,7 +930,10 @@ def activate_membership(
                     "ends_on": None if existing[6] is None else existing[6].isoformat(),
                     "repeated": True}
         period = conn.execute(
-            "SELECT billing_period, trial_days FROM plt01.mem_membership_terms"
+            # `billing_anchor` is appended rather than inserted, because every index below
+            # is positional and mypy cannot see one of them move.
+            "SELECT billing_period, trial_days, billing_anchor"
+            " FROM plt01.mem_membership_terms"
             " WHERE membership_terms_id = %s",
             (str(agreement[4]),),
         ).fetchone()
@@ -946,18 +953,15 @@ def activate_membership(
         # paid, and two copies of the arithmetic would be two definitions of when a trial ends.
         trial_days = None if period[1] is None else int(period[1])
         ends_on = trial_window_end(starts_on, trial_days)
-        if str(period[0]) == "one_off":
-            period_start, period_end = starts_on, starts_on
-        else:
-            # **The first period is the one before the first renewal**, which is why the
-            # argument is the day before the start. `renewal_period` returns the period
-            # *after* the date it is given, so passing `starts_on` returned a window opening
-            # the day after -- and the first version kept that window's end while overriding
-            # its start, making the first period one day longer than every later one. A
-            # monthly membership starting on 1 January ran to 1 February, the next period
-            # opened on 2 February, and the drift compounded for the life of the membership.
-            period_start, period_end = lifecycle.renewal_period(
-                current_end=starts_on - _days(1), billing_period=str(period[0]))
+        # **ADR-0011: the first period is `lifecycle.first_period`, which carries both
+        # anchors and the `one_off` case.** The three branches that used to be here -- a
+        # one-day window for a day pass, and `renewal_period` from the day *before* the start
+        # for everything else -- are that function now, with the off-by-one it was written to
+        # fix stated in its own docstring. A second copy of "when does the first period end"
+        # is a pair of dates that can disagree about when a member is billed.
+        period_start, period_end = lifecycle.first_period(
+            starts_on=starts_on, billing_period=str(period[0]),
+            anchor=str(period[2]))
         try:
             row = conn.execute(
                 """

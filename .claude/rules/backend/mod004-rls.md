@@ -2673,3 +2673,26 @@ now says so; the staleness-proof assertion beside them, that the three counts su
 registry's own V1 total, is what holds whatever they are. **A tripwire does not need its reason
 to be symmetric to be useful -- either direction brings somebody to the file -- but a reason
 written for one direction reads as a defect when the other one fires.**
+
+**A permission case has a different reachability profile from a refusal case, and that is why
+one is not a substitute for the other.** This file already says a permission probe is the only
+thing that can see a guard refusing too much. ADR-0011's case showed the second half: a case
+whose insert must *succeed* runs every constraint, every trigger and every foreign key on the
+table, where a refusal case stops at whichever rule answers first. So the four existing refusal
+cases on `mem_membership_terms` all name a product the seed does not have and pass anyway --
+PostgreSQL evaluates a CHECK before the foreign-key trigger, so the reference is never reached
+-- and the permission case failed on exactly that reference. Those four are weak rather than
+wrong: with their own constraint dropped they raise `foreign_key_violation`, which their
+`WHEN check_violation` handler does not catch, so the suite goes red with a misleading message
+rather than passing silently. **Adding a permission case to a table is therefore a test of the
+seed as much as of the constraint**, and it is worth doing for that alone.
+
+**And a permission case needs the SQLSTATE in its message, or its own failure is unreadable.**
+The first attempt avoided the missing product by moving the seeded row instead, and came back
+`CHECK 78 FAILED: ... was refused by ` -- an empty constraint name, because `CONSTRAINT_NAME`
+is blank for anything that is not a constraint violation. The cause was 42501,
+`insufficient_privilege`: the block runs as a runtime role carrying `UPDATE (status, version)`
+only, which is this file's own "run a trigger-branch block as the table owner" rule meeting a
+column-scoped grant. `GET STACKED DIAGNOSTICS ... state = RETURNED_SQLSTATE` beside the
+constraint name is what turns that into one readable line, and a permission case should report
+both rather than assuming a constraint answered.

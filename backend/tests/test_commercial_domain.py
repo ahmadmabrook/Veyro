@@ -1306,5 +1306,129 @@ class PlanChangeTests(unittest.TestCase):
                 billing_period="monthly")
 
 
+class BillingAnchorTests(unittest.TestCase):
+    """ADR-0011: which boundary a billing period falls on, and what the first one costs.
+
+    **The canvas is the fixture.** ADM-CRM-06 draws "Club · monthly · JOD 55.00 / Pro-rata to
+    31 Aug · JOD 21.29 / Then 55.00 from 1 Sep", so the first test asserts all four of those
+    facts against one conversion rather than restating the expression -- which would pass
+    against any arithmetic. 21.29 is 55.00 x 12/31, and there is no other reading: if the
+    period were anchored on the day she converts the boundary would fall in September and the
+    first charge would be the whole 55.00.
+    """
+
+    MONTHLY = 5500
+
+    def test_the_canvas_s_own_conversion_in_full(self) -> None:
+        amount, ends_on, next_start, steps = lifecycle.first_charge(
+            full_amount_minor=self.MONTHLY, starts_on=date(2026, 8, 20),
+            billing_period="monthly", anchor="calendar")
+        self.assertEqual(amount, 2129)
+        self.assertEqual(ends_on, date(2026, 8, 31))
+        self.assertEqual(next_start, date(2026, 9, 1))
+        # The denominator is the whole of August, which is what makes 12/31 rather than 12/12.
+        self.assertIn("2026-08-01..2026-08-31", " ".join(steps))
+
+    def test_the_periods_after_it_tile_on_calendar_months_with_no_second_rule(self) -> None:
+        """ADR-0011 D2. `renewal_period` is untouched, so this is the property that makes the
+        decision safe rather than a claim in the migration."""
+        _, ends_on, _, _ = lifecycle.first_charge(
+            full_amount_minor=self.MONTHLY, starts_on=date(2026, 8, 20),
+            billing_period="monthly", anchor="calendar")
+        seen = []
+        for _ in range(3):
+            start, ends_on = lifecycle.renewal_period(
+                current_end=ends_on, billing_period="monthly")
+            seen.append((start, ends_on))
+        self.assertEqual(seen, [
+            (date(2026, 9, 1), date(2026, 9, 30)),
+            (date(2026, 10, 1), date(2026, 10, 31)),
+            (date(2026, 11, 1), date(2026, 11, 30)),
+        ])
+
+    def test_the_default_anchor_is_what_this_build_already_did(self) -> None:
+        """ADR-0011 D1. The whole reason the default is `agreement_start` is that a membership
+        already sold keeps the periods it was sold on, so this is the regression that says
+        adding the column changed nothing for anybody."""
+        self.assertEqual(
+            lifecycle.first_period(starts_on=date(2026, 8, 20), billing_period="monthly"),
+            (date(2026, 8, 20), date(2026, 9, 19)))
+        amount, ends_on, next_start, steps = lifecycle.first_charge(
+            full_amount_minor=self.MONTHLY, starts_on=date(2026, 8, 20),
+            billing_period="monthly")
+        self.assertEqual(
+            (amount, ends_on, next_start), (5500, date(2026, 9, 19), date(2026, 9, 20)))
+        # And it says that it did not prorate, rather than leaving a reader to infer it from a
+        # figure that happens to equal the recurring one.
+        self.assertIn("nothing is prorated", " ".join(steps))
+
+    def test_the_first_period_is_not_one_day_longer_than_every_later_one(self) -> None:
+        """The off-by-one `activate_membership` paid for once: a monthly membership starting on
+        1 January ran to 1 February, the next period opened on 2 February, and the drift
+        compounded for the life of the membership."""
+        start, end = lifecycle.first_period(
+            starts_on=date(2026, 1, 1), billing_period="monthly")
+        self.assertEqual((start, end), (date(2026, 1, 1), date(2026, 1, 31)))
+
+    def test_joining_on_the_first_pays_the_whole_period_under_either_anchor(self) -> None:
+        """A calendar anchor only differs mid-unit, which is the case worth pinning because it
+        is the one a reader would assume the proration always applies to."""
+        for anchor in ("agreement_start", "calendar"):
+            amount, ends_on, _, _ = lifecycle.first_charge(
+                full_amount_minor=self.MONTHLY, starts_on=date(2026, 9, 1),
+                billing_period="monthly", anchor=anchor)
+            self.assertEqual(amount, 5500, anchor)
+            self.assertEqual(ends_on, date(2026, 9, 30), anchor)
+
+    def test_a_quarter_and_a_year_have_calendar_boundaries_too(self) -> None:
+        self.assertEqual(
+            lifecycle.calendar_unit(day=date(2026, 8, 20), billing_period="quarterly"),
+            (date(2026, 7, 1), date(2026, 9, 30)))
+        self.assertEqual(
+            lifecycle.calendar_unit(day=date(2026, 8, 20), billing_period="annual"),
+            (date(2026, 1, 1), date(2026, 12, 31)))
+        self.assertEqual(
+            lifecycle.first_period(
+                starts_on=date(2026, 8, 20), billing_period="quarterly", anchor="calendar"),
+            (date(2026, 8, 20), date(2026, 9, 30)))
+
+    def test_a_week_has_no_calendar_boundary_this_build_may_name(self) -> None:
+        """ADR-0011 D3, which is ADM-RPT-04's refusal applied to money: nothing in this build
+        records whether a week begins on Sunday or Monday, so anchoring a billing period on an
+        invented week boundary would be inventing product where it decides a charge."""
+        with self.assertRaises(lifecycle.LifecycleError):
+            lifecycle.calendar_unit(day=date(2026, 8, 20), billing_period="weekly")
+        with self.assertRaises(lifecycle.LifecycleError):
+            lifecycle.first_period(
+                starts_on=date(2026, 8, 20), billing_period="weekly", anchor="calendar")
+
+    def test_a_day_pass_has_a_period_of_one_day_and_no_calendar_anchor(self) -> None:
+        self.assertEqual(
+            lifecycle.first_period(starts_on=date(2026, 8, 20), billing_period="one_off"),
+            (date(2026, 8, 20), date(2026, 8, 20)))
+        with self.assertRaises(lifecycle.LifecycleError):
+            lifecycle.first_period(
+                starts_on=date(2026, 8, 20), billing_period="one_off", anchor="calendar")
+
+    def test_an_anchor_outside_the_declared_two_is_refused(self) -> None:
+        with self.assertRaises(lifecycle.LifecycleError):
+            lifecycle.first_period(
+                starts_on=date(2026, 8, 20), billing_period="monthly", anchor="quarterly")
+
+    def test_a_short_february_and_a_long_january_each_price_their_own_days(self) -> None:
+        """Actual days over actual days, so the same number of remaining days costs more in a
+        shorter month -- which is the convention MOD-015 set and this adopts rather than
+        re-chooses."""
+        feb, _, _, _ = lifecycle.first_charge(
+            full_amount_minor=self.MONTHLY, starts_on=date(2026, 2, 20),
+            billing_period="monthly", anchor="calendar")
+        jan, _, _, _ = lifecycle.first_charge(
+            full_amount_minor=self.MONTHLY, starts_on=date(2026, 1, 20),
+            billing_period="monthly", anchor="calendar")
+        self.assertEqual(feb, 1768)   # 9 days of 28, at 55.00 x 9/28
+        self.assertEqual(jan, 2129)   # 12 days of 31, at 55.00 x 12/31
+        self.assertGreater(feb / 9, jan / 12)
+
+
 if __name__ == "__main__":
     unittest.main()

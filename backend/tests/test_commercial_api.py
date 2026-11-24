@@ -4922,3 +4922,78 @@ class TrialTests(CommercialApiTestCase):
                 self.assertEqual(answer.status_code, 201, answer.text)
                 self.assertEqual(answer.json()["trial_days"], 7)
                 self.assertTrue(answer.json()["is_a_trial_product"])
+
+
+class BillingAnchorApiTests(CommercialApiTestCase):
+    """ADR-0011 end to end: the anchor reaches the row and the row reaches the period.
+
+    **The domain tests pin the arithmetic and these pin the wiring**, which is MOD-014's
+    finding: no test had ever called a `/people` route successfully, so the gate return and
+    the permission resolution were exercised by nothing and four defects passed a green suite.
+    Here the three pieces the request path adds are the `Literal` on the body, the column the
+    service writes and the anchor `activate_membership` reads back out of it.
+    """
+
+    def test_a_calendar_anchored_membership_bills_to_the_month_end(self) -> None:
+        tenant_id = self.tenant()
+        # The twentieth of a month, so the first period is genuinely short under `calendar`
+        # and genuinely a whole month under the default -- a start on the first would make the
+        # two anchors agree and the test would pass either way.
+        live = self.membership(
+            tenant_id, starts_on="2026-08-20",
+            terms_extra={"billing_anchor": "calendar"})
+        self.assertEqual(live["current_period_start"], "2026-08-20")
+        self.assertEqual(live["current_period_end"], "2026-08-31")
+
+    def test_the_default_anchor_bills_from_the_membership_s_own_start(self) -> None:
+        """ADR-0011 D1: a contract written without the field is billed exactly as it was
+        before the column existed, so this is the regression for every membership already
+        sold."""
+        tenant_id = self.tenant()
+        live = self.membership(tenant_id, starts_on="2026-08-20")
+        self.assertEqual(live["current_period_start"], "2026-08-20")
+        self.assertEqual(live["current_period_end"], "2026-09-19")
+
+    def test_the_terms_answer_which_anchor_was_written(self) -> None:
+        """A write that reports nothing about what it wrote is this build's most-repeated
+        idempotency defect in its quietest form -- `activate_membership` paid for exactly that
+        with `trial_days`."""
+        tenant_id = self.tenant()
+        contract_key = self.contract(tenant_id)
+        product_id, _ = self.membership_product(tenant_id)
+        created = self.client.post("/memberships/terms", json={
+            "product_id": product_id, "contract_key": contract_key,
+            "membership_kind": "recurring", "billing_anchor": "calendar",
+            **self.correlation()}, headers=self.headers(tenant_id))
+        self.assertEqual(created.status_code, 201, created.text)
+        self.assertEqual(created.json()["billing_anchor"], "calendar")
+
+    def test_an_anchor_outside_the_two_is_a_422_and_not_a_500(self) -> None:
+        """The `Literal` refuses at the boundary. A value reaching the CHECK would be answered
+        as a 422 too, but by then the request has done a round trip into the database for a
+        shape the route could have refused."""
+        tenant_id = self.tenant()
+        contract_key = self.contract(tenant_id)
+        product_id, _ = self.membership_product(tenant_id)
+        refused = self.client.post("/memberships/terms", json={
+            "product_id": product_id, "contract_key": contract_key,
+            "membership_kind": "recurring", "billing_anchor": "quarterly",
+            **self.correlation()}, headers=self.headers(tenant_id))
+        self.assertEqual(refused.status_code, 422, refused.text)
+
+    def test_a_weekly_contract_on_a_calendar_anchor_is_refused_by_the_schema(self) -> None:
+        """ADR-0011 D3. The route admits the pair because each field is valid on its own, so
+        this is the one case where the CHECK is the control and the 422 names it -- which is
+        why the constraint is in the database rather than in the service."""
+        tenant_id = self.tenant()
+        contract_key = self.contract(tenant_id)
+        product_id, _ = self.membership_product(tenant_id)
+        refused = self.client.post("/memberships/terms", json={
+            "product_id": product_id, "contract_key": contract_key,
+            "membership_kind": "recurring", "billing_period": "weekly",
+            "billing_anchor": "calendar", **self.correlation()},
+            headers=self.headers(tenant_id))
+        self.assertEqual(refused.status_code, 422, refused.text)
+        self.assertEqual(
+            refused.json()["error"],
+            "mem_membership_terms_calendar_anchor_has_a_boundary")

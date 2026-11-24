@@ -12096,6 +12096,17 @@ INSERT INTO plt01.cat_products
     (tenant_id, product_id, product_key, product_type, created_by, correlation_id)
 VALUES (:'tenant_a', 'dddddddd-1000-4000-8000-000000000001', 'gold.membership',
         'membership', :'actor', :'actor');
+-- **A second membership product with no terms of its own, for ADR-0011's permission case.**
+-- A case that proves a constraint *admits* the ordinary row has to insert successfully, which
+-- means it reaches the composite reference to `cat_products` that every refusal case above is
+-- answered before -- a CHECK is evaluated before the foreign-key trigger. The first attempt
+-- named a product this seed does not have and came back `insufficient_privilege` on an UPDATE
+-- instead, because the runtime role carries `UPDATE (status, version)` only. So: a real
+-- product, no terms, and the insert is the case.
+INSERT INTO plt01.cat_products
+    (tenant_id, product_id, product_key, product_type, created_by, correlation_id)
+VALUES (:'tenant_a', 'dddddddd-1000-4000-8000-00000000000b', 'calendar.membership',
+        'membership', :'actor', :'actor');
 INSERT INTO plt01.cat_variants
     (tenant_id, variant_id, product_id, variant_key, display_name, term_days, created_by,
      correlation_id)
@@ -12751,9 +12762,10 @@ BEGIN
          'from_status,idempotency_key,invoice_id,membership_id,reason,'
          'requested_by_person_id,tenant_id,to_agreement_id,to_status'),
         ('plt01.mem_membership_terms',
-         'billing_period,contract_key,correlation_id,created_at,created_by,'
-         'installment_count,is_off_peak,membership_kind,membership_terms_id,'
-         'prepaid_days,product_id,status,tenant_id,trial_days,version'),
+         'billing_anchor,billing_period,contract_key,correlation_id,created_at,'
+         'created_by,installment_count,is_off_peak,membership_kind,'
+         'membership_terms_id,prepaid_days,product_id,status,tenant_id,'
+         'trial_days,version'),
         ('plt01.mem_memberships',
          'agreement_id,correlation_id,created_at,created_by,'
          'current_period_end,current_period_start,ends_on,membership_id,'
@@ -12858,9 +12870,9 @@ BEGIN
          'effective_on,from_status,idempotency_key,membership_id,reason,'
          'tenant_id,to_status'),
         ('plt01.mem_membership_terms',
-         'billing_period,contract_key,correlation_id,created_at,created_by,'
-         'is_off_peak,membership_kind,membership_terms_id,product_id,status,'
-         'tenant_id,version'),
+         'billing_anchor,billing_period,contract_key,correlation_id,created_at,'
+         'created_by,is_off_peak,membership_kind,membership_terms_id,product_id,'
+         'status,tenant_id,version'),
         ('plt01.mem_memberships',
          'agreement_id,correlation_id,created_at,created_by,membership_id,'
          'membership_number,person_id,starts_on,status,status_effective_on,'
@@ -13323,6 +13335,7 @@ VALUES ('11111111-1111-4111-8111-111111111111', 'dddddddd-2000-4000-8000-0000000
 DO $$
 DECLARE
     offender text;
+    state text;
 BEGIN
     -- **The fork, refused.** Two live agreements superseding one predecessor.
     BEGIN
@@ -14037,6 +14050,96 @@ BEGIN
         RAISE EXCEPTION 'CHECK 78 FAILED: membership terms with a kind outside COM-01-R01''s ten';
     EXCEPTION
         WHEN check_violation THEN NULL;
+    END;
+
+    -- ADR-0011's two constraints, and a third case that is a *permission*.
+    --
+    -- **These three name the constraint that refused them and their siblings above do not**,
+    -- which is deliberate rather than inconsistent: `check_violation` is the same exception
+    -- for every CHECK on a table, so a case that merely counts it proves whichever fires
+    -- first. This repository has shipped that trap in five modules and found it by sweeping
+    -- afterwards each time; `GET STACKED DIAGNOSTICS` turns it into a failure on a clean
+    -- database. The older cases are left alone because rewriting them is a change to evidence
+    -- that currently passes, which wants its own sweep.
+    BEGIN
+        INSERT INTO plt01.mem_membership_terms
+            (billing_period, billing_anchor, contract_key, correlation_id, created_by,
+             installment_count, is_off_peak, membership_kind,
+             prepaid_days, product_id, status, tenant_id, version)
+        VALUES ('monthly', 'quarterly', 'standard',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                NULL, false, 'recurring', NULL,
+                'dddddddd-2000-4000-8000-000000000001', 'draft',
+                '11111111-1111-4111-8111-111111111111', 1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: membership terms anchored on something that is not an anchor';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender <> 'mem_membership_terms_billing_anchor' THEN
+                RAISE EXCEPTION
+                    'CHECK 78 FAILED: the anchor domain case was answered by %', offender;
+            END IF;
+    END;
+
+    -- **A week has no calendar boundary this build may name.** ADR-0011 D3: ADM-RPT-04 refuses
+    -- to say which days are a working week because nothing records one, and anchoring a
+    -- billing period on an invented week boundary would be that invention in the place it
+    -- decides what somebody is charged.
+    BEGIN
+        INSERT INTO plt01.mem_membership_terms
+            (billing_period, billing_anchor, contract_key, correlation_id, created_by,
+             installment_count, is_off_peak, membership_kind,
+             prepaid_days, product_id, status, tenant_id, version)
+        VALUES ('weekly', 'calendar', 'standard',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                NULL, false, 'recurring', NULL,
+                'dddddddd-2000-4000-8000-000000000001', 'draft',
+                '11111111-1111-4111-8111-111111111111', 1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a weekly contract anchored on a calendar boundary';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender <> 'mem_membership_terms_calendar_anchor_has_a_boundary' THEN
+                RAISE EXCEPTION
+                    'CHECK 78 FAILED: the calendar-boundary case was answered by %', offender;
+            END IF;
+    END;
+
+    -- **And the permission, which is the only thing that can see a guard refusing too much.**
+    -- Every other case on this table asserts a refusal, and no number of those can tell a
+    -- correct constraint from one that also rejects the ordinary row -- a monthly contract
+    -- billed on calendar months, which is what ADM-CRM-06 sells.
+    --
+    -- **It needed a product of its own, and that is the finding beside it.** The four refusal
+    -- cases above all name `dddddddd-2000-...-01`, a product this seed does not have: they
+    -- pass because PostgreSQL evaluates a CHECK before the foreign-key trigger, so the
+    -- reference is never reached. A case that needs its insert to *succeed* does reach it, and
+    -- that is how the absence surfaced -- after a first attempt that moved the seeded row
+    -- instead and came back `insufficient_privilege`, because the runtime role this block runs
+    -- as carries `UPDATE (status, version)` only. Those four are weak rather than wrong: with
+    -- their constraint dropped they raise `foreign_key_violation`, which their
+    -- `WHEN check_violation` handler does not catch, so the suite goes red with a misleading
+    -- message rather than passing silently. They are left alone because rewriting evidence
+    -- that currently bites wants its own sweep.
+    BEGIN
+        INSERT INTO plt01.mem_membership_terms
+            (billing_period, billing_anchor, contract_key, correlation_id, created_by,
+             installment_count, is_off_peak, membership_kind,
+             prepaid_days, product_id, status, tenant_id, version)
+        VALUES ('monthly', 'calendar', 'standard',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                NULL, false, 'recurring', NULL,
+                'dddddddd-1000-4000-8000-00000000000b', 'draft',
+                '11111111-1111-4111-8111-111111111111', 1);
+    EXCEPTION
+        WHEN others THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME, state = RETURNED_SQLSTATE;
+            RAISE EXCEPTION
+                'CHECK 78 FAILED: a monthly contract on a calendar anchor was refused by % (%)',
+                coalesce(nullif(offender, ''), 'nothing named'), state;
     END;
 
     BEGIN

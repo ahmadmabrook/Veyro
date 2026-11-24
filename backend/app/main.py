@@ -1411,6 +1411,14 @@ class MembershipTermsBody(BaseModel):  # noqa: D101
     # MOD-013. `None` is "not a trial"; zero is refused, because a zero-day trial is a
     # declared value nothing can mean.
     trial_days: int | None = Field(default=None, ge=1, le=90)
+    # **Which boundary this contract's billing period falls on** -- ADR-0011. `agreement_start`
+    # is what this build did before the anchor existed and stays the default, so a contract
+    # written without the field is billed exactly as it was. A `Literal` refuses an unknown
+    # value at the request boundary rather than leaving the CHECK to answer, which is this
+    # application's own rule: a 422 naming the request beats a `CheckViolation` the handlers
+    # turn into one anyway, and the `calendar`-on-weekly pairing is still the schema's to
+    # refuse because the service is the half that can be wrong.
+    billing_anchor: Literal["agreement_start", "calendar"] = "agreement_start"
     correlation_id: str
 
 
@@ -6879,7 +6887,7 @@ def create_app(
             contract_key=body.contract_key, membership_kind=body.membership_kind,
             billing_period=body.billing_period,
             installment_count=body.installment_count, prepaid_days=body.prepaid_days,
-            trial_days=body.trial_days,
+            trial_days=body.trial_days, billing_anchor=body.billing_anchor,
             actor_id=session["identity_id"], correlation_id=body.correlation_id,
         )
 

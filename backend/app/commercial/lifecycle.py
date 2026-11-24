@@ -525,6 +525,112 @@ def grace_ends_on(*, entered_on: date, terms: Terms) -> date:
     return entered_on + timedelta(days=terms.grace_days)
 
 
+#: The two boundaries a billing period may fall on. ADR-0011 D1. `agreement_start` is what
+#: this build did before the anchor existed and is the default everywhere, so a membership
+#: already sold keeps the periods it was sold on.
+ANCHORS: tuple[str, ...] = ("agreement_start", "calendar")
+
+#: The billing periods a calendar anchor is defined for. ADR-0011 D3: `weekly` is absent
+#: because a week has no calendar boundary this build may name -- whether one begins on Sunday
+#: or Monday is the fact ADM-RPT-04 refuses to assert, since nothing here records a working
+#: week -- and `one_off` has no renewal to anchor. The schema refuses both as well, because a
+#: service is the half that can be wrong.
+CALENDAR_PERIODS: tuple[str, ...] = ("monthly", "quarterly", "annual")
+
+
+def calendar_unit(*, day: date, billing_period: str) -> tuple[date, date]:
+    """The whole calendar month, quarter or year containing `day`, inclusive of both ends.
+
+    **This is the denominator, not the period.** ADM-CRM-06's figure is 55.00 x 12/31 -- twelve
+    days left in a thirty-one-day August -- so a member joining mid-month pays for the days
+    they get out of what a *full* period of that contract costs. Prorating over the short first
+    period instead would be twelve over twelve, which is the full price, and the design's whole
+    disclosure would be a number that never differs from the recurring one.
+    """
+    if billing_period not in CALENDAR_PERIODS:
+        raise LifecycleError(f"{billing_period!r} has no calendar boundary")
+    if billing_period == "monthly":
+        start = day.replace(day=1)
+    elif billing_period == "quarterly":
+        start = date(day.year, ((day.month - 1) // 3) * 3 + 1, 1)
+    else:
+        start = date(day.year, 1, 1)
+    months = {"monthly": 1, "quarterly": 3, "annual": 12}[billing_period]
+    return start, _add_months(start, months) - timedelta(days=1)
+
+
+def first_period(
+    *, starts_on: date, billing_period: str, anchor: str = "agreement_start",
+) -> tuple[date, date]:
+    """The membership's first billing period, as `(start, end)`.
+
+    **Only the first period moves, which is why `renewal_period` is untouched.** ADR-0011 D2:
+    under `calendar` this period ends at the end of the calendar unit containing its start, and
+    from then on the existing rule -- the next period opens the day after the last one closed
+    -- lands on calendar boundaries by itself. 20 August gives 20-31 Aug, then 1-30 Sep, then
+    1-31 Oct, with no second tiling rule anywhere. Two of those would be a pair of dates that
+    can disagree about when a member is billed, which is this build's most-repeated finding.
+
+    **`one_off` is one day**, matching what `activate_membership` has always written for it: a
+    day pass has a period so that the row is answerable, not so that it renews.
+
+    **An `agreement_start` first period is `renewal_period` from the day before the start**,
+    which is the existing expression rather than a copy of it -- and the argument being the day
+    *before* is the whole subtlety: that function returns the period *after* the date it is
+    given, and the first version of this code kept its window's end while overriding its start,
+    making the first period one day longer than every later one. A monthly membership starting
+    on 1 January ran to 1 February, the next period opened on 2 February, and the drift
+    compounded for the life of the membership.
+    """
+    if anchor not in ANCHORS:
+        raise LifecycleError(f"{anchor!r} is not a billing anchor")
+    if billing_period == "one_off":
+        if anchor == "calendar":
+            raise LifecycleError("a_one_off_period_has_no_calendar_anchor")
+        return starts_on, starts_on
+    if anchor == "agreement_start":
+        return renewal_period(
+            current_end=starts_on - timedelta(days=1), billing_period=billing_period)
+    _, unit_end = calendar_unit(day=starts_on, billing_period=billing_period)
+    return starts_on, unit_end
+
+
+def first_charge(
+    *, full_amount_minor: int, starts_on: date, billing_period: str,
+    anchor: str = "agreement_start",
+) -> tuple[int, date, date, tuple[str, ...]]:
+    """What the first period costs, the day it ends and the day the recurring amount starts.
+
+    ADR-0011 D5: four facts rather than one, because the design's own note on the sale sheet
+    says confusing the pro-rata amount with the recurring amount "is the most common
+    membership-sale complaint in the industry". A screen handed a single number would be the
+    complaint.
+
+    **A full first period costs the full amount and says so**, rather than running the
+    proration and arriving at the same figure by luck: `prorated_amount` over a period whose
+    start *is* `effective_on` returns the whole of it, so the two agree -- and stating the case
+    is what makes a reader able to tell "this contract does not prorate" from "this member
+    happened to join on the first".
+    """
+    period_start, period_end = first_period(
+        starts_on=starts_on, billing_period=billing_period, anchor=anchor)
+    next_start = period_end + timedelta(days=1)
+    if period_start == starts_on and anchor == "agreement_start":
+        return full_amount_minor, period_end, next_start, (
+            f"full period: {period_start.isoformat()}..{period_end.isoformat()}",
+            "anchored on the membership's own start, so nothing is prorated",
+        )
+    unit_start, unit_end = calendar_unit(day=starts_on, billing_period=billing_period)
+    amount, steps = prorated_amount(
+        full_amount_minor=full_amount_minor, period_start=unit_start,
+        period_end=unit_end, effective_on=starts_on)
+    return amount, period_end, next_start, (
+        f"calendar {billing_period} unit: "
+        f"{unit_start.isoformat()}..{unit_end.isoformat()}",
+        *steps,
+    )
+
+
 def renewal_period(
     *, current_end: date, billing_period: str,
 ) -> tuple[date, date]:
