@@ -2945,6 +2945,31 @@ Known gaps, deliberate:
   disclosed on the read and on the screen rather than resolved, because resolving them means
   deciding what "owed" means across an invoice, its payments and a credit note -- which is a
   figure MOD-018 owns and this module would be inventing a second definition of.
+- **A price rise can be sized before it is saved, and that count did not exist.**
+  ADM-MSH-09's whole argument is one disclosure -- "2,140 members are on this plan. 890 are
+  inside a fixed-term commitment and keep 55.00 until it ends. The other 1,250 move at their
+  next renewal, the earliest on 22 August" -- with its own note that "the affected count is
+  computed *before* the change is saved, not reported after. A price rise is the most
+  consequential action in Admin and the only one where the blast radius is stated in members
+  rather than currency." `membership_summary` groups by status and nothing counted members per
+  plan at all. `price_change_impact` is that read, and three things in it are decisions:
+  **the split is the point**, because a published price version is immutable by privilege, so
+  every agreement already signed keeps its figure and the count of members on a plan is *not*
+  the count who will pay more -- one number would be exactly the overstatement the canvas's
+  note exists to prevent; **it counts through the supersession chain**, seeded by
+  `_walk_from(_LIVE_MEMBERSHIP)`, because the root is immutable by grant and after an upgrade
+  names the plan the member moved off, so a count joined to it attributes them to the plan
+  they left while the one they are on reads zero; and **the earliest-move date is about the
+  members who move**, so a commitment running to next March does not set it and `null` means
+  nobody moves rather than "today". **And within one plan the split is by start date, not by
+  contract**: `mem_membership_terms` admits one set per product, so every agreement on a plan
+  shares a minimum-term *length* and what differs is when each member started -- which is the
+  canvas's case exactly, a twelve-month contract sold over three years. Gated on
+  `membership.record.read` rather than the catalogue, because gating a census of the
+  membership base on "see what a sale would cost" is MOD-013's
+  `GET /notifications/channels` finding. Proven: 10 HTTP tests and 6 mutations, all caught --
+  one of which was ill-formed on its first run and named a constant that does not exist, so it
+  was "caught" by a `NameError`. **What is still owed is the screen and the price write.**
 - **Nothing invoices the cancellation fee, and nothing invoices a plan change either.** Both
   are disclosed and recorded against the change, and no invoice is issued and no payment
   taken -- which is why ADM-MSH-07 is buildable while ADM-MSH-01, 02, 04 and 05 are not: their

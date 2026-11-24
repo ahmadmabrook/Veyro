@@ -3047,3 +3047,20 @@ structured claims and prose is not one.
 visible and never silent. The tell when it has happened is a `grep -c` for the new text coming
 back `0` after a script that printed success — so grep for what was added rather than trusting
 the exit code, which is also the cheapest check after any splice.
+
+**A fourth form of the ill-formed mutation: one that names a symbol which does not exist.** A
+sweep against MOD-017's price-impact read replaced `_LIVE_MEMBERSHIP` with `_ANY_MEMBERSHIP` to
+prove the live predicate bites — and there is no such constant, so the suite failed with a
+`NameError` and the mutation was reported CAUGHT for a reason that had nothing to do with the
+count it was about. This file already records three forms (a statement the planner refuses, a
+prefix mutation on a disjunction, a `RAISE` kept for the count and fired unconditionally); this
+one is the easiest to write and the hardest to see, because the report says what you hoped.
+**A replacement that introduces a name must be checked against the module**, and the honest
+form here spells the predicate out inline with the same placeholder count.
+
+**And a composite CTE's placeholder count is the sum of its parts, which a reader will
+undercount.** `_walk_from(_LIVE_MEMBERSHIP)` takes *three* dates, not two: the seed predicate
+has two and `_SUPERSESSION_STEP` carries a third for the `a.starts_on <= %s` that stops the walk
+at an agreement which has not begun. psycopg says "the query has 7 placeholders but 6 parameters
+were passed", which is clear — but only at runtime, so a read with no test fails in front of a
+caller. Count the helper's own `%s` as well as the predicate's.

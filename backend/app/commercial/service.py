@@ -5318,6 +5318,104 @@ def _by_source_and_entity(
     return {(str(r[0]), str(r[1]), str(r[2])): int(r[3]) for r in rows}
 
 
+def price_change_impact(
+    pool: Pool, tenant_id: str, *, variant_id: str, as_of: date | None = None,
+) -> dict[str, Any]:
+    """Who a price rise reaches, before it is saved. ADM-MSH-09.
+
+    The canvas is one disclosure and its own note is the requirement:
+
+        Raising Club from 55.00 to 58.00 -- 2,140 members are on this plan. 890 are inside a
+        fixed-term commitment and keep 55.00 until it ends. The other 1,250 move at their next
+        renewal, the earliest on 22 August.
+
+        The affected count is computed **before** the change is saved, not reported after. A
+        price rise is the most consequential action in Admin and the only one where the blast
+        radius is stated in members rather than currency.
+
+    **Three figures and a date, and the split is the point.** A published price version is
+    immutable by privilege, so re-pricing is a *new* version and every subscription already
+    sold keeps the snapshot it was sold on -- which means a count of "members on this plan" is
+    not the count of members who will pay more. The ones inside a minimum term keep what they
+    agreed to until it ends; the rest move at their next renewal. Reporting one number would be
+    the overstatement the canvas's note exists to prevent.
+
+    **Through the supersession chain, not `m.agreement_id`.** The root is immutable by grant, so
+    after an upgrade it names the contract the member moved *off* -- and a count that joined it
+    would attribute them to the plan they left. `_walk_from` is the one definition of "the live
+    agreement" and this read seeds it with `_LIVE_MEMBERSHIP`, the same predicate the standing
+    read uses, so the two cannot disagree about who is on a plan.
+
+    **Live by the dates rather than the cached status**, for MOD-022's own reason: a
+    cancellation with notice leaves `status` behind, and a member whose membership has run out
+    is not somebody a price rise reaches.
+
+    **It takes a variant, not a product.** A price is written against a variant -- that is what
+    `cat_prices` keys on -- so a product with a monthly and an annual variant has two prices and
+    two blast radii, and asking about the product would add them together and report a figure
+    that is nobody's.
+    """
+    at = as_of or _today()
+    with tenant_scope(pool, tenant_id) as conn:
+        row = conn.execute(
+            f"WITH RECURSIVE {_walk_from(_LIVE_MEMBERSHIP)}"
+            " SELECT count(*),"
+            # **Inside a commitment is a date comparison, not a flag.** `minimum_term_ends_on`
+            # is nullable: a rolling contract has none, and `NULL > date` is NULL, so the
+            # `coalesce` is what keeps a rolling member out of the committed count rather than
+            # out of the total.
+            "        count(*) FILTER ("
+            "          WHERE a.minimum_term_ends_on IS NOT NULL"
+            "            AND a.minimum_term_ends_on > %s),"
+            "        min(m.current_period_end) FILTER ("
+            "          WHERE a.minimum_term_ends_on IS NULL"
+            "             OR a.minimum_term_ends_on <= %s),"
+            "        min(a.minimum_term_ends_on) FILTER ("
+            "          WHERE a.minimum_term_ends_on IS NOT NULL"
+            "            AND a.minimum_term_ends_on > %s)"
+            "   FROM plt01.mem_memberships m"
+            "   JOIN live l ON l.membership_id = m.membership_id"
+            "   JOIN plt01.mem_agreements a ON a.agreement_id = l.agreement_id"
+            "  WHERE a.variant_id = %s",
+            # **Seven, and the seed's three come first.** `_walk_from` is the CTE and so is
+            # first in the statement: `_LIVE_MEMBERSHIP` takes two dates and
+            # `_SUPERSESSION_STEP` a third, for the `a.starts_on <= %s` that stops the walk
+            # at an agreement which has not begun. Then the three filters, then the variant.
+            (at, at, at, at, at, at, variant_id),
+        ).fetchone()
+    assert row is not None
+    on_this_plan = int(row[0])
+    committed = int(row[1])
+    return {
+        "variant_id": variant_id,
+        "as_of": at.isoformat(),
+        "on_this_plan": on_this_plan,
+        # The two halves, which add up to the total by construction rather than by a second
+        # query that could disagree with it.
+        "inside_a_commitment": committed,
+        "move_at_renewal": on_this_plan - committed,
+        # **The earliest date somebody actually pays more**, which is the canvas's "the
+        # earliest on 22 August". `null` where nobody moves, rather than today, because "the
+        # first one is now" and "there is no first one" are different answers.
+        "earliest_move_on": row[2].isoformat() if row[2] is not None else None,
+        # And when the committed half starts to move, which the canvas does not draw and a
+        # reader asks immediately: "until it ends" is a date somebody wants.
+        "earliest_commitment_ends_on": row[3].isoformat() if row[3] is not None else None,
+        "the_split_is_why_one_number_would_mislead": (
+            "a published price version is immutable, so re-pricing is a new version and every "
+            "agreement already signed keeps the figure it was sold at. The members inside a "
+            "minimum term keep theirs until it ends; the rest move at their next renewal, so "
+            "the count of members on a plan is not the count who will pay more"),
+        "it_is_the_live_agreement_and_not_the_first_one": (
+            "counted through the supersession chain: the agreement a membership points at is "
+            "the chain's root and is immutable, so after an upgrade it names the plan the "
+            "member moved off"),
+        "a_price_is_written_against_a_variant": (
+            "so a product with a monthly and an annual variant has two prices and two blast "
+            "radii; adding them would report a figure that is nobody's"),
+    }
+
+
 def membership_summary(
     pool: Pool, tenant_id: str, *, as_of: date | None = None, expiring_within_days: int = 7,
 ) -> dict[str, Any]:

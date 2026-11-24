@@ -7328,6 +7328,28 @@ def create_app(
     # does not make a weaker permission sufficient, and it does not reach anything about the
     # person. MOD-014 answers who they are, through its own gate.
 
+    @app.get("/catalog/variants/{variant_id}/price-impact")
+    def price_change_impact(
+        tenant_id: TenantId, session: Session, variant_id: str,
+    ) -> dict[str, Any]:
+        """Who a price rise on this variant reaches, before it is saved. ADM-MSH-09.
+
+        **The count is the point of the screen**, and its own note says so: "the affected count
+        is computed before the change is saved, not reported after. A price rise is the most
+        consequential action in Admin and the only one where the blast radius is stated in
+        members rather than currency."
+
+        **Gated on `membership.record.read` rather than on the catalogue**, because what it
+        counts is memberships: it answers how many people are on a plan and how many of them a
+        rise cannot reach, which is a fact about agreements. Gating it on `catalog.price.read`
+        would make "see what a sale would cost" buy a census of the tenant's membership base --
+        MOD-013's `GET /notifications/channels` finding.
+        """
+        permit(session, "membership.record.read")
+        return commercial.price_change_impact(
+            tenant_pool, tenant_id,
+            variant_id=require_uuid(variant_id, "variant_id"))
+
     @app.get("/memberships/plans")
     def list_sellable_plans(
         tenant_id: TenantId, session: Session, trials: str = "exclude",

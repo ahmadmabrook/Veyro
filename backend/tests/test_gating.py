@@ -405,6 +405,7 @@ WRITE_ROUTES = [
     # session holding nothing must be refused all five, which is what this sweep proves.
     ("get", "/memberships", None),
     ("get", "/memberships/plans", None),
+    ("get", f"/catalog/variants/{_ID}/price-impact", None),
     ("get", f"/memberships/{_ID}", None),
     ("get", "/member-entitlements", None),
     ("get", "/finance/accounts", None),

@@ -5343,3 +5343,194 @@ class SellablePlanTests(CommercialApiTestCase):
             "/memberships/plans", params={"limit": 500},
             headers=self.headers(tenant_id))
         self.assertEqual(refused.status_code, 422, refused.text)
+
+
+class PriceImpactTests(CommercialApiTestCase):
+    """ADM-MSH-09's blast radius, computed before a price rise is saved.
+
+    "Raising Club from 55.00 to 58.00 -- 2,140 members are on this plan. 890 are inside a
+    fixed-term commitment and keep 55.00 until it ends. The other 1,250 move at their next
+    renewal, the earliest on 22 August." And its own note: "the affected count is computed
+    before the change is saved, not reported after."
+    """
+
+    def joiner(self, tenant_id: str, *, variant_id: str, terms_id: str,
+               starts_on: str) -> dict:
+        """One more member on an existing plan, from agreement through activation.
+
+        `membership()` builds its own product each time, which is right for a lifecycle test
+        and useless here: counting members *on one plan* needs several agreements against one
+        variant.
+        """
+        owner = self.headers(tenant_id)
+        person_id = self.person(tenant_id)
+        agreement = self.client.post("/memberships/agreements", json={
+            "person_id": person_id, "membership_terms_id": terms_id,
+            "variant_id": variant_id, "amount_minor": 4500, "currency": "JOD",
+            "starts_on": starts_on, **self.correlation()}, headers=owner)
+        self.assertEqual(agreement.status_code, 201, agreement.text)
+        agreement_id = str(agreement.json()["agreement_id"])
+        self.assertEqual(self.client.post(
+            f"/memberships/agreements/{agreement_id}/sign", json={
+                "signature_kind": "click_through",
+                "signature_evidence_ref": f"s3://signatures/{agreement_id}",
+                "signed_by_person_id": person_id, **self.correlation()},
+            headers=owner).status_code, 200)
+        active = self.client.post("/memberships", json={
+            "agreement_id": agreement_id,
+            "membership_number": f"M{uuid.uuid4().hex[:8].upper()}",
+            "idempotency_key": f"act-{uuid.uuid4().hex[:8]}", **self.correlation()},
+            headers=owner)
+        self.assertEqual(active.status_code, 201, active.text)
+        return {"membership_id": str(active.json()["membership_id"]),
+                "agreement_id": agreement_id, "person_id": person_id,
+                "current_period_end": active.json()["current_period_end"]}
+
+    def impact(self, tenant_id: str, variant_id: str) -> dict:
+        read = self.client.get(
+            f"/catalog/variants/{variant_id}/price-impact",
+            headers=self.headers(tenant_id))
+        self.assertEqual(read.status_code, 200, read.text)
+        return read.json()
+
+    def test_a_plan_with_nobody_on_it_answers_zero_rather_than_nothing(self):
+        """Zero is the answer to "how many members does this reach", and a surface that got
+        nothing back would have to decide what to print."""
+        tenant_id = self.tenant()
+        _, variant_id = self.membership_product(tenant_id)
+        body = self.impact(tenant_id, variant_id)
+        self.assertEqual(body["on_this_plan"], 0, body)
+        self.assertEqual(body["inside_a_commitment"], 0, body)
+        self.assertEqual(body["move_at_renewal"], 0, body)
+        self.assertIsNone(body["earliest_move_on"], body)
+
+    def test_the_two_halves_add_up_to_the_total(self):
+        """**The split is the whole point of the read.** A published price version is immutable,
+        so re-pricing is a new version and every agreement already signed keeps its figure --
+        which means the count of members on a plan is not the count who will pay more.
+        """
+        tenant_id = self.tenant()
+        # **One product has one set of terms**, which `mem_membership_terms` enforces -- so
+        # every agreement on a plan shares a contract and the same minimum-term *length*. The
+        # split within a plan is therefore by start date, which is exactly the canvas's case:
+        # a twelve-month contract sold over three years leaves some members still inside their
+        # term and some who have served it. A second contract per product is not available and
+        # would be the wrong fixture if it were.
+        inside = self.membership(tenant_id, contract={"minimum_term_months": 12})
+        # The same plan, joined two years ago, so that term has run out.
+        self.joiner(
+            tenant_id, variant_id=inside["variant_id"], terms_id=inside["terms_id"],
+            starts_on=(MEMBERSHIP_START - timedelta(days=640)).isoformat())
+        body = self.impact(tenant_id, inside["variant_id"])
+        self.assertEqual(body["on_this_plan"], 2, body)
+        self.assertEqual(body["inside_a_commitment"], 1, body)
+        self.assertEqual(body["move_at_renewal"], 1, body)
+        self.assertEqual(
+            body["inside_a_commitment"] + body["move_at_renewal"],
+            body["on_this_plan"], body)
+
+    def test_a_rolling_member_is_not_counted_as_committed(self):
+        """**`minimum_term_ends_on` is nullable and `NULL > date` is NULL.** Without the
+        explicit null test a rolling member falls out of the committed count *and* out of the
+        moving one, so the two halves stop adding up to the total -- which is the one property
+        a reader checks."""
+        tenant_id = self.tenant()
+        rolling = self.membership(tenant_id)
+        body = self.impact(tenant_id, rolling["variant_id"])
+        self.assertEqual(body["on_this_plan"], 1, body)
+        self.assertEqual(body["inside_a_commitment"], 0, body)
+        self.assertEqual(body["move_at_renewal"], 1, body)
+        self.assertEqual(body["earliest_move_on"],
+                         rolling["current_period_end"], body)
+
+    def test_the_earliest_move_is_the_first_period_to_end(self):
+        """The canvas's "the earliest on 22 August": a date somebody is told, so it is the
+        minimum across the members who actually move rather than across everybody."""
+        tenant_id = self.tenant()
+        first = self.membership(tenant_id)
+        later = self.joiner(
+            tenant_id, variant_id=first["variant_id"], terms_id=first["terms_id"],
+            starts_on=(MEMBERSHIP_START + timedelta(days=10)).isoformat())
+        body = self.impact(tenant_id, first["variant_id"])
+        self.assertEqual(body["on_this_plan"], 2, body)
+        self.assertEqual(
+            body["earliest_move_on"],
+            min(first["current_period_end"], later["current_period_end"]), body)
+
+    def test_a_committed_member_does_not_set_the_earliest_move(self):
+        """**The date is about the members who move.** A commitment running to next March is
+        not when somebody starts paying more, and a `min` over everybody would report it as
+        though it were."""
+        tenant_id = self.tenant()
+        base = self.membership(tenant_id, contract={"minimum_term_months": 12})
+        body = self.impact(tenant_id, base["variant_id"])
+        self.assertEqual(body["inside_a_commitment"], 1, body)
+        self.assertEqual(body["move_at_renewal"], 0, body)
+        # Nobody moves, so there is no earliest move -- which is a different answer from today.
+        self.assertIsNone(body["earliest_move_on"], body)
+        # And when the commitment ends is the date a reader asks for next.
+        self.assertIsNotNone(body["earliest_commitment_ends_on"], body)
+
+    def test_the_count_follows_the_supersession_chain_and_not_the_root(self):
+        """**The root is immutable by grant**, so after an upgrade it names the plan the member
+        moved *off* -- and a count joined to it would attribute them to the old plan and leave
+        the new one reading zero. This is the defect the chain's reader was written for, met
+        from a new direction."""
+        tenant_id = self.tenant()
+        base = self.membership(tenant_id)
+        # A second plan, and the member upgrades onto it.
+        _, other_variant = self.membership_product(tenant_id)
+        moved = self.client.post("/memberships/agreements", json={
+            "person_id": base["person_id"], "membership_terms_id": base["terms_id"],
+            "variant_id": other_variant, "amount_minor": 6000, "currency": "JOD",
+            "starts_on": MEMBERSHIP_START.isoformat(),
+            "supersedes_agreement_id": base["agreement_id"], **self.correlation()},
+            headers=self.headers(tenant_id))
+        self.assertEqual(moved.status_code, 201, moved.text)
+        new_agreement = str(moved.json()["agreement_id"])
+        self.assertEqual(self.client.post(
+            f"/memberships/agreements/{new_agreement}/sign", json={
+                "signature_kind": "click_through",
+                "signature_evidence_ref": f"s3://signatures/{new_agreement}",
+                "signed_by_person_id": base["person_id"], **self.correlation()},
+            headers=self.headers(tenant_id)).status_code, 200)
+        # The plan they left reaches nobody; the one they are on reaches them.
+        self.assertEqual(self.impact(tenant_id, base["variant_id"])["on_this_plan"], 0)
+        self.assertEqual(self.impact(tenant_id, other_variant)["on_this_plan"], 1)
+
+    def test_a_membership_that_has_ended_is_not_reached_by_a_rise(self):
+        """**Live by the dates rather than the cached status**, which is MOD-022's own rule for
+        a door: a cancellation with notice leaves `status` behind, and a member whose membership
+        has run out is not somebody a price rise reaches."""
+        tenant_id = self.tenant()
+        trial = self.membership(tenant_id, terms_extra={"trial_days": 7},
+                                starts_on=(MEMBERSHIP_START).isoformat())
+        # Its `ends_on` is 90 days in the past plus six, so the window has closed.
+        self.assertIsNotNone(trial["ends_on"], trial)
+        self.assertEqual(self.impact(tenant_id, trial["variant_id"])["on_this_plan"], 0)
+
+    def test_the_read_says_why_one_number_would_mislead(self):
+        tenant_id = self.tenant()
+        _, variant_id = self.membership_product(tenant_id)
+        body = self.impact(tenant_id, variant_id)
+        self.assertIn("immutable", body["the_split_is_why_one_number_would_mislead"])
+        self.assertIn("root", body["it_is_the_live_agreement_and_not_the_first_one"])
+        self.assertIn("variant", body["a_price_is_written_against_a_variant"])
+
+    def test_a_malformed_variant_is_refused_rather_than_answered_with_a_500(self):
+        tenant_id = self.tenant()
+        refused = self.client.get(
+            "/catalog/variants/not-a-uuid/price-impact",
+            headers=self.headers(tenant_id))
+        self.assertEqual(refused.status_code, 422, refused.text)
+
+    def test_the_count_is_gated_on_the_membership_read_and_not_the_catalogue(self):
+        """**It counts memberships, so it is gated on them.** Gating it on `catalog.price.read`
+        would make "see what a sale would cost" buy a census of the tenant's membership base --
+        MOD-013's `GET /notifications/channels` finding."""
+        tenant_id = self.tenant()
+        _, variant_id = self.membership_product(tenant_id)
+        priced = self.headers(tenant_id, self.grant(tenant_id, ["catalog.price.read"]))
+        refused = self.client.get(
+            f"/catalog/variants/{variant_id}/price-impact", headers=priced)
+        self.assertEqual(refused.status_code, 403, refused.text)
