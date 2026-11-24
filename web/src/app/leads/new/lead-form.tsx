@@ -8,7 +8,7 @@ import { Banner } from "@/components/ds/banner";
 import { Button } from "@/components/ds/button";
 import { ChoiceChips } from "@/components/ds/choice-chips";
 import { Field } from "@/components/ds/field";
-import { fill, formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
+import { fill, t, type Locale, type MessageKey } from "@/i18n/locale";
 import { checkPhone, type DetectionAnswer } from "@/lib/contact-check";
 import {
   DETECTION_DEBOUNCE_MS, detectionFor, holdReason, interruption, isAbout, mayCreate,
@@ -196,9 +196,8 @@ export function LeadForm({
             </p>
             {duplicate.count > 1 ? (
               <p className="muted ds-walk-in-others">
-                {fill(locale, "newLead.alsoHeldBy", {
-                  count: formatInteger(duplicate.count - 1, numbering),
-                })}
+                {fill(locale, "newLead.alsoHeldBy",
+                      { count: duplicate.count - 1 }, numbering)}
               </p>
             ) : null}
             <div className="ds-walk-in-actions">

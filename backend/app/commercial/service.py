@@ -408,6 +408,52 @@ def live_trial(
             "trial_days": int(row[3])}
 
 
+def resumable_agreement(
+    pool: Pool, tenant_id: str, *, person_id: str, membership_terms_id: str, starts_on: date,
+) -> dict[str, Any] | None:
+    """A draft or signed agreement on these terms, this person, this day, not yet activated.
+
+    **FD-05's resume, and ADR-0010 D12 is why it exists.** The walk-in command is four writes
+    in four transactions, resumable rather than atomic, and three of the four key on the
+    person: the contact match resolves them, `crm_leads_one_per_person` hands back the lead,
+    and `live_trial` hands back the trial. `create_agreement` has no idempotency key, so
+    without this read a second press after a timeout between the signature and the activation
+    would draw up a *second* contract and leave the first signed with no membership -- which is
+    the one partial state that is not merely less complete.
+
+    **The predicate is narrow on purpose**: the same person, the same contract and the same
+    operative day. It will also pick up an agreement somebody drew up by hand that morning,
+    which is the right thing for a desk standing in front of the member -- they are starting
+    the trial that was drawn up, not a second one -- and is stated here rather than discovered.
+
+    **The status is the whole of "not yet activated", and a `LEFT JOIN` for it was deleted.**
+    The first version also required no membership to point at the row; `activate_membership`
+    sets the agreement to `active` in the transaction that writes the membership, so the
+    status filter already excludes every activated agreement and the join proved nothing. The
+    mutation sweep is what said so -- removing the clause changed no behaviour -- and the
+    judgement is the one this repository records for a constraint subsumed by a sibling:
+    delete it and keep the primitive statement rather than contrive a case that cannot exist.
+
+    **Ordered, because the planner is not the author.** Two resumable agreements for one person
+    on one day is already the thing this read exists to prevent, so the newest is the one a
+    retry would have been continuing; `agreement_id` breaks a tie so the answer does not move
+    between runs -- MOD-018's `chart_for` finding.
+    """
+    with tenant_scope(pool, tenant_id) as conn:
+        row = conn.execute(
+            "SELECT a.agreement_id, a.status, a.amount_minor, a.currency"
+            " FROM plt01.mem_agreements a"
+            " WHERE a.person_id = %s AND a.membership_terms_id = %s AND a.starts_on = %s"
+            "   AND a.status IN ('draft', 'signed')"
+            " ORDER BY a.created_at DESC, a.agreement_id LIMIT 1",
+            (person_id, membership_terms_id, starts_on),
+        ).fetchone()
+    if row is None:
+        return None
+    return {"agreement_id": str(row[0]), "status": str(row[1]),
+            "amount_minor": int(row[2]), "currency": str(row[3])}
+
+
 def trial_window_end(starts_on: date, trial_days: int | None) -> date | None:
     """When a membership that runs for `trial_days` from `starts_on` ends.
 
@@ -4267,9 +4313,14 @@ def _one_of(value: str | None, allowed: frozenset[str], error: str) -> str | Non
 #: read in this module carries, for the same reason.
 SELLABLE_PLANS = 25
 
+#: What `sellable_plans` admits for `trials`. A closed set so an unknown value is a 422 naming
+#: the field rather than silently behaving like the default -- a filter that quietly means
+#: something else is how a conversion list comes to offer a trial as a conversion target.
+PLAN_TRIAL_FILTERS = ("exclude", "include", "only")
+
 
 def sellable_plans(
-    pool: Pool, tenant_id: str, *, exclude_trials: bool = True,
+    pool: Pool, tenant_id: str, *, trials: str = "exclude",
     limit: int = SELLABLE_PLANS,
 ) -> dict[str, Any]:
     """The membership plans that can be sold: ADM-CRM-06's plan pick, and ADM-MSH-01's.
@@ -4279,13 +4330,17 @@ def sellable_plans(
     not a membership anybody can sell even though the catalogue lists it, and terms on an
     unpublished product are a contract with nothing to attach to.
 
-    **`exclude_trials` is what makes this a *conversion* list.** `trial_days` is the one thing
-    that marks a product as a trial (ADR-0010 D7), so a product declaring one is what somebody
-    is converting *from*; offering it as a target would let a trial be converted into another
-    trial, which is not a sale. The flag is on rather than implied, because the same read with
-    it off is "every membership this gym sells", which is a different and equally real
-    question -- and a caller that wanted the second and got the first would be missing exactly
-    the product a trial starts from.
+    **`trials` is one field with three values, and it is what makes this a *conversion*
+    list.** `trial_days` is the one thing that marks a product as a trial (ADR-0010 D7), so a
+    product declaring one is what somebody is converting *from*; offering it as a target would
+    let a trial be converted into another trial, which is not a sale. `exclude` is the default
+    for that reason, `include` is "every membership this gym sells", and `only` is FD-05's
+    question -- which trial can a walk-in be started on.
+
+    **One field rather than two booleans**, because two could be set at once and the answer
+    would be an empty list that reads as "this gym sells nothing" -- which is this build's
+    "two caller-supplied keys that nothing relates are two halves of a control" in its mildest
+    form, and costs nothing to avoid.
 
     **It carries no figure, and that is MOD-016's rule rather than an omission.** A price needs
     `catalog.price.read`, and that module's product read deliberately returns none because
@@ -4299,26 +4354,30 @@ def sellable_plans(
     nothing else. They are returned here rather than re-read when the plan is picked, so the
     picker and the figure cannot disagree about which contract was chosen.
     """
+    if trials not in PLAN_TRIAL_FILTERS:
+        raise InvalidRequest("a_trial_filter_is_exclude_include_or_only")
     if limit < 1 or limit > SELLABLE_PLANS:
         raise InvalidRequest("a_plan_listing_is_bounded")
     with tenant_scope(pool, tenant_id) as conn:
         rows = conn.execute(
             """
             SELECT p.product_id, v.variant_id, v.display_name, p.product_key,
-                   t.billing_period, t.billing_anchor, t.membership_kind, t.trial_days
+                   t.billing_period, t.billing_anchor, t.membership_kind, t.trial_days,
+                   t.membership_terms_id
             FROM plt01.mem_membership_terms t
             JOIN plt01.cat_products p
                 ON p.tenant_id = t.tenant_id AND p.product_id = t.product_id
             JOIN plt01.cat_variants v
                 ON v.tenant_id = p.tenant_id AND v.product_id = p.product_id
             WHERE (NOT %s OR t.trial_days IS NULL)
+              AND (NOT %s OR t.trial_days IS NOT NULL)
               AND t.status = 'active'
               AND p.status = 'published'
               AND v.status = 'active'
             ORDER BY p.product_key, v.variant_key
             LIMIT %s
             """,
-            (exclude_trials, limit),
+            (trials == "exclude", trials == "only", limit),
         ).fetchall()
     return {
         "plans": [
@@ -4327,11 +4386,17 @@ def sellable_plans(
              "billing_period": str(r[4]), "billing_anchor": str(r[5]),
              "membership_kind": str(r[6]),
              "trial_days": None if r[7] is None else int(r[7]),
-             "is_a_trial_product": r[7] is not None}
+             "is_a_trial_product": r[7] is not None,
+             # **The contract, not only the product.** An agreement is written against the
+             # terms and a caller holding a variant alone cannot name them, so a picker that
+             # returned the product and not its contract would make a second read necessary
+             # between choosing a plan and selling it -- and the two could disagree about
+             # which contract was chosen, which is what this read returning both prevents.
+             "membership_terms_id": str(r[8])}
             for r in rows
         ],
         "limit": limit,
-        "trials_excluded": exclude_trials,
+        "trials": trials,
         "no_figure_here": (
             "a price needs catalog.price.read and only a quote may name it, because a row in "
             "its own window is not the resolved price"),

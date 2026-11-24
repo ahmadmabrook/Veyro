@@ -2490,6 +2490,49 @@ const MUTATIONS = [
     runner: "vitest",
     grep: "nobody having been in gets its own sentence",
   },
+  // ---- FD-05 · WALK-IN TRIAL -----------------------------------------------------------
+  {
+    id: "walk-in-trial-plan-states",
+    why: "a tenant can publish no trial, one, or several, and only the middle one is the "
+      + "screen the canvas draws -- collapsing the first two renders a form whose own "
+      + "contract refuses it, which is the button answering 403 this whole surface avoids",
+    file: "src/lib/walk-in-trial.ts",
+    from: '  if (first === undefined) return { kind: "none" };',
+    to: '  if (false) return { kind: "none" };',
+    runner: "vitest",
+    grep: "three states, because a tenant can publish none",
+  },
+  {
+    id: "walk-in-trial-heading-names-one-length",
+    why: "with two plans of different lengths a heading naming one of them is naming "
+      + "whichever sorted first, which is MOD-018's unordered lookup in a title",
+    file: "src/lib/walk-in-trial.ts",
+    from: '  if (choice.kind !== "one") return null;',
+    to: '  if (false) return null;',
+    runner: "vitest",
+    grep: "names the trial's length in the heading only where there is one answer",
+  },
+  {
+    id: "walk-in-trial-reads-the-servers-step",
+    why: "a press that found a live trial started nothing, and reporting it as started would "
+      + "tell a desk they put somebody on a trial they were already on",
+    file: "src/lib/walk-in-trial.ts",
+    from: '  return steps.trial !== "existing";',
+    to: "  return true;",
+    runner: "vitest",
+    grep: "reads the server's own step rather than assuming",
+  },
+  {
+    id: "walk-in-trial-acknowledgement-reaches-the-server",
+    why: "this is the one screen where the *server* refuses a number somebody holds, so a "
+      + "client-side release is a button that would be refused -- the field is what says a "
+      + "human looked at the match",
+    file: "src/app/desk/trial/trial-form.tsx",
+    from: '        <input type="hidden" name="different_person" value="1" />',
+    to: "        <input type=\"hidden\" name=\"nothing\" value=\"1\" />",
+    runner: "playwright",
+    grep: "starts a trial and reports day one of it",
+  },
   // **Not a mutation, because the client's gate check is not the control.** Removing it makes
   // the page attempt `GET /crm/leads/{id}/trial` for a reader who may not have it -- and the
   // route answers 403, the `.catch` returns null and the card is absent either way, so the

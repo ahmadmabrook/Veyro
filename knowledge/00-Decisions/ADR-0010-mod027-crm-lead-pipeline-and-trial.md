@@ -3,7 +3,7 @@
 - ID: ADR-0010
 - Status: ACCEPTED
 - Decision-Key: mod027-crm-lead-pipeline-and-trial
-- Covers: backend/app/crm/, backend/migrations/tenant/, web/src/app/leads/
+- Covers: backend/app/crm/, backend/migrations/tenant/, web/src/app/leads/, web/src/app/desk/
 
 **Dated 2026-11-23. Scope: MOD-027, "CRM + Unified Inbox Pilot".** The header block above is
 the form `tools/governance/governance_check.py` parses, written that way because ADR-0009's
@@ -183,6 +183,11 @@ MOD-013's notifications is work, and the inbound half is the seam.
    `cat_products.product_type` nor `mem_membership_terms.membership_kind` carries such a value,
    so "an active membership on a trial product" is not yet expressible, and slice 1's board
    returns an empty `On trial` column that says so. `change_membership_plan` is built.
+   **Landed, except FD-05.** D7 is what marks a product as a trial, ADM-CRM-05 and 06 are
+   drawn, and the Front Desk half of the same slice is the walk-in — two fields and a button
+   that starts the trial at the desk. Its coverage reason said the obstacle was that "nothing
+   marks a product as a trial yet", which D7 settled, so the entry outlived its own blocker;
+   D12 is what it needs instead.
 3. **Lost and reopen** (ADM-CRM-07). **Landed**: `0030`, the four columns beside the stage,
    the interest withdrawal, the screen and the table's `Lost` chip. **This item used to end
    "plus the source-effectiveness read ADM-RPT-06 draws", and there is no ADM-RPT-06.** The
@@ -336,6 +341,88 @@ same person.
 a fresh one -- the question D2 left for slice 2, which is now answerable because MOD-017's
 supersession chain has its reader (eight of them, which is the dependency this record named and
 the only one it had).
+
+## D12 — The walk-in trial is one route over four writes, resumable rather than atomic
+
+FD-05 is "two fields and a start: name and phone. Creates a lead already in trial state with
+the clock running. Everything else is captured later by the sales team — a person standing at a
+desk will not complete a form." Its canvas draws `NAME`, `PHONE` and **Start her trial now**,
+over the sentence that settles the architecture: "the record is the same record she converts
+on."
+
+So one press has to produce four facts — a person, a lead, a signed agreement on a trial
+product, and an activation that sets `ends_on` — across MOD-014, MOD-027, MOD-016 and MOD-017.
+Six decisions, and two of them are refusals.
+
+**One route, four transactions, and the response says which it performed.** The obvious shape
+is one transaction, which this repository reaches for whenever a control and the state it
+bounds have to commit together: `append_event`, `post_journal`, `take_hold_on`,
+`issue_command_on`. **None of these four is a control over another's state.** Each is an
+independent fact, each partial outcome is a *less complete* record rather than an
+unreconcilable one, and each already has a screen: a person with no lead is what ADM-MEM-10
+produces, a lead at `new` is the board's first column, and a signed agreement nobody activated
+is `activate_membership`'s own retry path. What makes a retry converge is that **every step
+keys on the person** — the contact match resolves them, `crm_leads_one_per_person` hands back
+the lead, and `live_trial` hands back the trial — so pressing the button twice produces one
+of each. MOD-009's "an interrupted erasure resumes" is the precedent, and the response names
+each step as `created` or `existing` rather than implying atomicity it does not have. The
+atomic version needs `_on` variants of `create_person`, `create_lead`, `create_agreement` and
+`activate_membership`; that is the right shape the day one of them becomes a control over
+another's state, and today it would be four core money functions refactored to buy a property
+nothing needs.
+
+**And building it narrowed that fourth read.** `resumable_agreement`'s first version also
+required no membership to point at the row, with a `LEFT JOIN` for it; `activate_membership`
+sets the agreement to `active` in the transaction that writes the membership, so the status
+filter already excludes every activated agreement and the extra clause proved nothing. The
+mutation sweep said so by coming back uncaught, and the judgement is this repository's own for
+a constraint subsumed by a sibling: delete it and keep the primitive statement rather than
+contrive a case that cannot exist.
+
+**Both refusals happen before anything is written, and the first version broke that.** The
+plan was resolved *after* the person was created, so a tenant publishing two trial plans got a
+person, a lead and a touchpoint written on every refused press — and the second press was then
+refused for the *duplicate* rather than for the plan, which is the wrong answer to the wrong
+question. A control that commits anything before it refuses is not a control; found by a test
+that pressed the button twice, and the ordering now has an assertion of its own.
+
+**The phone is the key, and a match is refused rather than reused.** MOD-014's `AUTO_MERGE_
+THRESHOLD` is `None` because two siblings at one address with one family line is the ordinary
+case, so a command that silently reused whoever already held the number would be making the
+merge decision paragraph 10200 reserves for a person. It refuses, naming the match, and the
+screen offers ADM-MEM-10's own two escapes — start the trial on that record, or say it is
+somebody else. That refusal is also what makes the retry converge: the second attempt finds
+the person the first one created and the desk is shown them by name.
+
+**The figure is quoted, never supplied.** `catalog.quote_price` exists and does not store, so
+the agreement's amount is the trial plan's own live price rather than a number a till sent —
+"a cited authority is the authority, or it is decoration beside the figure", which is the
+finding `create_agreement` was fixed for. A trial is usually free and zero is a figure like
+any other.
+
+**The plan is derived where there is one and named where there is not.** Two fields is the
+canvas, so the command resolves the tenant's published trial plan itself; a tenant with two of
+them is a case the canvas does not draw, and the command refuses with both named rather than
+choosing — which is MOD-018's unordered-lookup finding applied to which product somebody is
+sold. A picker that appears only in that case is `/rota`'s "no rota binds" judgement: a state
+the drawing does not have, rendered honestly rather than guessed at.
+
+**The touchpoint is a `visit` and its prose is the client's.** A walk-in visited, so the
+timeline entry is the record of what happened, and `stage_from_touchpoint` then moves the lead
+`new → contacted` — which is what keeps the board's count and the profile's timeline from
+disagreeing, D3's own reason for making the first two moves facts rather than buttons. The
+*summary* comes from the caller because a sentence this service wrote would be the first
+non-human prose in a column every other row of which a salesperson typed, stored in whichever
+language it was written in whatever language the desk was using. The stage matters later rather
+than now: the board shows a trialist in `On trial` whatever their stage says, so `contacted` is
+where they land when the trial lapses.
+
+**Two of the canvas's three promises are not kept, and the screen says which.** "Creates a lead
+already in trial with the clock running, a credential, and an app invitation by text" — the
+first is the whole of what is ours. A credential needs somewhere for the member to show it and
+this build has no mobile client and nothing that could text one; the invitation is the
+messaging provider, which is external blocker 2. Neither is a reason to withhold the trial,
+which is the part a desk is standing there to do.
 
 ## What this record does not decide
 

@@ -699,6 +699,23 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
     body: { kind: "phone", value: "+962 79 000 0043", is_primary: true,
             correlation_id: cid() },
   });
+  // **One number held by two people, which is the family line MOD-014 refuses to auto-merge
+  // and which no fixture had.** `AUTO_MERGE_THRESHOLD` is `None` precisely because two
+  // siblings at one address with one family line is the ordinary case, and all three screens
+  // that check a phone draw an "also held by N other records" line for it -- a branch none of
+  // them had ever rendered, because the two numbers above belong to one person each. That
+  // absence hid a live 500 on two shipped screens: the line passed a *formatted* count to a
+  // plural message, which `fill` refuses, so the page answered "This page couldn't load" the
+  // first time a family shared a number. A separate number from the two above, so the
+  // existing duplicate assertions and the people board's score are untouched.
+  for (const name of ["Sami Family", "Rula Family"]) {
+    await call("/people", {
+      method: "POST", ...as(token),
+      body: { legal_name: name, correlation_id: cid(),
+              contacts: [{ kind: "phone", value: "+962 79 000 0044", is_primary: true }] },
+    });
+  }
+
   const candidates = await call(`/people/${twin.person_id}/duplicates`, {
     method: "POST", ...as(token), body: { correlation_id: cid() },
   });

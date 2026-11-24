@@ -155,6 +155,39 @@ def normalize_contact(kind: str, raw: str) -> str:
 CONTACT_MATCH_PAGE = 10
 
 
+def holders_of(pool: Pool, tenant_id: str, *, kind: str, value: str) -> list[str]:
+    """Which live people already hold this contact value. The existence half of `match_contact`.
+
+    **It lives here because MOD-027 holds no number.** FD-05's walk-in command has to refuse a
+    phone that already belongs to somebody -- `AUTO_MERGE_THRESHOLD` is `None` precisely
+    because two siblings at one address with one family line is the ordinary case, so silently
+    reusing whoever holds the number would be making the merge decision paragraph 10200
+    reserves for a person. A query on `ppl_contact_points` written in `app/crm/` would break
+    that module's own stated property and the test that asserts it, so the clause is here, in
+    the module that owns contact data.
+
+    **The same normalizer and the same two clauses as `match_contact`, and a different
+    question.** It answers "is there anybody" rather than "who, masked" -- so there is nothing
+    to mask and no gate argument: it returns ids a caller already has to hold
+    `people.person.write` to act on, and a caller wanting the names calls the read beside it.
+    `merge_status = 'active'` is the survivor, for that read's own reason: a merge leaves the
+    losing record's contact points where they are, so one number sits on two rows.
+    """
+    normalized = normalize_contact(kind, value)
+    if not normalized:
+        raise InvalidRequest("a_contact_value_is_not_blank")
+    with tenant_scope(pool, tenant_id) as conn:
+        rows = conn.execute(
+            "SELECT DISTINCT p.person_id FROM plt01.ppl_contact_points c"
+            " JOIN plt01.ppl_persons p ON p.person_id = c.person_id"
+            " WHERE c.kind = %s AND c.value_normalized = %s"
+            "   AND p.merge_status = 'active'"
+            " ORDER BY p.person_id LIMIT %s",
+            (kind, normalized, CONTACT_MATCH_PAGE),
+        ).fetchall()
+    return [str(r[0]) for r in rows]
+
+
 def match_contact(
     pool: Pool, tenant_id: str, *, kind: str, value: str,
     masked_fields: tuple[str, ...], held_permissions: set[str], limit: int = 5,

@@ -79,8 +79,16 @@ export function readLeadTrial(leadId: string): Promise<TrialCard> {
  * **Trials are excluded**, which is what makes this a conversion list: a product declaring
  * `trial_days` is what somebody is converting *from*.
  */
-export function listSellablePlans(): Promise<{ plans: SellablePlan[] }> {
-  return api("/memberships/plans");
+export function listSellablePlans(
+  params: { trials?: "exclude" | "include" | "only" } = {},
+): Promise<{ plans: SellablePlan[] }> {
+  // **One field with three values, so the two it is not cannot be asked for at once.**
+  // `exclude` is the default and is what makes this a conversion list; `only` is FD-05's
+  // question, which trial a walk-in can be started on.
+  const query = new URLSearchParams();
+  if (params.trials) query.set("trials", params.trials);
+  const suffix = query.toString();
+  return api(suffix ? `/memberships/plans?${suffix}` : "/memberships/plans");
 }
 
 /**

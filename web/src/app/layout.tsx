@@ -124,8 +124,16 @@ export default async function RootLayout({
     // **The design's own thirteen do not all exist here**, and the absent ones are absent
     // rather than disabled: §21 says the rail is "generated, never a static tree with
     // disabled rows -- a receptionist and an accountant get different rails, not the same
-    // rail greyed differently". Front desk, Leads, Point of sale, Coaching, Automations and
-    // Help have no screen in this build, and the Command Center's gaps list names them.
+    // rail greyed differently". Point of sale, Coaching, Automations and Help have no
+    // screen in this build, and the Command Center's gaps list names them.
+    //
+    // **`Front desk` is the design's own OPERATE entry and this rail now has one screen of
+    // it**, which is why that item is named for the screen rather than for the surface:
+    // FD-01, the live check-in a receptionist starts a shift on, is unbuilt, and an entry
+    // called "Front desk" would promise it. FD-06 and FD-03 are reached from a class and a
+    // refusal, so the walk-in is the only `/desk` route reachable without an id -- and a
+    // screen with no route to it is unreachable, which is the rail's job here as it is for
+    // tasks. The day FD-01 lands this becomes `Front desk` and points at it.
     items = [
       // **The Command Center needs no permission of its own**, and that is the design's
       // call rather than a convenience: ADM-CC-02 is "not a reduced Command Center -- a
@@ -140,6 +148,12 @@ export default async function RootLayout({
         group: "nav.groupOperate", icon: "doors" },
       { href: "/fleet", label: "nav.devices", allowed: devices.allowed,
         group: "nav.groupOperate", icon: "devices" },
+      // **Gated on the duplicate check rather than on the write**, which is the screen's own
+      // judgement: without `people.person.read` there is nothing for the page to do, and the
+      // five write permissions it needs are answered on the page with the step-up beside
+      // them. Hiding the entry from a session that could step up would hide the offer too.
+      { href: "/desk/trial", label: "nav.walkInTrial", allowed: people.allowed,
+        group: "nav.groupOperate", icon: "members" },
 
       // **Members before People.** ADM-MEM-05 is the members list an operator opens;
       // `/people` is the duplicate queue and the record behind it. Both need the same

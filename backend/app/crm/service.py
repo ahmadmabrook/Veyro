@@ -34,6 +34,7 @@ from app.commercial import service as commercial
 from app.crm import pipeline, trial
 from app.db import Pool, tenant_scope
 from app.errors import Conflict, InvalidRequest, NotFound
+from app.people import service as people
 
 #: Every listing read is bounded and ordered -- unbounded is a bulk export and a denial of
 #: service at once, and unordered makes the planner the author. Refused above rather than
@@ -998,6 +999,263 @@ def read_conversion_quote(
 
 
 # ------------------------------------------------------------------- the helpers
+
+
+#: FD-05's touchpoint kind. A walk-in *visited*, which is the fact, and `stage_from_touchpoint`
+#: moves a `new` lead to `contacted` on it -- D12's reason for recording one at all: the board
+#: counts what the timeline says, so a trial started with an empty timeline is a lead nobody
+#: can account for. Not a `tour`: a tour is a guided viewing somebody arranged.
+WALK_IN_KIND = "visit"
+
+#: How a walk-in's acceptance is recorded. A signature is recorded rather than performed
+#: everywhere in MOD-017 -- nothing in this build captures one -- and `click_through` is the
+#: kind that names what actually happened: a named actor pressed a button at a desk with the
+#: member standing there.
+WALK_IN_SIGNATURE = "click_through"
+
+
+def _walk_in_evidence(correlation_id: str) -> str:
+    """The locator that goes on a walk-in's signature.
+
+    `mem_agreements_evidence_is_a_locator` requires a URI, which is MOD-017's answer to a
+    column that would otherwise accept a card number -- and there is no captured artefact
+    here, so the honest locator points at the only evidence there is: the request in which a
+    named actor recorded that the member accepted at the desk. The alternative is a plausible
+    `s3://` path to a file nobody wrote, which is the fabricated-evidence shape this build has
+    been bitten by six times.
+    """
+    return f"veyro+desk://walk-in-trial/{correlation_id}"
+
+
+def _walk_in_number(agreement_id: str) -> str:
+    """The membership handle a walk-in trial gets, derived rather than typed.
+
+    **It is a handle, not a number the gym chose, and the response says so.**
+    `mem_memberships.membership_number` is unique per tenant under
+    `^[A-Z0-9][A-Z0-9-]{2,31}$` and every other caller supplies one; FD-05 draws two fields
+    and a button, so there is nobody to ask -- and a receptionist inventing one is how a
+    tenant ends up with three numbering schemes. Minting one here would be inventing the
+    scheme, which this build refuses for MOD-026's case number for the same reason: MOD-017
+    and MOD-014 already carry two human-facing numbers with nothing relating them.
+
+    Derived from the agreement so a resumed attempt produces the same handle, which is what
+    keeps the uniqueness index from refusing a retry.
+    """
+    return "TRIAL-" + agreement_id.replace("-", "")[:12].upper()
+
+
+def start_walk_in_trial(
+    pool: Pool, tenant_id: str, *, summary: str, actor_id: str, correlation_id: str,
+    person_id: str | None = None, legal_name: str | None = None, phone: str | None = None,
+    different_person: bool = False, variant_id: str | None = None,
+    source_id: str | None = None, owner_person_id: str | None = None,
+    at: datetime | None = None,
+) -> dict[str, Any]:
+    """FD-05: two fields and a start. ADR-0010 D12 is the record.
+
+    "Creates a lead already in trial state with the clock running. Everything else is captured
+    later by the sales team -- a person standing at a desk will not complete a form." So one
+    press produces four facts across four modules: a person, a lead, a signed agreement on a
+    trial product, and the activation that sets `ends_on`.
+
+    **Four transactions, resumable rather than atomic**, which D12 argues at length. None of
+    the four is a control over another's state, every partial outcome is a *less complete*
+    record that already has a screen, and three of the four key on the person -- the contact
+    match resolves them, `crm_leads_one_per_person` hands back the lead, `live_trial` hands
+    back the trial. The fourth is `resumable_agreement`, which exists because
+    `create_agreement` has no idempotency key and a second press between the signature and
+    the activation would otherwise draw up a second contract. Every step says `created` or
+    `existing`, so the caller is told what this press did rather than being left to assume.
+
+    **A phone that already has a record is refused, not reused.** MOD-014's
+    `AUTO_MERGE_THRESHOLD` is `None` because two siblings at one address with one family line
+    is the ordinary case, so reusing whoever holds the number would be making the merge
+    decision paragraph 10200 reserves for a person. The screen shows ADM-MEM-10's own two
+    escapes -- start the trial on that record, or say it is somebody else -- and that refusal
+    is also what makes a retry converge, because the second attempt finds the person the first
+    one created.
+
+    **The figure is quoted, never supplied.** `catalog.quote_price` is the read that may name
+    a price and records nothing, so the agreement's amount is the trial plan's own live price
+    rather than a number a till sent. It cites no resolution because a quote stores none, and
+    the response says that rather than leaving a null id to read as a write that failed.
+
+    **The plan is derived where there is one and named where there is not.** Two fields is the
+    canvas, so this resolves the tenant's published trial plan itself; two of them is a case
+    the canvas does not draw and is refused with both named rather than chosen between --
+    MOD-018's unordered-lookup finding applied to which product somebody is sold.
+    """
+    moment = at or _now()
+    today = moment.date()
+    if not summary.strip():
+        raise InvalidRequest("a_touchpoint_says_what_happened")
+    if person_id is None and not (legal_name and phone):
+        raise InvalidRequest("a_walk_in_is_a_person_or_a_name_and_a_number")
+    if person_id is not None and (legal_name or phone):
+        raise InvalidRequest("a_walk_in_is_a_person_or_a_name_and_a_number")
+
+    # **Both refusals happen before anything is written**, which is this build's oldest rule:
+    # a control that commits anything before it refuses is not a control. The first version
+    # resolved the plan *after* creating the person, so a tenant publishing two trial plans
+    # got a person, a lead and a touchpoint written on every refused press -- and the second
+    # press was then refused for the *duplicate* rather than the plan, which is the wrong
+    # answer to the wrong question. Found by a test that pressed the button twice.
+    steps: dict[str, str] = {}
+    if person_id is None:
+        assert legal_name is not None and phone is not None
+        holders = people.holders_of(pool, tenant_id, kind="phone", value=phone)
+        if holders and not different_person:
+            # Refused rather than reused, and the screen already holds the match from its own
+            # `GET /people/contact-match` -- a `ServiceError` carries a code and no payload, so
+            # naming the person is the surface's half of this.
+            raise Conflict("this_number_already_has_a_record")
+    plan = _trial_plan(pool, tenant_id, variant_id=variant_id)
+    if person_id is None:
+        assert legal_name is not None and phone is not None
+        created = people.create_person(
+            pool, tenant_id, legal_name=legal_name, actor_id=actor_id,
+            correlation_id=correlation_id,
+            contacts=[{"kind": "phone", "value": phone, "is_primary": "1"}], at=moment)
+        person_id = str(created["person_id"])
+        steps["person"] = "created"
+    else:
+        steps["person"] = "named"
+
+    lead = create_lead(
+        pool, tenant_id, person_id=person_id, source_id=source_id, interests=(),
+        owner_person_id=owner_person_id, actor_id=actor_id, correlation_id=correlation_id)
+    steps["lead"] = "existing" if lead.get("existing") else "created"
+    touch = record_touchpoint(
+        pool, tenant_id, str(lead["lead_id"]), kind=WALK_IN_KIND, summary=summary,
+        occurred_at=moment, actor_id=actor_id, correlation_id=correlation_id)
+
+    with tenant_scope(pool, tenant_id) as conn:
+        already = commercial.live_trial(conn, person_id, at=today)
+    if already is not None:
+        steps["trial"] = "existing"
+        return {
+            "person_id": person_id, "lead_id": str(lead["lead_id"]),
+            "stage": str(touch["stage"]), "steps": steps,
+            "membership_id": already["membership_id"],
+            "starts_on": already["starts_on"].isoformat(),
+            "ends_on": already["ends_on"].isoformat(),
+            "trial_days": already["trial_days"],
+            "this_person_was_already_on_a_trial": (
+                "the window is the one they are on; FD-05 does not start a second"),
+            **_WALK_IN_GAPS,
+        }
+
+    resumed = commercial.resumable_agreement(
+        pool, tenant_id, person_id=person_id,
+        membership_terms_id=plan["membership_terms_id"], starts_on=today)
+    if resumed is not None:
+        agreement_id, status = resumed["agreement_id"], resumed["status"]
+        amount_minor, currency = resumed["amount_minor"], resumed["currency"]
+        steps["agreement"] = "existing"
+    else:
+        quoted = catalog.quote_price(
+            pool, tenant_id, variant_id=plan["variant_id"], currency=plan["currency"],
+            actor_id=actor_id, correlation_id=correlation_id, subject_id=person_id, at=moment)
+        amount_minor = int(quoted["final_amount_minor"])
+        currency = str(quoted["currency"])
+        drawn = commercial.create_agreement(
+            pool, tenant_id, person_id=person_id,
+            membership_terms_id=plan["membership_terms_id"], variant_id=plan["variant_id"],
+            amount_minor=amount_minor, currency=currency, starts_on=today,
+            actor_id=actor_id, correlation_id=correlation_id)
+        agreement_id, status = str(drawn["agreement_id"]), "draft"
+        steps["agreement"] = "created"
+
+    if status == "draft":
+        commercial.sign_agreement(
+            pool, tenant_id, agreement_id, signature_kind=WALK_IN_SIGNATURE,
+            signature_evidence_ref=_walk_in_evidence(correlation_id),
+            signed_by_person_id=person_id, actor_id=actor_id,
+            correlation_id=correlation_id, at=moment)
+        steps["signature"] = "recorded"
+    else:
+        steps["signature"] = "existing"
+
+    live = commercial.activate_membership(
+        pool, tenant_id, agreement_id=agreement_id,
+        membership_number=_walk_in_number(agreement_id),
+        idempotency_key=f"walk-in-trial:{agreement_id}", actor_id=actor_id,
+        correlation_id=correlation_id, at=today)
+    steps["trial"] = "existing" if live.get("repeated") else "created"
+    return {
+        "person_id": person_id, "lead_id": str(lead["lead_id"]),
+        "stage": str(touch["stage"]), "steps": steps,
+        "agreement_id": agreement_id,
+        "membership_id": str(live["membership_id"]),
+        "membership_number": str(live["membership_number"]),
+        "membership_number_is_a_handle": (
+            "derived from the agreement because FD-05 has nobody to ask for one, and this "
+            "build has no tenant numbering scheme -- MOD-017 and MOD-014 already carry two "
+            "human-facing numbers with nothing relating them"),
+        "amount_minor": amount_minor, "currency": currency,
+        "cites_no_price_resolution_because": (
+            "a quote records none: the figure is the trial plan's own live price rather than "
+            "one the caller sent"),
+        "plan": {"variant_id": plan["variant_id"], "display_name": plan["display_name"],
+                 "trial_days": plan["trial_days"]},
+        "starts_on": today.isoformat(),
+        "ends_on": live.get("ends_on"),
+        "trial_days": live.get("trial_days"),
+        **_WALK_IN_GAPS,
+    }
+
+
+#: The two of FD-05's three promises this build does not keep, named on every answer rather
+#: than left for a screen to discover. "Creates a lead already in trial with the clock running,
+#: a credential, and an app invitation by text" -- the first is the whole of what is ours.
+_WALK_IN_GAPS = {
+    "no_credential_because": (
+        "a credential needs somewhere for the member to show it: there is no mobile client in "
+        "this build and nothing that could text one"),
+    "no_invitation_because": (
+        "an app invitation by text needs the messaging provider, which is external blocker 2 "
+        "-- MOD-013 authors a message and sends nothing"),
+}
+
+
+def _trial_plan(
+    pool: Pool, tenant_id: str, *, variant_id: str | None,
+) -> dict[str, Any]:
+    """Which trial a walk-in is started on, and the currency its price is quoted in.
+
+    Derived where a tenant publishes one trial, which is the canvas's two-field screen; named
+    where it publishes several, because choosing for them would be MOD-018's unordered lookup
+    deciding what somebody is sold. A tenant that publishes none cannot use FD-05 at all and
+    the refusal says so, rather than a button that 422s on the contract behind it.
+    """
+    offered = commercial.sellable_plans(pool, tenant_id, trials="only")["plans"]
+    if not offered:
+        raise InvalidRequest("this_tenant_publishes_no_trial_plan")
+    if variant_id is not None:
+        chosen = [p for p in offered if p["variant_id"] == variant_id]
+        if not chosen:
+            raise NotFound("trial_plan_not_found")
+    elif len(offered) > 1:
+        raise InvalidRequest("name_the_trial_plan")
+    else:
+        chosen = offered
+    plan = dict(chosen[0])
+    # **The currency comes from the plan's own live price, through MOD-016's own read.**
+    # `quote_price` takes a currency and FD-05 has no field for one, and a currency the caller
+    # chose would let a JOD trial be quoted in dollars -- the one comparison MOD-015's money
+    # discipline forbids. `list_prices` is the read that answers which rows were written
+    # against a variant; writing the predicate here instead would be a second definition of
+    # which price is live, and the first version of this function did exactly that and named a
+    # column that does not exist. Rows in two currencies are refused rather than ordered
+    # between, for `_trial_plan`'s own reason one level down.
+    live = catalog.list_prices(pool, tenant_id, variant_id=plan["variant_id"])["prices"]
+    offered_in = sorted({str(r["currency"]) for r in live if r["in_window"]})
+    if not offered_in:
+        raise InvalidRequest("the_trial_plan_has_no_live_price")
+    if len(offered_in) > 1:
+        raise InvalidRequest("the_trial_plan_is_priced_in_more_than_one_currency")
+    plan["currency"] = offered_in[0]
+    return plan
 
 def _interests(interests: tuple[str, ...]) -> tuple[str, ...]:
     try:

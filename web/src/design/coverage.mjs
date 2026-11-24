@@ -224,11 +224,13 @@ const BACKLOG = {
     + "message are the seam: MOD-013 authors one and sends nothing, and MOD-012 has no "
     + "inbound receiver, which needs the messaging provider and the vault that verifies a "
     + "callback signature",
-  "FD-05": "work: MOD-027 slice 2. The pipeline and the lead are built in slice 1, so a walk-in "
-    + "trial is the trial half: nothing marks a product as a trial yet, which is what slice "
-    + "2 decides. The canvas's app invitation by text is where MOD-013's missing dispatcher "
-    + "is the seam rather than the blocker, and Yasmin picking it up on her pipeline within "
-    + "the minute is `GET /crm/leads?mine=true`, which exists",
+  // **FD-05 was here and is built**, and its reason is worth recording because it outlived
+  // its own blocker: it said "nothing marks a product as a trial yet, which is what slice 2
+  // decides", and ADR-0010 D7 decided it two slices ago -- so the entry named an obstacle
+  // that had gone while the module id it validates stayed correct. The check cannot read the
+  // sentence beside the token, which is the limit this file already records for the three
+  // MOD-026 entries, and the remedy is the same: re-read every reason that mentions a slice
+  // when that slice lands. `/desk/trial` is the screen and ADR-0010 D12 is its record.
   // MOD-055 depends on MOD-026 too, so automation sits behind tasks for the same reason CRM
   // does -- an automation's actions are approvals and cases.
   "ADM-AUT-01": "MOD-055: automation, which depends on MOD-010 (built) and MOD-026 (slice 1 "

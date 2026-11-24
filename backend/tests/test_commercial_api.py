@@ -5278,15 +5278,39 @@ class SellablePlanTests(CommercialApiTestCase):
             "/memberships/plans", headers=self.headers(tenant_id))
         self.assertEqual(listed.status_code, 200, listed.text)
         body = listed.json()
-        self.assertTrue(body["trials_excluded"])
+        self.assertEqual(body["trials"], "exclude")
         self.assertEqual([p for p in body["plans"] if p["is_a_trial_product"]], [])
 
         with_trials = self.client.get(
-            "/memberships/plans", params={"include_trials": "true"},
+            "/memberships/plans", params={"trials": "include"},
             headers=self.headers(tenant_id))
         self.assertEqual(with_trials.status_code, 200, with_trials.text)
         self.assertTrue(
             any(p["is_a_trial_product"] for p in with_trials.json()["plans"]))
+
+    def test_only_is_fd05s_question_and_an_unknown_filter_is_refused(self) -> None:
+        """One field with three values, so the two it is not cannot be asked for at once.
+
+        `only` is "which trial can a walk-in be started on" -- FD-05's read -- and it is the
+        inverse of the default rather than a third list: every plan it returns declares
+        `trial_days` and every plan the default returns does not.
+        """
+        tenant_id = self.tenant()
+        self.membership(tenant_id, terms_extra={"trial_days": 7})
+        self.membership(tenant_id)
+        only = self.client.get(
+            "/memberships/plans", params={"trials": "only"},
+            headers=self.headers(tenant_id))
+        self.assertEqual(only.status_code, 200, only.text)
+        trials = only.json()["plans"]
+        self.assertTrue(trials)
+        self.assertTrue(all(p["is_a_trial_product"] for p in trials))
+        # **The contract travels with the plan**, because an agreement is written against the
+        # terms and a caller holding a variant alone cannot name them.
+        self.assertTrue(all(p["membership_terms_id"] for p in trials))
+        self.assertEqual(self.client.get(
+            "/memberships/plans", params={"trials": "both"},
+            headers=self.headers(tenant_id)).status_code, 422)
 
     def test_it_carries_no_figure(self) -> None:
         """A price needs `catalog.price.read` and only a quote may name it, so "see the

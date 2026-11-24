@@ -25,6 +25,7 @@ import unittest
 import uuid
 
 from app.errors import InvalidRequest
+from app.people import service as people
 from app.people import visibility
 from tests.support import GatedApiTestCase
 
@@ -410,6 +411,28 @@ class ErasureAfterMergeTests(PeopleApiTestCase):
             headers=owner)
         self.assertEqual(merged.status_code, 201, merged.text)
         return source, target, identity_id
+
+    def test_a_merged_away_record_is_not_a_holder_of_its_own_number(self) -> None:
+        """`holders_of`'s `merge_status = 'active'` clause, which only this can see.
+
+        **A merge copies and nothing cleans up**, so after one the value sits on two rows and
+        only the survivor is the record anybody would open. `match_contact` filters for that
+        reason and `holders_of` is the existence half beside it -- FD-05's walk-in refuses a
+        number somebody already holds, and a refusal naming a record whose own readers are
+        told to follow a pointer sends a desk to the wrong person.
+
+        **Asserted on the function rather than through the walk-in**, because the walk-in's
+        only use of the answer is `if holders`: with the loser counted it refuses too, so the
+        screen behaves identically and the clause is invisible there. The mutation sweep said
+        so by coming back uncaught, which is this repository's "ask which reader is unguarded"
+        rather than a redundant guard.
+        """
+        tenant_id = self.tenant()
+        source, target, _ = self.build(tenant_id, link_to_source=True)
+        holders = people.holders_of(
+            self._tenant_pool, tenant_id, kind="email",
+            value="Nadia.Haddad@example.test")
+        self.assertEqual(holders, [target], f"source was {source}")
 
     def erase(self, tenant_id: str, identity_id: str) -> dict:
         owner = self.headers(tenant_id)

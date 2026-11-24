@@ -315,6 +315,7 @@ corresponds to them. The others map loosely:
 | `/schedule` | ADM-SCH-01 Class schedule · week grid | **built from the canvas** |
 | `/rota` | ADM-SCH-04 Coach availability · week grid | **built from the canvas** — the schedule board's own missing third view, over a read that did not exist |
 | `/desk/*` (layout) | FD-08 Device strip | **built from the canvas** — always visible above the Front Desk surface, worst row first, and every degraded row names what to do instead; the canvas's own "type the name instead" is replaced because this product has no member search, and the receipt printer and card terminal it draws are not kinds of device this build registers |
+| `/desk/trial` | FD-05 Walk-in trial | **built from the canvas** — two fields and a button that creates a person, opens a lead, signs an agreement on the trial product and activates it in one request; the duplicate panel is borrowed from ADM-MEM-10 because this screen creates a `ppl_persons` row exactly as that one does, the heading names the plan's own `trial_days`, and the credential and the app invitation the canvas promises are each named as absent with what they wait on |
 | `/desk/denials/{id}` | FD-03 Access denial resolution | **built from the canvas** — the discreet line a password-only desk gets and the real reason once stepped up, which is the screen's own thesis; the door is named from the zone the refusal cites, the override offers the step-up rather than a button that would be refused, and the renewal, the day pass, the photo and the canvas's own club-and-plan header line are each named as absent with a reason |
 | `/desk/classes/{id}` | FD-06 Class check-in | **built from the canvas, and the first Front Desk screen** — Touch density, the roster composed with MOD-014's batched names, the only working write form here that is not behind a step-up; the automatic release and the waitlist notification the canvas promises are named as absent |
 | `/schedule/{id}` | ADM-SCH-02 Class detail and roster | **rebuilt** — the band, four MetricCells, the roster; the three actions are stepped-up writes with no form |
@@ -2452,3 +2453,81 @@ can send.
 and an `<ol>` may hold only `<li>`, so a banner inside it is an accessibility violation — which
 the profile's own axe scan caught. The empty state replaces the component rather than sitting
 in it.
+
+## FD-05 — the walk-in trial, and the two promises the canvas makes that this build cannot
+
+The canvas is the shortest in the inventory: `NAME`, `PHONE`, **Start her trial now**, and
+three sentences under it.
+
+> Creates a lead already in trial with the clock running, a credential, and an app invitation
+> by text. Yasmin picks it up on her pipeline within the minute.
+>
+> A person standing at a desk will not complete a six-field form. Two fields captured beats
+> eight fields abandoned, and the record is the same record she converts on.
+
+`/desk/trial` is it, and the registry's own one-line spec is what the server had to grow:
+"creates a lead already in trial state with the clock running. Everything else is captured
+later by the sales team." Seven decisions carry it, and three are refusals.
+
+**One press, one request, four writes — resumable rather than atomic.** ADR-0010 D12 argues it
+at length and the short form is that none of the four is a control over another's state: a
+person with no lead is what ADM-MEM-10 produces, a lead at `new` is the board's first column,
+and a signed agreement nobody activated is `activate_membership`'s own retry path. What makes a
+second press converge is that every step keys on the person. So the screen reports what the
+server performed, step by step, rather than claiming to be atomic — and unlike ADM-CRM-04,
+which makes two HTTP writes and tells the reader when the first landed and the second did not,
+there is no browser-side window to report at all.
+
+**The duplicate panel is borrowed, because the canvas does not draw one and the screen needs
+it.** This is the third door in the product that creates a `ppl_persons` row, and leaving the
+check out would make it the one where a duplicate is cheap — in the screen whose own footnote
+says "the record is the same record she converts on". Every decision behind it is
+`@/lib/walk-in`'s and the request is `@/lib/contact-check`'s, imported rather than re-decided:
+a lead *is* a person, so a number already on a record is already on a record, and a second copy
+would be two definitions of "does this number exist".
+
+**The acknowledgement is sent to the server, which is the difference from the other two
+screens.** There "Different person" releases a client-side hold; here the *command* refuses a
+number somebody holds — MOD-014's `AUTO_MERGE_THRESHOLD` is `None` because two siblings at one
+address with one family line is the ordinary case — so the field is what says a human looked at
+the match and decided.
+
+**"Start the trial for them" is the sentence ADM-MEM-10 can only link to.** The command takes a
+`person_id`, so a match becomes a trial on *that* record with no second person. It still needs
+the step-up, because the agreement and the activation are financial class whoever they are for
+— which is where it differs from ADM-CRM-04's equivalent, whose match path is routine.
+
+**The heading names the trial's length because the canvas's does.** "Start a 7-day trial" is a
+figure, so it comes from the published plan's own `trial_days`; with two plans of different
+lengths there is no single answer until one is chosen, and a heading naming one of them would
+be naming whichever sorted first. That case gets a third field — the one control the canvas
+does not draw — which is `/rota`'s "no rota binds" judgement rather than a deviation: a state
+the drawing does not have, rendered honestly. A tenant publishing **no** trial gets the form
+withdrawn and the reason, because a gym that sells no trial cannot use this screen at all.
+
+**Nothing is marked on any field, which is the shell's rule rather than an omission.** The mark
+goes on the rarer side and a form with no optional field has no rarer side — ADM-CRM-04's own
+setting for the two fields its canvas leaves bare. And `aria-required` rather than `required`,
+for that screen's reason: the native constraint makes the browser refuse the whole form, and
+this one has a second submit that legitimately needs neither field.
+
+**Two of the canvas's three promises are not kept, and both are on the screen.** A credential
+needs somewhere for the member to show it, and this build has no mobile client and nothing that
+could send one; the app invitation is the messaging provider. Neither is a reason to withhold
+the trial, which is the part a desk is standing there to do — and a screen that implied a text
+had gone would be telling a receptionist something that did not happen.
+
+**It is also the first `/desk` route reachable without an id**, which is why it is the first in
+the rail. FD-01, the live check-in a receptionist starts a shift on, is unbuilt; FD-06 and FD-03
+are reached from a class and a refusal. The rail entry is therefore named for the screen rather
+than for the surface, because an item called "Front desk" would promise FD-01.
+
+**What is still owed**, each named on the screen: the credential and the invitation above; an
+owner, because the form has no list of staff to choose from and an unowned lead on the board is
+what "Yasmin picks it up within the minute" means; and a membership number the club chose,
+which this build has no scheme for — the handle is derived from the agreement instead, stable
+across a retry, and said to be a handle rather than printed as a number.
+
+Proven: 15 Python mutations against the command, all caught; 12 HTTP tests; 9 component tests
+over the plan states and the confirmation's wording; 7 browser tests, two of which step up and
+one of which starts a real trial; and the phone sweep carries the route.

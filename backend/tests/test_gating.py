@@ -689,6 +689,14 @@ WRITE_ROUTES = [
     ("post", f"/crm/leads/{_ID}/next-action",
      {"next_action": "call back", "next_action_on": "2026-09-01", **_CORR}),
     ("post", f"/crm/leads/{_ID}/interests", {"interests": ["classes"], **_CORR}),
+    # **FD-05's walk-in, and the one write in this module that is not routine.** It charges
+    # five permissions across four modules and three of them are financial class, so a session
+    # holding every CRM permission at AAL 1 is still refused -- which is the assurance half of
+    # the sweep rather than the authorization half, and the reason the screen offers a step-up
+    # before the button rather than after it.
+    ("post", "/crm/walk-in-trial",
+     {"legal_name": "Maya Rifai", "phone": "+962789931104",
+      "summary": "walked in and started a trial", **_CORR}),
 ]
 
 

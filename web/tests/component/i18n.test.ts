@@ -269,8 +269,13 @@ describe("a placeholder is a contract", () => {
    * not have costs the same trust as one that misses a defect it does, and this repository has
    * paid that once already for a regex that stopped at a TypeScript generic's `>`.
    */
-  function fillSites(): { key: string; names: string[]; where: string }[] {
-    const out: { key: string; names: string[]; where: string }[] = [];
+  function fillSites(): {
+    key: string; names: string[]; values: Record<string, string>;
+    where: string;
+  }[] {
+    const out: {
+      key: string; names: string[]; values: Record<string, string>; where: string;
+    }[] = [];
     const walk = (dir: string) => {
       for (const name of readdirSync(dir)) {
         const path = join(dir, name);
@@ -296,11 +301,18 @@ describe("a placeholder is a contract", () => {
             // `{about}` as a value the message does not name -- a false finding from the
             // check rather than from the app, which is the one failure mode a sweep must not
             // have. So the body is split at depth-0 commas and each entry is judged whole.
-            const names = entries(body).map((entry) => {
+            const parsed = entries(body).map((entry) => {
               const colon = depthZeroColon(entry);
-              return (colon < 0 ? entry : entry.slice(0, colon)).trim();
-            }).filter((name) => /^\w+$/.test(name));
-            out.push({ key: m[1]!, names, where: path });
+              const name = (colon < 0 ? entry : entry.slice(0, colon)).trim();
+              // The *expression*, kept beside the name: a plural `count` has to be a number
+              // and the one way this app turns a number into a string is `formatInteger`.
+              const value = colon < 0 ? name : entry.slice(colon + 1).trim();
+              return { name, value };
+            }).filter((entry) => /^\w+$/.test(entry.name));
+            const names = parsed.map((entry) => entry.name);
+            const values = Object.fromEntries(
+              parsed.map((entry) => [entry.name, entry.value]));
+            out.push({ key: m[1]!, names, values, where: path });
           }
         }
       }
@@ -356,6 +368,21 @@ describe("a placeholder is a contract", () => {
       // first render whatever the text says.
       if (plural && !site.names.includes("count")) {
         offenders.push(`${site.where}: ${site.key} is plural and needs a numeric count`);
+      }
+      // **And a `count` that has already been formatted is the same throw**, which is the
+      // half this sweep could not see until FD-05 hit it. `fill` picks the plural form from
+      // a *number* and formats it itself; a site passing `formatInteger(...)` passes a
+      // string, so the page answers 500 on every render of that branch. **Two shipped
+      // screens had it** -- ADM-MEM-10's and ADM-CRM-04's "also held by N other records",
+      // reachable the moment one phone number is held by two people, which is the family
+      // line those screens exist for. Neither branch had ever rendered, because the fixture
+      // seeded two *different* numbers: a surface branch no fixture can reach, in its
+      // quietest form. `formatInteger` is the only number-to-string path in this app, so
+      // naming it is exact rather than a guess at what "numeric" means.
+      if (plural && (site.values["count"] ?? "").includes("formatInteger")) {
+        offenders.push(
+          `${site.where}: ${site.key} passes a formatted count; `
+          + "`fill` needs the number and formats it itself");
       }
     }
     expect([...new Set(offenders)]).toEqual([]);

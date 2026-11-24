@@ -40,6 +40,12 @@ class CrmApiTestCase(GatedApiTestCase):
         self.assertEqual(created.status_code, 201, created.text)
         return str(created.json()["person_id"])
 
+    def board_counts(self, tenant_id: str) -> dict[str, int]:
+        """ADM-CRM-01's five columns as a mapping. Here rather than in two subclasses,
+        because two copies of it would be two definitions of what a column count is."""
+        board = self.client.get("/crm/board", headers=self.headers(tenant_id)).json()
+        return {c["stage"]: c["count"] for c in board["columns"]}
+
     def source(self, tenant_id: str, key: str = "") -> str:
         made = self.client.post("/crm/sources", json={
             "source_key": key or f"s{uuid.uuid4().hex[:8]}",
@@ -590,10 +596,6 @@ class TrialColumnTests(CrmApiTestCase, CommercialApiTestCase):
     a second copy of them here would be two definitions of "a live membership". The MRO puts
     the CRM helpers first, so `person` is the lead-shaped one.
     """
-
-    def board_counts(self, tenant_id: str) -> dict[str, int]:
-        board = self.client.get("/crm/board", headers=self.headers(tenant_id)).json()
-        return {c["stage"]: c["count"] for c in board["columns"]}
 
     def lead_for(self, tenant_id: str, person_id: str) -> dict:
         made = self.client.post("/crm/leads", json={
@@ -1241,3 +1243,242 @@ class LostLeadTests(CrmApiTestCase):
                     at=datetime.now(UTC) + timedelta(days=days))["leads"]
                 mine = next(r for r in rows if r["lead_id"] == lead["lead_id"])
                 self.assertEqual(mine["recontactable"], expected)
+
+
+class WalkInTrialTests(CrmApiTestCase, CommercialApiTestCase):
+    """FD-05 over HTTP: "Two fields. Sales will get the rest later." ADR-0010 D12.
+
+    **Joined rather than copied**, like `TrialCardTests`: a trial plan is a contract, a
+    published product with a live price and a set of terms declaring `trial_days`, all of
+    which `CommercialApiTestCase` already builds -- and a second copy of any of them would be
+    a second definition of what a trial product is.
+    """
+
+    WALK_IN = ["crm.lead.write", "crm.touchpoint.write", "people.person.write",
+               "catalog.price.read", "membership.agreement.write",
+               "membership.agreement.activate"]
+
+    def trial_plan(self, tenant_id: str, *, days: int = 7) -> dict[str, str]:
+        """A published trial plan: the three rows `sellable_plans` requires to agree."""
+        contract_key = self.contract(tenant_id)
+        product_id, variant_id = self.membership_product(tenant_id)
+        terms_id = self.terms(tenant_id, contract_key, product_id, trial_days=days)
+        return {"product_id": product_id, "variant_id": variant_id,
+                "membership_terms_id": terms_id}
+
+    def walk_in(self, tenant_id: str, headers: dict[str, str] | None = None,
+                **over: object) -> object:
+        body: dict = {"legal_name": "Maya Rifai", "phone": "+962789931104",
+                      "summary": "walked in and started a trial"}
+        body.update(over)
+        return self.client.post(
+            "/crm/walk-in-trial", json={**body, **self.correlation()},
+            headers=headers or self.headers(tenant_id))
+
+    def test_two_fields_produce_a_lead_already_in_trial_with_the_clock_running(self) -> None:
+        """The canvas's own sentence, asserted end to end.
+
+        "Creates a lead already in trial with the clock running" -- so one press leaves a
+        person, a lead, a signed agreement and an activation whose `ends_on` is the trial's,
+        and the board puts them in `On trial` without anybody moving a stage.
+        """
+        tenant_id = self.tenant()
+        self.trial_plan(tenant_id)
+        started = self.walk_in(tenant_id)
+        self.assertEqual(started.status_code, 201, started.text)
+        body = started.json()
+        self.assertEqual(body["steps"], {"person": "created", "lead": "created",
+                                         "agreement": "created", "signature": "recorded",
+                                         "trial": "created"})
+        self.assertEqual(body["trial_days"], 7)
+        self.assertEqual(body["starts_on"], TODAY.isoformat())
+        self.assertEqual(body["ends_on"], (TODAY + timedelta(days=6)).isoformat())
+        # **The stage moved on the touchpoint, not on the trial.** A walk-in visited, and
+        # `stage_from_touchpoint` is what keeps the board's count and the timeline agreeing.
+        self.assertEqual(body["stage"], "contacted")
+        self.assertEqual(self.board_counts(tenant_id)["on_trial"], 1)
+        # **The kind, not only the stage.** `stage_from_touchpoint` reaches `contacted` for
+        # everything that is not a `tour`, so the stage cannot tell a visit from a note -- and
+        # the kind is the fact a report groups by: a walk-in recorded as a note says nobody
+        # came in. The mutation sweep is what found that the stage assertion was the weaker one.
+        timeline = self.client.get(
+            f"/crm/leads/{body['lead_id']}", headers=self.headers(tenant_id)).json()
+        self.assertEqual([t["kind"] for t in timeline["touchpoints"]], ["visit"])
+
+    def test_the_figure_is_the_plans_own_live_price_and_cites_no_resolution(self) -> None:
+        """Quoted, never supplied: there is no amount field on the body at all.
+
+        `membership_product` prices the variant at 4500, and that is what the agreement
+        records -- so a till cannot name the figure a trial is written at, which is
+        `create_agreement`'s own review finding approached from the caller's side.
+        """
+        tenant_id = self.tenant()
+        self.trial_plan(tenant_id)
+        body = self.walk_in(tenant_id).json()
+        self.assertEqual((body["amount_minor"], body["currency"]), (4500, "JOD"))
+        self.assertIn("a quote records none", body["cites_no_price_resolution_because"])
+
+    def test_a_number_that_already_has_a_record_is_refused_until_a_human_says_otherwise(
+            self) -> None:
+        """MOD-014's `AUTO_MERGE_THRESHOLD` is `None`, so this is not the server's call.
+
+        Two siblings at one address with one family line is the ordinary case, so the refusal
+        is the fail-closed direction -- and `different_person` is the field that says somebody
+        looked at the match and decided, which is ADM-MEM-10's second escape.
+        """
+        tenant_id = self.tenant()
+        self.trial_plan(tenant_id)
+        self.assertEqual(self.walk_in(tenant_id).status_code, 201)
+        again = self.walk_in(tenant_id, legal_name="Rami Rifai")
+        self.assertEqual(again.status_code, 409, again.text)
+        self.assertEqual(again.json()["error"], "this_number_already_has_a_record")
+        sibling = self.walk_in(tenant_id, legal_name="Rami Rifai", different_person=True)
+        self.assertEqual(sibling.status_code, 201, sibling.text)
+        self.assertEqual(sibling.json()["steps"]["person"], "created")
+
+    def test_a_named_person_starts_the_trial_on_that_record(self) -> None:
+        """ADM-MEM-10's first escape: "that record would open instead of a second one".
+
+        The person already exists, so nothing is created on their behalf -- and the lead is
+        theirs if they have one, because `crm_leads_one_per_person` is the control.
+        """
+        tenant_id = self.tenant()
+        self.trial_plan(tenant_id)
+        existing = self.lead(tenant_id)
+        started = self.walk_in(
+            tenant_id, person_id=existing["person_id"], legal_name=None, phone=None)
+        self.assertEqual(started.status_code, 201, started.text)
+        body = started.json()
+        self.assertEqual(body["steps"]["person"], "named")
+        self.assertEqual(body["steps"]["lead"], "existing")
+        self.assertEqual(body["lead_id"], existing["lead_id"])
+
+    def test_a_second_press_produces_one_of_each_rather_than_two(self) -> None:
+        """D12's resume, which is what four transactions buy instead of one.
+
+        Every step keys on the person, so pressing the button twice converges: the contact
+        match refuses a second person, the unique index hands back the lead, and `live_trial`
+        hands back the trial rather than starting another.
+        """
+        tenant_id = self.tenant()
+        self.trial_plan(tenant_id)
+        first = self.walk_in(tenant_id).json()
+        again = self.walk_in(tenant_id, person_id=first["person_id"],
+                             legal_name=None, phone=None)
+        self.assertEqual(again.status_code, 201, again.text)
+        body = again.json()
+        self.assertEqual(body["steps"]["trial"], "existing")
+        self.assertEqual(body["lead_id"], first["lead_id"])
+        self.assertEqual(body["membership_id"], first["membership_id"])
+        self.assertIn("does not start a second", body["this_person_was_already_on_a_trial"])
+
+    def test_an_interrupted_attempt_resumes_the_agreement_it_already_drew_up(self) -> None:
+        """The one partial state that is not merely less complete.
+
+        A press that timed out between the signature and the activation leaves a signed
+        agreement with no membership; without `resumable_agreement` the next press would draw
+        up a second contract on the same terms for the same person on the same day.
+        """
+        tenant_id = self.tenant()
+        plan = self.trial_plan(tenant_id)
+        person_id = self.person(tenant_id, "Maya Rifai")
+        drawn = self.client.post("/memberships/agreements", json={
+            "person_id": person_id, "membership_terms_id": plan["membership_terms_id"],
+            "variant_id": plan["variant_id"], "amount_minor": 4500, "currency": "JOD",
+            "starts_on": TODAY.isoformat(), **self.correlation()},
+            headers=self.headers(tenant_id))
+        self.assertEqual(drawn.status_code, 201, drawn.text)
+        started = self.walk_in(tenant_id, person_id=person_id, legal_name=None, phone=None)
+        self.assertEqual(started.status_code, 201, started.text)
+        body = started.json()
+        self.assertEqual(body["steps"]["agreement"], "existing")
+        self.assertEqual(body["steps"]["signature"], "recorded")
+        self.assertEqual(body["agreement_id"], str(drawn.json()["agreement_id"]))
+
+    def test_the_membership_number_is_a_derived_handle_and_says_so(self) -> None:
+        """FD-05 draws two fields, so there is nobody to ask for a number.
+
+        Minting a scheme here is what this build refuses for MOD-026's case number, and for
+        the same reason: MOD-017 and MOD-014 already carry two human-facing numbers with
+        nothing relating them. Derived from the agreement so a resumed press agrees.
+        """
+        tenant_id = self.tenant()
+        self.trial_plan(tenant_id)
+        body = self.walk_in(tenant_id).json()
+        self.assertTrue(body["membership_number"].startswith("TRIAL-"))
+        self.assertIn("nothing relating them", body["membership_number_is_a_handle"])
+
+    def test_the_two_promises_this_build_does_not_keep_are_named_on_the_answer(self) -> None:
+        """"a credential, and an app invitation by text" -- neither happens here.
+
+        Named on the response rather than left for a screen to discover, because a surface
+        that implied either would be telling a receptionist something was sent.
+        """
+        tenant_id = self.tenant()
+        self.trial_plan(tenant_id)
+        body = self.walk_in(tenant_id).json()
+        self.assertIn("no mobile client", body["no_credential_because"])
+        self.assertIn("external blocker 2", body["no_invitation_because"])
+
+    def test_a_tenant_with_no_trial_plan_is_refused_with_the_reason(self) -> None:
+        """A real state: a gym that sells no trial cannot use this screen at all."""
+        tenant_id = self.tenant()
+        refused = self.walk_in(tenant_id)
+        self.assertEqual(refused.status_code, 422, refused.text)
+        self.assertEqual(refused.json()["error"], "this_tenant_publishes_no_trial_plan")
+
+    def test_two_trial_plans_are_named_rather_than_chosen_between(self) -> None:
+        """MOD-018's unordered lookup applied to which product somebody is sold.
+
+        Two fields is the canvas and two trial products is a case it does not draw, so the
+        command refuses and the screen asks -- rather than the planner deciding which trial a
+        walk-in was started on.
+        """
+        tenant_id = self.tenant()
+        first = self.trial_plan(tenant_id)
+        self.trial_plan(tenant_id, days=14)
+        refused = self.walk_in(tenant_id)
+        self.assertEqual(refused.status_code, 422, refused.text)
+        self.assertEqual(refused.json()["error"], "name_the_trial_plan")
+        # **And it wrote nothing**, which is what the ordering buys: the first version
+        # resolved the plan after creating the person, so a refused press left a person, a
+        # lead and a touchpoint -- and the *next* press was then refused for the duplicate
+        # number rather than for the plan. One assertion, because a refusal that commits
+        # anything is not a refusal.
+        self.assertEqual(self.client.get(
+            "/people/contact-match", params={"kind": "phone", "value": "+962789931104"},
+            headers=self.headers(tenant_id)).json()["count"], 0)
+        named = self.walk_in(tenant_id, variant_id=first["variant_id"])
+        self.assertEqual(named.status_code, 201, named.text)
+        self.assertEqual(named.json()["trial_days"], 7)
+        # A different walk-in, because the first one's number now has a record -- which is the
+        # refusal two tests up and would otherwise answer here instead of the unknown plan.
+        unknown = self.walk_in(
+            tenant_id, legal_name="Nour Saad", phone="+962789931105",
+            variant_id=str(uuid.uuid4()))
+        self.assertEqual(unknown.status_code, 404, unknown.text)
+
+    def test_a_person_and_a_name_together_is_a_caller_that_does_not_know_which(self) -> None:
+        """MOD-026's `to_self` rule: both fields is refused at the boundary."""
+        tenant_id = self.tenant()
+        self.trial_plan(tenant_id)
+        both = self.walk_in(tenant_id, person_id=str(uuid.uuid4()))
+        self.assertEqual(both.status_code, 422, both.text)
+        neither = self.walk_in(tenant_id, legal_name=None, phone=None)
+        self.assertEqual(neither.status_code, 422, neither.text)
+
+    def test_every_permission_at_aal_one_is_still_refused(self) -> None:
+        """Three of the five are financial class, so holding them all is not enough.
+
+        That is the screen's own shape rather than a defect: it offers the step-up before the
+        button, which is what this app already does for a masked read. A session that *has*
+        stepped up gets through, which is the other half and the one a sweep cannot see.
+        """
+        tenant_id = self.tenant()
+        self.trial_plan(tenant_id)
+        weak = self.headers(tenant_id, self.grant(tenant_id, self.WALK_IN))
+        refused = self.walk_in(tenant_id, headers=weak)
+        self.assertEqual(refused.status_code, 403, refused.text)
+        strong = self.headers(tenant_id, self.stepped_grant(tenant_id, self.WALK_IN))
+        allowed = self.walk_in(tenant_id, headers=strong)
+        self.assertEqual(allowed.status_code, 201, allowed.text)

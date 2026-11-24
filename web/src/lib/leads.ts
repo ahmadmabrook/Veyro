@@ -151,6 +151,15 @@ export type SellablePlan = {
   membership_kind: string;
   trial_days: number | null;
   is_a_trial_product: boolean;
+  /**
+   * The contract the plan is sold on.
+   *
+   * **The server sends it and a hand-written type that omitted it would be a field nothing
+   * could read.** An agreement is written against the terms rather than the variant, so a
+   * caller holding a variant alone cannot name them -- and a second read between choosing a
+   * plan and selling it could disagree with this one about which contract was chosen.
+   */
+  membership_terms_id: string;
 };
 
 /**

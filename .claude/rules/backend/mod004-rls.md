@@ -2795,3 +2795,41 @@ interest **blocks its own return**, so a lead who changed their mind back is tol
 recorded" and the profile keeps showing one interest. The remedy the column exists to provide,
 defeated by the function that writes it. Found by the test written for the withdrawal, which
 is the argument for testing the round trip rather than the act.
+
+
+**A plural message's `count` must be the number, not a formatted one — and the branch that
+proves it is the one no fixture reaches.** `fill` picks the CLDR form from `values.count` and
+*then* formats it, so a call site passing `formatInteger(...)` passes a string and the page
+answers 500 on every render of that branch. Three sites shipped that way and **two of them were
+in screens already in production use**: ADM-MEM-10's and ADM-CRM-04's "Held by N other records"
+line, reachable the moment one phone number is held by two people — which is the family line
+`AUTO_MERGE_THRESHOLD = None` exists for and the whole reason those screens have an escape.
+Neither had ever rendered, because the fixture seeded two *different* numbers.
+
+Three things were needed and none alone is enough. The call sites pass the number. The
+per-plural-form sweep in `tests/component/i18n.test.ts` now keeps each entry's *expression*
+beside its name and refuses a `count` containing `formatInteger` — exact rather than a guess at
+"numeric", because that is the only number-to-string path in the app — and it is
+mutation-proven, since a sweep that cannot fail is the thing it exists to prevent. And the
+fixture seeds one number held by two people, so the line renders in a browser. **The general
+shape: when a runtime check is strict, the call sites it guards need a static sweep, because
+the ones it would catch are exactly the branches nothing renders.**
+
+**A `&&` chain whose earlier step fails leaves the previous run's log on disk.**
+`npm run build > log && npx playwright test > log` — when the build fails on a type error, the
+second redirect never happens, so `tail log` reports the *earlier* run, complete and plausible
+and about code that no longer exists. Seven failures were read that way for a run that never
+started. The tells are cheap and both were available: `web/.next/BUILD_ID` is absent after a
+failed build, and the log's mtime predates the command. This is the stale-artefact rule this
+file already records for `tail -F` on an old log, arriving through a shell operator instead:
+**check the exit code of the step that was supposed to produce the artefact, and give each run
+its own filename.**
+
+**Counting elements inside a design-system component couples a screen's test to the
+component's internals.** `form.locator("input, select")` found six where a reader sees two: the
+acknowledgement travels as a hidden input, React's form action adds its own, and the field
+shell renders more. The property is "the canvas's two fields and nothing else", which is
+`getByRole("textbox")` and `getByRole("combobox")` — what a reader can type into. Same family
+as the positional-cell and attribute-order traps: the number is a coincidence of the current
+markup, and a shell change breaks the assertion for a reason that has nothing to do with the
+screen.

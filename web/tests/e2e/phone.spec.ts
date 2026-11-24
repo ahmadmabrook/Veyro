@@ -107,6 +107,10 @@ const surfaces: [string, string][] = [
   // table is a six-column grid whose primary cell stacks a name over a meta line, which is
   // the shape that duplicated every droppable value on three other grids below 600px.
   ["the add-lead form", "/leads/new"],
+  // **FD-05, which is the same two-field shell with a detection panel over it** -- and the
+  // first `/desk` route in this sweep that is reachable without an id, so it carries FD-08's
+  // device strip above a form rather than above a roster.
+  ["the walk-in trial form", "/desk/trial"],
   ["the lead board", "/leads"],
   ["the lead table", "/leads?view=table"],
   // The profile is a record header over four metric cells, a timeline and five forms,

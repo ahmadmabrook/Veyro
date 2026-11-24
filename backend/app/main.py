@@ -1568,6 +1568,43 @@ class LeadBody(BaseModel):
         return self
 
 
+class WalkInTrialBody(BaseModel):
+    """FD-05's two fields, plus the escapes the duplicate check needs. ADR-0010 D12.
+
+    **A person or a name and a number, never both.** The desk types two fields; the screen's
+    own contact check may then resolve them to a record that already exists, and starting the
+    trial on *that* record is one of ADM-MEM-10's two escapes. A body carrying both is a
+    caller that does not know which it meant, which is MOD-026's `to_self` rule.
+
+    **`different_person` is the other escape and it is deliberately not a default.** Two
+    siblings at one address with one family line is MOD-014's ordinary case, so the server
+    refuses a number somebody already holds and this is the field that says a human looked at
+    the match and decided.
+
+    **`variant_id` is absent on the drawn screen and present here**, because a tenant
+    publishing two trial plans is a case the canvas does not draw: with one, the command
+    derives it and the field is unused.
+    """
+
+    summary: str = Field(min_length=1, max_length=2000)
+    correlation_id: str
+    person_id: str | None = None
+    legal_name: str | None = Field(default=None, max_length=200)
+    phone: str | None = Field(default=None, max_length=64)
+    different_person: bool = False
+    variant_id: str | None = None
+    source_id: str | None = None
+    owner_is_me: bool = False
+
+    @model_validator(mode="after")
+    def one_subject(self) -> WalkInTrialBody:
+        if self.person_id is not None and (self.legal_name or self.phone):
+            raise ValueError("name a person or type a name and a number, not both")
+        if self.person_id is None and not (self.legal_name and self.phone):
+            raise ValueError("a walk-in needs a person, or a name and a number")
+        return self
+
+
 class TouchpointBody(BaseModel):
     """A conversation, written up. The kind decides which stage it reaches."""
 
@@ -7197,7 +7234,7 @@ def create_app(
 
     @app.get("/memberships/plans")
     def list_sellable_plans(
-        tenant_id: TenantId, session: Session, include_trials: bool = False,
+        tenant_id: TenantId, session: Session, trials: str = "exclude",
         limit: int = commercial.SELLABLE_PLANS,
     ) -> dict[str, Any]:
         """Which membership plans can be sold: ADM-CRM-06's plan pick, and ADM-MSH-01's.
@@ -7208,16 +7245,17 @@ def create_app(
         catalogue reads is the right one and the one that would also buy "what every sale
         costs" is not.
 
-        **`include_trials` is off by default and is the field that makes this a conversion
-        list.** A product whose terms declare `trial_days` is what somebody converts *from*,
-        so offering it as a target would let a trial be converted into another trial. With it
-        on, this is "every membership this gym sells", which is a different and equally real
-        question -- and a caller wanting the second and given the first would be missing
-        exactly the product a trial starts from.
+        **`trials` is one field with three values and `exclude` is the default**, which is
+        what makes this a conversion list. A product whose terms declare `trial_days` is what
+        somebody converts *from*, so offering it as a target would let a trial be converted
+        into another trial. `include` is "every membership this gym sells", which is a
+        different and equally real question; `only` is FD-05's, which trial a walk-in can be
+        started on. One field rather than two flags, because two could contradict and the
+        answer would be an empty list reading as "this gym sells nothing".
         """
         permit(session, "catalog.product.read")
         return commercial.sellable_plans(
-            tenant_pool, tenant_id, exclude_trials=not include_trials, limit=limit)
+            tenant_pool, tenant_id, trials=trials, limit=limit)
 
     @app.get("/memberships")
     def list_memberships(
@@ -10329,6 +10367,46 @@ def create_app(
             tenant_pool, tenant_id, person_id=require_uuid(body.person_id, "person_id"),
             source_id=optional_uuid(body.source_id, "source_id"),
             interests=tuple(body.interests), owner_person_id=owner,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id)
+
+    @app.post("/crm/walk-in-trial", status_code=201)
+    def start_walk_in_trial(
+        tenant_id: TenantId, session: Session, body: WalkInTrialBody
+    ) -> dict[str, Any]:
+        """FD-05: "Two fields. Sales will get the rest later." ADR-0010 D12 is the record.
+
+        **Five permissions, because one press writes across four modules.** The person is
+        MOD-014's, the lead and its touchpoint are MOD-027's, the figure is MOD-016's quote and
+        the agreement and its activation are MOD-017's -- so a session holding only the lead
+        write would be creating a person and a membership out of a CRM route, which is
+        MOD-010's `events.event.read` finding pointed at writes.
+
+        **Three of the five are financial class, so this needs a stepped-up session**, and
+        that is the honest cost rather than a reason to withhold the screen: one step-up per
+        twelve-hour window is a receptionist stepping up once at the start of a shift, which
+        is ADM-MSH-03's precedent. A button that answered 403 would be worse than its absence;
+        a button that asks for the step-up first is what this app already does for a masked
+        read.
+
+        **`owner_is_me` is derived from the session**, like ADM-CRM-04's: a body able to name
+        an owner would let a desk claim a walk-in as somebody else, and the canvas's own
+        "Yasmin picks it up on her pipeline within the minute" is the unowned case.
+        """
+        permit(session, "crm.lead.write", body.correlation_id)
+        permit(session, "people.person.write", body.correlation_id)
+        permit(session, "catalog.price.read", body.correlation_id)
+        permit(session, "membership.agreement.write", body.correlation_id)
+        permit(session, "membership.agreement.activate", body.correlation_id)
+        owner = (_require_person(actor_person_id(tenant_id, session)) if body.owner_is_me
+                 else None)
+        return crm.start_walk_in_trial(
+            tenant_pool, tenant_id, summary=body.summary,
+            person_id=optional_uuid(body.person_id, "person_id"),
+            legal_name=body.legal_name, phone=body.phone,
+            different_person=body.different_person,
+            variant_id=optional_uuid(body.variant_id, "variant_id"),
+            source_id=optional_uuid(body.source_id, "source_id"),
+            owner_person_id=owner,
             actor_id=session["identity_id"], correlation_id=body.correlation_id)
 
     @app.get("/crm/leads")

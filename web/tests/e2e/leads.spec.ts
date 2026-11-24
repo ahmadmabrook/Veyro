@@ -73,10 +73,26 @@ test.describe("the lead pipeline", () => {
     const column = page.locator("#main").getByRole("region", { name: /^On trial,/ });
     await expect(column).toBeVisible();
     await expect(column.getByText(/marks a product as a trial/)).toHaveCount(0);
-    // **And the column is populated**, which is the end-to-end evidence that the derivation
-    // reaches the board: the fixture seeds one trialist and the count is the server's answer
-    // over every lead rather than the page's over the cards it loaded.
-    await expect(column).toContainText("1");
+    // **And the column is populated**, which is the end-to-end evidence that the
+    // derivation reaches the board.
+    //
+    // **A floor and a named row rather than an exact count**, which is this file's own rule
+    // one assertion up (`open leads` is already `toBeGreaterThanOrEqual`) and which FD-05's
+    // spec is why: the walk-in press starts a real trial in this tenant and leaves the lead
+    // behind, so an exact count here was an assertion about how many times that spec had
+    // ever run. The property is that the trialist is drawn in this column; the number is a
+    // coincidence of the fixture's history.
+    const onTrial = Number(
+      (await column.getAttribute("aria-label") ?? "").match(/(\d+)/)?.[1]);
+    expect(onTrial).toBeGreaterThanOrEqual(1);
+    // **And the count has something behind it: a card, or the overflow line that says how
+    // many are not drawn.** Not "a card", which is what the first version asserted and which
+    // the board's own documented shape refuses: "the board's counts are the tenant's, the
+    // table's rows are the page's", so a column whose members fell off the bounded page
+    // shows a figure and a `+N more` instead of a row. Asserting a link found none the
+    // moment this tenant held enough leads for that to happen.
+    const cards = await column.getByRole("link").count();
+    if (cards === 0) await expect(column).toContainText(/\d+ more/);
   });
 
   test("a card's name is withheld at this assurance and the card is still a link",
@@ -186,7 +202,12 @@ test.describe("the lead pipeline", () => {
     const board = page.getByRole("region", { name: "The pipeline, by stage" });
     const hrefs = await board.getByRole("link").evaluateAll((nodes) =>
       nodes.map((node) => node.getAttribute("href") ?? ""));
-    expect(hrefs.length).toBe(4);
+    // **A floor, because a sibling spec writes into this tenant.** FD-05's press starts a
+    // real trial and leaves its lead on this board, so `toBe(4)` was an assertion about how
+    // many times that spec had ever run -- the fixture-coupling trap this repository records
+    // for two specs sharing one tenant. The shape is the assertion: every card is a link to
+    // a lead route, and the seeded ones are among them.
+    expect(hrefs.length).toBeGreaterThanOrEqual(4);
     for (const href of hrefs) expect(href).toMatch(/^\/leads\/[0-9a-f-]{36}$/);
     expect(hrefs).toContain(`/leads/${coldLeadId}`);
   });

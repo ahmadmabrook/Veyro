@@ -4919,10 +4919,11 @@ Things worth knowing before extending it:
 
 Known gaps, deliberate:
 
-- **Four of the eight screens are built and four are not.** ADM-CRM-01's board,
-  ADM-CRM-02's table, ADM-CRM-03's profile and ADM-CRM-04's add form are `/leads`,
-  `/leads/{id}` and `/leads/new` -- see "The web app" -- and the trial pair, the lost sheet
-  and the conversation are owed; `design:coverage` carries each with what is left in it.
+- **Seven of the nine screens are built and two are not.** ADM-CRM-01's board, 02's table,
+  03's profile, 04's add form, 05's trial state, 06's conversion and 07's lost sheet are
+  `/leads`, `/leads/{id}`, `/leads/new` and `/leads/{id}/convert`, and **FD-05's walk-in is
+  `/desk/trial`** -- see "The web app". What is owed is ADM-COM-01's conversation and
+  ADM-CRM-01's AI suggestion; `design:coverage` carries each with what is left in it.
 - **`POST /crm/leads` has a caller for an existing person now, and until ADM-CRM-04 it had
   none.** The route takes a `person_id` and returns the lead that person already has, which
   is the canvas's own "that record would open instead of a second one being created" -- and
@@ -4990,6 +4991,41 @@ Known gaps, deliberate:
   shape at the surface, which this app has recorded twice and a tester found both times. The
   chip is table-only, because the board draws five stages and a chip asking for a sixth list
   would be a control the board cannot answer.
+- **FD-05's walk-in is built, and it is the one command in this build that writes across
+  four modules in one request.** `POST /crm/walk-in-trial` creates the person, opens the
+  lead, records the visit that moves the stage, quotes the trial plan's own live price,
+  draws up the agreement, signs it and activates it -- ADR-0010 D12 is the record. Five
+  permissions, three of them financial class.
+  **Four transactions, resumable rather than atomic, and the response says which steps it
+  performed.** None of the four writes is a control over another's state, every partial
+  outcome is a *less complete* record that already has a screen, and three of the four key on
+  the person -- the contact match resolves them, `crm_leads_one_per_person` hands back the
+  lead, `live_trial` hands back the trial. The fourth is `commercial.resumable_agreement`,
+  which exists because `create_agreement` has no idempotency key: without it a press between
+  the signature and the activation would draw up a second contract, which is the one partial
+  state that is not merely less complete. The atomic version needs `_on` variants of four
+  core money functions, and that is the right shape the day one of them becomes a control
+  over another's state.
+  **Both refusals happen before anything is written**, which is this build's oldest rule and
+  which the first version broke: the plan was resolved *after* the person was created, so a
+  tenant publishing two trial plans got a person, a lead and a touchpoint written on every
+  refused press -- and the second press was then refused for the *duplicate* rather than for
+  the plan, which is the wrong answer to the wrong question. Found by a test that pressed the
+  button twice.
+  **The number is refused, not reused**, because `AUTO_MERGE_THRESHOLD` is `None`: silently
+  reusing whoever holds a family line would be making the merge decision paragraph 10200
+  reserves for a person. `people.holders_of` is the existence read, and it lives in MOD-014
+  rather than here because this module holds no number and a test asserts it.
+  **The figure is quoted and the plan is derived.** `catalog.quote_price` records nothing, so
+  the agreement is written at the plan's own live price rather than a number a till sent; the
+  trial plan is resolved where a tenant publishes one and refused with both named where it
+  publishes two. **The membership number is a derived handle**, said to be one on the
+  response, because FD-05 draws two fields and this build has no numbering scheme -- which is
+  MOD-026's case-number refusal met again.
+  Proven: 12 HTTP tests, 15 Python mutations in `tests/mutate_walk_in_trial.py` (all caught,
+  three uncaught on the first run -- one of which was a clause subsumed by its sibling and was
+  deleted, and one of which needed a case on `holders_of` itself because the walk-in's only
+  use of the answer is `if holders`), 9 component tests and 11 browser tests.
 - **No AI suggestion.** ADM-CRM-01 draws "VEYRO SUGGESTS · YOU SEND IT" with a rationale; the
   permission exists and is `privileged`, the record is slice 4's work, and the text needs a
   model nobody has an account with. The ADR leaves open whether that is an eighth external
@@ -5854,6 +5890,50 @@ decisions rather than rendering:
     form writes a dated absence and takes one back, and a reader without the write
     permission is given neither control rather than one that answers 403.
 
+**FD-05 is the walk-in trial, and it is where a plural message's own strictness found two
+live 500s in screens that had shipped.** The canvas is the shortest in the inventory -- two
+fields, one button and "Creates a lead already in trial with the clock running, a credential,
+and an app invitation by text" -- and `/desk/trial` is it. The server half and the four-write
+architecture are in MOD-027's section above; what belongs here is the surface's own half.
+
+  * **The duplicate panel is borrowed, because the canvas does not draw one and the screen
+    needs it.** This is the third door in the product that creates a `ppl_persons` row, and
+    leaving the check out would make it the one where a duplicate is cheap -- on the screen
+    whose own footnote says "the record is the same record she converts on". Every decision
+    is `@/lib/walk-in`'s and the request is `@/lib/contact-check`'s, imported rather than
+    re-decided, which is now three callers of one definition of "does this number exist".
+  * **The acknowledgement is sent to the server**, unlike on the other two: the *command*
+    refuses a number somebody holds, so "Different person" is a field the request carries
+    rather than a client-side release. And "Start the trial for them" is the sentence
+    ADM-MEM-10 can only link to -- the command takes a `person_id`.
+  * **The heading names the plan's own `trial_days`**, because "Start a 7-day trial" is a
+    figure. Two published trials of different lengths have no single answer until one is
+    chosen, so that case gets the one control the canvas does not draw and a heading naming
+    one of them would be naming whichever sorted first.
+  * **It is the first `/desk` route reachable without an id**, which is why it is the first in
+    the rail -- and the rail entry is named for the *screen* rather than for the surface,
+    because FD-01 is unbuilt and an item called "Front desk" would promise it.
+
+**And the defect it found is the one worth carrying.** `fill` picks a plural form from a
+*number* and formats it itself; the page passed `formatInteger(...)`, which is a string, so
+it threw `MissingMessageError` and the screen rendered "This page couldn't load". Grepping the
+shape found the same call in **two screens that had already shipped** -- ADM-MEM-10's and
+ADM-CRM-04's "Held by N other records" line -- reachable the moment one phone number is held
+by two people, which is the family line those screens exist for. **Neither branch had ever
+rendered**, because the fixture seeded two *different* numbers: a surface branch no fixture can
+reach, in the quietest form this build has met it. Three things close it, and all three were
+needed: the six call sites pass the number, the per-plural-form sweep now refuses a `count`
+that has been through `formatInteger` (mutation-proven), and the fixture seeds one number held
+by two people so the line renders in a browser.
+
+**Two process findings came with it, both already in the rules file and both paid again.** A
+`&&` chain whose `npm run build` failed left the *previous* run's Playwright log on disk, and
+reading its tail reported seven failures for a run that never happened -- the stale-artefact
+trap, with `web/.next/BUILD_ID` missing as the tell. And an assertion counting `input, select`
+nodes in the form found six where a reader sees two, because the acknowledgement travels as a
+hidden input and the shell renders its own: counted by role now, which is the property rather
+than the component's internals.
+
 **ADM-MSH-07's cancellation is the third write form, and building it found that the design
 and the implementation disagreed about a money figure.** That half is in MOD-017's notes
 above; what is the surface's own is the shape of the sheet and five decisions in it:
@@ -6594,9 +6674,9 @@ MOD-018, MOD-019, MOD-021, MOD-022, MOD-026 and MOD-027's board, table, profile 
 MOD-020's roster on a session,
 ADM-SCH-04's availability grid at `/rota`, ADM-MSH-07's cancellation sheet at
 `/people/{id}?tab=membership&cancel=1`, ADM-MEM-10's walk-in form at
-`/members/new`, FD-06's class check-in at `/desk/classes/{id}` and FD-03's denial
-resolution at `/desk/denials/{id}`, with FD-08's device strip above both -- the first Front
-Desk screens -- ADM-STF-01/02's
+`/members/new`, FD-05's walk-in trial at `/desk/trial`, FD-06's class check-in at
+`/desk/classes/{id}` and FD-03's denial resolution at `/desk/denials/{id}`, with FD-08's
+device strip above all three -- the first Front Desk screens -- ADM-STF-01/02's
 staff list and staff record, ADM-PAY-05's
 recovery workspace, ADM-PAY-10's dispute board, ADM-RPT-01/02/03/04
 under `/reports`, ADM-PAY-07's wallet on a member's billing tab and ADM-MEM-07's attendance
@@ -6691,24 +6771,27 @@ certificate is mTLS and a signature nothing here makes, which is the vault rathe
 WebAuthn, and MOD-022 still opens doors on an identity nothing verifies.
 
 **The Front desk is where the reclassification bites hardest**, nine screens whose modules
-are all built and all on the authenticated tenant plane. Three are built: FD-03 denial resolution and
-FD-08's device strip are MOD-022's and MOD-021's, FD-06 class check-in is MOD-020's. Six
-are not: FD-01 live check-in is MOD-022's, FD-02 member lookup is MOD-014's (and now its
-contact-match read), FD-04 day pass and FD-05 walk-in trial are sales, FD-07 shift open and
-close is MOD-018's cash sessions, which `/payments/cash` already answers from the Admin
-side. **`design:coverage` holds this surface to the Admin one's standard now**, so each of
-those six carries a written reason -- and under the external-blocker rule only two of them
-are blockers. **FD-01 and FD-04 are payments at the door**, which is the provider the owner
-supplies. The other four are this session's work and were mislabelled: FD-02's search is a
-gated, masked read over `ppl_contact_points_by_value`, and calling it ENG-01's was an
-architecture decision of mine rather than a constraint (only its 44px photo wants the object
-store); FD-05 is CRM, and building CRM is delegated, though it does need a trial state
-`mem_memberships` has no value for and its invitation waits on the messaging provider; **FD-07
-needs nothing from anybody** -- the count, the expected figure and the variance are already
-`/payments/cash`, and the handover note the canvas calls the point of the screen is a migration
-and a form; and FD-09's service worker and write queue are weeks of work and still work. The
-day-pass half of FD-04 is mine too: `PRODUCT_TYPES` already carries `session_credit` and
-`service`, so "there is no day-pass product" described configuration as a capability gap.
+are all built and all on the authenticated tenant plane. **Four are built**: FD-03 denial
+resolution and FD-08's device strip are MOD-022's and MOD-021's, FD-06 class check-in is
+MOD-020's, and **FD-05's walk-in trial is MOD-027's** -- the one that was named as needing "a
+trial state `mem_memberships` has no value for", which ADR-0010 D7 settled two slices before
+the screen was built. Five are not: FD-01 live check-in is MOD-022's, FD-02 member lookup is
+MOD-014's (and now its contact-match read), FD-04 day pass is sales, FD-07 shift open and
+close is MOD-018's cash sessions, which `/payments/cash` already answers from the Admin side,
+and FD-09 is the service worker. **`design:coverage` holds this surface to the Admin one's
+standard**, so each of those five carries a written reason -- and under the external-blocker
+rule only two of them are blockers. **FD-01 and FD-04 are payments at the door**, which is the
+provider the owner supplies. The rest are this session's work and were mislabelled: FD-02's
+search is a gated, masked read over `ppl_contact_points_by_value`, and calling it ENG-01's was
+an architecture decision of mine rather than a constraint (only its 44px photo wants the object
+store); **FD-07 needs nothing from anybody** -- the count, the expected figure and the variance
+are already `/payments/cash`, and the handover note the canvas calls the point of the screen is
+a migration and a form; and FD-09's service worker and write queue are weeks of work and still
+work. The day-pass half of FD-04 is mine too: `PRODUCT_TYPES` already carries `session_credit`
+and `service`, so "there is no day-pass product" described configuration as a capability gap.
+**FD-05's own invitation by text is the messaging provider and its credential needs a mobile
+client**, and neither was a reason to withhold the trial, which is the part a desk is standing
+there to do.
 
 **Of the specified Admin screens with no route, the ones with reads behind them are what to
 build next.** That audit is a **check** now rather than a count somebody re-derives, because

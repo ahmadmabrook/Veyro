@@ -11,6 +11,17 @@ import { stepUp } from "./step-up-helper";
  * *answer*, not the digits, so the value is here once rather than inline in six places.
  */
 const KNOWN = "+962 79 000 0042";
+/**
+ * One number held by two people, which no fixture had until FD-05 needed it.
+ *
+ * **Its absence hid a live 500 on this screen.** The "also held by N other records" line
+ * passed a *formatted* count to a plural message, and `fill` picks the form from a number and
+ * formats it itself -- so the page answered "This page couldn't load" the first time a family
+ * shared a number. The branch had never rendered, because the two seeded numbers belong to one
+ * person each: a surface branch no fixture can reach, in its quietest form. The per-plural-form
+ * sweep refuses the shape statically now; this renders it.
+ */
+const FAMILY_LINE = "+962 79 000 0044";
 
 /** A second seeded number, on a different record. */
 const OTHER = "+962 79 000 0043";
@@ -36,6 +47,15 @@ test.describe("the walk-in form at an ordinary sign-in", () => {
       await expect(page).toHaveURL(/\/members\/new$/);
       await expect(page.getByRole("heading", { name: "New member · walk-in" })).toBeVisible();
     });
+
+  test("counts the other records on a number a family shares", async ({ page }) => {
+    const form = page.locator("form.ds-walk-in-form");
+    await form.getByLabel("Phone").fill(FAMILY_LINE);
+    const banner = page.locator(".ds-walk-in-detection");
+    await expect(banner).toContainText("This number already has a record");
+    // Two people hold it, so one *other* record beyond the one named.
+    await expect(banner).toContainText("Held by 1 other record");
+  });
 
   test("finds the record a number already belongs to, before anything is saved",
     async ({ page }) => {

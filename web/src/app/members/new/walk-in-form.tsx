@@ -7,7 +7,7 @@ import { ContactMatchLine } from "@/components/contact-match-line";
 import { Banner } from "@/components/ds/banner";
 import { Button } from "@/components/ds/button";
 import { Field } from "@/components/ds/field";
-import { fill, formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
+import { fill, t, type Locale, type MessageKey } from "@/i18n/locale";
 import { checkPhone } from "@/lib/contact-check";
 import {
   DETECTION_DEBOUNCE_MS, detectionFor, holdReason, interruption, isAbout, mayCreate,
@@ -202,9 +202,8 @@ export function WalkInForm({
             </p>
             {duplicate.count > 1 ? (
               <p className="muted ds-walk-in-others">
-                {fill(locale, "walkIn.alsoHeldBy", {
-                  count: formatInteger(duplicate.count - 1, numbering),
-                })}
+                {fill(locale, "walkIn.alsoHeldBy",
+                      { count: duplicate.count - 1 }, numbering)}
               </p>
             ) : null}
             <div className="ds-walk-in-actions">
