@@ -26,12 +26,19 @@ jobs:
     # lower cost factor in `local` is self-consistent and is the real fix -- the same shape as
     # `VEYRO_API_REQUEST_BUDGET`, which `config.load_settings` refuses outside `local`.
     #
-    # **That landed, and the measured figures are both worth keeping.** With
+    # **That landed, and what is worth keeping is the saving rather than a duration.** With
     # `VEYRO_SCRYPT_COST_LOG2=10` the suite runs 2,964 tests in 642 seconds locally against 997
-    # at the deployed cost -- a 36% saving. I predicted "near fifteen minutes" for CI's backend
-    # step from that; the step then ran in **9.2 minutes**, against 22.9 on the commit before.
-    # The prediction is corrected here rather than left, because an under-claim is a stale note
-    # like any other and this one would have somebody budget headroom nobody needs.
+    # at the deployed cost -- a 36% saving, and that ratio is a property of the change. The
+    # step's *duration* is not: it ran in 9.2 minutes on the commit that landed the setting and
+    # 14.9 two commits later, because FD-07 added twenty-five HTTP tests whose fixture
+    # provisions a tenant, a chart, a drawer, a sale, a close and a deposit each.
+    #
+    # **A single number here goes stale with every suite addition**, which this comment proved
+    # by doing it within the hour: it first predicted "near fifteen minutes", was corrected to
+    # the measured 9.2, and was stale again on the next push. So it states the saving and the
+    # thing that moves the duration, and the ceiling is read from the job rather than from
+    # here -- which is what the rules file means by reading the duration trend when a suite
+    # grows.
     # The ceiling stays at 45 rather than going back to 25: a timeout that cancels a *passing*
     # run reads as `cancelled` rather than as a diagnosis, which is the bad kind of tripwire.
     # What guards against creep is reading the job's duration when a suite grows, which the
