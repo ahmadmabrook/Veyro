@@ -17,6 +17,7 @@ from __future__ import annotations
 import unittest
 import uuid
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from tests.support import GatedApiTestCase
 
@@ -1229,6 +1230,425 @@ class CashTests(LedgerApiTestCase):
             **self.correlation()}, headers=owner)
         self.assertEqual(refused.status_code, 409, refused.text)
         self.assertIn("closed sessions", refused.text)
+
+
+class HandoverTests(LedgerApiTestCase):
+    """FD-07: a till that is handed over rather than emptied.
+
+    The canvas draws the previous shift's own figure -- "Kareem left JOD 50.00 at 16:04. If
+    your count differs, say so now -- a discrepancy found at open belongs to the previous
+    shift" -- which only means something if the next person is counting the same money.
+    """
+
+    def balance(self, tenant_id: str, account_id: str) -> int:
+        read = self.client.get(f"/ledger/accounts/{account_id}/balance",
+                               headers=self.headers(tenant_id))
+        self.assertEqual(read.status_code, 200, read.text)
+        return int(read.json()["balance_minor"])
+
+    def shift(self, tenant_id: str, entity: str, till: str, amount: int,
+              *, key: str) -> None:
+        """A sale: `amount` into the drawer."""
+        owner = self.headers(tenant_id)
+        posted = self.client.post("/ledger/journals", json={
+            "legal_entity_id": entity, "currency": "JOD",
+            "lines": [{"account_id": till, "amount_minor": amount},
+                      {"account_id": self.chart_cache[tenant_id]["revenue"],
+                       "amount_minor": -amount}],
+            "posted_on": day(0), "description": "a sale",
+            "source_kind": "manual", "source_ref": key,
+            "idempotency_key": key, **self.correlation()}, headers=owner)
+        self.assertEqual(posted.status_code, 201, posted.text)
+
+    def handed_over(self, tenant_id: str, *, float_minor: int = 5000,
+                    takings: int = 2000, note: str | None = None) -> dict[str, Any]:
+        """One complete shift: open with a float from the safe, take money, close, bank the
+        takings and leave the float -- which is the state FD-07's canvas opens on.
+        """
+        owner = self.headers(tenant_id)
+        entity = self.legal_entity(tenant_id)
+        location_id = self.location(tenant_id)
+        chart = self.chart(tenant_id, entity=entity)
+        self.chart_cache[tenant_id] = chart
+        first = self.drawer(tenant_id, entity, location_id, float_minor=float_minor)
+        self.shift(tenant_id, entity, first["till"], takings,
+                   key=f"sale-{uuid.uuid4().hex[:8]}")
+        closed = self.client.post(
+            f"/ledger/cash-sessions/{first['session_id']}/close", json={
+                "counted_minor": float_minor + takings, "legal_entity_id": entity,
+                "suspense_account_id": chart["suspense"],
+                **({"handover_note": note} if note else {}),
+                **self.correlation()}, headers=owner)
+        self.assertEqual(closed.status_code, 200, closed.text)
+        deposit_key = f"d-{uuid.uuid4().hex[:8]}"
+        banked = self.client.post("/ledger/deposits", json={
+            "location_id": location_id, "cash_account_id": first["till"],
+            "bank_account_id": chart["bank"], "currency": "JOD",
+            "declared_minor": takings, "retained_minor": float_minor,
+            "deposited_on": day(0),
+            "session_ids": [first["session_id"]], "legal_entity_id": entity,
+            "idempotency_key": deposit_key, **self.correlation()},
+            headers=owner)
+        self.assertEqual(banked.status_code, 201, banked.text)
+        return {"entity": entity, "location_id": location_id, "chart": chart,
+                "till": first["till"], "safe": first["safe"],
+                "first_session_id": first["session_id"], "deposit_key": deposit_key,
+                "banked": banked.json(), "float_minor": float_minor}
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.chart_cache: dict[str, dict[str, str]] = {}
+
+    def test_a_handover_does_not_post_the_float_a_second_time(self):
+        """**The defect this slice exists to close, measured before it was written.**
+
+        Kareem opens with a 50.00 float from the safe, takes 20.00, counts 70.00 and closes
+        balanced, banks the 20.00 and leaves the float. Layla then counts the 50.00 that is
+        sitting there -- and the open used to draw *another* 50.00 from the safe, so the drawer
+        account read 100.00 with 50.00 in notes. Her close then posted a 50.00 shortfall to
+        suspense against her name, the safe went 50.00 short with nothing having left it, and
+        it compounded every shift.
+        """
+        tenant_id = self.tenant()
+        owner = self.headers(tenant_id)
+        world = self.handed_over(tenant_id)
+        self.assertEqual(self.balance(tenant_id, world["till"]), 5000)
+        safe_before = self.balance(tenant_id, world["safe"])
+
+        opened = self.client.post("/ledger/cash-sessions", json={
+            "location_id": world["location_id"], "cash_account_id": world["till"],
+            "drawer_label": "front", "currency": "JOD",
+            "opening_float_minor": 5000,
+            "idempotency_key": f"h-{uuid.uuid4().hex[:8]}", **self.correlation()},
+            headers=owner)
+        self.assertEqual(opened.status_code, 201, opened.text)
+        body = opened.json()
+        self.assertTrue(body["was_a_handover"])
+        self.assertEqual(body["opening_expected_minor"], 5000)
+        self.assertEqual(body["handover_variance_minor"], 0)
+        self.assertIsNone(body["handover_journal_id"])
+        self.assertIsNone(body["case_id"])
+        # The money in the drawer, and nothing drawn from the safe.
+        self.assertEqual(self.balance(tenant_id, world["till"]), 5000)
+        self.assertEqual(self.balance(tenant_id, world["safe"]), safe_before)
+        # And the figure the next close is measured against is the money that is there.
+        listed = self.client.get("/ledger/cash-sessions?status=open",
+                                 headers=owner).json()["sessions"][0]
+        self.assertEqual(listed["expected_minor"], 5000)
+
+    def test_a_fresh_drawer_still_draws_its_float_from_the_safe(self):
+        """The unchanged half. An empty drawer has to be funded, so the float is a journal --
+        without which the drawer's balance is not the money in it, which is the defect
+        `0012` closed."""
+        tenant_id = self.tenant()
+        entity = self.legal_entity(tenant_id)
+        location_id = self.location(tenant_id)
+        self.chart(tenant_id, entity=entity)
+        first = self.drawer(tenant_id, entity, location_id, float_minor=5000)
+        self.assertEqual(self.balance(tenant_id, first["till"]), 5000)
+        self.assertEqual(self.balance(tenant_id, first["safe"]), -5000)
+
+    def test_a_handover_refuses_an_account_to_draw_from(self):
+        """**A field accepted and then not used is worse than no field.** Nothing is drawn on
+        a handover, so naming the safe is a caller that has misunderstood what it is doing."""
+        tenant_id = self.tenant()
+        world = self.handed_over(tenant_id)
+        refused = self.client.post("/ledger/cash-sessions", json={
+            "location_id": world["location_id"], "cash_account_id": world["till"],
+            "drawer_label": "front", "currency": "JOD",
+            "opening_float_minor": 5000,
+            "float_source_account_id": world["safe"],
+            "legal_entity_id": world["entity"],
+            "idempotency_key": f"h-{uuid.uuid4().hex[:8]}", **self.correlation()},
+            headers=self.headers(tenant_id))
+        self.assertEqual(refused.status_code, 409, refused.text)
+        self.assertIn("already_holds_money", refused.text)
+
+    def test_a_handover_that_does_not_balance_states_why(self):
+        tenant_id = self.tenant()
+        world = self.handed_over(tenant_id)
+        refused = self.client.post("/ledger/cash-sessions", json={
+            "location_id": world["location_id"], "cash_account_id": world["till"],
+            "drawer_label": "front", "currency": "JOD",
+            "opening_float_minor": 4500,
+            "legal_entity_id": world["entity"],
+            "suspense_account_id": world["chart"]["suspense"],
+            "idempotency_key": f"h-{uuid.uuid4().hex[:8]}", **self.correlation()},
+            headers=self.headers(tenant_id))
+        self.assertEqual(refused.status_code, 422, refused.text)
+        self.assertIn("what the last shift left", refused.text)
+
+    def test_a_handover_that_does_not_balance_names_an_entity_and_suspense(self):
+        """The difference has to post somewhere, so a short handover with no account to post
+        to is refused rather than recorded on the row and forgotten -- which is `0012`'s own
+        "a float that lived only here was cash the ledger did not know about"."""
+        tenant_id = self.tenant()
+        world = self.handed_over(tenant_id)
+        refused = self.client.post("/ledger/cash-sessions", json={
+            "location_id": world["location_id"], "cash_account_id": world["till"],
+            "drawer_label": "front", "currency": "JOD",
+            "opening_float_minor": 4500,
+            "handover_reason": "Kareem took 5.00 for the window cleaner",
+            "idempotency_key": f"h-{uuid.uuid4().hex[:8]}", **self.correlation()},
+            headers=self.headers(tenant_id))
+        self.assertEqual(refused.status_code, 422, refused.text)
+        self.assertIn("names_an_entity_and_suspense", refused.text)
+
+    def test_a_short_handover_posts_to_suspense_and_opens_its_own_kind_of_case(self):
+        """**A morning discrepancy is a different question from an evening one**, so it is a
+        case kind of its own: `cash_variance` is "this shift's till was short" and
+        `handover_variance` is "the money left overnight is not the money that was left". A
+        board that could not tell them apart would attribute the first to whoever found it,
+        which is the one attribution the canvas's sentence exists to get right.
+        """
+        tenant_id = self.tenant()
+        owner = self.headers(tenant_id)
+        world = self.handed_over(tenant_id)
+        opened = self.client.post("/ledger/cash-sessions", json={
+            "location_id": world["location_id"], "cash_account_id": world["till"],
+            "drawer_label": "front", "currency": "JOD",
+            "opening_float_minor": 4500,
+            "legal_entity_id": world["entity"],
+            "suspense_account_id": world["chart"]["suspense"],
+            "handover_reason": "Kareem took 5.00 for the window cleaner",
+            "idempotency_key": f"h-{uuid.uuid4().hex[:8]}", **self.correlation()},
+            headers=owner)
+        self.assertEqual(opened.status_code, 201, opened.text)
+        body = opened.json()
+        self.assertEqual(body["handover_variance_minor"], -500)
+        self.assertIsNotNone(body["handover_journal_id"])
+        self.assertIsNotNone(body["case_id"])
+        # The drawer account now says what is in the drawer, and the difference is in suspense.
+        self.assertEqual(self.balance(tenant_id, world["till"]), 4500)
+        self.assertEqual(
+            self.balance(tenant_id, world["chart"]["suspense"]), 500)
+        cases = self.client.get("/ledger/reconciliation-cases",
+                                headers=owner).json()["cases"]
+        handover = [c for c in cases if c["case_kind"] == "handover_variance"]
+        self.assertEqual(len(handover), 1, cases)
+        self.assertEqual(handover[0]["expected_minor"], 5000)
+        self.assertEqual(handover[0]["observed_minor"], 4500)
+        # The detail names the shift the difference belongs to.
+        self.assertIn("handed over from session", handover[0]["detail"])
+        self.assertIn("belongs to that shift", handover[0]["detail"])
+
+    def test_the_account_a_handover_difference_goes_to_has_to_be_suspense(self):
+        """**The close's own blocking review finding, at the other end of the shift.**
+        `finance.cash.session` is the module's only routine AAL-1 permission -- a front desk
+        opens a drawer every shift -- so unchecked this posts an arbitrary amount between the
+        drawer and whatever account the caller named. A reviewer cleared every member's
+        outstanding receivable with the close's version of it."""
+        tenant_id = self.tenant()
+        world = self.handed_over(tenant_id)
+        for named in ("receivable", "revenue", "bank"):
+            refused = self.client.post("/ledger/cash-sessions", json={
+                "location_id": world["location_id"], "cash_account_id": world["till"],
+                "drawer_label": "front", "currency": "JOD",
+                "opening_float_minor": 4500,
+                "legal_entity_id": world["entity"],
+                "suspense_account_id": world["chart"][named],
+                "handover_reason": "Kareem took 5.00 for the window cleaner",
+                "idempotency_key": f"h-{uuid.uuid4().hex[:8]}", **self.correlation()},
+                headers=self.headers(tenant_id))
+            self.assertEqual(refused.status_code, 409, refused.text)
+            self.assertIn("needs suspense", refused.text)
+
+    def test_a_handover_against_a_drawer_with_no_shift_behind_it_says_so(self):
+        """**Reachable with no adversary**: a journal posted straight to a till account leaves
+        a balance with no session behind it, so the case's subject is this open rather than a
+        previous session that may not exist."""
+        tenant_id = self.tenant()
+        owner = self.headers(tenant_id)
+        entity = self.legal_entity(tenant_id)
+        location_id = self.location(tenant_id)
+        chart = self.chart(tenant_id, entity=entity)
+        self.chart_cache[tenant_id] = chart
+        # A drawer that has had one session, closed, so it is in the drawer list -- and then
+        # money put into it by a journal rather than by a shift.
+        first = self.drawer(tenant_id, entity, location_id, float_minor=0, label="side")
+        self.client.post(f"/ledger/cash-sessions/{first['session_id']}/close", json={
+            "counted_minor": 0, "legal_entity_id": entity,
+            "suspense_account_id": chart["suspense"], **self.correlation()},
+            headers=owner)
+        self.shift(tenant_id, entity, first["till"], 3000, key=f"j-{uuid.uuid4().hex[:8]}")
+        opened = self.client.post("/ledger/cash-sessions", json={
+            "location_id": location_id, "cash_account_id": first["till"],
+            "drawer_label": "side", "currency": "JOD",
+            "opening_float_minor": 2500,
+            "legal_entity_id": entity, "suspense_account_id": chart["suspense"],
+            "handover_reason": "500 unaccounted for",
+            "idempotency_key": f"h-{uuid.uuid4().hex[:8]}", **self.correlation()},
+            headers=owner)
+        self.assertEqual(opened.status_code, 201, opened.text)
+        cases = self.client.get("/ledger/reconciliation-cases",
+                                headers=owner).json()["cases"]
+        handover = [c for c in cases if c["case_kind"] == "handover_variance"][0]
+        # The subject is this open, which always resolves.
+        self.assertEqual(handover["subject_ref"], opened.json()["session_id"])
+        self.assertIn("handed over from session", handover["detail"])
+
+    def test_the_retry_of_a_handover_reports_the_figures_it_recorded(self):
+        """A repeat reporting nothing about a handover it performed is this build's
+        most-repeated idempotency defect, and here the figures are what a desk is reading."""
+        tenant_id = self.tenant()
+        owner = self.headers(tenant_id)
+        world = self.handed_over(tenant_id)
+        key = f"h-{uuid.uuid4().hex[:8]}"
+        body = {"location_id": world["location_id"], "cash_account_id": world["till"],
+                "drawer_label": "front", "currency": "JOD",
+                "opening_float_minor": 4500,
+                "legal_entity_id": world["entity"],
+                "suspense_account_id": world["chart"]["suspense"],
+                "handover_reason": "Kareem took 5.00 for the window cleaner",
+                "idempotency_key": key, **self.correlation()}
+        first = self.client.post("/ledger/cash-sessions", json=body, headers=owner)
+        self.assertEqual(first.status_code, 201, first.text)
+        again = self.client.post("/ledger/cash-sessions", json=body, headers=owner)
+        self.assertEqual(again.status_code, 201, again.text)
+        repeat = again.json()
+        self.assertTrue(repeat["repeated"])
+        self.assertTrue(repeat["was_a_handover"])
+        self.assertEqual(repeat["opening_expected_minor"], 5000)
+        self.assertEqual(repeat["opening_float_minor"], 4500)
+        self.assertEqual(repeat["handover_variance_minor"], -500)
+        self.assertIn("window cleaner", repeat["handover_reason"])
+
+    def test_the_handover_note_is_written_at_the_close_and_read_at_the_next_open(self):
+        """FD-07: "The handover note is part of the shift, not a WhatsApp message that leaves
+        with the person who wrote it." """
+        tenant_id = self.tenant()
+        owner = self.headers(tenant_id)
+        world = self.handed_over(
+            tenant_id,
+            note="Sweifieh reader still down -- admit manually and mention it.")
+        drawers = self.client.get(
+            f"/ledger/drawers?location_id={world['location_id']}",
+            headers=owner).json()["drawers"]
+        front = [d for d in drawers if d["drawer_label"] == "front"][0]
+        self.assertIsNone(front["open_session"])
+        # What the ledger says is in the drawer, before anybody counts.
+        self.assertEqual(front["expected_minor"], 5000)
+        left = front["handed_over"]
+        self.assertEqual(left["counted_minor"], 7000)
+        self.assertEqual(left["session_id"], world["first_session_id"])
+        self.assertIn("Sweifieh reader still down", left["handover_note"])
+        self.assertIsNotNone(left["closed_at"])
+        self.assertIsNotNone(left["closed_by"])
+
+    def test_a_deposit_that_leaves_a_float_opens_no_case(self):
+        """**The second consequence of the model, and the reason it is in this slice.** Before
+        `retained_minor` existed, every honest banking that left a float for the next shift was
+        a mismatch and opened a case: a case per shift, which is how a reconciliation board
+        stops being read."""
+        tenant_id = self.tenant()
+        owner = self.headers(tenant_id)
+        world = self.handed_over(tenant_id)
+        self.assertIsNone(world["banked"]["case_id"], world["banked"])
+        self.assertEqual(world["banked"]["retained_minor"], 5000)
+        cases = self.client.get("/ledger/reconciliation-cases",
+                                headers=owner).json()["cases"]
+        self.assertEqual(
+            [c for c in cases if c["case_kind"] == "deposit_variance"], [])
+        # **And the figure reaches the row, not only the comparison.** The verdict is computed
+        # from the parameter, so a retained amount dropped on the way to the INSERT changes no
+        # verdict and nothing but a read-back can see it -- which the mutation sweep said by
+        # coming back uncaught.
+        again = self.client.post("/ledger/deposits", json={
+            "location_id": world["location_id"], "cash_account_id": world["till"],
+            "bank_account_id": world["chart"]["bank"], "currency": "JOD",
+            "declared_minor": 2000, "retained_minor": 5000,
+            "deposited_on": day(0),
+            "session_ids": [world["first_session_id"]],
+            "legal_entity_id": world["entity"],
+            "idempotency_key": world["deposit_key"], **self.correlation()},
+            headers=owner)
+        self.assertEqual(again.status_code, 201, again.text)
+        self.assertTrue(again.json()["repeated"])
+        self.assertEqual(again.json()["retained_minor"], 5000)
+
+    def test_banking_less_than_the_till_held_with_nothing_declared_still_opens_a_case(self):
+        """The control the retained figure does not remove."""
+        tenant_id = self.tenant()
+        owner = self.headers(tenant_id)
+        entity = self.legal_entity(tenant_id)
+        location_id = self.location(tenant_id)
+        chart = self.chart(tenant_id, entity=entity)
+        self.chart_cache[tenant_id] = chart
+        first = self.drawer(tenant_id, entity, location_id, float_minor=5000)
+        self.shift(tenant_id, entity, first["till"], 2000, key=f"s-{uuid.uuid4().hex[:8]}")
+        self.client.post(f"/ledger/cash-sessions/{first['session_id']}/close", json={
+            "counted_minor": 7000, "legal_entity_id": entity,
+            "suspense_account_id": chart["suspense"], **self.correlation()},
+            headers=owner)
+        banked = self.client.post("/ledger/deposits", json={
+            "location_id": location_id, "cash_account_id": first["till"],
+            "bank_account_id": chart["bank"], "currency": "JOD",
+            "declared_minor": 2000, "deposited_on": day(0),
+            "session_ids": [first["session_id"]], "legal_entity_id": entity,
+            "idempotency_key": f"d-{uuid.uuid4().hex[:8]}", **self.correlation()},
+            headers=owner)
+        self.assertEqual(banked.status_code, 201, banked.text)
+        self.assertIsNotNone(banked.json()["case_id"])
+
+    def test_the_drawer_list_names_the_site_and_not_the_tenant(self):
+        """A drawer belongs to a site, and a desk opening one is standing at that site."""
+        tenant_id = self.tenant()
+        owner = self.headers(tenant_id)
+        world = self.handed_over(tenant_id)
+        elsewhere = self.location(tenant_id)
+        listed = self.client.get(
+            f"/ledger/drawers?location_id={elsewhere}", headers=owner).json()
+        self.assertEqual(listed["count"], 0, listed)
+        here = self.client.get(
+            f"/ledger/drawers?location_id={world['location_id']}",
+            headers=owner).json()
+        self.assertEqual(here["count"], 1, here)
+
+    def test_a_malformed_location_is_refused_rather_than_answered_with_a_500(self):
+        tenant_id = self.tenant()
+        refused = self.client.get("/ledger/drawers?location_id=not-a-uuid",
+                                  headers=self.headers(tenant_id))
+        self.assertEqual(refused.status_code, 422, refused.text)
+
+
+class IdentityLinkTests(LedgerApiTestCase):
+    """`GET /people/by-identity`, which FD-07 needs to put a name on a handover."""
+
+    def test_an_identity_resolves_to_the_person_it_signs_in_as(self):
+        tenant_id = self.tenant()
+        owner = self.headers(tenant_id)
+        person_id = self.person(tenant_id, "Kareem Haddad")
+        identity_id = self.owner_identity(tenant_id)
+        linked = self.client.post(f"/people/{person_id}/identity-links", json={
+            "identity_id": identity_id, **self.correlation()}, headers=owner)
+        self.assertEqual(linked.status_code, 201, linked.text)
+        read = self.client.get(
+            f"/people/by-identity?identity_id={identity_id}", headers=owner).json()
+        self.assertEqual(read["count"], 1, read)
+        self.assertEqual(read["people"][0]["person_id"], person_id)
+        self.assertEqual(read["people"][0]["identity_id"], identity_id)
+
+    def test_an_unlinked_identity_is_absent_rather_than_present_with_a_null(self):
+        """**Staff hold permissions and do not have to be anybody in particular**, so a
+        surface says "a staff member" rather than drawing a blank name -- which it can only do
+        if the two facts are distinguishable in the answer.
+
+        **The tenant has to hold a link for this to prove anything**, which the mutation sweep
+        said by coming back uncaught: against a tenant with no links at all, a predicate
+        widened to `OR true` still answers zero.
+        """
+        tenant_id = self.tenant()
+        owner = self.headers(tenant_id)
+        person_id = self.person(tenant_id, "Kareem Haddad")
+        linked = self.client.post(f"/people/{person_id}/identity-links", json={
+            "identity_id": self.owner_identity(tenant_id), **self.correlation()},
+            headers=owner)
+        self.assertEqual(linked.status_code, 201, linked.text)
+        read = self.client.get(
+            f"/people/by-identity?identity_id={uuid.uuid4()}", headers=owner).json()
+        self.assertEqual(read["count"], 0, read)
+        self.assertEqual(read["people"], [])
+        self.assertIn("do not have to be anybody", read["an_unlinked_identity_is_absent"])
 
 
 class BridgeTests(LedgerApiTestCase):

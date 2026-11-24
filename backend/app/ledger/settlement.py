@@ -194,6 +194,17 @@ def variance(count: Count) -> int:
 #: state -- a tenant's tolerance is a commercial decision and the sources name none -- so the
 #: threshold is a tenant setting and this is the floor: any variance at all is recorded, and a
 #: non-zero one needs a written reason before the session closes.
+def count_is_explained(count: Count, *, reason: str | None) -> bool:
+    """Whether a counted till needs no further explanation.
+
+    **One rule, read at both ends of a shift.** A count that agrees with the ledger needs
+    nothing; one that does not needs a stated reason. `check_close` and `check_handover` are
+    the same predicate with the sentence each act owes its caller -- a second copy of the rule
+    is how the two ends of a shift come to disagree about the same field.
+    """
+    return variance(count) == 0 or bool((reason or "").strip())
+
+
 def check_close(count: Count, *, reason: str | None) -> None:
     """Refuse a close that leaves a discrepancy unexplained.
 
@@ -203,19 +214,53 @@ def check_close(count: Count, *, reason: str | None) -> None:
     """
     if count.counted_minor < 0:
         raise LedgerError("a till cannot hold a negative amount")
-    if variance(count) != 0 and not (reason or "").strip():
+    if not count_is_explained(count, reason=reason):
         raise LedgerError(
             f"this till is out by {variance(count)} and a close states why")
     # A clerk explaining a session that balanced is harmless and the note is worth keeping,
     # so there is deliberately no branch for it.
 
 
+def check_handover(count: Count, *, reason: str | None) -> None:
+    """Refuse an opening count that does not match what the last shift left. FD-07.
+
+    **The same rule as the close and a different sentence**, because the two numbers being
+    compared are different things: at a close it is the shift's own takings against the
+    ledger, and here it is the money left in the drawer overnight. The canvas is explicit
+    about whose discrepancy it is -- "If your count differs, say so now -- a discrepancy found
+    at open belongs to the previous shift" -- so the reason is about a shift that has already
+    ended, which is what the case this opens says and why it is a kind of its own.
+    """
+    if count.counted_minor < 0:
+        raise LedgerError("a till cannot hold a negative amount")
+    if not count_is_explained(count, reason=reason):
+        raise LedgerError(
+            f"the drawer is out by {variance(count)} against what the last shift left "
+            f"and an open states why")
+
+
 def deposit_matches(
-    *, declared_minor: int, sessions_minor: int,
+    *, declared_minor: int, sessions_minor: int, retained_minor: int = 0,
 ) -> Verdict:
-    """Whether a bank deposit agrees with the till sessions it claims to bank. COM-04-R05."""
-    if declared_minor == sessions_minor:
+    """Whether a bank deposit accounts for the till sessions it claims to bank. COM-04-R05.
+
+    **What is banked plus what is deliberately left behind equals what was counted.** The
+    retained amount is the next shift's float, and before it existed every honest handover
+    banking was a mismatch: a case per shift, which is how a reconciliation board stops being
+    read. Tolerating a smaller bag instead would have removed the control, because banking less
+    than the till held and pocketing the difference is what this comparison is for -- so the
+    remainder is declared, and the claim is checked at the other end by the next open's count.
+
+    It defaults to zero, which is the comparison this function made before and is why no
+    deposit already written changes verdict.
+    """
+    if declared_minor + retained_minor == sessions_minor:
         return Verdict(MATCHED, "the deposit agrees with the sessions it banks")
+    if retained_minor:
+        return Verdict(
+            AMOUNT_MISMATCH,
+            f"the deposit is {declared_minor} with {retained_minor} left in the drawer, "
+            f"and the sessions it banks come to {sessions_minor}")
     return Verdict(
         AMOUNT_MISMATCH,
         f"the deposit is {declared_minor} and the sessions it banks come to "

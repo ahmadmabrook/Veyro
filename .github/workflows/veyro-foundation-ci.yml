@@ -27,8 +27,11 @@ jobs:
     # `VEYRO_API_REQUEST_BUDGET`, which `config.load_settings` refuses outside `local`.
     #
     # **That landed, and the measured figures are both worth keeping.** With
-    # `VEYRO_SCRYPT_COST_LOG2=10` the suite runs 2,964 tests in 642 seconds against 997 at the
-    # deployed cost -- a 36% saving, so CI's backend step should sit near fifteen minutes.
+    # `VEYRO_SCRYPT_COST_LOG2=10` the suite runs 2,964 tests in 642 seconds locally against 997
+    # at the deployed cost -- a 36% saving. I predicted "near fifteen minutes" for CI's backend
+    # step from that; the step then ran in **9.2 minutes**, against 22.9 on the commit before.
+    # The prediction is corrected here rather than left, because an under-claim is a stale note
+    # like any other and this one would have somebody budget headroom nobody needs.
     # The ceiling stays at 45 rather than going back to 25: a timeout that cancels a *passing*
     # run reads as `cancelled` rather than as a diagnosis, which is the bad kind of tripwire.
     # What guards against creep is reading the job's duration when a suite grows, which the

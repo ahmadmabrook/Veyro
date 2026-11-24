@@ -1676,7 +1676,8 @@ def open_cash_session(
     pool: Pool, tenant_id: str, *, location_id: str, cash_account_id: str,
     drawer_label: str, currency: str, opening_float_minor: int, idempotency_key: str,
     actor_id: str, correlation_id: str, float_source_account_id: str | None = None,
-    legal_entity_id: str | None = None, at: date | None = None,
+    legal_entity_id: str | None = None, suspense_account_id: str | None = None,
+    handover_reason: str | None = None, at: date | None = None,
 ) -> dict[str, Any]:
     """Open a till. COM-04-R05.
 
@@ -1694,11 +1695,26 @@ def open_cash_session(
     the row, banking the takings drove the drawer's own account negative by exactly the float.
     So a non-zero float is posted from the account it was drawn from -- the safe -- and
     `_expected_in_drawer` then reads the balance rather than adding a number the caller sent.
+
+    **And it is posted only when it is actually drawn, which is FD-07's handover.** That canvas
+    is a till being handed over rather than emptied -- "Kareem left JOD 50.00 at 16:04. If your
+    count differs, say so now -- a discrepancy found at open belongs to the previous shift" --
+    so the next person is counting money that is already in the drawer. Posting the float again
+    doubled it: measured, a 50.00 float left overnight made the drawer account read 100.00 with
+    50.00 in notes, so the next close posted a 50.00 shortfall to suspense against the name of
+    whoever found it, the safe went 50.00 short with nothing having left it, and it compounded
+    every shift.
+
+    Which case this is comes from the drawer account's own balance, never from a flag the
+    caller sends: a `handover: true` field would be the caller-supplied-control shape every
+    review in this build has found, and it would let a desk choose whether their own count is
+    checked. An empty drawer has to be funded, so the float comes from the safe exactly as
+    before; a drawer that already holds money is a handover, nothing is drawn, and the count is
+    checked against the balance with any difference posted to suspense and attributed to the
+    shift that left it.
     """
     if not idempotency_key.strip():
         raise InvalidRequest("an_idempotency_key_cannot_be_blank")
-    if opening_float_minor and not (float_source_account_id and legal_entity_id):
-        raise InvalidRequest("a_float_names_the_account_it_came_from_and_an_entity")
     today = at or _today()
     with tenant_scope(pool, tenant_id) as conn:
         account = _account(conn, cash_account_id)
@@ -1730,32 +1746,118 @@ def open_cash_session(
         ).fetchone()
         if standing is not None and str(standing[1]) != idempotency_key.strip():
             raise Conflict("this_drawer_already_has_an_open_session")
+        # What the ledger says is in this drawer right now. Zero means the drawer was emptied
+        # -- banked, or never used -- so the float has to come from somewhere; anything else is
+        # money the last shift left and the count is a check on it.
+        held = _expected_in_drawer(conn, cash_account_id=cash_account_id, at=today)
+        handover = held != 0
+        gap = opening_float_minor - held if handover else 0
+        if handover:
+            # **A field validated and then not used is worse than no field.** Nothing is drawn
+            # here, so naming an account to draw from is a caller that has misunderstood what
+            # it is doing, and accepting it silently would be MOD-012's `release_run` shape.
+            if float_source_account_id is not None:
+                raise Conflict("this_drawer_already_holds_money_so_no_float_is_drawn")
+            count = settlement.Count(
+                expected_minor=held, counted_minor=opening_float_minor,
+                currency=str(currency).upper())
+            try:
+                settlement.check_handover(count, reason=handover_reason)
+            except accounts.LedgerError as e:
+                raise InvalidRequest(str(e)) from None
+            if gap and not (legal_entity_id and suspense_account_id):
+                raise InvalidRequest(
+                    "a_handover_that_does_not_balance_names_an_entity_and_suspense")
+            if gap:
+                assert suspense_account_id is not None
+                # Suspense, not any account in the chart -- the close's own finding, on the
+                # same routine AAL-1 permission. Unchecked, this would post an arbitrary
+                # amount between the drawer and whatever the caller named.
+                _account_of_kind(conn, suspense_account_id, ("suspense",),
+                                 currency=currency.upper(), role="counterpart")
+        elif opening_float_minor and not (float_source_account_id and legal_entity_id):
+            raise InvalidRequest("a_float_names_the_account_it_came_from_and_an_entity")
         row = conn.execute(
             """
             INSERT INTO plt01.led_cash_sessions
                 (tenant_id, location_id, cash_account_id, drawer_label, currency,
-                 opening_float_minor, opened_by, idempotency_key, correlation_id)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                 opening_float_minor, opened_by, idempotency_key, correlation_id,
+                 opening_expected_minor, opening_variance_reason)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (tenant_id, idempotency_key) DO NOTHING
             RETURNING session_id
             """,
             (tenant_id, location_id, cash_account_id, drawer_label, currency.upper(),
-             opening_float_minor, actor_id, idempotency_key.strip(), correlation_id),
+             opening_float_minor, actor_id, idempotency_key.strip(), correlation_id,
+             held, (handover_reason or "").strip() or None),
         ).fetchone()
         if row is None:
             prior = conn.execute(
-                "SELECT session_id, location_id, drawer_label, status"
+                "SELECT session_id, location_id, drawer_label, status,"
+                " opening_float_minor, opening_expected_minor, opening_variance_reason"
                 " FROM plt01.led_cash_sessions WHERE idempotency_key = %s",
                 (idempotency_key.strip(),),
             ).fetchone()
             assert prior is not None
             if str(prior[1]) != location_id or str(prior[2]) != drawer_label:
                 raise Conflict("this_idempotency_key_belongs_to_another_drawer")
+            # **The retry is answered from what was recorded.** A repeat reporting nothing
+            # about a handover it performed is this build's most-repeated idempotency defect,
+            # and here the figures are what a desk is looking at.
+            was_expected = int(prior[5]) if prior[5] is not None else None
             return {"session_id": str(prior[0]), "status": str(prior[3]),
+                    "opening_float_minor": int(prior[4]),
+                    "opening_expected_minor": was_expected,
+                    "handover_variance_minor": (
+                        int(prior[4]) - was_expected
+                        if was_expected is not None else None),
+                    "handover_reason": (
+                        str(prior[6]) if prior[6] is not None else None),
+                    "was_a_handover": bool(was_expected),
                     "repeated": True}
         session_id = str(row[0])
         float_journal_id: str | None = None
-        if opening_float_minor:
+        handover_journal_id: str | None = None
+        case_id: str | None = None
+        if handover and gap:
+            assert legal_entity_id is not None and suspense_account_id is not None
+            # The drawer holds more or less than the ledger thought, so the cash account moves
+            # to match reality and the difference lands in suspense until somebody explains
+            # it -- the close's posting, at the other end of the shift.
+            handover_journal_id = post_journal(
+                conn, tenant_id, legal_entity_id=legal_entity_id,
+                lines=[
+                    {"account_id": cash_account_id, "amount_minor": gap,
+                     "memo": f"handover count variance on {drawer_memo(session_id)}"},
+                    {"account_id": suspense_account_id, "amount_minor": -gap,
+                     "memo": "unexplained handover variance"},
+                ],
+                posted_on=today, currency=currency.upper(), purpose="trade",
+                source_kind="cash_session", source_ref=session_id,
+                description="handover count variance",
+                idempotency_key=f"cash-handover-{session_id}",
+                actor_id=actor_id, correlation_id=correlation_id)["journal_id"]
+            left_by = _previous_shift(conn, cash_account_id=cash_account_id)
+            whose = (
+                f"session {left_by['session_id'][:8]}, closed by {left_by['closed_by']}"
+                if left_by is not None
+                else "no session this module has a record of")
+            # **The subject is this session and the detail names the shift it is about.** A
+            # handover against a drawer nobody has a session for is reachable -- a journal
+            # posted straight to a till account leaves a balance with no shift behind it --
+            # so a subject pointing at the previous session would sometimes point at nothing,
+            # while the event itself is always this open.
+            case_id = _open_case(
+                conn, tenant_id, legal_entity_id=legal_entity_id,
+                case_kind="handover_variance", subject_kind="cash_session",
+                subject_ref=session_id, expected_minor=held,
+                observed_minor=opening_float_minor, currency=currency.upper(),
+                detail=(
+                    f"{(handover_reason or '').strip()} [handed over from {whose}; "
+                    f"the difference belongs to that shift]"),
+                idempotency_key=f"cash-handover-{session_id}", actor_id=actor_id,
+                correlation_id=correlation_id, opened_on=today)
+        if not handover and opening_float_minor:
             assert float_source_account_id is not None and legal_entity_id is not None
             source = _account(conn, float_source_account_id)
             if source["account_kind"] != "cash":
@@ -1783,7 +1885,18 @@ def open_cash_session(
                 actor_id=actor_id, correlation_id=correlation_id)["journal_id"]
     return {"session_id": session_id, "status": "open", "drawer_label": drawer_label,
             "opening_float_minor": opening_float_minor,
-            "float_journal_id": float_journal_id, "repeated": False}
+            "float_journal_id": float_journal_id,
+            "was_a_handover": handover,
+            "opening_expected_minor": held,
+            "handover_variance_minor": gap,
+            "handover_reason": (handover_reason or "").strip() or None,
+            "handover_journal_id": handover_journal_id,
+            "case_id": case_id,
+            "a_handover_draws_no_float": (
+                "a drawer that already holds money is handed over rather than funded, so the "
+                "count is checked against what the ledger says is in it and nothing is drawn "
+                "from the safe. A difference belongs to the shift that left it"),
+            "repeated": False}
 
 
 def list_cash_sessions(
@@ -1819,7 +1932,8 @@ def list_cash_sessions(
             SELECT session_id, location_id, cash_account_id, drawer_label, currency,
                    opening_float_minor, status, opened_at, opened_by, expected_minor,
                    counted_minor, variance_reason, closed_at, closed_by,
-                   variance_journal_id
+                   variance_journal_id, opening_expected_minor,
+                   opening_variance_reason, handover_note
               FROM plt01.led_cash_sessions
              WHERE (%s::text IS NULL OR status = %s)
                AND (%s::uuid IS NULL OR location_id = %s)
@@ -1879,6 +1993,19 @@ def list_cash_sessions(
                 "taken_minor": took,
                 "paid_out_minor": gave,
                 "entries_in": entries,
+                # The handover at the start of this shift: what the ledger said was in the
+                # drawer, against the count the person made. NULL on a session opened before
+                # the handover existed, which is why a surface reads `was_a_handover` rather
+                # than comparing two numbers one of which may be absent.
+                "opening_expected_minor": (
+                    int(r[15]) if r[15] is not None else None),
+                "handover_variance_minor": (
+                    int(r[5]) - int(r[15]) if r[15] is not None else None),
+                "handover_reason": str(r[16]) if r[16] is not None else None,
+                "was_a_handover": bool(r[15]) if r[15] is not None else None,
+                # And the note this shift left for the next one, which only exists once it
+                # has closed.
+                "handover_note": str(r[17]) if r[17] is not None else None,
             })
     return {
         "count": len(out),
@@ -1901,6 +2028,85 @@ def list_cash_sessions(
             "`entries_in` counts the journals that put money in this drawer. One of those is "
             "one sale only in the sense that a sale is what put it there; this module "
             "records journals and has no notion of a sale"),
+    }
+
+
+def list_drawers(
+    pool: Pool, tenant_id: str, *, location_id: str, limit: int = 50,
+    at: date | None = None,
+) -> dict[str, Any]:
+    """The tills at one site and what is standing in each. FD-07's own read.
+
+    **A drawer is a cash account that has had a session**, which is the only thing this module
+    knows about tills: there is no drawer table, because a drawer is a physical object and what
+    the ledger holds is the account its money is in. So a site opening its first till names a
+    cash account rather than picking from this list, and the list is what a handover needs --
+    the canvas draws one drawer with the previous shift's own figure on it.
+
+    **Every figure here is derived from that account's own postings**, never from a number a
+    caller sent. The expected amount is shown before any count is entered, which is the
+    canvas's own decision at the other end of the shift and for the same reason: "Hiding it
+    would be a fraud control; showing it is an accuracy control, and accuracy is the more
+    common problem."
+    """
+    today = at or _today()
+    limit = max(1, min(int(limit), 200))
+    with tenant_scope(pool, tenant_id) as conn:
+        rows = conn.execute(
+            """
+            SELECT DISTINCT ON (cash_account_id)
+                   cash_account_id, drawer_label, currency
+              FROM plt01.led_cash_sessions
+             WHERE location_id = %s
+             ORDER BY cash_account_id, opened_at DESC
+             LIMIT %s
+            """,
+            (location_id, limit),
+        ).fetchall()
+        out: list[dict[str, Any]] = []
+        for r in rows:
+            account_id = str(r[0])
+            open_row = conn.execute(
+                "SELECT session_id, opened_at, opened_by, opening_float_minor"
+                " FROM plt01.led_cash_sessions"
+                " WHERE cash_account_id = %s AND status = 'open'"
+                " ORDER BY opened_at DESC LIMIT 1",
+                (account_id,),
+            ).fetchone()
+            left = _previous_shift(conn, cash_account_id=account_id)
+            out.append({
+                "cash_account_id": account_id,
+                "drawer_label": str(r[1]),
+                "currency": str(r[2]),
+                "expected_minor": _expected_in_drawer(
+                    conn, cash_account_id=account_id, at=today),
+                "open_session": (
+                    {"session_id": str(open_row[0]),
+                     "opened_at": open_row[1].isoformat(),
+                     "opened_by": str(open_row[2]),
+                     "opening_float_minor": int(open_row[3])}
+                    if open_row is not None else None),
+                # **What the last shift left, which is what the next person is counting.**
+                # FD-07: "Kareem left JOD 50.00 at 16:04." The note travels with it, because
+                # it "is part of the shift, not a WhatsApp message that leaves with the person
+                # who wrote it".
+                "handed_over": left,
+            })
+    return {
+        "count": len(out),
+        "drawers": out,
+        "a_drawer_is_an_account_that_has_had_a_session": (
+            "there is no drawer table: a till is a physical object and what the ledger holds "
+            "is the cash account its money is in, so a site opening its first drawer names a "
+            "cash account rather than picking one from here"),
+        "expected_is_derived_from_postings": (
+            "what the ledger says is in each drawer, summed from that account's own postings "
+            "and never from a figure a caller sent -- which is why it is safe to show before "
+            "the count"),
+        "a_name_is_another_module": (
+            "`opened_by`, and the `closed_by` on a handover, are MOD-007 identities. Who that "
+            "is as a person is MOD-014's through `ppl_identity_links`, on a plane this role "
+            "holds nothing in, so a surface composes it rather than this read joining it"),
     }
 
 
@@ -1930,11 +2136,41 @@ def _expected_in_drawer(
     return int(row[0]) if row else 0
 
 
+def _previous_shift(
+    conn: Connection[Any], *, cash_account_id: str,
+) -> dict[str, Any] | None:
+    """The last shift to close on this drawer: what they counted, when, who, and their note.
+
+    **Keyed on the cash account rather than on the label**, because the money is the account's
+    and that is what the next count is about: a label re-pointed to a second till would
+    otherwise hand the new drawer the old one's handover.
+    """
+    row = conn.execute(
+        "SELECT session_id, counted_minor, closed_at, closed_by, handover_note,"
+        " drawer_label, location_id"
+        " FROM plt01.led_cash_sessions"
+        " WHERE cash_account_id = %s AND status = 'closed'"
+        " ORDER BY closed_at DESC, session_id DESC LIMIT 1",
+        (cash_account_id,),
+    ).fetchone()
+    if row is None:
+        return None
+    return {
+        "session_id": str(row[0]),
+        "counted_minor": int(row[1]) if row[1] is not None else None,
+        "closed_at": row[2].isoformat() if row[2] is not None else None,
+        "closed_by": str(row[3]) if row[3] is not None else None,
+        "handover_note": str(row[4]) if row[4] is not None else None,
+        "drawer_label": str(row[5]),
+        "location_id": str(row[6]),
+    }
+
+
 def close_cash_session(
     pool: Pool, tenant_id: str, session_id: str, *, counted_minor: int,
     legal_entity_id: str, suspense_account_id: str, actor_id: str,
     correlation_id: str, variance_reason: str | None = None,
-    at: date | None = None,
+    handover_note: str | None = None, at: date | None = None,
 ) -> dict[str, Any]:
     """Count a till and close it. COM-04-R05's discrepancy workflow.
 
@@ -1946,13 +2182,20 @@ def close_cash_session(
     **An unexplained variance refuses the close**, which is the one control in this table: a
     till 2.00 down every evening with nothing written against it is a pattern only visible later
     if each close said something at the time.
+
+    **The handover note is written here and read by the next open.** FD-07: "The handover note
+    is part of the shift, not a WhatsApp message that leaves with the person who wrote it." It
+    is optional, because a shift with nothing to pass on is the ordinary one, and immutable once
+    written -- `led_cash_close_is_final` refuses every UPDATE on a session that is not open, so
+    the note a reader is handed is the note the previous person wrote.
     """
     today = at or _today()
     settled: Exception | None = None
     with tenant_scope(pool, tenant_id) as conn:
         row = conn.execute(
             "SELECT location_id, cash_account_id, currency, opening_float_minor,"
-            " opened_at, status, counted_minor, expected_minor, variance_journal_id"
+            " opened_at, status, counted_minor, expected_minor, variance_journal_id,"
+            " handover_note"
             " FROM plt01.led_cash_sessions WHERE session_id = %s FOR UPDATE",
             (session_id,),
         ).fetchone()
@@ -1965,6 +2208,7 @@ def close_cash_session(
                     "variance_minor": (
                         int(row[6]) - int(row[7])
                         if row[6] is not None and row[7] is not None else None),
+                    "handover_note": str(row[9]) if row[9] is not None else None,
                     "repeated": True}
         expected = _expected_in_drawer(conn, cash_account_id=str(row[1]), at=today)
         # **Suspense, not any account in the chart.** Unchecked, this route -- gated on the
@@ -2014,17 +2258,20 @@ def close_cash_session(
                 "UPDATE plt01.led_cash_sessions SET status = 'closed',"
                 " expected_minor = %s, counted_minor = %s, variance_reason = %s,"
                 " closed_at = %s, closed_by = %s, close_correlation_id = %s,"
-                " variance_journal_id = %s"
+                " variance_journal_id = %s, handover_note = %s"
                 " WHERE session_id = %s AND status = 'open'",
                 (expected, counted_minor, (variance_reason or "").strip() or None,
-                 _now(), actor_id, correlation_id, journal_id, session_id))
+                 _now(), actor_id, correlation_id, journal_id,
+                 (handover_note or "").strip() or None, session_id))
         except errors.CheckViolation as e:
             settled = InvalidRequest(_check_name(e))
     if settled is not None:
         raise settled
     return {"session_id": session_id, "status": "closed", "expected_minor": expected,
             "counted_minor": counted_minor, "variance_minor": gap,
-            "variance_journal_id": journal_id, "case_id": case_id, "repeated": False}
+            "variance_journal_id": journal_id, "case_id": case_id,
+            "handover_note": (handover_note or "").strip() or None,
+            "repeated": False}
 
 
 def drawer_memo(session_id: str) -> str:
@@ -2036,7 +2283,7 @@ def create_deposit(
     pool: Pool, tenant_id: str, *, location_id: str, cash_account_id: str,
     bank_account_id: str, currency: str, declared_minor: int, deposited_on: date,
     session_ids: list[str], legal_entity_id: str, idempotency_key: str,
-    actor_id: str, correlation_id: str,
+    actor_id: str, correlation_id: str, retained_minor: int = 0,
 ) -> dict[str, Any]:
     """Bank a bag of cash. The journal moves it from `cash` to `bank` immediately.
 
@@ -2047,6 +2294,15 @@ def create_deposit(
 
     **The sessions it banks are recorded**, because the question when the bank disagrees is
     always which takings were in the bag.
+
+    **And what is deliberately left behind is declared**, because a drawer is handed over
+    rather than emptied -- FD-07. Before `retained_minor` existed the comparison was the bag
+    against the sessions' whole closing counts, so every honest banking that left a float for
+    the next shift was a mismatch and opened a case: a case per shift, which is how a
+    reconciliation board stops being read. Tolerating a smaller bag instead would have removed
+    the control, because banking less than the till held and pocketing the difference is what
+    that comparison is for. It defaults to zero, so no deposit already written changes verdict,
+    and the claim is checked at the other end by the next open's count.
     """
     if not idempotency_key.strip():
         raise InvalidRequest("an_idempotency_key_cannot_be_blank")
@@ -2054,13 +2310,14 @@ def create_deposit(
         raise InvalidRequest("a_deposit_names_the_sessions_it_banks")
     with tenant_scope(pool, tenant_id) as conn:
         prior = conn.execute(
-            "SELECT deposit_id, declared_minor, status FROM plt01.led_deposits"
-            " WHERE idempotency_key = %s",
+            "SELECT deposit_id, declared_minor, status, retained_minor"
+            " FROM plt01.led_deposits WHERE idempotency_key = %s",
             (idempotency_key.strip(),),
         ).fetchone()
         if prior is not None:
             return {"deposit_id": str(prior[0]), "declared_minor": int(prior[1]),
-                    "status": str(prior[2]), "repeated": True}
+                    "status": str(prior[2]), "retained_minor": int(prior[3]),
+                    "repeated": True}
         for account_id, expected in (
             (cash_account_id, "cash"), (bank_account_id, "bank"),
         ):
@@ -2115,14 +2372,15 @@ def create_deposit(
                 """
                 INSERT INTO plt01.led_deposits
                     (tenant_id, location_id, cash_account_id, bank_account_id, currency,
-                     declared_minor, deposited_on, journal_id, created_by,
+                     declared_minor, retained_minor, deposited_on, journal_id, created_by,
                      idempotency_key, correlation_id)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING deposit_id
                 """,
                 (tenant_id, location_id, cash_account_id, bank_account_id,
-                 currency.upper(), declared_minor, deposited_on, posted["journal_id"],
-                 actor_id, idempotency_key.strip(), correlation_id),
+                 currency.upper(), declared_minor, retained_minor, deposited_on,
+                 posted["journal_id"], actor_id, idempotency_key.strip(),
+                 correlation_id),
             ).fetchone()
         except errors.ForeignKeyViolation as e:
             raise NotFound(_fk_subject(e)) from None
@@ -2148,7 +2406,8 @@ def create_deposit(
                 raise InvalidRequest(_check_name(e)) from None
         case_id: str | None = None
         verdict = settlement.deposit_matches(
-            declared_minor=declared_minor, sessions_minor=int(banked[0]))
+            declared_minor=declared_minor, sessions_minor=int(banked[0]),
+            retained_minor=retained_minor)
         if verdict.needs_a_case:
             case_id = _open_case(
                 conn, tenant_id, legal_entity_id=legal_entity_id,
@@ -2160,6 +2419,7 @@ def create_deposit(
                 actor_id=actor_id, correlation_id=correlation_id,
                 opened_on=deposited_on)
     return {"deposit_id": deposit_id, "declared_minor": declared_minor,
+            "retained_minor": retained_minor,
             "sessions_minor": int(banked[0]), "journal_id": posted["journal_id"],
             "status": "in_transit", "case_id": case_id, "repeated": False}
 

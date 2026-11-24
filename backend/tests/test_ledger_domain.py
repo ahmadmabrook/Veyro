@@ -495,5 +495,86 @@ class CashTests(unittest.TestCase):
             settlement.ageing(date(2026, 11, 20), at=date(2026, 11, 14)), 0)
 
 
+class HandoverTests(unittest.TestCase):
+    """FD-07: the count at the start of a shift, against what the last one left."""
+
+    def test_a_handover_that_agrees_needs_no_reason(self):
+        settlement.check_handover(settlement.Count(5000, 5000, "JOD"), reason=None)
+
+    def test_a_handover_that_differs_states_why(self):
+        with self.assertRaises(accounts.LedgerError) as caught:
+            settlement.check_handover(settlement.Count(5000, 4500, "JOD"), reason=None)
+        # The sentence names the shift it belongs to, which is the whole point of having a
+        # second function rather than reusing the close's message.
+        self.assertIn("what the last shift left", str(caught.exception))
+        settlement.check_handover(settlement.Count(5000, 4500, "JOD"),
+                                  reason="Kareem said he took 5.00 for the window cleaner")
+
+    def test_whitespace_is_not_a_reason(self):
+        """`btrim` strips spaces and nothing else, so the case uses a tab."""
+        with self.assertRaises(accounts.LedgerError):
+            settlement.check_handover(settlement.Count(5000, 4500, "JOD"), reason="\t")
+
+    def test_a_negative_count_is_refused(self):
+        with self.assertRaises(accounts.LedgerError):
+            settlement.check_handover(settlement.Count(5000, -1, "JOD"), reason="odd")
+
+    def test_the_close_and_the_handover_read_one_rule(self):
+        """**One predicate, two sentences.** A second copy of "a difference needs a reason" is
+        how the two ends of a shift come to disagree about the same field, so both acts call
+        `count_is_explained` and only the message differs.
+        """
+        for count, reason, explained in (
+            (settlement.Count(5000, 5000, "JOD"), None, True),
+            (settlement.Count(5000, 4500, "JOD"), None, False),
+            (settlement.Count(5000, 4500, "JOD"), "  ", False),
+            (settlement.Count(5000, 4500, "JOD"), "a reason", True),
+        ):
+            self.assertIs(
+                settlement.count_is_explained(count, reason=reason), explained)
+            for act in (settlement.check_close, settlement.check_handover):
+                if explained:
+                    act(count, reason=reason)
+                else:
+                    with self.assertRaises(accounts.LedgerError):
+                        act(count, reason=reason)
+
+
+class RetainedDepositTests(unittest.TestCase):
+    """What is banked plus what is left behind equals what was counted."""
+
+    def test_a_bag_that_banks_everything_still_matches(self):
+        """Zero retained is the comparison this function made before, unchanged."""
+        self.assertFalse(settlement.deposit_matches(
+            declared_minor=7000, sessions_minor=7000).needs_a_case)
+
+    def test_a_bag_that_leaves_a_float_matches_when_the_three_figures_add_up(self):
+        self.assertFalse(settlement.deposit_matches(
+            declared_minor=2000, sessions_minor=7000, retained_minor=5000).needs_a_case)
+
+    def test_banking_less_than_the_till_held_still_opens_a_case(self):
+        """**The control the retained figure does not remove.** Banking less and pocketing the
+        difference is what this comparison is for, so a short bag with nothing declared as left
+        behind is a case exactly as it was.
+        """
+        verdict = settlement.deposit_matches(declared_minor=2000, sessions_minor=7000)
+        self.assertTrue(verdict.needs_a_case)
+        self.assertIn("come to 7000", verdict.reason)
+
+    def test_a_retained_figure_that_does_not_account_for_the_rest_opens_a_case(self):
+        verdict = settlement.deposit_matches(
+            declared_minor=2000, sessions_minor=7000, retained_minor=4000)
+        self.assertTrue(verdict.needs_a_case)
+        # The sentence says both halves, because "the bag is 20.00" alone does not explain
+        # which of the two figures the person got wrong.
+        self.assertIn("2000", verdict.reason)
+        self.assertIn("4000 left in the drawer", verdict.reason)
+
+    def test_a_bag_larger_than_the_till_held_is_still_a_mismatch(self):
+        """The other side of the comparison, which no retained figure can excuse."""
+        self.assertTrue(settlement.deposit_matches(
+            declared_minor=9000, sessions_minor=7000, retained_minor=0).needs_a_case)
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

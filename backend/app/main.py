@@ -2209,11 +2209,22 @@ class CashSessionBody(BaseModel):
     cash_account_id: str
     drawer_label: str = Field(min_length=1, max_length=63)
     currency: str = Field(min_length=3, max_length=3)
+    #: What the person counted. On an empty drawer it is the float being drawn from the safe;
+    #: on a handover it is the money the last shift left, and the two are told apart by the
+    #: drawer account's own balance rather than by anything on this body.
     opening_float_minor: int = Field(ge=0, le=10**12)
-    #: Required when the float is non-zero: the `cash` account it is drawn from.
+    #: Required when the float is non-zero on an *empty* drawer: the `cash` account it is
+    #: drawn from. **Refused on a handover**, where nothing is drawn -- a field accepted and
+    #: then not used is worse than no field.
     float_source_account_id: str | None = None
-    #: Required with a float, because the posting needs an entity.
+    #: Required with a float, and with a handover that does not balance, because both post.
     legal_entity_id: str | None = None
+    #: Required when a handover count differs from what the ledger says is in the drawer:
+    #: the difference goes here, as it does at the close.
+    suspense_account_id: str | None = None
+    #: FD-07: "If your count differs, say so now -- a discrepancy found at open belongs to the
+    #: previous shift." Required when it does differ.
+    handover_reason: str | None = Field(default=None, min_length=1, max_length=500)
     idempotency_key: str = Field(min_length=1, max_length=200)
     correlation_id: str
 
@@ -2226,6 +2237,9 @@ class CloseCashSessionBody(BaseModel):
     legal_entity_id: str
     suspense_account_id: str
     variance_reason: str | None = Field(default=None, min_length=1, max_length=500)
+    #: What to pass to the next shift. FD-07: "The handover note is part of the shift, not a
+    #: WhatsApp message that leaves with the person who wrote it."
+    handover_note: str | None = Field(default=None, min_length=1, max_length=2000)
     correlation_id: str
 
 
@@ -2235,6 +2249,10 @@ class DepositBody(BaseModel):
     bank_account_id: str
     currency: str = Field(min_length=3, max_length=3)
     declared_minor: int = Field(ge=1, le=10**12)
+    #: What is deliberately left in the drawer rather than banked: the next shift's float.
+    #: Declared, because `declared + retained = counted` is the arithmetic that keeps banking
+    #: less than the till held from being tolerated silently.
+    retained_minor: int = Field(default=0, ge=0, le=10**12)
     deposited_on: date
     session_ids: list[str] = Field(min_length=1, max_length=100)
     legal_entity_id: str
@@ -6237,6 +6255,29 @@ def create_app(
             masked_fields=gate.masked_fields, held_permissions=held_permissions(session),
         )
 
+    @app.get("/people/by-identity")
+    def read_people_of_identities(
+        tenant_id: TenantId, session: Session,
+        identity_id: Annotated[list[str], Query()],
+    ) -> dict[str, Any]:
+        """Which person each of these MOD-007 identities signs in as.
+
+        **The reverse of what `GET /staff` composes, and nothing in the build had it.** A
+        till's `opened_by`, a shift's `closed_by` and an attendance's `recorded_by` are
+        identities, so a screen rendering an actor needs identity, then person, then
+        `/people/names` -- and FD-07's "HANDED OVER FROM KAREEM" is exactly that chain.
+
+        It returns no names, so `people.person.read` is the gate and there is nothing to mask:
+        what it discloses is the link between a sign-in and a person, which is what that
+        permission is about.
+        """
+        permit(session, "people.person.read")
+        return people.people_of_identities(
+            tenant_pool, tenant_id,
+            identity_ids=require_uuids(
+                identity_id, "identity_id", limit=people.IDENTITY_LINK_PAGE),
+        )
+
     @app.get("/staff")
     def list_staff(
         tenant_id: TenantId, session: Session, employment_state: str | None = None,
@@ -8235,6 +8276,24 @@ def create_app(
             tenant_pool, tenant_id, status=status,
             location_id=optional_uuid(location_id, "location_id"), limit=limit)
 
+    @app.get("/ledger/drawers")
+    def list_drawers(
+        tenant_id: TenantId, session: Session, location_id: str,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        """The tills at one site and what is standing in each. FD-07's own read.
+
+        **The expected figure comes back for a drawer nobody has opened yet**, which is the
+        whole point: the canvas shows the previous shift's own figure -- "Kareem left JOD
+        50.00 at 16:04" -- before a count is entered, and it is derived from that account's
+        postings rather than from any number a caller sent.
+        """
+        permit(session, "finance.cash.session")
+        return ledger.list_drawers(
+            tenant_pool, tenant_id,
+            location_id=require_uuid(location_id, "location_id"), limit=limit,
+        )
+
     @app.post("/ledger/cash-sessions", status_code=201)
     def open_cash_session(
         tenant_id: TenantId, session: Session, body: CashSessionBody
@@ -8250,6 +8309,9 @@ def create_app(
             float_source_account_id=optional_uuid(
                 body.float_source_account_id, "float_source_account_id"),
             legal_entity_id=optional_uuid(body.legal_entity_id, "legal_entity_id"),
+            suspense_account_id=optional_uuid(
+                body.suspense_account_id, "suspense_account_id"),
+            handover_reason=body.handover_reason,
             idempotency_key=body.idempotency_key,
             actor_id=session["identity_id"], correlation_id=body.correlation_id,
         )
@@ -8268,6 +8330,7 @@ def create_app(
             suspense_account_id=require_uuid(
                 body.suspense_account_id, "suspense_account_id"),
             variance_reason=body.variance_reason,
+            handover_note=body.handover_note,
             actor_id=session["identity_id"], correlation_id=body.correlation_id,
         )
 
@@ -8283,6 +8346,7 @@ def create_app(
             cash_account_id=require_uuid(body.cash_account_id, "cash_account_id"),
             bank_account_id=require_uuid(body.bank_account_id, "bank_account_id"),
             currency=body.currency, declared_minor=body.declared_minor,
+            retained_minor=body.retained_minor,
             deposited_on=body.deposited_on,
             session_ids=[require_uuid(s, "session_id") for s in body.session_ids],
             legal_entity_id=require_uuid(body.legal_entity_id, "legal_entity_id"),

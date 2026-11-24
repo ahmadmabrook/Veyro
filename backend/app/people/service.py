@@ -422,6 +422,11 @@ def get_person(
 #: selection is bounded to the loaded page" and "there is no state where 4,812 rows render".
 PEOPLE_PAGE = 200
 
+#: How many identities one call may resolve to people. The callers are screens rendering the
+#: actors on a page, so the bound is a page's worth -- and bounded on the server, because an
+#: unbounded read of the whole link table is "which of this tenant's members can sign in".
+IDENTITY_LINK_PAGE = 200
+
 
 #: How many people one batched read may name.
 #:
@@ -917,6 +922,47 @@ def person_of_identity(pool: Pool, tenant_id: str, *, identity_id: str) -> str |
         # record, and a guardian whose duplicate was merged was silently refused their own
         # dependent. "Readers follow the pointer" was the stated design and no reader did it.
         return _survivor_of(conn, str(row[0]))
+
+
+def people_of_identities(
+    pool: Pool, tenant_id: str, *, identity_ids: list[str],
+) -> dict[str, Any]:
+    """Which person each of these MOD-007 identities signs in as. The batch of the one above.
+
+    **`person_of_identity` had no batch and the surfaces that need one are the ones that
+    render an actor.** A till's `opened_by`, a shift's `closed_by`, an attendance's
+    `recorded_by` are all identities, and a screen showing "handed over from 7f3a1c2e" is a
+    screen nobody can read -- so the composition is identity, then person, then
+    `GET /people/names`, and asking one at a time is the round-trip problem the staff list
+    already paid for.
+
+    **An identity with no link is absent from the answer rather than present with a null**,
+    because the two facts a caller acts on are different: a staff identity that is nobody in
+    particular is the ordinary case, and a surface has to say "a staff member" rather than
+    draw a blank name. The merge pointer is followed for the reason the single read follows
+    it: `ppl_identity_links` is insert-only, so a merge leaves it naming the record that was
+    merged away.
+    """
+    if not identity_ids:
+        return {"count": 0, "people": []}
+    if len(identity_ids) > IDENTITY_LINK_PAGE:
+        raise InvalidRequest("too_many_identities")
+    with tenant_scope(pool, tenant_id) as conn:
+        rows = conn.execute(
+            "SELECT identity_id, person_id FROM plt01.ppl_identity_links"
+            " WHERE identity_id = ANY(%s)",
+            (list(identity_ids),),
+        ).fetchall()
+        out = [{"identity_id": str(r[0]),
+                "person_id": _survivor_of(conn, str(r[1]))} for r in rows]
+    return {
+        "count": len(out),
+        "people": sorted(out, key=lambda row: row["identity_id"]),
+        "an_unlinked_identity_is_absent": (
+            "an identity with no person is left out rather than returned with a null: staff "
+            "hold permissions and do not have to be anybody in particular, and a surface "
+            "says so rather than drawing an empty name"),
+    }
 
 
 def upsert_tenant_profile(

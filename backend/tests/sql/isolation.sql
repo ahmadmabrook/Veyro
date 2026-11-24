@@ -23881,9 +23881,10 @@ BEGIN
         ('plt01.led_cash_sessions',
          'cash_account_id,close_correlation_id,closed_at,closed_by,'
          'correlation_id,counted_minor,currency,drawer_label,'
-         'expected_minor,idempotency_key,location_id,opened_at,'
-         'opened_by,opening_float_minor,session_id,status,tenant_id,'
-         'variance_journal_id,variance_reason'),
+         'expected_minor,handover_note,idempotency_key,location_id,'
+         'opened_at,opened_by,opening_expected_minor,'
+         'opening_float_minor,opening_variance_reason,session_id,'
+         'status,tenant_id,variance_journal_id,variance_reason'),
         ('plt01.led_deposit_sessions',
          'added_at,added_by,amount_minor,correlation_id,deposit_id,'
          'session_id,tenant_id'),
@@ -23893,7 +23894,7 @@ BEGIN
          'confirmed_by,correlation_id,created_at,created_by,'
          'credited_minor,credited_on,currency,declared_minor,'
          'deposit_id,deposited_on,idempotency_key,journal_id,'
-         'location_id,status,tenant_id'),
+         'location_id,retained_minor,status,tenant_id'),
         ('plt01.led_exports',
          'correlation_id,credit_total_minor,currency,'
          'debit_total_minor,export_id,exported_at,exported_by,'
@@ -23979,7 +23980,8 @@ BEGIN
         ('plt01.led_deposits',
          'bank_account_id,cash_account_id,correlation_id,created_at,'
          'created_by,currency,declared_minor,deposit_id,deposited_on,'
-         'idempotency_key,journal_id,location_id,status,tenant_id'),
+         'idempotency_key,journal_id,location_id,retained_minor,'
+         'status,tenant_id'),
         ('plt01.led_exports',
          'correlation_id,credit_total_minor,currency,'
          'debit_total_minor,export_id,exported_at,exported_by,'
@@ -24104,10 +24106,12 @@ BEGIN
          'status'),
         ('led_cash_sessions', 'veyro_cp_app',
          'close_correlation_id,closed_at,closed_by,counted_minor,'
-         'expected_minor,status,variance_journal_id,variance_reason'),
+         'expected_minor,handover_note,status,variance_journal_id,'
+         'variance_reason'),
         ('led_cash_sessions', 'veyro_cp_worker',
          'close_correlation_id,closed_at,closed_by,counted_minor,'
-         'expected_minor,status,variance_journal_id,variance_reason'),
+         'expected_minor,handover_note,status,variance_journal_id,'
+         'variance_reason'),
         ('led_deposit_sessions', 'veyro_cp_app',
          '(none)'),
         ('led_deposit_sessions', 'veyro_cp_worker',
@@ -24553,6 +24557,9 @@ VALUES ('11111111-1111-4111-8111-111111111111', 'ffffffff-2000-4000-8000-0000000
         '33333333-3333-4333-8333-333333333333');
 
 DO $$
+DECLARE
+    offender text;
+    state text;
 BEGIN
     BEGIN
         INSERT INTO plt01.led_accounts
@@ -29501,6 +29508,267 @@ BEGIN
     EXCEPTION
         WHEN unique_violation THEN NULL;
     END;
+
+    -- ---------------------------------------------------------------- 0031, FD-07
+    --
+    -- **Every case here names the constraint that refused it.** `check_violation` is the same
+    -- condition for every CHECK on a table, so a case that counts it proves whichever fires
+    -- first -- the trap this repository has shipped in five modules and found by sweeping
+    -- afterwards each time.
+
+    -- A handover that does not balance states why. Expected 5000, counted 4500, no reason.
+    BEGIN
+        INSERT INTO plt01.led_cash_sessions
+            (tenant_id, cash_account_id, currency, drawer_label, idempotency_key,
+             location_id, opened_by, opening_float_minor, status, correlation_id,
+             opening_expected_minor, opening_variance_reason)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'ffffffff-1000-4000-8000-00000000000a', 'JOD', 'handover-1',
+                'handover-unexplained', 'ffffffff-1000-4000-8000-000000000001',
+                '33333333-3333-4333-8333-333333333333', 4500, 'open',
+                '33333333-3333-4333-8333-333333333333', 5000, NULL);
+        RAISE EXCEPTION
+            'CHECK 84 FAILED: a handover that does not balance with nothing written';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender <> 'led_cash_sessions_opening_variance_explained' THEN
+                RAISE EXCEPTION
+                    'CHECK 84 FAILED: the unexplained handover was answered by %', offender;
+            END IF;
+    END;
+
+    -- **A tab on a handover that *agreed*, which is the only row the not-blank rule can
+    -- answer alone.** `btrim` strips spaces and nothing else, so a case made of spaces cannot
+    -- tell the banned `length(btrim(x)) > 0` form from the `~ '[^[:space:]]'` one this
+    -- repository standardised on.
+    --
+    -- The first version put the tab on a handover that did *not* balance, where both rules
+    -- apply: `opening_reason_not_blank` fires first on a clean database, and with it dropped
+    -- the explained rule answered instead -- so a permissive case passed either way and the
+    -- not-blank rule was droppable in silence. The sweep found it, and the fix is one case per
+    -- constraint where only that constraint *can* refuse the row: a NULL reason above, which
+    -- not-blank passes, and a balancing count here, which the explained rule passes.
+    --
+    -- It is writable at all only because this migration deliberately has no rule against a
+    -- reason on a count that balanced, following `check_close`'s own judgement at the other
+    -- end of the shift.
+    BEGIN
+        INSERT INTO plt01.led_cash_sessions
+            (tenant_id, cash_account_id, currency, drawer_label, idempotency_key,
+             location_id, opened_by, opening_float_minor, status, correlation_id,
+             opening_expected_minor, opening_variance_reason)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'ffffffff-1000-4000-8000-00000000000a', 'JOD', 'handover-8',
+                'handover-blank-but-agreed', 'ffffffff-1000-4000-8000-000000000001',
+                '33333333-3333-4333-8333-333333333333', 5000, 'open',
+                '33333333-3333-4333-8333-333333333333', 5000, E'\t');
+        RAISE EXCEPTION
+            'CHECK 84 FAILED: a whitespace reason on a handover that balanced';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender <> 'led_cash_sessions_opening_reason_not_blank' THEN
+                RAISE EXCEPTION
+                    'CHECK 84 FAILED: the agreed blank reason was answered by %', offender;
+            END IF;
+    END;
+
+    -- **The permission, which is the only thing that can see the rule refusing too much.** An
+    -- empty drawer stores a zero expected figure against the float it is being funded with, so
+    -- a rule that demanded a reason whenever the two numbers differ would refuse every
+    -- ordinary first open -- which is exactly what the first draft of this constraint did, and
+    -- what nine existing cases caught within the minute.
+    BEGIN
+        INSERT INTO plt01.led_cash_sessions
+            (tenant_id, cash_account_id, currency, drawer_label, idempotency_key,
+             location_id, opened_by, opening_float_minor, status, correlation_id,
+             opening_expected_minor, opening_variance_reason)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'ffffffff-1000-4000-8000-00000000000a', 'JOD', 'handover-3',
+                'handover-funded', 'ffffffff-1000-4000-8000-000000000001',
+                '33333333-3333-4333-8333-333333333333', 5000, 'open',
+                '33333333-3333-4333-8333-333333333333', 0, NULL);
+    EXCEPTION
+        WHEN others THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME, state = RETURNED_SQLSTATE;
+            RAISE EXCEPTION
+                'CHECK 84 FAILED: funding an empty drawer was refused by % (%)',
+                offender, state;
+    END;
+
+    -- A handover whose balance is itself out of range, which is the bound a caller reaches
+    -- through a figure a provider or a backdated journal produced rather than through a body.
+    BEGIN
+        INSERT INTO plt01.led_cash_sessions
+            (tenant_id, cash_account_id, currency, drawer_label, idempotency_key,
+             location_id, opened_by, opening_float_minor, status, correlation_id,
+             opening_expected_minor, opening_variance_reason)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'ffffffff-1000-4000-8000-00000000000a', 'JOD', 'handover-4',
+                'handover-huge', 'ffffffff-1000-4000-8000-000000000001',
+                '33333333-3333-4333-8333-333333333333', 0, 'open',
+                '33333333-3333-4333-8333-333333333333', 1000000000001,
+                'more than a trillion fils were in the drawer');
+        RAISE EXCEPTION 'CHECK 84 FAILED: an opening balance past the ceiling';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender <> 'led_cash_sessions_opening_expected_bounded' THEN
+                RAISE EXCEPTION
+                    'CHECK 84 FAILED: the opening ceiling was answered by %', offender;
+            END IF;
+    END;
+
+    -- The other side of the same bound, which a one-directional case cannot see.
+    BEGIN
+        INSERT INTO plt01.led_cash_sessions
+            (tenant_id, cash_account_id, currency, drawer_label, idempotency_key,
+             location_id, opened_by, opening_float_minor, status, correlation_id,
+             opening_expected_minor, opening_variance_reason)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'ffffffff-1000-4000-8000-00000000000a', 'JOD', 'handover-5',
+                'handover-tiny', 'ffffffff-1000-4000-8000-000000000001',
+                '33333333-3333-4333-8333-333333333333', 0, 'open',
+                '33333333-3333-4333-8333-333333333333', -1000000000001,
+                'the drawer was a trillion fils overdrawn');
+        RAISE EXCEPTION 'CHECK 84 FAILED: an opening balance below the floor';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender <> 'led_cash_sessions_opening_expected_bounded' THEN
+                RAISE EXCEPTION
+                    'CHECK 84 FAILED: the opening floor was answered by %', offender;
+            END IF;
+    END;
+
+    -- **A note handed over by a shift that has not ended.** There is no route that could try
+    -- this -- the close is the only statement that writes the column -- which is why the case
+    -- lives here: the control exists for the writer the service is not.
+    BEGIN
+        INSERT INTO plt01.led_cash_sessions
+            (tenant_id, cash_account_id, currency, drawer_label, idempotency_key,
+             location_id, opened_by, opening_float_minor, status, correlation_id,
+             opening_expected_minor, handover_note)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'ffffffff-1000-4000-8000-00000000000a', 'JOD', 'handover-6',
+                'handover-early-note', 'ffffffff-1000-4000-8000-000000000001',
+                '33333333-3333-4333-8333-333333333333', 0, 'open',
+                '33333333-3333-4333-8333-333333333333', 0,
+                'the reader is still down');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a handover note on a shift that is still open';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender <> 'led_cash_sessions_handover_note_needs_a_close' THEN
+                RAISE EXCEPTION
+                    'CHECK 84 FAILED: the early handover note was answered by %', offender;
+            END IF;
+    END;
+
+    -- A blank note, on a *closed* session so the sibling requiring a close is satisfied and
+    -- this is the only rule left to fire. It cannot be an UPDATE on the seeded closed session:
+    -- `led_cash_close_is_final` refuses every UPDATE where the old status is not `open`, so
+    -- the trigger would answer and the case would prove it instead.
+    BEGIN
+        INSERT INTO plt01.led_cash_sessions
+            (tenant_id, cash_account_id, currency, drawer_label, idempotency_key,
+             location_id, opened_by, opening_float_minor, status, correlation_id,
+             opening_expected_minor, handover_note, closed_at, closed_by,
+             close_correlation_id, counted_minor, expected_minor)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'ffffffff-1000-4000-8000-00000000000a', 'JOD', 'handover-7',
+                'handover-blank-note', 'ffffffff-1000-4000-8000-000000000001',
+                '33333333-3333-4333-8333-333333333333', 0, 'closed',
+                '33333333-3333-4333-8333-333333333333', 0, E'\t', now(),
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333', 0, 0);
+        RAISE EXCEPTION 'CHECK 84 FAILED: a handover note made of whitespace';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender <> 'led_cash_sessions_handover_note_not_blank' THEN
+                RAISE EXCEPTION
+                    'CHECK 84 FAILED: the blank handover note was answered by %', offender;
+            END IF;
+    END;
+
+    -- A deposit that claims to have left a negative amount behind.
+    BEGIN
+        INSERT INTO plt01.led_deposits
+            (tenant_id, bank_account_id, cash_account_id, correlation_id, created_by,
+             currency, declared_minor, retained_minor, deposited_on, idempotency_key,
+             journal_id, location_id, status)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'ffffffff-1000-4000-8000-00000000000b',
+                'ffffffff-1000-4000-8000-00000000000a',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333', 'JOD', 5000, -1,
+                DATE '2026-11-10', 'deposit-negative-retained',
+                'ffffffff-2000-4000-8000-000000000002',
+                'ffffffff-1000-4000-8000-000000000001', 'in_transit');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a deposit that retained a negative amount';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender <> 'led_deposits_retained_bounded' THEN
+                RAISE EXCEPTION
+                    'CHECK 84 FAILED: the retained floor was answered by %', offender;
+            END IF;
+    END;
+
+    -- And the ceiling, which the floor case cannot see.
+    BEGIN
+        INSERT INTO plt01.led_deposits
+            (tenant_id, bank_account_id, cash_account_id, correlation_id, created_by,
+             currency, declared_minor, retained_minor, deposited_on, idempotency_key,
+             journal_id, location_id, status)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'ffffffff-1000-4000-8000-00000000000b',
+                'ffffffff-1000-4000-8000-00000000000a',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333', 'JOD', 5000, 1000000000001,
+                DATE '2026-11-10', 'deposit-huge-retained',
+                'ffffffff-2000-4000-8000-000000000002',
+                'ffffffff-1000-4000-8000-000000000001', 'in_transit');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a deposit that retained more than the ceiling';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender <> 'led_deposits_retained_bounded' THEN
+                RAISE EXCEPTION
+                    'CHECK 84 FAILED: the retained ceiling was answered by %', offender;
+            END IF;
+    END;
+
+    -- **The new case kind is admitted and an invented one is not.** Adding a value to a domain
+    -- is a weakening, so it needs a case on each side: the permission proves the morning
+    -- discrepancy can be recorded at all, and the refusal proves the domain still bites.
+    BEGIN
+        INSERT INTO plt01.led_reconciliation_cases
+            (tenant_id, legal_entity_id, case_kind, subject_kind, subject_ref,
+             expected_minor, observed_minor, currency, detail, opened_on, opened_by,
+             idempotency_key, correlation_id, status)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'aaaaaaaa-0000-4000-8000-000000000003', 'handover_variance',
+                'cash_session', 'a-session', 5000, 4500, 'JOD',
+                'the money left overnight is not the money that was left',
+                DATE '2026-11-10', '33333333-3333-4333-8333-333333333333',
+                'handover-case-admitted', '33333333-3333-4333-8333-333333333333',
+                'open');
+    EXCEPTION
+        WHEN others THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME, state = RETURNED_SQLSTATE;
+            RAISE EXCEPTION
+                'CHECK 84 FAILED: a handover_variance case was refused by % (%)',
+                offender, state;
+    END;
+
+    -- **There is deliberately no second refusal case for the kind domain.** This block
+    -- already sends an unknown kind, and the sweep's drop mutation was caught by *that* case
+    -- -- so a case of mine beside it would have been subsumed, which is the judgement this
+    -- repository applies to a constraint a sibling already covers. What did not exist is the
+    -- permission above.
 END $$;
 ROLLBACK;
 
@@ -30243,6 +30511,7 @@ BEGIN
         RAISE EXCEPTION
             'CHECK 84 FAILED: the one-way triggers fired for % of 9 probes', probe;
     END IF;
+
 END $$;
 ROLLBACK;
 

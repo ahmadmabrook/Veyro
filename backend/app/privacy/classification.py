@@ -1256,6 +1256,16 @@ SUBJECT_COLUMNS: tuple[Reachability, ...] = (
     Reachability("plt01", "led_cash_sessions", "variance_reason", "write_once",
                  "**what the clerk said about a till that did not balance.** The sentence "
                  "the whole control exists to capture"),
+    Reachability("plt01", "led_cash_sessions", "opening_variance_reason", "unreachable",
+                 "what the person opening said about money the last shift left that is not "
+                 "there. Insert-only: no UPDATE grant covers it, so a handover cannot be "
+                 "restated once it is recorded"),
+    Reachability("plt01", "led_cash_sessions", "handover_note", "write_once",
+                 "**what one shift passes to the next**, and the likeliest place in this "
+                 "module for a member's name -- 'Hala says her card stopped working' is how "
+                 "one gets written. The close is the only statement that may set it, because "
+                 "the `led_cash_sessions_one_way` trigger refuses every UPDATE on a session "
+                 "that is not open"),
     Reachability("plt01", "led_settlement_lines", "provider_ref", "unreachable",
                  "the provider's own handle for a movement. Insert-only in full"),
     Reachability("plt01", "led_settlement_lines", "outcome_reason", "unreachable",
