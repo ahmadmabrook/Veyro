@@ -29,6 +29,7 @@ from fastapi.testclient import TestClient
 from app.authorization import service as authz
 from app.config import Settings
 from app.db import make_identity_pool, make_platform_pool, make_tenant_pool
+from app.identity import secrets
 from app.identity import service as identity
 from app.main import create_app
 
@@ -62,8 +63,21 @@ class GatedApiTestCase(unittest.TestCase):
         cls._tenant_pool = make_tenant_pool(DSN)
         cls._platform_pool = make_platform_pool(DSN)
         cls._identity_pool = make_identity_pool(DSN)
+        # **The work factor is the suite's, and that is a measured decision rather than a
+        # convenience.** 51% of one twelve-test file's wall-clock was scrypt -- 147 calls, 5.2
+        # seconds of 10.2 -- and the comment two methods down has said for a long time that
+        # "the HTTP path spends a dozen scrypt hashes per tenant and that is most of the
+        # suite's wall-clock". CI's backend step reached 22.5 minutes and cancelled the job in
+        # its last step with every check green.
+        #
+        # **Nothing about the mechanism goes untested.** The parameters are stored per
+        # credential and `verify_secret` reads them off the row, so a cheap hash verifies
+        # cheaply and `needs_rehash` compares against what *this* process would store. What is
+        # not exercised here is the number 2**14, which `ScryptParameterTests` asserts
+        # directly, and `TestConfigRefusals` proves the setting is refused outside `local`.
         app = create_app(
-            Settings(environment="local", release="test", database_url=DSN),
+            Settings(environment="local", release="test", database_url=DSN,
+                     scrypt_cost_log2=secrets.MIN_COST_LOG2),
             tenant_pool=cls._tenant_pool, platform_pool=cls._platform_pool,
             identity_pool=cls._identity_pool,
             clock=cls.rate_limit_clock(),

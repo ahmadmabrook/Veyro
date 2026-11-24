@@ -184,6 +184,31 @@ It prints a JSON report and exits non-zero if any run failed. Drop `--once` to l
 `--job events.relay` or `--tenant <id>` to narrow it. The e2e fixture runs exactly this
 command as its last step, so the browser suite asserts against rows a scheduled job wrote.
 
+**The suite's own wall-clock is mostly password hashing, and there is a local-only setting
+for it.** Measured: 147 scrypt calls in one twelve-test file, 5.2 seconds of 10.2 -- so half
+of it -- and `support.py` had named the cause long before anybody timed it ("the HTTP path
+spends a dozen scrypt hashes per tenant and that is most of the suite's wall-clock"). CI found
+the limit first: the foundation job's backend step reached 22.5 minutes and the 25-minute
+timeout cancelled the run in its *last* step, with the isolation suite, both linters, the
+tests, the container build and its smoke all green. A red `main` for a reason unrelated to the
+code is worse than one for a defect.
+
+`VEYRO_SCRYPT_COST_LOG2` lowers the work factor, is refused outside `local` by
+`config.load_settings`, and is bounded again by `secrets.use_cost_log2` -- two independent
+refusals, because one of them is a string in an environment. The harness and `serve.mjs` both
+set 10, which takes that file from 10.2 seconds to 5.7.
+
+**Lowering it is safe for the reason that makes the constant raisable**: the parameters are
+stored per credential and `verify_secret` reads them off the row, so a cheap hash verifies
+cheaply and one made at the deployed cost still verifies at it. The two things that had to
+move with it are the ones a reader would miss -- `needs_rehash` compares against
+`effective_params()` rather than the constant (against the constant, every credential the
+suite made would read as weak, so every successful login would revoke its row and hash a
+replacement: *more* work, and a credential table churning on every test), and the band's floor
+lives in `secrets.py` where the crypto reasoning is rather than as a second pair of literals in
+the config. What the suite no longer exercises is the number 2**14, which
+`ScryptParameterTests` asserts directly and a mutation proves.
+
 Passkey authentication needs two settings and refuses without them, which is deliberate: the
 relying party id binds a credential to a domain and guessing it would either break every
 credential or accept one made for a domain nobody controls.

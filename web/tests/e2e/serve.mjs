@@ -101,6 +101,13 @@ const child = spawn(
       // bounded, and is refused outside the `local` environment -- which is the only
       // environment this script starts.
       VEYRO_API_REQUEST_BUDGET: "20000",
+      // **And the scrypt work factor, for the same reason as the budget above.** The
+      // fixture provisions a tenant, five identities, a role and a dozen credentials, and the
+      // deployed cost is 33ms a hash -- measured. `config.load_settings` refuses this outside
+      // `local`, which is what `VEYRO_ENV` above is, and `secrets.use_cost_log2` bounds it
+      // again. The parameters are stored per credential, so a cheap hash verifies cheaply and
+      // nothing about the mechanism is skipped.
+      VEYRO_SCRYPT_COST_LOG2: "10",
       ...process.env,
       VEYRO_DATABASE_URL: dsn,
       // **The relying party, without which every passkey sign-in answers 422.** The browser

@@ -361,3 +361,66 @@ class CapabilityLifetimeTests(unittest.TestCase):
     def test_the_default_is_unchanged_when_no_factors_are_given(self):
         self.assertEqual(policy.session_expiry(NOW, policy.AAL_ROUTINE) - NOW,
                          policy.SESSION_LIFETIME[policy.AAL_ROUTINE])
+
+
+class WorkFactorTests(unittest.TestCase):
+    """The settable work factor, which exists because the suite spends its wall-clock here.
+
+    **Measured rather than assumed**: 147 scrypt calls in one twelve-test file, 5.2 seconds of
+    10.2, and the same file at the floor runs in 5.7 with 0.4 of it hashing. CI's backend step
+    had reached 22.5 minutes and cancelled the job in its last step with every check green.
+    """
+
+    def setUp(self) -> None:
+        was = secrets.cost_log2()
+        self.addCleanup(secrets.use_cost_log2, was)
+
+    def test_the_deployed_cost_is_the_default_and_none_restores_it(self) -> None:
+        secrets.use_cost_log2(secrets.MIN_COST_LOG2)
+        self.assertEqual(secrets.effective_params()["n"], 2**secrets.MIN_COST_LOG2)
+        secrets.use_cost_log2(None)
+        self.assertEqual(secrets.effective_params(), secrets.DEFAULT_SCRYPT_PARAMS)
+
+    def test_it_is_bounded_at_both_ends(self) -> None:
+        """**The upper bound is deliberate**: this is a knob for lowering the cost in a test,
+        and one that could raise it would be a setting that can make a tenant's logins time
+        out. The lower bound is where the crypto reasoning is -- 2**10 at r=8 is about a
+        megabyte, which is not a password hash anybody should deploy."""
+        for exponent in (secrets.MIN_COST_LOG2 - 1, secrets.COST_LOG2 + 1, 0, -1):
+            with self.subTest(exponent=exponent):
+                with self.assertRaises(secrets.SecretError):
+                    secrets.use_cost_log2(exponent)
+        self.assertEqual(secrets.cost_log2(), secrets.COST_LOG2)
+
+    def test_a_hash_carries_the_factor_in_force_and_verifies_under_it(self) -> None:
+        """The property that makes lowering it safe: the parameters are stored per credential.
+
+        `verify_secret` reads `n`, `r` and `p` off the row, so a cheap hash verifies cheaply
+        and one made at the deployed cost still verifies at it -- the same thing that makes
+        `DEFAULT_SCRYPT_PARAMS` raisable without a migration.
+        """
+        secrets.use_cost_log2(secrets.MIN_COST_LOG2)
+        cheap = secrets.hash_secret("correct horse")
+        self.assertEqual(cheap.params["n"], 2**secrets.MIN_COST_LOG2)
+        self.assertTrue(secrets.verify_secret(cheap, "correct horse"))
+        self.assertFalse(secrets.verify_secret(cheap, "wrong horse"))
+        # And it still verifies once the process is back at the deployed cost, because the row
+        # says what it was hashed with.
+        secrets.use_cost_log2(None)
+        self.assertTrue(secrets.verify_secret(cheap, "correct horse"))
+
+    def test_needs_rehash_asks_about_what_this_process_would_store(self) -> None:
+        """**The clause that keeps a lowered cost from becoming more work rather than less.**
+
+        Against the constant, every credential the suite made would read as weak -- so every
+        successful password verification would revoke its row and hash a replacement, which is
+        an extra hash per login and a credential table churning on every test. The question is
+        whether a row is weaker than what *this* process would write.
+        """
+        secrets.use_cost_log2(secrets.MIN_COST_LOG2)
+        cheap = secrets.hash_secret("x")
+        self.assertFalse(secrets.needs_rehash(cheap))
+        # And the same row does need one once the process is back at the deployed cost, which
+        # is the direction `_rehash_if_weak` exists for.
+        secrets.use_cost_log2(None)
+        self.assertTrue(secrets.needs_rehash(cheap))

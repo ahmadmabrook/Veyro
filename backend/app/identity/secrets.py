@@ -41,6 +41,76 @@ SCRYPT = "scrypt"
 # parameters and is re-hashed the next time its owner proves it.
 DEFAULT_SCRYPT_PARAMS: dict[str, int] = {"n": 2**14, "r": 8, "p": 1, "dklen": 32}
 
+#: The deployed work factor as a power of two, and the ceiling the override may not pass.
+COST_LOG2 = 14
+
+#: The floor the override may not go below.
+#:
+#: **Where the crypto reasoning lives rather than where the setting is read.** 2**10 at r=8 is
+#: about a megabyte and two milliseconds, which is not a password hash anybody should deploy --
+#: and that is exactly why the bound is here and why `config.load_settings` refuses the setting
+#: outside `local`. Two independent refusals, because one of them is a string in an environment.
+MIN_COST_LOG2 = 10
+
+#: The process-wide work factor. `create_app` sets it from the settings and nothing else does.
+#:
+#: **Why a module-level value rather than a parameter.** The cost is a deployment fact, like the
+#: WebAuthn relying party id -- and the alternative is threading it through every caller of
+#: `hash_secret`, which includes the service functions the test harness reaches *past* the app
+#: to build an owner. A parameter that most call sites did not pass would be the override that
+#: applies to some hashes and not others, which is worse than a global: a suite half of whose
+#: credentials are cheap tells you nothing about either cost.
+_cost_log2 = COST_LOG2
+
+
+def use_cost_log2(exponent: int | None) -> None:
+    """Set the process-wide work factor. `None` restores the deployed one.
+
+    **This exists because the backend suite spends half its wall-clock here, measured.** 147
+    scrypt calls in one twelve-test file, 5.2 seconds of 10.2 -- and CI's backend step reached
+    22.5 minutes and cancelled the job in its last step with every check green. `support.py`
+    had already named the cause: "the HTTP path spends a dozen scrypt hashes per tenant and that
+    is most of the suite's wall-clock".
+
+    **Lowering it is safe because the parameters are stored per credential.** `verify_secret`
+    reads `n`, `r` and `p` off the row, so a hash made cheaply verifies cheaply and one made at
+    the deployed cost still verifies at it -- the same property that makes the constant raisable
+    without a migration. What the suite then does not exercise is the *number* 2**14, which
+    `ScryptParameterTests` asserts directly.
+
+    **Bounded at both ends, and the upper bound is deliberate.** This is a knob for lowering the
+    cost in a test, so admitting a value above the deployed one would give it a second purpose
+    and a second argument -- and a setting that can raise the work factor is one that can make a
+    tenant's logins time out.
+    """
+    global _cost_log2
+    if exponent is None:
+        _cost_log2 = COST_LOG2
+        return
+    if not MIN_COST_LOG2 <= exponent <= COST_LOG2:
+        raise SecretError(
+            f"a scrypt work factor is between 2**{MIN_COST_LOG2} and 2**{COST_LOG2}; "
+            f"got 2**{exponent}")
+    _cost_log2 = exponent
+
+
+def cost_log2() -> int:
+    """The work factor in force. The honest inverse of the setter, and what a test restores."""
+    return _cost_log2
+
+
+def effective_params() -> dict[str, int]:
+    """The parameters a hash made now would carry.
+
+    **`needs_rehash` reads this and not the constant**, which is what keeps a lowered cost from
+    becoming more work rather than less: against the constant, every credential the suite makes
+    would read as weak, so every successful password verification would revoke its row and hash
+    a replacement -- an extra hash per login and a credential table churning on every test. The
+    question "was this stored under weaker parameters than today's" is about what this process
+    would store, which is this.
+    """
+    return {**DEFAULT_SCRYPT_PARAMS, "n": 2**_cost_log2}
+
 SALT_BYTES = 16
 TOKEN_BYTES = 32
 
@@ -71,7 +141,7 @@ def hash_secret(secret: str, *, params: dict[str, int] | None = None) -> HashedS
     """Hash a password or recovery code with a fresh random salt."""
     if not secret:
         raise SecretError("secret must not be empty")
-    chosen = {**DEFAULT_SCRYPT_PARAMS, **(params or {})}
+    chosen = {**effective_params(), **(params or {})}
     salt = stdlib_secrets.token_bytes(SALT_BYTES)
     digest = hashlib.scrypt(
         _normalize(secret), salt=salt, n=chosen["n"], r=chosen["r"], p=chosen["p"],
@@ -109,7 +179,7 @@ def verify_secret(stored: HashedSecret, candidate: str) -> bool:
 
 def needs_rehash(stored: HashedSecret, *, params: dict[str, int] | None = None) -> bool:
     """Whether a verified credential was hashed under weaker parameters than today's."""
-    wanted = {**DEFAULT_SCRYPT_PARAMS, **(params or {})}
+    wanted = {**effective_params(), **(params or {})}
     return any(stored.params.get(k, 0) < v for k, v in wanted.items())
 
 

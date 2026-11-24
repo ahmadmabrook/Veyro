@@ -2903,3 +2903,32 @@ spends a dozen scrypt hashes per tenant and that is most of the suite's wall-clo
 record, so a lower cost factor in `local` is self-consistent and is the real fix. Headroom
 first, so the gate works; the cost per tenant is its own change. **Check the job's duration
 trend when a suite grows, not only its result.**
+
+
+**Lowering a cost in a test means finding every reader of the constant, and one of them turns
+the saving into a loss.** The scrypt work factor is settable now because half the backend
+suite's wall-clock was hashing -- measured, 147 calls and 5.2 seconds of 10.2 in one file --
+and the obvious change (a module-level factor that `hash_secret` reads) is not enough on its
+own. `needs_rehash` compared the stored parameters against the *constant*, so every credential
+the suite made would have read as weak: every successful password verification would revoke
+its row and hash a replacement, which is an extra hash per login and a credential table
+churning on every test. The question it asks is "weaker than what *this* process would store",
+which is the effective parameters, not the deployed ones.
+
+**The tell is a reader that compares against a default rather than against a value.** Grep the
+constant, not the function: `hash_secret` was the obvious caller and `needs_rehash` was the one
+that mattered.
+
+**Two refusals, because one of them is a string in an environment.**
+`config.load_settings` refuses the setting outside `local` and `secrets.use_cost_log2` bounds
+it again -- and the band's floor lives in the crypto module rather than as a second pair of
+literals in the config, which is why `config.py` imports it. The upper bound is deliberate
+too: a knob that could *raise* the work factor is a setting that can make a tenant's logins
+time out, so admitting one would give it a second purpose and a second argument.
+
+**And a measurement before the change is what made the decision, not after.** Timing
+`hash_secret` at three factors took one command and showed 33ms against 2ms; counting the calls
+in one file took another and showed 51% of its wall-clock. This repository's own rule --
+"measure what the mutation changes, do not reason about it" -- applies as much to a performance
+claim as to a CSS one, and a suite-wide refactor justified by a guess is the expensive kind of
+mistake.

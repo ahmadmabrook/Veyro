@@ -3,6 +3,13 @@
 import os
 from dataclasses import dataclass
 
+# **The band comes from where the crypto reasoning is, not from a second pair of literals
+# here.** `app.identity.secrets` imports nothing beyond the standard library, so this is a
+# leaf dependency with no cycle -- and the alternative is two definitions of a password
+# hash's floor, which is the one-module-two-definitions shape this build refuses everywhere
+# else. What stays here is the refusal outside `local`, which is this file's own job.
+from app.identity import secrets
+
 ENVIRONMENTS = ("local", "development", "staging")
 
 
@@ -28,6 +35,25 @@ class Settings:
     #: staging refuses to start rather than quietly widening a control. That is the same shape
     #: as every other setting in this file, which holds no secrets and admits no unknown value.
     api_request_budget: int | None = None
+    #: An override for the scrypt work factor as a power of two, or None for the deployed one.
+    #:
+    #: **Admitted in `local` only, and refused everywhere else** -- the same shape as the
+    #: request budget above, and for a sharper reason. `secrets.DEFAULT_SCRYPT_PARAMS` is
+    #: 2**14 because a password is low-entropy and the only defence against an offline attack
+    #: on a stolen table is making each guess expensive; lowering it in a deployed environment
+    #: would make every stored password cheap, which is the regression
+    #: `ScryptParameterTests` exists to catch.
+    #:
+    #: **It exists because the suite spends half its wall-clock hashing, measured**: 147 scrypt
+    #: calls in one twelve-test file, 5.2 seconds of 10.2, and CI's backend step reached 22.5
+    #: minutes and cancelled the job in its last step with every check green. The parameters
+    #: are stored per credential and `verify_secret` reads them off the row, so a cheap hash
+    #: verifies cheaply and nothing about the mechanism goes untested -- only the number, which
+    #: is asserted directly.
+    #:
+    #: Bounded again in `app.identity.secrets`, where the crypto reasoning is: two independent
+    #: refusals, because one of them is a string in an environment.
+    scrypt_cost_log2: int | None = None
     #: The WebAuthn relying party id, or None where no passkey may authenticate.
     #:
     #: **A deployment fact with no default, which is why it is here and not in the code.** The
@@ -79,6 +105,22 @@ def load_settings(env: dict[str, str] | None = None) -> Settings:
             raise ConfigError(
                 "VEYRO_API_REQUEST_BUDGET must be between 1 and 100000; "
                 f"got {budget}")
+    raw_cost = source.get("VEYRO_SCRYPT_COST_LOG2", "").strip()
+    cost: int | None = None
+    if raw_cost:
+        if environment != "local":
+            raise ConfigError(
+                "VEYRO_SCRYPT_COST_LOG2 is a local-only test setting; "
+                f"VEYRO_ENV is {environment!r}")
+        try:
+            cost = int(raw_cost)
+        except ValueError:
+            raise ConfigError(
+                f"VEYRO_SCRYPT_COST_LOG2 must be an integer; got {raw_cost!r}") from None
+        if not secrets.MIN_COST_LOG2 <= cost <= secrets.COST_LOG2:
+            raise ConfigError(
+                f"VEYRO_SCRYPT_COST_LOG2 must be between {secrets.MIN_COST_LOG2} and "
+                f"{secrets.COST_LOG2}; got {cost}")
     rp_id = source.get("VEYRO_WEBAUTHN_RP_ID", "").strip()
     raw_origins = source.get("VEYRO_WEBAUTHN_ORIGINS", "").strip()
     origins = tuple(o.strip() for o in raw_origins.split(",") if o.strip())
@@ -109,5 +151,5 @@ def load_settings(env: dict[str, str] | None = None) -> Settings:
             "VEYRO_WEBAUTHN_ORIGINS is set without VEYRO_WEBAUTHN_RP_ID, so nothing says "
             "which relying party a credential must have been created for")
     return Settings(environment=environment, release=release, database_url=database_url,
-                    api_request_budget=budget, webauthn_rp_id=rp_id or None,
-                    webauthn_origins=origins)
+                    api_request_budget=budget, scrypt_cost_log2=cost,
+                    webauthn_rp_id=rp_id or None, webauthn_origins=origins)

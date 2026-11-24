@@ -118,6 +118,29 @@ class ApiRequestBudgetTests(unittest.TestCase):
                 with self.assertRaises(ConfigError):
                     load_settings({**self.BASE, "VEYRO_API_REQUEST_BUDGET": value})
 
+    def test_the_scrypt_work_factor_is_local_only_and_bounded(self):
+        """**The same shape as the budget above and for a sharper reason.** 2**14 is what makes
+        an offline attack on a stolen credential table expensive, so a deployed environment
+        that admitted a lower one would make every stored password cheap -- which is the
+        regression `ScryptParameterTests` exists to catch, arriving through configuration.
+
+        The band is `app.identity.secrets`' own, imported rather than written again here: two
+        definitions of a password hash's floor is the shape this build refuses elsewhere.
+        """
+        self.assertIsNone(load_settings(dict(self.BASE)).scrypt_cost_log2)
+        self.assertEqual(
+            load_settings({**self.BASE, "VEYRO_SCRYPT_COST_LOG2": "10"}).scrypt_cost_log2, 10)
+        for environment in ("development", "staging"):
+            with self.subTest(environment=environment):
+                with self.assertRaises(ConfigError) as refused:
+                    load_settings({**self.BASE, "VEYRO_ENV": environment,
+                                   "VEYRO_SCRYPT_COST_LOG2": "10"})
+                self.assertIn("local-only", str(refused.exception))
+        for value in ("cheap", "9", "15", "0", "-1", "1e1"):
+            with self.subTest(value=value):
+                with self.assertRaises(ConfigError):
+                    load_settings({**self.BASE, "VEYRO_SCRYPT_COST_LOG2": value})
+
     def test_a_blank_setting_is_the_same_as_an_absent_one(self):
         self.assertIsNone(
             load_settings({**self.BASE, "VEYRO_API_REQUEST_BUDGET": "  "})

@@ -61,6 +61,7 @@ from app.devices import service as devices
 from app.errors import InvalidRequest, NotFound, ServiceError, TooManyRequests
 from app.events import service as events
 from app.identity import policy as identity_policy
+from app.identity import secrets
 from app.identity import service as identity
 from app.identity import webauthn as identity_webauthn
 from app.integrations import service as integrations
@@ -3446,6 +3447,16 @@ def create_app(
     limiter = ratelimit.Limiter(
         budgets=None if cfg.api_request_budget is None
         else {**ratelimit.BUDGETS, "api.request": cfg.api_request_budget})
+
+    # **And the scrypt work factor, for the same reason one paragraph up.** It is process-wide
+    # rather than a parameter because the cost is a deployment fact and because the test
+    # harness builds an owner through the *service* layer, reaching past this app -- an
+    # override most call sites did not pass would apply to some hashes and not others, which
+    # tells you nothing about either cost. `config.load_settings` refuses the setting outside
+    # `local` and `secrets.use_cost_log2` bounds it again, so lowering it is two refusals away
+    # from a deployed environment. Set unconditionally, because `None` is the deployed cost and
+    # a process that skipped the call would keep whatever a previous one had set.
+    secrets.use_cost_log2(cfg.scrypt_cost_log2)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
