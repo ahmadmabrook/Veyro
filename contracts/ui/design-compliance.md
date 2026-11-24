@@ -318,6 +318,7 @@ corresponds to them. The others map loosely:
 | `/schedule/new` | ADM-SCH-03 Create a class | **built from the canvas** — type, coach, room, capacity, time, the weekday chips and the waitlist, with the clash reported as the fields change rather than on save and the two answers the canvas draws (use somebody free, or keep them with the written reason paragraph 1842 requires); the capacity ceiling, the waitlist's other two settings and editing a class that already has bookings are each named as absent with what they need |
 | `/desk/trial` | FD-05 Walk-in trial | **built from the canvas** — two fields and a button that creates a person, opens a lead, signs an agreement on the trial product and activates it in one request; the duplicate panel is borrowed from ADM-MEM-10 because this screen creates a `ppl_persons` row exactly as that one does, the heading names the plan's own `trial_days`, and the credential and the app invitation the canvas promises are each named as absent with what they wait on |
 | `/desk/denials/{id}` | FD-03 Access denial resolution | **built from the canvas** — the discreet line a password-only desk gets and the real reason once stepped up, which is the screen's own thesis; the door is named from the zone the refusal cites, the override offers the step-up rather than a button that would be refused, and the renewal, the day pass, the photo and the canvas's own club-and-plan header line are each named as absent with a reason |
+| `/desk/shift` | FD-07 Shift open and close | **built from the canvas, and the open is the half this build had no notion of** — the previous shift's own figure, the float count, the canvas's "a discrepancy found at open belongs to the previous shift" as a real attribution rather than a sentence, and the handover note that travels between the two ends; the close is ADM-PAY-09's own form rather than a second one, and the shift report, the variance threshold and the abandoned till are each named as absent with a reason |
 | `/desk/classes/{id}` | FD-06 Class check-in | **built from the canvas, and the first Front Desk screen** — Touch density, the roster composed with MOD-014's batched names, the only working write form here that is not behind a step-up; the automatic release and the waitlist notification the canvas promises are named as absent |
 | `/schedule/{id}` | ADM-SCH-02 Class detail and roster | **rebuilt** — the band, four MetricCells, the roster; the three actions are stepped-up writes with no form |
 | `/payments` | ADM-PAY-01 Payments ledger | **built from the canvas** — four kinds on one axis, signed; refund and export are named as absent |
@@ -2605,3 +2606,72 @@ computes and which is the acknowledgement that preview exists for.
 Proven: 16 HTTP tests and 13 mutations against the read (all caught, **11 of 13 uncaught on the
 first run**); 12 component tests over the decisions; a browser spec; and the phone sweep
 carries the route.
+
+
+## FD-07 — a till is handed over, not emptied, and the gap note was an understatement
+
+`design:coverage`'s backlog entry said the count, the expected figure and the variance were
+built and were `/payments/cash`, "down to the three lines that add up to the figure by
+construction", and that what this screen adds is the handover note, which "no table holds". The
+first half was true. The second understated it: the canvas is an **open**, and driving one
+through the route that existed double-posted the float. That finding and its remedy are in
+`CLAUDE.md`'s MOD-018 section; what follows is the screen's own half.
+
+**The close is ADM-PAY-09's form, imported.** FD-07's registry line is "opening float count,
+closing count, expected from the ledger, variance with a required note above threshold,
+handover to the next person", and the admin board already writes the close -- so a second form
+for it would be one-module-two-definitions on a figure that posts to suspense and opens a case.
+`CloseDrawerForm` takes `back` and `askForNote` and is drawn by both surfaces; the note is
+collected on the front desk and not on the admin board, which is the design rather than a
+convenience, because the note is what one shift passes to the next and a field asking an
+accountant what to tell the next receptionist is a field nobody fills.
+
+Six decisions are the screen's own:
+
+- **Which act the button performs is derived from the drawer's balance, not chosen.** A till
+  that was emptied is funded from the safe and a till that still holds money is handed over,
+  and the server tells them apart the same way -- so `actFor` lives in `@/lib/shift` and is
+  read at both ends. A form deciding it differently would offer a button the command refuses,
+  which is FD-06's rule; a `handover` flag on the request would let a desk choose whether their
+  own count is checked at all.
+- **The canvas's sentence is one of four, and the other three have nobody to name.** "Kareem
+  left JOD 50.00 at 16:04" needs a person, a figure and a time. A drawer banked to nothing, one
+  whose standing money came from a journal rather than a shift, and one nobody has ever closed
+  are all real states of a real desk, and printing the canvas's line for any of them would name
+  a person and a figure that are not there -- the confident wrong answer MOD-014's own Member
+  360 was bitten by. `handoverCase` is the four, and each has its own sentence.
+- **"HANDED OVER FROM KAREEM" is three modules on one line.** The figure is MOD-018's drawer
+  balance, the time is the previous session's close, and the name is MOD-014's through
+  `ppl_identity_links` -- a till's `closed_by` is a MOD-007 identity, so the chain is identity,
+  then person, then `/people/names`. `veyro_cp_app` holds nothing on the identity plane and
+  paragraph 1300 bars the join, so the surface composes it. **An identity with no person says
+  "a staff member"**, which is only expressible because the new link read leaves an unlinked
+  identity out of its answer rather than returning it with a null: staff hold permissions and
+  do not have to be anybody in particular.
+- **A withheld name is not a name.** `GET /people/names` answers `***` for a field this session
+  cannot read, so the composition tests it with `isWithheld` and falls back to "a staff member"
+  -- MOD-027's board paid for rendering the marker as though somebody were called that.
+- **The figure on the screen is the drawer's balance rather than the last count.** They agree
+  whenever the takings were banked and the float left, which is the ordinary shift; where they
+  do not, what the next person is counting is the money that is there, and the balance is what
+  the command compares against. Two numbers that can disagree, with the screen showing the one
+  the button is not measured by, is the shape this build keeps finding.
+- **The reason field appears as the count goes out**, which is ADM-PAY-09's own pattern and not
+  keystroke validation: the module refuses a short handover with nothing written, so asking
+  afterwards would ask for the explanation after the submit had already failed. The *submit* is
+  not gated on the count.
+
+**Three things the canvas or the registry line asks for are named as absent**, each with what
+it waits on: the shift report it prints or emails, because nothing in this build sends a message
+and there is no print layout for a shift; the variance threshold, because no threshold is stored
+anywhere, so the module demands a sentence for any difference, which is stricter rather than
+looser; and the abandoned till, which the schema admits and nothing writes. The club comes from
+the link rather than from the device, because no table here records where a desk stands.
+
+**And three things the app already had, which the first draft of this screen reinvented.** The
+undefined-class sweep caught `ds-shift-sites`, `ds-shift-handover` and `ds-eyebrow-heading`: the
+pickers are the schedule board's own `ds-filter-bar`, the handover panel is the drawer card
+ADM-PAY-09 already draws, and the headings are plain, which is what that screen does.
+`utcStamp` is the one timestamp renderer and `readNames` the one batched name read. A class that
+styles nothing is invisible to every layer that is not a screenshot, which is why that sweep
+exists; a *component* that exists and was not used is invisible to every layer at all.

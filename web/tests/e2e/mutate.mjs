@@ -42,6 +42,83 @@ const web = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
  * does not collect those files and so reported no failure rather than no test.
  */
 const MUTATIONS = [
+  // ---------------------------------------------------------------- FD-07, the shift
+  {
+    id: "shift-handover-draws-nothing",
+    why: "a drawer that already holds money is handed over rather than funded, so sending the"
+      + " safe there is a field the command refuses -- and a form that sent it on every open"
+      + " would make the handover unpressable, which is the defect this slice exists to close"
+      + " arriving from the surface",
+    file: "src/lib/shift.ts",
+    from: '    ? { floatSource: safe, suspense: "" }\n    : { floatSource: "", suspense };',
+    to: '    ? { floatSource: safe, suspense: "" }\n    : { floatSource: safe, suspense };',
+    grep: "sends no account to draw from on a handover",
+    runner: "vitest",
+  },
+  {
+    id: "shift-act-is-derived",
+    why: "which act a drawer is waiting for comes from its own balance, as the server derives"
+      + " it. Treating every drawer as empty would label a handover 'count the float' and"
+      + " send the safe with it",
+    file: "src/lib/shift.ts",
+    from: '  return drawer.expected_minor === 0 ? "fund" : "handover";',
+    to: '  return "fund";',
+    grep: "is a handover when the drawer still holds money",
+    runner: "vitest",
+  },
+  {
+    id: "shift-handover-case-emptied",
+    why: "a drawer banked to nothing has nobody to name and no figure to quote, so printing"
+      + " the canvas's 'Kareem left JOD 50.00' line for it would name a person and an amount"
+      + " that are not there -- MOD-014's own Member 360 defect",
+    file: "src/lib/shift.ts",
+    from: '  if (drawer.expected_minor === 0) return { kind: "emptied" };',
+    to: "  if (false) return { kind: \"emptied\" };",
+    grep: "says the drawer was emptied when the last shift banked everything",
+    runner: "vitest",
+  },
+  {
+    id: "shift-short-handover-owes-a-reason",
+    why: "the module refuses a short handover with nothing written, so a form that did not ask"
+      + " would ask for the explanation after the submit had already failed",
+    file: "src/lib/shift.ts",
+    from: "  return { gap, needsReason: short, needsPosting: short };",
+    to: "  return { gap, needsReason: false, needsPosting: short };",
+    grep: "owes a reason and a posting when the count is short",
+    runner: "vitest",
+  },
+  {
+    id: "shift-funding-owes-no-reason",
+    why: "funding an empty drawer is not a comparison -- the money is being put in -- and"
+      + " demanding a reason there is exactly what the first draft of the migration's"
+      + " constraint did, which refused every ordinary first open",
+    file: "src/lib/shift.ts",
+    from: "    return { gap: null, needsReason: false, needsPosting: countedMinor > 0 };",
+    to: "    return { gap: null, needsReason: true, needsPosting: countedMinor > 0 };",
+    grep: "owes a posting and no reason when a float is being drawn",
+    runner: "vitest",
+  },
+  {
+    id: "shift-withheld-name-is-not-a-name",
+    why: "`GET /people/names` answers with a marker for a field this session cannot read, so"
+      + " rendering it would put three asterisks where a person belongs -- MOD-027's board"
+      + " paid for that once",
+    file: "src/lib/shift.ts",
+    from: "  return isWithheld(named.legal_name) ? null : named.legal_name;",
+    to: "  return named.legal_name;",
+    grep: "is nobody for a name this session may not read",
+    runner: "vitest",
+  },
+  {
+    id: "shift-close-asks-for-the-note",
+    why: "the handover note is the point of FD-07 and the close is the only statement that may"
+      + " set it, so a front desk that was not asked would have nothing to pass on",
+    file: "src/app/desk/shift/page.tsx",
+    from: "                back=\"/desk/shift\"\n                askForNote",
+    to: "                back=\"/desk/shift\"",
+    grep: "offers the close for a drawer with a shift open, with the note field",
+    runner: "playwright",
+  },
   {
     id: "task-meta-tenant-subject",
     why: "a task about the organization itself carries `subject_kind = \"tenant\"` by design --"

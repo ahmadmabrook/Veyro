@@ -117,6 +117,13 @@ const surfaces: [string, string][] = [
     "the create-a-class form",
     `/schedule/new?location=${creds.locationId}`,
   ],
+  // **FD-07, which is a picker, a handover panel and a count on one narrow column.** The
+  // close half of it is ADM-PAY-09's own form, already swept at `/payments/cash`; what is new
+  // here is the drawer chip bar, which is a link row whose width is a count of tills.
+  [
+    "the shift screen",
+    `/desk/shift?location_id=${creds.locationId}`,
+  ],
   ["the lead board", "/leads"],
   ["the lead table", "/leads?view=table"],
   // The profile is a record header over four metric cells, a timeline and five forms,

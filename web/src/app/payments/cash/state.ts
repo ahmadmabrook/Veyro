@@ -19,7 +19,7 @@ export type CashState = {
   /** Which field the reader left out or mistyped, so the form names it. */
   missing: { counted?: true; reason?: true };
   /** What they typed, so a refusal does not also empty the drawer count. */
-  echo: { counted?: string; reason?: string };
+  echo: { counted?: string; reason?: string; note?: string };
 };
 
 export const IDLE: CashState = { message: null, error: null, missing: {}, echo: {} };

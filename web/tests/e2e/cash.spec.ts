@@ -151,28 +151,58 @@ test.describe("closing a drawer", () => {
     // **The account is the fixture's and the session is this test's.** Creating a ledger
     // account is a stepped-up financial write and this session is AAL 1 by design; opening
     // a drawer on one is routine, which is the whole reason this screen has a form at all.
-    const opened = await page.request.post(`${origin}/ledger/cash-sessions`, {
-      headers,
-      data: {
-        location_id: creds.locationId,
-        cash_account_id: creds.suiteTillAccountId,
-        drawer_label: `Shift ${unique}`, currency: "JOD", opening_float_minor: 10_000,
-        float_source_account_id: creds.safeAccountId,
-        legal_entity_id: creds.legalEntityId,
-        idempotency_key: `e2e-${unique}`, correlation_id: crypto.randomUUID(),
-      },
-    });
-    // A 409 means a previous run was interrupted between opening and closing, which leaves
-    // this till's own drawer open. That one is this suite's to finish, so the test carries
-    // on with whatever label it already has rather than failing on somebody else's mess.
-    const label = opened.ok() ? `Shift ${unique}` : "Shift ";
-    expect([200, 201, 409], await opened.text()).toContain(opened.status());
+    //
+    // **It opens the way a desk does, which this test used to get wrong across runs.** The
+    // first version always drew a float from the safe -- and after one run that drawer still
+    // holds what the close counted, so the second run's open is a *handover* and the safe is
+    // refused: FD-07's own finding, which this spec reached by being run twice rather than by
+    // anybody reasoning about it. So the standing figure comes from `/ledger/drawers`, the
+    // read FD-07 added, and the open matches what the drawer is actually in.
+    const standing = await page.request.get(
+      `${origin}/ledger/drawers?location_id=${creds.locationId}`, { headers });
+    expect(standing.ok(), await standing.text()).toBe(true);
+    const mine = (await standing.json()).drawers.find(
+      (one: { cash_account_id: string }) =>
+        one.cash_account_id === creds.suiteTillAccountId);
+    const held: number = mine?.expected_minor ?? 0;
+    const alreadyOpen: string | null = mine?.open_session === null || mine === undefined
+      ? null : String(mine.drawer_label);
 
+    // A drawer this suite left open means a previous run was interrupted between opening and
+    // closing. That one is this suite's to finish, so the test carries on with its label
+    // rather than failing on its own earlier mess -- and it is told apart from a refused
+    // float, which the first version conflated into one 409.
+    let label = alreadyOpen;
+    if (label === null) {
+      const opened = await page.request.post(`${origin}/ledger/cash-sessions`, {
+        headers,
+        data: {
+          location_id: creds.locationId,
+          cash_account_id: creds.suiteTillAccountId,
+          drawer_label: `Shift ${unique}`, currency: "JOD",
+          // Count what is there on a handover and draw a float on an empty drawer, which is
+          // the distinction the server derives from this same figure.
+          opening_float_minor: held === 0 ? 10_000 : held,
+          ...(held === 0
+            ? { float_source_account_id: creds.safeAccountId }
+            : {}),
+          legal_entity_id: creds.legalEntityId,
+          idempotency_key: `e2e-${unique}`, correlation_id: crypto.randomUUID(),
+        },
+      });
+      expect([200, 201], await opened.text()).toContain(opened.status());
+      label = `Shift ${unique}`;
+    }
 
     await page.goto(AT);
     const drawer = page.locator(".ds-cash-drawer").filter({ hasText: label }).first();
     await expect(drawer).toBeVisible();
-    await drawer.locator('input[name="counted"]').fill("97.50");
+    // **The count is derived from what the drawer holds, 2.50 short of it.** A literal 97.50
+    // was right only while the drawer was always funded with exactly 100.00, which is the
+    // assumption the handover broke.
+    const expected = held === 0 ? 10_000 : held;
+    const short = (expected - 250) / 1000;
+    await drawer.locator('input[name="counted"]').fill(short.toFixed(2));
     await drawer.getByLabel("What happened").fill("a member was given change twice");
     await drawer.getByRole("button", { name: "Close the drawer" }).click();
 

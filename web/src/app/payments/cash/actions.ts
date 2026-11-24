@@ -8,7 +8,13 @@ import { moneyOf, parseAmount } from "@/lib/cash";
 import { IDLE, type CashState } from "./state";
 
 /**
- * Close a till. ADM-PAY-09, and COM-04-R05's discrepancy workflow.
+ * Close a till. ADM-PAY-09 and FD-07, and COM-04-R05's discrepancy workflow.
+ *
+ * **One close, two surfaces.** FD-07's registry line is "opening float count, closing count,
+ * expected from the ledger, variance with a required note above threshold, handover to the
+ * next person" -- so the front desk needs this same act, and a second form for it would be
+ * one-module-two-definitions on a figure that posts to suspense. What FD-07 adds is the
+ * *open*, which ADM-PAY-09 has no notion of, and the handover note, which both ends write.
  *
  * **`finance.cash.session` is routine and AAL 1**, which is what makes this a form rather
  * than a refusal: a front desk opens and closes a drawer every shift, and the catalogue
@@ -36,7 +42,8 @@ export async function closeDrawer(
   const currency = String(form.get("currency") ?? "");
   const typed = String(form.get("counted") ?? "").trim();
   const reason = String(form.get("reason") ?? "").trim();
-  const echo = { counted: typed, reason };
+  const note = String(form.get("note") ?? "").trim();
+  const echo = { counted: typed, reason, note };
 
   // **A drawer whose currency this build does not carry cannot be counted at all**, because
   // the two exponents it would be parsed with do not exist. Refusing is the only honest
@@ -62,10 +69,20 @@ export async function closeDrawer(
         // Sent only when there is one. An empty string is not a reason and the schema
         // refuses it; `undefined` is the absence the server's own guard is written against.
         ...(reason === "" ? {} : { variance_reason: reason }),
+        // **FD-07's handover note, written at this end and read at the next open.** "The
+        // handover note is part of the shift, not a WhatsApp message that leaves with the
+        // person who wrote it." Optional, because a shift with nothing to pass on is the
+        // ordinary one -- and this is the only statement that may set it, since the one-way
+        // trigger refuses every update on a session that is not open.
+        ...(note === "" ? {} : { handover_note: note }),
         correlation_id: correlationId(),
       },
     });
-    revalidatePath("/payments/cash");
+    // **Whichever surface asked, because both draw this form.** ADM-PAY-09 is the admin
+    // drawer board and FD-07 is the front desk's own shift; writing the close twice would be
+    // two definitions of one act, so the form is shared and the path travels with the
+    // request.
+    revalidatePath(String(form.get("back") ?? "/payments/cash"));
     return { ...IDLE, message: "cash.closed" };
   } catch (error) {
     if (error instanceof ApiError && error.reason === "unreachable") {

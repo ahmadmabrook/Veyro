@@ -96,7 +96,7 @@ export default async function RootLayout({
     // per-identity budget. Same evaluator, same assurance weighing, one scope resolution.
     const [
       organization, people, access, permissions, devices, operations, schedule, configuration,
-      finance, catalog, privacy, messages, integrations, payments, tasks, leads,
+      finance, catalog, privacy, messages, integrations, payments, tasks, leads, till,
     ] = await gateAll([
       "tenancy.organization.read",
       "people.person.read",
@@ -114,6 +114,7 @@ export default async function RootLayout({
       "finance.payment.read",
       "tasks.task.read",
       "crm.lead.read",
+      "finance.cash.session",
     ] as const);
     // **Grouped, iconed and counted, which is what the rail actually is.** The Command
     // Center canvas draws thirteen items under four headings -- OPERATE, PEOPLE, MONEY,
@@ -154,6 +155,13 @@ export default async function RootLayout({
       // them. Hiding the entry from a session that could step up would hide the offer too.
       { href: "/desk/trial", label: "nav.walkInTrial", allowed: people.allowed,
         group: "nav.groupOperate", icon: "members" },
+      // **Named for the screen rather than the surface**, as the walk-in is: FD-01 is unbuilt,
+      // so an item called "Front desk" would promise a live check-in this build does not
+      // have. Gated on the till permission, which is the one thing without which the page has
+      // nothing to show -- and it is `configuration` with no financial class, so the entry is
+      // not hiding a step-up.
+      { href: "/desk/shift", label: "nav.shift", allowed: till.allowed,
+        group: "nav.groupMoney", icon: "front-desk" },
 
       // **Members before People.** ADM-MEM-05 is the members list an operator opens;
       // `/people` is the duplicate queue and the record behind it. Both need the same

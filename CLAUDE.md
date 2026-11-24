@@ -6873,23 +6873,28 @@ certificate is mTLS and a signature nothing here makes, which is the vault rathe
 WebAuthn, and MOD-022 still opens doors on an identity nothing verifies.
 
 **The Front desk is where the reclassification bites hardest**, nine screens whose modules
-are all built and all on the authenticated tenant plane. **Four are built**: FD-03 denial
+are all built and all on the authenticated tenant plane. **Five are built**: FD-03 denial
 resolution and FD-08's device strip are MOD-022's and MOD-021's, FD-06 class check-in is
-MOD-020's, and **FD-05's walk-in trial is MOD-027's** -- the one that was named as needing "a
+MOD-020's, **FD-05's walk-in trial is MOD-027's** -- the one that was named as needing "a
 trial state `mem_memberships` has no value for", which ADR-0010 D7 settled two slices before
-the screen was built. Five are not: FD-01 live check-in is MOD-022's, FD-02 member lookup is
-MOD-014's (and now its contact-match read), FD-04 day pass is sales, FD-07 shift open and
-close is MOD-018's cash sessions, which `/payments/cash` already answers from the Admin side,
-and FD-09 is the service worker. **`design:coverage` holds this surface to the Admin one's
-standard**, so each of those five carries a written reason -- and under the external-blocker
-rule only two of them are blockers. **FD-01 and FD-04 are payments at the door**, which is the
-provider the owner supplies. The rest are this session's work and were mislabelled: FD-02's
-search is a gated, masked read over `ppl_contact_points_by_value`, and calling it ENG-01's was
-an architecture decision of mine rather than a constraint (only its 44px photo wants the object
-store); **FD-07 needs nothing from anybody** -- the count, the expected figure and the variance
-are already `/payments/cash`, and the handover note the canvas calls the point of the screen is
-a migration and a form; and FD-09's service worker and write queue are weeks of work and still
-work. The day-pass half of FD-04 is mine too: `PRODUCT_TYPES` already carries `session_credit`
+the screen was built -- and **FD-07's shift is MOD-018's**. Four are not: FD-01 live check-in
+is MOD-022's, FD-02 member lookup is MOD-014's (and now its contact-match read), FD-04 day
+pass is sales, and FD-09 is the service worker. **`design:coverage` holds this surface to the
+Admin one's standard**, so each of those four carries a written reason -- and under the
+external-blocker rule only two of them are blockers. **FD-01 and FD-04 are payments at the
+door**, which is the provider the owner supplies. The rest are this session's work and were
+mislabelled: FD-02's search is a gated, masked read over `ppl_contact_points_by_value`, and
+calling it ENG-01's was an architecture decision of mine rather than a constraint (only its
+44px photo wants the object store); and FD-09's service worker and write queue are weeks of
+work and still work.
+
+**FD-07's own note said it needed "a migration and a form" and that was an understatement**,
+which is the sharpest instance this build has of "a claimed gap is a claim to check". The
+first half was right -- the count, the expected figure and the variance are `/payments/cash`,
+and that form is imported here rather than written twice. The second understated it: the
+canvas is an *open*, and driving a handover through the route that existed posted the float a
+second time. So what was owed was a money model and a defect, and the screen was the smaller
+half. The day-pass half of FD-04 is mine too: `PRODUCT_TYPES` already carries `session_credit`
 and `service`, so "there is no day-pass product" described configuration as a capability gap.
 **FD-05's own invitation by text is the messaging provider and its credential needs a mobile
 client**, and neither was a reason to withhold the trial, which is the part a desk is standing

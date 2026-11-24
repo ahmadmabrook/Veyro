@@ -2932,3 +2932,60 @@ in one file took another and showed 51% of its wall-clock. This repository's own
 "measure what the mutation changes, do not reason about it" -- applies as much to a performance
 claim as to a CSS one, and a suite-wide refactor justified by a guess is the expensive kind of
 mistake.
+
+
+**A client component that imports a module reaching `next/headers` breaks the whole app's
+build — and the third instance was a *mixed* module rather than a reader.** The account page
+and the cash screen both record this for a `*-reads` file; FD-07 hit it through
+`@/lib/people.ts`, which holds `MASK` and `isWithheld` beside an `import { api }` at the top.
+So importing a three-line pure predicate from it put `next/headers` in a client bundle, with
+`typecheck` and `lint` both green: **`build` is the only step that sees it**, and the tell is an
+error naming a chain of `[Client Component Browser]` imports that does not mention
+`next/headers` at all. The marker's home is now a module that imports nothing, re-exported from
+`people.ts` so the thirteen server pages are untouched and there is one definition. **The rule
+to carry is wider than the fix**: before importing anything into a module a client component
+reaches, read the *top* of the file, not its exports — a pure name in an impure module is still
+impure to a bundler.
+
+**A mutation against a hidden form field is invisible unless a test presses the form, so that
+decision belongs in a library.** FD-07's open sends the safe on a funded open and nothing on a
+handover -- the command refuses the field there -- and the conditional was inline in the JSX,
+twice. The browser mutation that sent the safe on both came back uncaught: the spec asserts the
+label and the button and deliberately never presses, because an open is state it cannot create.
+Pressing is not the fix. `accountsFor` and `nameOf` are, and the extraction removed a duplicated
+conditional and an inline closure as well. **A hidden input's value is a decision about what the
+request says**, so it is testable in the same place every other decision is; asserting it
+through the DOM would be the counting-a-component's-internals trap from the other side.
+
+**A spec's own provisioning encodes an assumption about the product, and a model change
+invalidates it.** ADM-PAY-09's cash spec opened its drawer with a float drawn from the safe --
+correct for as long as every open was a funded one. After FD-07, that drawer still holds what
+the close counted, so the *second* run's open is a handover and the safe is refused: the spec
+took its "a previous run was interrupted" branch, matched no drawer and failed. Two findings in
+one: the 409 handler conflated "a session is already open" with "the float was refused", and the
+`97.50` literal was right only while the drawer was always funded with exactly 100.00. It reads
+`/ledger/drawers` now and opens the way a desk does. **Found by running the suite twice**, which
+is the rule this file already states for budgets and one-way state, here reaching a spec's setup
+rather than its assertions.
+
+**A test that reads a seeded minor-unit figure as a displayed one is the money-exponent defect
+from the other side.** 17,500 fils is JOD **17.50**: the currency is stored with three decimals
+and shown with two, which is the one conflation `@/lib/cash` exists to prevent. A browser
+assertion of `175.00` against a fixture seeded at `17_500` fails for the right reason and reads
+like a product defect — and the sibling assertion that typed `170.00` against a 17.50 drawer then
+expected "Short by" when it was over. Take the displayed figure from the fixture's own minor
+units, or assert a difference rather than a total.
+
+**An `&&` chain whose build step fails can leave *no* log, which is the honest version of the
+stale-log trap.** `npm run build > log && npx playwright test > log2` with a failing build never
+creates `log2`, so a `grep` over it reports "No such file or directory" — loud, unlike the
+recorded case where `tail` read the previous run's complete and plausible output. Both have the
+same cause and the same check: look at the exit code of the step that was supposed to produce
+the artefact, and at `web/.next/BUILD_ID`.
+
+**A nav entry naming an icon that does not exist throws from the layout, and the first failure
+you see is the auth setup.** `Icon` fails closed on an unknown name -- correctly, because a
+silently missing icon is a rail item with a hole in it -- so `icon: "finance"` took down every
+page including sign-in, and the browser suite reported the setup step failing rather than the
+nav. The valid names are a closed set in `components/ds/icon.tsx`; read it rather than guessing
+from the group name.

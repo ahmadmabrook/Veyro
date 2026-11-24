@@ -325,12 +325,12 @@ const BACKLOG = {
     + "masked read by name over `ppl_contact_points_by_value` is this module's own work "
     + "rather than MOD-059's index; the 44px photo the canvas confirms identity by is where "
     + "the object store is the seam",
-  "FD-07": "work: MOD-018. The count, the expected figure and the variance are built and are "
-    + "`/payments/cash`, down to the three lines that add up to the figure by construction. "
-    + "What this screen adds is the handover note, which the canvas argues is the point of it "
-    + "-- 'part of the shift, not a WhatsApp message that leaves with the person who wrote "
-    + "it' -- and no table holds one. The shift report it prints or emails is where MOD-013's "
-    + "dispatcher is the seam",
+  // **FD-07 was here and is built.** Its reason named the first half correctly -- the count,
+  // the expected figure and the variance are `/payments/cash` -- and understated the second:
+  // "the handover note, which no table holds" is true, and the canvas is an *open*, which
+  // driving through the route that existed double-posted the float. `/desk/shift` is the
+  // screen, migration `0031` is the money model, and ADM-PAY-09's close form is imported
+  // rather than written twice.
   "FD-09": "client: the whole desk working with no connection is a service worker, state "
     + "held on the device and a queue of writes that survives the outage. This app is "
     + "server-rendered and has none of the three, and MOD-022's offline path is the "

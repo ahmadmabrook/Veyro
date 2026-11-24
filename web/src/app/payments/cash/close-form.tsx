@@ -27,6 +27,7 @@ import { IDLE, type CashState } from "./state";
  */
 export function CloseDrawerForm({
   locale, numbering, sessionId, legalEntityId, suspenseAccountId, currency, expectedMinor,
+  back = "/payments/cash", askForNote = false,
 }: {
   locale: Locale;
   numbering: "latn";
@@ -36,6 +37,17 @@ export function CloseDrawerForm({
   suspenseAccountId: string;
   currency: string;
   expectedMinor: number;
+  /** Which surface asked, so the right path is revalidated. Both draw this form. */
+  back?: string;
+  /**
+   * Whether to collect FD-07's handover note.
+   *
+   * **Off for ADM-PAY-09 and on for the front desk**, which is the design rather than a
+   * convenience: the note is what one shift passes to the next, and the admin board is
+   * somebody looking at every drawer in the tenant rather than a person going off shift. A
+   * field asking an accountant what to tell the next receptionist is a field nobody fills.
+   */
+  askForNote?: boolean;
 }) {
   const [state, action, pending] = useActionState<CashState, FormData>(closeDrawer, IDLE);
   const [typed, setTyped] = useState(state.echo.counted ?? "");
@@ -53,6 +65,7 @@ export function CloseDrawerForm({
       <input type="hidden" name="legal_entity_id" value={legalEntityId} />
       <input type="hidden" name="suspense_account_id" value={suspenseAccountId} />
       <input type="hidden" name="currency" value={currency} />
+      <input type="hidden" name="back" value={back} />
 
       <Field
         id={`counted-${sessionId}`} name="counted" type="currency" required
@@ -111,6 +124,16 @@ export function CloseDrawerForm({
         // as many words and deliberately has no branch refusing one.
         <input type="hidden" name="reason" value="" />
       )}
+
+      {askForNote ? (
+        <Field
+          id={`note-${sessionId}`} name="note" type="textarea" rows={3}
+          label={text("cash.handoverNote")}
+          description={text("cash.handoverNoteWhat")}
+          optionalLabel={text("field.optional")}
+          defaultValue={state.echo.note ?? ""}
+        />
+      ) : null}
 
       <Button
         type="submit" variant="primary" size="lg"

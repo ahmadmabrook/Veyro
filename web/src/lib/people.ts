@@ -15,11 +15,11 @@ import { api } from "@/lib/api";
  * same distinction, and a copy of `"***"` in a JSX file is a copy that drifts.
  */
 
-export const MASK = "***";
-
-export function isWithheld(value: unknown): boolean {
-  return value === MASK;
-}
+// **Re-exported from `@/lib/mask`, which imports nothing.** This module imports `@/lib/api`
+// and therefore `next/headers`, so a client component that reaches it fails the build -- which
+// is what FD-07's open form did through `@/lib/shift`. The marker's home is the pure module and
+// the name stays reachable here, so the pages that already import it are untouched.
+export { MASK, isWithheld } from "@/lib/mask";
 
 export type ContactPoint = {
   contact_point_id: string;

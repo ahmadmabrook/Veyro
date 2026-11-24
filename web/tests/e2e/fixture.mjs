@@ -1625,7 +1625,14 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
     method: "POST", ...as(token),
     body: { counted_minor: 17_500, legal_entity_id: entity.legal_entity_id,
             suspense_account_id: chart.SUSPENSE,
-            variance_reason: "a member was given change twice", correlation_id: cid() },
+            variance_reason: "a member was given change twice",
+            // **FD-07's handover, and the Shop till is already in that state.** It closed
+            // with 175.00 counted and nothing banked, so the drawer account still holds it --
+            // which is precisely the canvas's "Kareem left JOD 50.00 at 16:04", a drawer
+            // waiting for the next person to count what is there. The note is what was
+            // missing: it is the point of that screen and nothing wrote one.
+            handover_note: "Sweifieh reader still down -- admit manually and mention it.",
+            correlation_id: cid() },
   });
 
   const account = await call("/finance/accounts", {
@@ -2952,6 +2959,14 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
     staffNoLoginPersonId: dana.person_id,
     staffNeverSignedInPersonId: rami.person_id,
     locationId: location.location_id,
+    // **FD-07's two drawer states, by account rather than by session.** A drawer is a cash
+    // account that has had a session, which is the only thing MOD-018 knows about tills --
+    // there is no drawer table, because a drawer is a physical object and what the ledger
+    // holds is the account its money is in. The Front desk till has a shift open (so the
+    // screen closes it) and the Shop till closed with 175.00 still in it and a note (so the
+    // screen hands it over), which is the pair the surface is about.
+    tillAccountId: tillAccount.account_id,
+    shopTillAccountId: secondTill.account_id,
     // MOD-026's three screens. `taskEmail` is the only session in this fixture whose identity
     // is a person, which is what makes "assigned to me" and the `Mine` chip renderable.
     taskEmail,
@@ -3043,6 +3058,8 @@ if (invokedDirectly) {
       `VEYRO_E2E_DESK_EMAIL=${fixture.deskEmail}`,
       `VEYRO_E2E_DESK_PASSWORD=${fixture.deskPassword}`,
       `VEYRO_E2E_LOCATION_ID=${fixture.locationId}`,
+      `VEYRO_E2E_TILL_ACCOUNT_ID=${fixture.tillAccountId}`,
+      `VEYRO_E2E_SHOP_TILL_ACCOUNT_ID=${fixture.shopTillAccountId}`,
       `VEYRO_E2E_SESSION_ID=${fixture.firstSessionId}`,
       `VEYRO_E2E_BOOKED_SESSION_ID=${fixture.bookedSessionId}`,
       `VEYRO_E2E_DESK_SESSION_ID=${fixture.deskSessionId}`,

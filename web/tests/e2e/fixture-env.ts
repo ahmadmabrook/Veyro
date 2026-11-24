@@ -73,6 +73,8 @@ export type Fixture = {
   pointId: string;
   /** The site MOD-019's calendar is addressed by, and whose timezone it converts in. */
   locationId: string;
+  tillAccountId: string;
+  shopTillAccountId: string;
   /** The first of seven generated occurrences, and the one with a substitution on it. */
   sessionId: string;
   /** Tomorrow's occurrence, which has a booking on it -- the first one's window has closed. */
@@ -270,6 +272,8 @@ export function fixture(): Fixture {
     rotaExceptionDay: env.VEYRO_E2E_ROTA_EXCEPTION_DAY!,
     pointId: env.VEYRO_E2E_POINT_ID!,
     locationId: env.VEYRO_E2E_LOCATION_ID!,
+    tillAccountId: env.VEYRO_E2E_TILL_ACCOUNT_ID!,
+    shopTillAccountId: env.VEYRO_E2E_SHOP_TILL_ACCOUNT_ID!,
     sessionId: env.VEYRO_E2E_SESSION_ID!,
     bookedSessionId: env.VEYRO_E2E_BOOKED_SESSION_ID!,
     deskSessionId: env.VEYRO_E2E_DESK_SESSION_ID!,
