@@ -137,19 +137,24 @@ class CommercialApiTestCase(GatedApiTestCase):
         self.publish_contract(tenant_id, str(created.json()["contract_version_id"]))
         return str(body["contract_key"])
 
-    def publisher(self, tenant_id: str) -> dict[str, str]:
-        """Headers for a stepped-up session that may publish a contract and nothing else."""
-        if tenant_id not in getattr(self, "_publishers", {}):
-            if not hasattr(self, "_publishers"):
-                self._publishers: dict[str, str] = {}
-            self._publishers[tenant_id] = self.stepped_grant(
+    def contract_publisher(self, tenant_id: str) -> dict[str, str]:
+        """Headers for a stepped-up session that may publish a contract and nothing else.
+
+        Named for what it publishes: `AccessApiTestCase` has a `device_publisher` and the two
+        were both called `publisher`, cached under one attribute and returning different
+        types -- see that one's docstring for what joining the two cases then did.
+        """
+        if tenant_id not in getattr(self, "_contract_publishers", {}):
+            if not hasattr(self, "_contract_publishers"):
+                self._contract_publishers: dict[str, str] = {}
+            self._contract_publishers[tenant_id] = self.stepped_grant(
                 tenant_id, ["membership.contract.publish"])
-        return self.headers(tenant_id, self._publishers[tenant_id])
+        return self.headers(tenant_id, self._contract_publishers[tenant_id])
 
     def publish_contract(self, tenant_id: str, version_id: str) -> dict:
         published = self.client.post(
             f"/memberships/contract-versions/{version_id}/publish",
-            json=self.correlation(), headers=self.publisher(tenant_id))
+            json=self.correlation(), headers=self.contract_publisher(tenant_id))
         self.assertEqual(published.status_code, 200, published.text)
         return dict(published.json())
 
@@ -4830,6 +4835,39 @@ class TrialTests(CommercialApiTestCase):
         self.assertTrue(again.json()["repeated"])
         self.assertEqual(again.json()["trial_days"], 7)
         self.assertEqual(again.json()["ends_on"], live["ends_on"])
+
+    def test_both_membership_reads_say_whether_it_is_a_trial_and_for_how_long(self):
+        """**The value, not only the flag.** Both reads carry `trial_days` by position in a
+        long select -- the single read's is index 30 beside `l.depth` at 29 -- and the first
+        version of that line read the chain's depth as the trial's length. mypy cannot see a
+        wrong index and a flag-only assertion passes against it, so this asserts the number.
+
+        ADM-CRM-05's "DAY 6 OF 7" is this figure beside the membership's own two dates, so a
+        surface that could not read it would have to join the terms itself, which is the
+        second definition ADR-0010 D7's column exists to avoid.
+        """
+        tenant_id = self.tenant()
+        owner = self.headers(tenant_id)
+        live = self.membership(
+            tenant_id, starts_on=TODAY.isoformat(), terms_extra={"trial_days": 7})
+        one = self.client.get(f"/memberships/{live['membership_id']}", headers=owner)
+        self.assertEqual(one.status_code, 200, one.text)
+        self.assertEqual(one.json()["terms"]["trial_days"], 7, one.text)
+        self.assertTrue(one.json()["terms"]["is_a_trial"])
+        self.assertEqual(one.json()["ends_on"], (TODAY + timedelta(days=6)).isoformat())
+
+        listed = self.client.get(
+            f"/memberships?person_id={live['person_id']}", headers=owner)
+        self.assertEqual(listed.status_code, 200, listed.text)
+        row = listed.json()["memberships"][0]
+        self.assertEqual(row["trial_days"], 7, listed.text)
+        self.assertTrue(row["is_a_trial"])
+
+        ordinary = self.membership(tenant_id)
+        plain = self.client.get(
+            f"/memberships/{ordinary['membership_id']}", headers=owner)
+        self.assertIsNone(plain.json()["terms"]["trial_days"])
+        self.assertFalse(plain.json()["terms"]["is_a_trial"])
 
     def test_a_trial_of_no_days_and_one_past_the_ceiling_are_refused_at_the_boundary(self):
         """Bounded at the request boundary rather than left to the CHECK: a bound reached as a

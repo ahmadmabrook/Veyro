@@ -17,6 +17,7 @@ from datetime import UTC, date, datetime, timedelta
 
 from app.crm import service as crm
 from tests.support import GatedApiTestCase
+from tests.test_access_api import AccessApiTestCase
 from tests.test_commercial_api import TODAY, CommercialApiTestCase
 
 READ = ["crm.lead.read", "crm.source.read"]
@@ -810,3 +811,169 @@ class TrialColumnTests(CrmApiTestCase, CommercialApiTestCase):
             headers=owner)
         self.assertEqual(active.status_code, 201, active.text)
         return str(active.json()["membership_id"])
+
+
+class TrialCardTests(CrmApiTestCase, CommercialApiTestCase, AccessApiTestCase):
+    """ADM-CRM-05's card, composed from three modules in one transaction.
+
+    **Three test cases joined rather than three helpers copied.** A trial card needs a live
+    trial membership (eight calls), an entry event (a location, a live device, a zone, a point,
+    a policy and a credential) and an attended booking -- all of which already have fixtures,
+    and a second copy of any of them would be a second definition of a live membership or of a
+    visit. The MRO puts the CRM helpers first, so `person` is the lead-shaped one and `floor`
+    builds its door around a person this class names.
+    """
+
+    def trialist(self, tenant_id: str, *, days: int = 7, back: int = 5) -> dict:
+        """A lead who is on day `back + 1` of a `days`-day trial."""
+        live = self.membership(
+            tenant_id, starts_on=(TODAY - timedelta(days=back)).isoformat(),
+            terms_extra={"trial_days": days})
+        made = self.client.post("/crm/leads", json={
+            "person_id": live["person_id"], **self.correlation()},
+            headers=self.headers(tenant_id))
+        self.assertEqual(made.status_code, 201, made.text)
+        return {**live, "lead_id": str(made.json()["lead_id"])}
+
+    def door_for(self, tenant_id: str, person_id: str) -> dict:
+        """A live door and a credential for a person who already exists.
+
+        **`location` and `policy` are called unbound, because three of these harnesses define
+        each name.** Joining test cases resolves a colliding helper by MRO, silently, to
+        whichever base comes first -- and the two `location` helpers build different things
+        while the two `publisher` helpers returned different *types*, so the first symptom was
+        a 401 from a session created a line earlier. There is no type error to catch it: both
+        are methods on `self` taking a tenant id.
+        """
+        location_id = AccessApiTestCase.location(self, tenant_id)
+        device_id = self.live_device(tenant_id, location_id)
+        zone_id = self.zone(tenant_id, location_id)
+        point_id = self.point(tenant_id, zone_id, device_id)
+        AccessApiTestCase.policy(self, tenant_id, zone_id)
+        credential_id, value = self.credential(tenant_id, person_id)
+        del credential_id
+        return {"tenant_id": tenant_id, "point_id": point_id,
+                "credential_value": value, "person_id": person_id}
+
+    def entry(self, door: dict, *, when: datetime) -> None:
+        """One entry event through that door.
+
+        Inlined rather than inherited: `AccessApiTestCase`'s own `entry` is defined on a test
+        class inside that module rather than on the harness, so it is not available here.
+        """
+        recorded = self.client.post("/access/events", json={
+            "point_id": door["point_id"], "direction": "entry",
+            "credential_value": door["credential_value"],
+            "occurred_at": when.isoformat(), "source": "online",
+            "idempotency_key": str(uuid.uuid4()), **self.correlation()},
+            headers=self.headers(door["tenant_id"]))
+        self.assertEqual(recorded.status_code, 201, recorded.text)
+
+    def card(self, tenant_id: str, lead_id: str) -> dict:
+        read = self.client.get(
+            f"/crm/leads/{lead_id}/trial", headers=self.headers(tenant_id))
+        self.assertEqual(read.status_code, 200, read.text)
+        return dict(read.json())
+
+    def test_the_canvas_s_figures_come_back_for_a_running_trial(self):
+        """A seven-day trial on its sixth day: `DAY 6 OF 7`, `2 DAYS LEFT`, ending tomorrow.
+
+        **All of them from one read**, because every figure is an arithmetic over today and a
+        browser comparing dates against its own clock counts in the wrong frame -- which this
+        build has three recorded defects from.
+        """
+        tenant_id = self.tenant()
+        live = self.trialist(tenant_id, days=7, back=5)
+        body = self.card(tenant_id, live["lead_id"])
+        self.assertTrue(body["on_trial"])
+        self.assertEqual(body["day_of"], 6)
+        self.assertEqual(body["of_days"], 7)
+        self.assertEqual(body["days_left"], 2)
+        self.assertTrue(body["ends_tomorrow"])
+        self.assertEqual(body["trial_days"], 7)
+        self.assertEqual(body["membership_id"], live["membership_id"])
+
+    def test_nobody_having_been_in_is_its_own_band_rather_than_zero(self):
+        """"Nobody has been in" is a different conversation from "they came once", so the
+        band is `none` and the counts are honest zeros."""
+        tenant_id = self.tenant()
+        live = self.trialist(tenant_id)
+        body = self.card(tenant_id, live["lead_id"])
+        self.assertEqual((body["visits"], body["classes"]), (0, 0))
+        self.assertEqual(body["engagement"], "none")
+
+    def test_a_visit_is_counted_and_reads_as_use_rather_than_a_prediction(self):
+        """Four visits in six days is 0.67 a day, which is the canvas's `High ENGAGEMENT`.
+
+        **And the response says it is use, not likelihood.** The prototype calls this cell
+        conversion likelihood; the drawn canvas says ENGAGEMENT, and a prediction about a
+        person is what MOD-020 refuses outright for the no-show score.
+        """
+        tenant_id = self.tenant()
+        live = self.trialist(tenant_id, days=7, back=5)
+        door = self.door_for(tenant_id, live["person_id"])
+        for back in (0, 1, 3, 4):
+            self.entry(door, when=datetime.now(UTC) - timedelta(days=back))
+        body = self.card(tenant_id, live["lead_id"])
+        self.assertEqual(body["visits"], 4, body)
+        self.assertEqual(body["engagement"], "high", body)
+        self.assertIn("engagement_is_use_not_a_prediction", body)
+
+    def test_a_visit_before_the_trial_started_is_not_counted(self):
+        """**The window is the trial's own**, which is what makes "4 VISITS" a figure about
+        the trial rather than about the member: `entries_in_window` beside it is the habit and
+        would count visits from before they ever took one."""
+        tenant_id = self.tenant()
+        live = self.trialist(tenant_id, days=7, back=2)
+        door = self.door_for(tenant_id, live["person_id"])
+        self.entry(door, when=datetime.now(UTC) - timedelta(days=1))
+        self.entry(door, when=datetime.now(UTC) - timedelta(days=20))
+        body = self.card(tenant_id, live["lead_id"])
+        self.assertEqual(body["visits"], 1, body)
+
+    def test_a_lead_with_no_trial_gets_a_reason_rather_than_four_zeros(self):
+        """A lead with no trial is the ordinary case -- three of the five board columns -- so
+        the read says so and the profile draws its own state. Four zeros would be MOD-014's
+        "a confident wrong answer where a missing one would have been honest"."""
+        tenant_id = self.tenant()
+        made = self.lead(tenant_id)
+        body = self.card(tenant_id, made["lead_id"])
+        self.assertFalse(body["on_trial"])
+        self.assertIn("not_on_a_trial", body)
+        self.assertNotIn("day_of", body)
+
+    def test_a_lapsed_trial_is_not_a_running_one(self):
+        """The membership still says `active` and its window has closed, so the card is gone
+        -- which is what ADM-CRM-07's "trial lapsed" is about."""
+        tenant_id = self.tenant()
+        live = self.trialist(tenant_id, days=7, back=30)
+        body = self.card(tenant_id, live["lead_id"])
+        self.assertFalse(body["on_trial"], body)
+
+    def test_the_card_charges_all_three_permissions(self):
+        """**Three modules' facts, so three permissions.** A reader holding only the lead read
+        would otherwise get MOD-022's visits and MOD-020's classes out of a CRM route, which is
+        MOD-010's `events.event.read` finding."""
+        tenant_id = self.tenant()
+        live = self.trialist(tenant_id)
+        for held in (["crm.lead.read"],
+                     ["crm.lead.read", "access.decision.read"],
+                     ["crm.lead.read", "booking.booking.read"]):
+            with self.subTest(held=held):
+                answer = self.client.get(
+                    f"/crm/leads/{live['lead_id']}/trial",
+                    headers=self.scoped(tenant_id, held))
+                self.assertEqual(answer.status_code, 403, answer.text)
+        allowed = self.client.get(
+            f"/crm/leads/{live['lead_id']}/trial",
+            headers=self.scoped(tenant_id, [
+                "crm.lead.read", "access.decision.read", "booking.booking.read"]))
+        self.assertEqual(allowed.status_code, 200, allowed.text)
+
+    def test_an_unknown_lead_is_a_404_and_a_malformed_id_is_a_422(self):
+        tenant_id = self.tenant()
+        owner = self.headers(tenant_id)
+        self.assertEqual(self.client.get(
+            f"/crm/leads/{uuid.uuid4()}/trial", headers=owner).status_code, 404)
+        self.assertEqual(self.client.get(
+            "/crm/leads/not-a-uuid/trial", headers=owner).status_code, 422)

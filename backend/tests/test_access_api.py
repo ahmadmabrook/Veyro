@@ -45,16 +45,25 @@ class AccessApiTestCase(GatedApiTestCase):
         self.assertEqual(created.status_code, 201, created.text)
         return str(created.json()["location_id"])
 
-    def publisher(self, tenant_id: str) -> str:
+    def device_publisher(self, tenant_id: str) -> str:
+        """**Named for the thing it publishes, because `publisher` collided.**
+        `CommercialApiTestCase` has one too: it returns *headers* for a session holding
+        `membership.contract.publish`, this returns a *token* for one holding
+        `devices.type.publish`, and both cached on `_publishers`. A test case that joined the
+        two took whichever base came first in the MRO -- and `headers(tenant, <a dict>)` sent
+        a bearer of `str(dict)`, so the failure was a 401 from a session that had just been
+        created. Two helpers with one name and two return types is a collision a reader cannot
+        see and a type checker does not look for.
+        """
         """A stepped-up session that may publish, and did not author.
 
         Cached per tenant because each one costs two scrypt hashes, which is most of this
         suite's wall-clock -- the same reason `support.py` builds an owner through the
         service layer rather than over HTTP.
         """
-        cached = getattr(self, "_publishers", None)
+        cached = getattr(self, "_device_publishers", None)
         if cached is None:
-            cached = self._publishers = {}
+            cached = self._device_publishers = {}
         if tenant_id not in cached:
             cached[tenant_id] = self.stepped_grant(
                 tenant_id, ["devices.type.publish", "access.policy.publish",
@@ -74,7 +83,7 @@ class AccessApiTestCase(GatedApiTestCase):
         type_id = declared.json()["type_id"]
         published = self.client.post(
             f"/fleet/types/{type_id}/publish", json=self.correlation(),
-            headers=self.headers(tenant_id, self.publisher(tenant_id)))
+            headers=self.headers(tenant_id, self.device_publisher(tenant_id)))
         self.assertEqual(published.status_code, 200, published.text)
 
         registered = self.client.post("/fleet", json={
@@ -139,7 +148,7 @@ class AccessApiTestCase(GatedApiTestCase):
         policy_id = str(drafted.json()["policy_id"])
         published = self.client.post(
             f"/access/policies/{policy_id}/publish", json=self.correlation(),
-            headers=self.headers(tenant_id, self.publisher(tenant_id)))
+            headers=self.headers(tenant_id, self.device_publisher(tenant_id)))
         self.assertEqual(published.status_code, 200, published.text)
         return policy_id
 
@@ -260,7 +269,7 @@ class ZoneAndPointTests(AccessApiTestCase):
             headers=owner)
         type_id = declared.json()["type_id"]
         self.client.post(f"/fleet/types/{type_id}/publish", json=self.correlation(),
-                         headers=self.headers(tenant_id, self.publisher(tenant_id)))
+                         headers=self.headers(tenant_id, self.device_publisher(tenant_id)))
         registered = self.client.post("/fleet", json={
             "type_id": type_id, "location_id": location_id, "serial_number": "SN-X",
             "display_name": "Gate", **self.correlation()}, headers=owner)
@@ -1234,6 +1243,77 @@ class VisitTests(AccessApiTestCase):
         self.assertEqual(body["lifetime_entries"], 3, body)
         self.assertEqual(body["entries_in_window"], 2, body)
 
+    def test_a_named_window_counts_only_the_visits_inside_it(self):
+        """ADM-CRM-05's `4 VISITS`, which is a different question from the habit beside it.
+
+        `entries_in_window` is the weeks *before the last visit* -- the habit, which moves
+        with the member -- and a trial's figure is the count between two dates somebody else
+        chose. Measuring one with the other would count visits from before the trial started,
+        so the window is named and both fields are returned.
+
+        **Both ends inclusive**, which is the reading ADM-CRM-05's three date figures agree
+        under: the entry on the first day of the window counts.
+        """
+        floor = self.floor()
+        today = datetime.now(UTC).date()
+        for back in (0, 2, 5, 20):
+            self.entry(floor, when=datetime.now(UTC) - timedelta(days=back))
+        read = self.client.get(
+            f"/access/attendance?person_id={floor['person_id']}"
+            f"&from_date={(today - timedelta(days=5)).isoformat()}"
+            f"&to_date={today.isoformat()}",
+            headers=self.headers(floor["tenant_id"]))
+        self.assertEqual(read.status_code, 200, read.text)
+        body = read.json()
+        # Three of the four are inside, and the twenty-day-old one is not.
+        self.assertEqual(body["visits_between"], 3, body)
+        self.assertEqual(body["lifetime_entries"], 4, body)
+        self.assertEqual(
+            body["between"],
+            [(today - timedelta(days=5)).isoformat(), today.isoformat()])
+
+    def test_a_window_is_absent_rather_than_guessed_when_it_is_not_asked_for(self):
+        """The same shape either way, so a caller does not branch on a key's presence."""
+        floor = self.floor()
+        self.entry(floor)
+        body = self.client.get(
+            f"/access/attendance?person_id={floor['person_id']}",
+            headers=self.headers(floor["tenant_id"])).json()
+        self.assertIn("visits_between", body)
+        self.assertIsNone(body["visits_between"])
+        self.assertIsNone(body["between"])
+
+    def test_half_a_window_is_refused_rather_than_completed(self):
+        """A count whose bounds the caller only half stated is a count nobody can check."""
+        floor = self.floor()
+        today = datetime.now(UTC).date()
+        for query in (f"&from_date={today.isoformat()}", f"&to_date={today.isoformat()}"):
+            with self.subTest(query=query):
+                answer = self.client.get(
+                    f"/access/attendance?person_id={floor['person_id']}{query}",
+                    headers=self.headers(floor["tenant_id"]))
+                self.assertEqual(answer.status_code, 422, answer.text)
+        backwards = self.client.get(
+            f"/access/attendance?person_id={floor['person_id']}"
+            f"&from_date={today.isoformat()}"
+            f"&to_date={(today - timedelta(days=1)).isoformat()}",
+            headers=self.headers(floor["tenant_id"]))
+        self.assertEqual(backwards.status_code, 422, backwards.text)
+
+    def test_a_member_with_no_entries_answers_the_window_with_zero_not_null(self):
+        """**Zero, because the window was asked about.** `visits_between` is "how many in
+        these days" and the answer for somebody who has never been in is none -- which is not
+        the same as `entries_per_week`, where `null` keeps "never came" apart from "stopped"."""
+        floor = self.floor()
+        today = datetime.now(UTC).date()
+        body = self.client.get(
+            f"/access/attendance?person_id={floor['person_id']}"
+            f"&from_date={(today - timedelta(days=6)).isoformat()}"
+            f"&to_date={today.isoformat()}",
+            headers=self.headers(floor["tenant_id"])).json()
+        self.assertEqual(body["visits_between"], 0, body)
+        self.assertIsNone(body["entries_per_week"], body)
+
     def test_the_chart_draws_its_zeros_rather_than_skipping_them(self):
         """A gap is the thing the chart is for.
 
@@ -1611,7 +1691,7 @@ class AttendanceReportTests(AccessApiTestCase):
         read = self.client.get(
             f"/reports/attendance?location_id={floor['location_id']}&{params}",
             headers=self.headers(floor["tenant_id"],
-                                 reader or self.publisher(floor["tenant_id"])))
+                                 reader or self.device_publisher(floor["tenant_id"])))
         self.assertEqual(read.status_code, 200, read.text)
         body: dict[str, Any] = read.json()
         return body
@@ -1732,7 +1812,7 @@ class AttendanceReportTests(AccessApiTestCase):
         floor = self.floor()
         read = self.client.get(
             f"/reports/attendance?location_id={floor['location_id']}",
-            headers=self.headers(floor["tenant_id"], self.publisher(floor["tenant_id"])))
+            headers=self.headers(floor["tenant_id"], self.device_publisher(floor["tenant_id"])))
         self.assertEqual(read.status_code, 422, read.text)
 
     def test_a_weekday_outside_monday_to_sunday_refuses_rather_than_answering(self):
@@ -1743,7 +1823,7 @@ class AttendanceReportTests(AccessApiTestCase):
                     f"/reports/attendance?location_id={floor['location_id']}"
                     f"&weekday={bad}",
                     headers=self.headers(floor["tenant_id"],
-                                         self.publisher(floor["tenant_id"])))
+                                         self.device_publisher(floor["tenant_id"])))
                 self.assertEqual(read.status_code, 422, read.text)
 
     def test_an_unbounded_window_is_refused(self):
@@ -1754,7 +1834,7 @@ class AttendanceReportTests(AccessApiTestCase):
                     f"/reports/attendance?location_id={floor['location_id']}"
                     f"&weekday=0&weeks={weeks}",
                     headers=self.headers(floor["tenant_id"],
-                                         self.publisher(floor["tenant_id"])))
+                                         self.device_publisher(floor["tenant_id"])))
                 self.assertEqual(read.status_code, 422, read.text)
 
     def test_a_malformed_location_is_422_rather_than_500(self):
@@ -1781,7 +1861,7 @@ class AttendanceReportTests(AccessApiTestCase):
         read = self.client.get(
             f"/reports/attendance?location_id={floor['location_id']}&weekday=0"
             f"&zone_id={elsewhere}",
-            headers=self.headers(floor["tenant_id"], self.publisher(floor["tenant_id"])))
+            headers=self.headers(floor["tenant_id"], self.device_publisher(floor["tenant_id"])))
         self.assertEqual(read.status_code, 404, read.text)
 
     def test_a_multi_zone_club_counts_presentations_and_narrowing_is_offered(self):

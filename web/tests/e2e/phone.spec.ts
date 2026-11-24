@@ -112,6 +112,10 @@ const surfaces: [string, string][] = [
   // The profile is a record header over four metric cells, a timeline and five forms,
   // which is the densest stack of components on any CRM screen.
   ["a lead profile", `/leads/${creds.ownedLeadId}`],
+  // The trial state draws an extra section and a four-cell metric row, which is a different
+  // layout from the sales one above and is the one with a 5,687-pixel zero-width box in its
+  // history.
+  ["a lead on a trial", `/leads/${creds.trialLeadId}`],
   ["the task list", "/tasks"],
   ["an attention item", `/tasks/cases/${creds.moneyCaseId}`],
   ["resolved today", "/tasks/resolved"],

@@ -17,7 +17,7 @@ in this module would be MOD-018's cached balance applied to seats.
 from __future__ import annotations
 
 import hashlib
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 from psycopg import Connection, errors
@@ -1980,6 +1980,34 @@ def session_roster(
              "offer_expires_at": e[5].isoformat() if e[5] else None}
             for n, e in enumerate(entries, 1)],
     }
+
+
+def attended_between(
+    conn: Connection[Any], person_id: str, from_date: date, to_date: date,
+) -> int:
+    """How many classes this person actually attended between two local dates.
+
+    **ADM-CRM-05's `4 CLASSES`, which is not the same figure as `4 VISITS` beside it.** A
+    visit is MOD-022's entry event -- somebody came through a door -- and this is a booking
+    that was settled `attended`, which is a coach or a desk saying they were in the room. A
+    member who trains in the gym four times has four visits and no classes, and the canvas
+    draws both cells because the two answer different questions about the same week.
+
+    **`attended`, not `booked`.** A booking somebody made and did not turn up to is a
+    `no_show` and must not count, which is the whole point of MOD-020's settlement -- and
+    `booked` on a session that has not happened yet is a plan rather than a fact.
+
+    **The session's own local date**, which `sch_sessions.local_date` carries precisely
+    because an instant and a local day are not derivable from each other.
+    """
+    row = conn.execute(
+        "SELECT count(*) FROM plt01.bkg_bookings b"
+        " JOIN plt01.sch_sessions s ON s.session_id = b.session_id"
+        " WHERE b.person_id = %s AND b.state = 'attended'"
+        "   AND s.local_date >= %s AND s.local_date <= %s",
+        (person_id, from_date, to_date),
+    ).fetchone()
+    return int(row[0]) if row else 0
 
 
 def member_bookings(

@@ -54,6 +54,15 @@ const BACKEND = new URL("../../../backend/app/", import.meta.url).pathname;
  * states separately. Rendering the state is the built screen's job; naming it here is what
  * stops the count reading as a missing screen.
  */
+// **`ADM-CRM-05` is deliberately NOT here, although it is a state.** It shares
+// `/leads/{lead_id}` with ADM-CRM-03 -- the canvas says so by titling one card with both ids
+// -- and the first version of this slice put it in this map on exactly that reading. The
+// check refused it, and the check is right: these two lists answer different questions.
+// `STATE_OF` means "no entry of its own, because the parent's covers it", which is true of
+// the six below -- a filtered view of one board, with no decisions and no tests of its own.
+// A screen with its own inventory entry, its own domain module, its own specs and its own
+// arguments is *built*, whatever route it is reached at, so it is `named` and nothing else.
+// Routes are not the unit here; accounted-for work is.
 const STATE_OF = {
   "ADM-CC-03": "ADM-CC-01",
   "ADM-CC-04": "ADM-CC-01",

@@ -26,8 +26,10 @@ from typing import Any
 
 from psycopg import Connection, errors
 
+from app.access import service as access
+from app.booking import service as booking
 from app.commercial import service as commercial
-from app.crm import pipeline
+from app.crm import pipeline, trial
 from app.db import Pool, tenant_scope
 from app.errors import Conflict, InvalidRequest, NotFound
 
@@ -583,6 +585,74 @@ def board(
         "going_cold_counts_open_leads_only": (
             "a member is not a lead going cold, and the header's two figures are over the "
             "three stored stages"),
+    }
+
+
+def read_trial(
+    pool: Pool, tenant_id: str, lead_id: str, *, at: datetime | None = None,
+) -> dict[str, Any]:
+    """ADM-CRM-05: the trial card on a lead's profile, or why there is not one.
+
+    **A state of ADM-CRM-03 rather than a screen of its own**, which the canvas says by
+    labelling one card with both ids. So this is the four figures and the one sentence that
+    appear on the lead profile while the person is on a trial.
+
+    **Three modules, one transaction, and the figures derived here.** The window is MOD-017's,
+    the visits are MOD-022's entry events and the classes are MOD-020's settled bookings --
+    all three in `plt01` under this role, so they are read on one connection rather than
+    composed by a surface. That is the opposite of the Member 360's judgement and the reason
+    is the card: every figure on it is an arithmetic over `today`, and a browser comparing
+    dates against its own clock counts in the wrong frame -- which this build has three
+    recorded defects from. A surface given four counts and asked to work out "day 6 of 7"
+    would be the fourth.
+    """
+    now = at or _now()
+    today = now.date()
+    with tenant_scope(pool, tenant_id) as conn:
+        lead = conn.execute(
+            "SELECT person_id, stage FROM plt01.crm_leads WHERE lead_id = %s",
+            (lead_id,),
+        ).fetchone()
+        if lead is None:
+            raise NotFound("lead_not_found")
+        person_id = str(lead[0])
+        window = commercial.live_trial(conn, person_id, at=today)
+        if window is None:
+            # **Not an error and not an empty card.** A lead with no trial is the ordinary
+            # case -- three of the five board columns -- so the read says so and the profile
+            # draws its own state rather than four zeros, which is MOD-014's "a confident
+            # wrong answer where a missing one would have been honest".
+            return {
+                "lead_id": lead_id, "person_id": person_id, "on_trial": False,
+                "stage": str(lead[1]),
+                "not_on_a_trial": (
+                    "this person has no live membership on a product whose terms declare "
+                    "trial_days, so there is no window to count anything in"),
+            }
+        span = trial.Window(starts_on=window["starts_on"], ends_on=window["ends_on"])
+        visits = access.visits_between(conn, person_id, span.starts_on, span.ends_on)
+        classes = booking.attended_between(conn, person_id, span.starts_on, span.ends_on)
+    return {
+        "lead_id": lead_id, "person_id": person_id, "on_trial": True,
+        "stage": str(lead[1]),
+        "membership_id": window["membership_id"],
+        "starts_on": span.starts_on.isoformat(), "ends_on": span.ends_on.isoformat(),
+        "trial_days": window["trial_days"],
+        # The canvas's four cells and its one sentence, in its own order.
+        "visits": visits,
+        "classes": classes,
+        "day_of": trial.day_of(span, today),
+        "of_days": span.days,
+        "days_left": trial.days_left(span, today),
+        "ends_tomorrow": trial.ends_tomorrow(span, today),
+        "engagement": trial.engagement(visits=visits, window=span, today=today),
+        "engagement_is_use_not_a_prediction": (
+            "the drawn canvas's cell is ENGAGEMENT and this is how much of the trial has "
+            "been used; the prototype calls it conversion likelihood, which is a prediction "
+            "about a person and is what MOD-020 refuses for the no-show score"),
+        "a_visit_and_a_class_are_different_facts": (
+            "a visit is an entry event and a class is a booking settled attended, so a "
+            "member who trains in the gym four times has four visits and no classes"),
     }
 
 

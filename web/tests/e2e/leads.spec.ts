@@ -73,9 +73,10 @@ test.describe("the lead pipeline", () => {
     const column = page.locator("#main").getByRole("region", { name: /^On trial,/ });
     await expect(column).toBeVisible();
     await expect(column.getByText(/marks a product as a trial/)).toHaveCount(0);
-    // The fixture's leads have no memberships, so it is empty -- which is a fact about them
-    // rather than about the product, and the count is the server's.
-    await expect(column).toContainText("0");
+    // **And the column is populated**, which is the end-to-end evidence that the derivation
+    // reaches the board: the fixture seeds one trialist and the count is the server's answer
+    // over every lead rather than the page's over the cards it loaded.
+    await expect(column).toContainText("1");
   });
 
   test("a card's name is withheld at this assurance and the card is still a link",
@@ -275,11 +276,14 @@ test.describe("the lead pipeline", () => {
     await expect(main.getByText(/cannot be taken back yet/)).toBeVisible();
   });
 
-  test("the four trial figures are named rather than drawn as zeros", async ({ page }) => {
-    // A metric cell reading `0 VISITS` for a member who has been four times is the confident
-    // wrong answer MOD-014's own 360 was bitten by.
+  test("what the trial card still cannot answer is named on the profile", async ({ page }) => {
+    // **This asserted "nothing in this build marks one"**, which ADR-0010 D7 made false --
+    // the clock, the visits and the engagement reading are drawn now while a trial runs, and
+    // `trial.spec.ts` is where that is proved. What is left is the canvas's "all spin": the
+    // class count is a count, and naming a class the read did not identify would be the
+    // confident wrong answer MOD-014's own 360 was bitten by.
     await page.goto(`/leads/${coldLeadId}`);
-    await expect(page.locator("#main").getByText(/nothing in this build marks one/))
+    await expect(page.locator("#main").getByText(/counts classes by what they were/))
       .toBeVisible();
   });
 

@@ -60,6 +60,25 @@ const CLUB_OFFSET_HOURS = 3;
  * So the day is chosen on the club's calendar and the clock is set from it, which is stable
  * at every hour of the run.
  */
+/**
+ * **The trialist's visits, which two screens count and neither owns.** ADM-CRM-05 needs four
+ * entries in a running trial to read `High ENGAGEMENT`; ADM-RPT-04 pins the shape of a day at
+ * one club, and there is exactly one access point in this fixture -- so those four land in the
+ * attendance chart too. They did, at 19:00, and they moved the peak from ten to fourteen, the
+ * busiest window from two hours to one and the quietest hour's share from 30% to 21%: six
+ * assertions red, with nothing wrong on either screen.
+ *
+ * The arithmetic fix -- subtract four from the evening seed -- re-breaks the day somebody
+ * changes this list, with a failure that names the report rather than the trial. So the
+ * relationship is declared instead: the chart's intended evening total is stated once below
+ * and this list is subtracted from it, which keeps both screens right whatever its length.
+ *
+ * **One to four days back, never today.** `clubLocalInstant(0, 19)` is this evening, which
+ * `acc_events` refuses as future-dated. Four visits on days two to five of the trial is 0.67
+ * a day on day six either way.
+ */
+const TRIAL_VISIT_DAYS_BACK = [1, 2, 3, 4];
+
 function clubLocalInstant(daysBack, localHour, localMinute = 0) {
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: CLUB_TZ }).format(new Date());
   const when = new Date(`${today}T00:00:00Z`);
@@ -795,7 +814,13 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
   // together rather than one hour at a time, so a fixture left sitting for three weeks
   // reports a smaller chart of the same shape instead of a different peak. That is the
   // "a test that asserts a freshness has to create it" rule applied to a window.
-  const SHAPE_OF_A_DAY = [[19, 10], [18, 9], [17, 6], [7, 3]];
+  // **The evening total is ten and this seed writes the rest of it.** The trialist's own
+  // entries land at 19:00 at this same point -- there is one reader in this fixture -- so
+  // they are part of the ten rather than on top of it. See `TRIAL_VISIT_DAYS_BACK`.
+  const EVENING_PEAK = 10;
+  const SHAPE_OF_A_DAY = [
+    [19, EVENING_PEAK - TRIAL_VISIT_DAYS_BACK.length], [18, 9], [17, 6], [7, 3],
+  ];
   for (const [localHour, howMany] of SHAPE_OF_A_DAY) {
     for (let i = 0; i < howMany; i += 1) {
       const when = clubLocalInstant(2 + (i % 4), localHour);
@@ -2649,6 +2674,104 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
   const coldLead = await leadFor("Rana Sabbagh", {
     interests: ["classes", "pt"], phone: "+962 79 000 0101",
   });
+
+  // **A trialist, because ADM-CRM-05 is a state of the lead profile and nothing reached it.**
+  // "DAY 6 OF 7" needs a live membership on a product whose terms declare `trial_days`
+  // (ADR-0010 D7) and the card's two counts need entry events inside that window -- so this
+  // is a product of its own, its own contract, an activation five days back, and four visits.
+  //
+  // **Five days back, so the card reads the canvas's own figures**: day 6 of 7, two days
+  // left, ending tomorrow. A trial started today would draw day 1 and leave the urgency line
+  // and the conversion sentence on branches no fixture reaches, which is this app's
+  // most-repeated vacuity.
+  const trialKey = `trial${Date.now().toString(36)}`;
+  const trialContract = await call("/memberships/contract-versions", {
+    method: "POST", ...as(token),
+    body: { contract_key: trialKey, body: "Seven-day trial terms.",
+            freeze_days_per_year: 0, correlation_id: cid() },
+  });
+  await call(`/memberships/contract-versions/${trialContract.contract_version_id}/publish`, {
+    method: "POST", ...as(publisherToken), body: { correlation_id: cid() },
+  });
+  const trialProduct = await call("/catalog/products", {
+    method: "POST", ...as(token),
+    body: { product_key: `${trialKey}p`, product_type: "membership",
+            texts: [{ locale: "en", display_name: "Seven-day trial" }],
+            variants: [{ variant_key: "week", display_name: "One week",
+                         term_days: 7 }],
+            correlation_id: cid() },
+  });
+  await call("/catalog/prices", {
+    method: "POST", ...as(token),
+    body: { price_book_id: priceBook.price_book_id,
+            variant_id: trialProduct.variants[0].variant_id,
+            // **Not free**, because `cat_prices` admits zero and a trial priced at nothing
+            // would make every conversion an upgrade by construction -- which is the
+            // question ADR-0010 leaves for the conversion rather than one a seed should
+            // answer. One dinar is a trial somebody paid a token for, which is a real
+            // product and keeps the plan-change arithmetic non-degenerate.
+            amount_minor: 1000,
+            effective_from: "2026-01-01T00:00:00+00:00", correlation_id: cid() },
+  });
+  await call(`/catalog/products/${trialProduct.product_id}/publish`, {
+    method: "POST", ...as(token), body: { expected_version: 1, correlation_id: cid() },
+  });
+  const trialTerms = await call("/memberships/terms", {
+    method: "POST", ...as(token),
+    body: { product_id: trialProduct.product_id, contract_key: trialKey,
+            membership_kind: "fixed_term", billing_period: "one_off",
+            trial_days: 7, correlation_id: cid() },
+  });
+  const trialist = await call("/people", {
+    method: "POST", ...as(token),
+    body: { legal_name: "Yara Nimri", profile_kinds: ["lead"], correlation_id: cid() },
+  });
+  const trialStart = new Date(Date.now() - 5 * 86400000).toISOString().slice(0, 10);
+  const trialAgreement = await call("/memberships/agreements", {
+    method: "POST", ...as(token),
+    body: { person_id: trialist.person_id,
+            membership_terms_id: trialTerms.membership_terms_id,
+            variant_id: trialProduct.variants[0].variant_id,
+            amount_minor: 1000, currency: "JOD", starts_on: trialStart,
+            correlation_id: cid() },
+  });
+  await call(`/memberships/agreements/${trialAgreement.agreement_id}/sign`, {
+    method: "POST", ...as(token),
+    body: { signature_kind: "click_through",
+            signature_evidence_ref: `s3://signatures/${trialAgreement.agreement_id}`,
+            signed_by_person_id: trialist.person_id, correlation_id: cid() },
+  });
+  const trialMembership = await call("/memberships", {
+    method: "POST", ...as(token),
+    body: { agreement_id: trialAgreement.agreement_id,
+            membership_number: "TRIAL-00001",
+            idempotency_key: randomUUID(), correlation_id: cid() },
+  });
+  const trialLead = await call("/crm/leads", {
+    method: "POST", ...as(token),
+    body: { person_id: trialist.person_id, source_id: leadSource.source_id,
+            interests: ["classes"], correlation_id: cid() },
+  });
+  // Their own card at the same door, and four visits inside the trial's own window -- which
+  // is 0.67 a day on day six and is the canvas's `High ENGAGEMENT`.
+  const trialCardValue = `CARD-${randomUUID().slice(0, 12).toUpperCase()}`;
+  await call("/access/credentials", {
+    method: "POST", ...as(token),
+    body: { person_id: trialist.person_id, kind: "nfc_card",
+            credential_value: trialCardValue, correlation_id: cid() },
+  });
+  // Declared at `TRIAL_VISIT_DAYS_BACK`, because ADM-RPT-04's chart counts these too.
+  for (const daysBack of TRIAL_VISIT_DAYS_BACK) {
+    await call("/access/events", {
+      method: "POST", ...as(token),
+      body: {
+        point_id: point.point_id, direction: "entry",
+        credential_value: trialCardValue,
+        occurred_at: clubLocalInstant(daysBack, 19).toISOString(),
+        source: "online", idempotency_key: randomUUID(), correlation_id: cid(),
+      },
+    });
+  }
   const contactedLead = await leadFor("Omar Zaid");
   await call(`/crm/leads/${contactedLead.lead_id}/touchpoints`, {
     method: "POST", ...as(token),
@@ -2746,6 +2869,8 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
     contactedLeadId: contactedLead.lead_id,
     touredLeadId: touredLead.lead_id,
     ownedLeadId: ownedLead.lead_id,
+    trialLeadId: trialLead.lead_id,
+    trialMembershipId: trialMembership.membership_id,
     overdueTaskId: overdueTask.task_id,
     mineTaskId: mineTask.task_id,
     settledTaskId: settledTask.task_id,
@@ -2834,6 +2959,8 @@ if (invokedDirectly) {
       `VEYRO_E2E_DESK_QUEUE_ID=${fixture.deskQueueId}`,
       `VEYRO_E2E_COLD_LEAD_ID=${fixture.coldLeadId}`,
       `VEYRO_E2E_OWNED_LEAD_ID=${fixture.ownedLeadId}`,
+      `VEYRO_E2E_TRIAL_LEAD_ID=${fixture.trialLeadId}`,
+      `VEYRO_E2E_TRIAL_MEMBERSHIP_ID=${fixture.trialMembershipId}`,
       `VEYRO_E2E_TOURED_LEAD_ID=${fixture.touredLeadId}`,
       `VEYRO_E2E_MONEY_CASE_ID=${fixture.moneyCaseId}`,
       `VEYRO_E2E_MONEY_CASE_NUMBER=${fixture.moneyCaseNumber}`,

@@ -2553,3 +2553,123 @@ that takes both -- and `CapacityPolicyBody` carries neither, so OPS-01-R04's lea
 settable through any route and every tenant's booking window is exactly one week. That is this
 file's recurring shape in its plainest form, found while fixing a test rather than by reading
 the module.
+
+
+**`npm run verify` is not the web gate, and a backend-shaped diff can still break the browser
+suite.** The web CI job runs `audit:ci`, `design:check`, `tokens:check`, `test:foundation`,
+`typecheck`, `test` **and** Playwright against a real backend; `verify` is the first six and
+`tools/local_ci.sh` says in its own header that it omits the browser suite. A commit that
+settled a schema question also deleted two message keys, and two browser tests asserted their
+wording -- so `verify`, the full 2,858-test backend suite and every non-Docker CI step were
+green on a change that turned `main` red. **The diff looked like SQL**, which is exactly why
+the judgement was wrong: what the browser suite asserts is *strings on a page*, so the trigger
+for running it is a touched message catalogue or a touched surface, not a touched module.
+
+The rule in front of it is cheap: if the diff touches `web/src/i18n/`, any file under
+`web/src/app/`, or any gap note a screen renders, the browser suite runs before the push. And
+the second rule is the one this file already states and this commit needed twice over -- **a
+test that asserts a gap has to be rewritten the day the gap closes, and the question is whether
+it was asserting the finding or a consequence of it.** Both of these asserted the consequence:
+the On-trial column's finding was that an empty column is drawn with its reason rather than
+hidden, so the honest replacement asserts the column is drawn and **no longer explains
+itself** -- an assertion on the absence, which cannot go stale in the direction the original
+did.
+
+
+**A screen specified inside another screen's card is invisible to a scan that keys on one id,
+and the index then says the design does not exist.** `ADM-CRM-05` sat in
+`screens.generated.json → coverage.unspecified_ids` beside two screens that really are
+undrawn -- and its entire design was in the folder: a trial clock, four figures, a sentence and
+a button. Batch F titles one card **`ADM-CRM-03 · LEAD PROFILE · ADM-CRM-05 · TRIAL
+RUNNING`** -- two screens on one card, each with its own name -- and the extractor's title
+pattern is *one or more ids, then the description*, so it took the ids before the first label
+and left the second in the prose.
+
+The fix is to collect every `·`-separated segment that is **exactly** an id, which is the shape
+of a co-label, rather than every id anywhere in the title: a description may cross-reference
+another screen ("ADM-MEM-11 exists because prevention is never perfect") and attributing that
+card to the screen it mentions is the opposite error. **Exactly one screen moved**, which is
+what made the change surgical rather than a re-reading of the folder -- and the generated
+artefact's `--check` is what showed that, because it diffs the whole attribution rather than
+the count.
+
+The wider rule: **a coverage index is a claim about the design, and its blind spots are
+shaped like the authoring conventions nobody wrote down.** "Unspecified" meant "my parser
+found no card titled with this id", and the three screens it named were not the same kind of
+thing. Before building to a gap the index reports, grep the design folder for the id.
+
+**`.facts` takes one `<dd>` per `<dt>`, and a second one is a zero-width box.** The class is a
+two-column grid whose items are the `dt` and the `dd` themselves, so three children
+auto-place as `dt dd / dd …` and the trailing definition landed with **width 0 and height
+5,687** -- `display: block`, `visibility: visible`, and a box no reader can see. Playwright
+correctly called it hidden, which is how it was found; an assertion on the text alone would
+have passed. The membership block already paid for the other half of this rule, where wrapping
+each pair in a `<div>` made the div the grid item and put both labels on one row. Two facts
+about one subject are two `dt`/`dd` pairs.
+
+**Two fixtures counting the same ledger is the spec-coupling rule one layer down, and the
+arithmetic fix re-breaks it.** ADM-CRM-05 needs four entries in a running trial to read `High
+ENGAGEMENT`; ADM-RPT-04 pins the shape of a day -- a peak, a peak-tier neighbour beside it, a
+middle tier and a quiet morning hour -- and there is exactly one access point in the browser
+fixture. So the trialist's four 19:00 visits landed in the attendance chart: the peak moved
+from ten to fourteen, the busiest window narrowed from two hours to one because 18:00 stopped
+being peak-tier, and the quietest hour's share fell from 30% to 21%. **Six assertions red with
+nothing wrong on either screen**, and the fixture's own stated demonstration -- "a peak, a
+peak-tier neighbour, two busy hours and one quiet one" -- quietly destroyed.
+
+This file already records the spec version: "a spec that creates a row and a sibling that counts
+rows are coupled through the fixture's tenant". The fixture version is worse in one way, because
+a spec's own row is visible in the spec and a sibling fixture's rows are not. And the obvious
+repair is a trap: subtracting four from the evening seed makes the chart right today and re-breaks
+it the day somebody changes the trial to three visits, **with a failure that names the report
+rather than the trial**. So the relationship is declared rather than computed -- the chart's
+intended evening total is stated once and the trial's own list is subtracted from it, so both
+screens stay right whatever its length. **When two fixtures write the same ledger, the shared
+figure is a constant one of them owns, not two literals that happen to agree.**
+
+**A sweep whose baseline is red reports every mutation as caught.** Two backends were up on this
+machine, 8000 against one database and 8001 against another, and the app defaults to 8000 -- so a
+browser sweep run without `VEYRO_API_ORIGIN` drove a page whose fixture had never been seeded into
+the database it was reading. Every assertion fails with or without the mutation, and a harness
+that looks for a red records that as a catch: the run reported "5/7 caught" and had proved
+nothing. Two commands settle it rather than any reasoning -- query each container for the
+fixture's own id (`docker exec -i <container> psql -U postgres -d veyro -tAc`), then run the
+*baseline* spec and require it green before believing a single number the sweep prints. **This is
+the backend-started-by-hand rule with the failure pointed the other way**: there a stale server
+made correct code look broken, here it made unproven code look proven, which is the direction
+nobody checks.
+
+**A mutation that cannot fail is evidence of nothing, and a client-side gate check is usually
+one.** `trial-card-needs-all-three-reads` removed a page's own `mayVisits.allowed &&
+mayBookings.allowed` guard before fetching a card composed from three modules. With the guard
+gone the page attempts the request, the route refuses it on its own three `permit` calls, the
+`.catch` returns null and the card is absent either way -- so the suite stayed green and the
+sweep correctly reported UNCAUGHT. The guard is defence in depth: it avoids a request that
+would be refused. The control is the route's permits, and a backend test is what proves them.
+Deleted with the reason written down, which is the judgement this file already sets for a
+constraint subsumed by a sibling -- **ask which reader is unguarded before concluding a guard is
+unnecessary, and when the answer is "none", the mutation goes rather than the guard.**
+
+**And "the replacement text is present" has a second cause the harness asserted away.** This
+file records that a killed sweep leaves a file mutated and the only trace is a missing anchor,
+so `mutate.mjs` reported a stale mutation as NOT RUN with "a previous run was killed before it
+restored this file. Put it back with: git checkout". The file was pristine. ADR-0010 D7 had
+*retired the protection into the mutation's own form* -- `columnNote` returns null now, which is
+exactly what that mutation changed it to -- so the anchor was gone because the code it anchored
+on was gone. Both readings leave an identical trace, a `to` that matches and a `from` that does
+not, and the message sent me to `git checkout` a file nothing had touched. It names both now.
+**A harness's own diagnosis of an absence is a claim like any other**, and the check is the one
+this file already prescribes for a leftover: read the diff hunks, and if there are none, the
+mutation is stale.
+
+**A pinned count is symmetric whether or not its reason is.** `screen-coverage.test.mjs` pins
+the extraction at "167 specified, 3 unspecified" and its comment warned that a *narrowed*
+boundary rule would drop the count and fail there rather than be written into the compliance
+ledger as a gap in the design. What happened was the opposite: the title rule *widened* -- it now
+collects every `·`-separated segment that is exactly an id, so a card titled with two screens
+attributes both -- and one screen moved from unspecified to specified. The tripwire fired
+correctly and its stated reason covered one direction only. Both literals moved and the comment
+now says so; the staleness-proof assertion beside them, that the three counts sum to the
+registry's own V1 total, is what holds whatever they are. **A tripwire does not need its reason
+to be symmetric to be useful -- either direction brings somebody to the file -- but a reason
+written for one direction reads as a defect when the other one fires.**

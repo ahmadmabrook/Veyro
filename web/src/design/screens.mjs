@@ -217,7 +217,19 @@ function extract() {
     for (const line of all) {
       const screen = SCREEN_SECTION.exec(line.text);
       if (screen) {
-        const ids = [...screen[1].matchAll(ID)].map((m) => m[1]);
+        // **Every `·`-separated segment that is exactly an id**, not only the ones before the
+        // first label. Batch F titles one card `ADM-CRM-03 · LEAD PROFILE · ADM-CRM-05 ·
+        // TRIAL RUNNING` -- two screens on one card, each with its own name -- and the
+        // leading-ids group stops at `LEAD PROFILE`, so `ADM-CRM-05` sat in the description
+        // and read as **unspecified while its entire design was in the file**: a trial clock,
+        // four figures, a sentence and a button, indexed as a screen nobody had drawn.
+        //
+        // **Exactly an id, rather than any id in the description.** A description may
+        // cross-reference another screen in prose ("ADM-MEM-11 exists because prevention is
+        // never perfect"), and attributing that card to the screen it mentions would be the
+        // opposite error. A segment that is nothing but an id is a co-label.
+        const ids = line.text.split("·").map((part) => part.trim())
+          .filter((part) => new RegExp(`^${ID.source.slice(2, -2)}$`).test(part));
         marks.push({ kind: "screen", ids, canvases: [], title: line.text, at: line.at });
         continue;
       }

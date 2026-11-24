@@ -1,6 +1,8 @@
 import { api } from "@/lib/api";
 
-import type { Board, LeadDetail, LeadList, LeadFilter, SourceRow } from "@/lib/leads";
+import type {
+  Board, LeadDetail, LeadList, LeadFilter, SourceRow, TrialCard,
+} from "@/lib/leads";
 
 /**
  * The reads ADM-CRM-01 to 04 make.
@@ -43,4 +45,20 @@ export function readLead(leadId: string): Promise<LeadDetail> {
 /** ADM-CRM-04's dropdown. Retired sources are left out, which is what makes it a dropdown. */
 export function listSources(): Promise<{ sources: SourceRow[] }> {
   return api("/crm/sources?limit=50");
+}
+
+/**
+ * ADM-CRM-05's card, or why there is not one.
+ *
+ * **Three permissions**, because the card carries three modules' facts: the window is
+ * MOD-017's, the visits are MOD-022's entry events and the classes are MOD-020's settled
+ * bookings. A reader holding only the lead read gets 403 for the whole card rather than three
+ * of its four cells, which is what the canvas draws.
+ *
+ * **Every figure is the server's.** `day_of`, `days_left` and the band are all arithmetic over
+ * today, and a browser comparing dates against its own clock counts in the wrong frame --
+ * which this app has three recorded defects from.
+ */
+export function readLeadTrial(leadId: string): Promise<TrialCard> {
+  return api(`/crm/leads/${leadId}/trial`);
 }

@@ -2097,16 +2097,13 @@ const MUTATIONS = [
     runner: "playwright",
     grep: "five columns, in its order",
   },
-  {
-    id: "lead-on-trial-says-why",
-    why: "`On trial` is always empty in this build, and a column drawn with no reason reads as "
-      + "a club with no trials rather than as a build with none",
-    file: "src/lib/leads.ts",
-    from: '  return stage === "on_trial" ? "leads.onTrialEmpty" : null;',
-    to: "  return null;",
-    runner: "playwright",
-    grep: "says why it is empty",
-  },
+  // **`lead-on-trial-says-why` is deleted, and the harness's diagnosis of it was wrong.**
+  // It mutated `columnNote` to return null, which ADR-0010 D7 made the production code: the
+  // column is derived from MOD-017 now and carries no reason, so the protection it named does
+  // not exist. The sweep reported NOT RUN with "the replacement text is present, so a previous
+  // run was killed" -- a true observation and the wrong cause, which is the second reading of
+  // that state: a protection retired *into* the mutation's own form looks exactly like a
+  // leftover mutation. The message below now names both.
   {
     id: "lead-age-unit",
     why: "the canvas writes both units -- \"open day · 2d\" and \"instagram · 4h\" -- and a "
@@ -2312,6 +2309,67 @@ const MUTATIONS = [
     runner: "playwright",
     grep: "marks them as optional",
   },
+  {
+    id: "trial-band-outranks-the-cold-mark",
+    why: "a trialist is not somebody nobody has rung, and `RecordHeader` draws one band -- so "
+      + "a board that showed the cold mark on a running trial would hide the clock that "
+      + "matters behind one that does not",
+    file: "src/app/leads/[leadId]/page.tsx",
+    from: "  const band = running !== null",
+    to: "  const band = false",
+    runner: "playwright",
+    grep: "the band is the day of the trial",
+  },
+  {
+    id: "trial-metric-row-is-the-trials-four",
+    why: "ADM-CRM-05 draws four cells and they are not the sales four: a row that showed both "
+      + "would be eight where the canvas draws four, and the stage and the last contact are "
+      + "questions a trial has already answered",
+    file: "src/app/leads/[leadId]/page.tsx",
+    from: "      {running === null ? (\n        <section className=\"metrics\"",
+    to: "      {true ? (\n        <section className=\"metrics\"",
+    runner: "playwright",
+    grep: "the metric row is the trial's four cells",
+  },
+  {
+    id: "trial-engagement-is-a-word",
+    why: "a vocabulary the backend stores is never a label, which this app has five recorded "
+      + "defects from -- and the band is the one cell on this card whose value is an enum",
+    file: "src/app/leads/[leadId]/page.tsx",
+    from: "              const key = engagementWord(running.engagement);\n"
+      + "              return key === null ? running.engagement : text(key);",
+    to: "              return running.engagement;",
+    runner: "playwright",
+    grep: "four visits in six days reads as high use",
+  },
+  {
+    id: "trial-urgency-says-which-of-three",
+    why: "\"Her trial ends tomorrow\" is the canvas's own sentence and the day it ends is the "
+      + "sharper of the two; a single countdown would read \"1 day left\" on the last day",
+    file: "src/lib/trial.ts",
+    from: '  if (card.ends_tomorrow) return "trial.endsTomorrow";',
+    to: '  if (false) return "trial.endsTomorrow";',
+    runner: "vitest",
+    grep: "the urgency line has three states",
+  },
+  {
+    id: "trial-nobody-in-is-its-own-sentence",
+    why: "\"nobody has been in\" is a different conversation from \"they came once\", and the "
+      + "softer sentence would have somebody ring a lead to ask how they found a gym they "
+      + "have never walked into",
+    file: "src/lib/trial.ts",
+    from: '  if (card.engagement === "none") return "trial.notUsed";',
+    to: '  if (false) return "trial.notUsed";',
+    runner: "vitest",
+    grep: "nobody having been in gets its own sentence",
+  },
+  // **Not a mutation, because the client's gate check is not the control.** Removing it makes
+  // the page attempt `GET /crm/leads/{id}/trial` for a reader who may not have it -- and the
+  // route answers 403, the `.catch` returns null and the card is absent either way, so the
+  // suite stayed green. That is the guard working as defence in depth rather than as the
+  // thing being proved: the control is the route's three `permit` calls, and
+  // `test_the_card_charges_all_three_permissions` is what proves them. A mutation that cannot
+  // fail is evidence of nothing, which this repository has a rule for.
 ];
 
 const only = process.argv[2];
@@ -2364,12 +2422,19 @@ for (const mutation of chosen) {
     // above restore on SIGINT, SIGTERM and SIGHUP, and none of them can catch a SIGKILL --
     // so an interrupted sweep can leave a file mutated, and the only trace is this anchor
     // going missing. That reads as "somebody edited the component" and sent me looking in
-    // the wrong place for ten minutes, with a red component suite in between. Say which it
-    // is, and say how to put it back.
+    // the wrong place for ten minutes, with a red component suite in between.
+    //
+    // **And "the replacement text is present" has a second cause this message used to assert
+    // away.** A protection can be *retired into* the mutation's own form -- ADR-0010 D7 made
+    // `columnNote` return null, which is exactly what `lead-on-trial-says-why` mutated it to
+    // -- and then the file is pristine and the mutation is stale. Both readings leave the
+    // identical trace, so the message names both rather than sending somebody to `git
+    // checkout` a file nothing has touched.
     const leftBehind = mutation.to !== "" && original.includes(mutation.to);
     const because = leftBehind
-      ? `the replacement text is present, so a previous run was killed before it restored `
-        + `this file. Put it back with: git checkout ${mutation.file}`
+      ? `the replacement text is present. Either a killed run left this file mutated -- put `
+        + `it back with: git checkout ${mutation.file} -- or the protection was retired INTO `
+        + `this mutation's own form, in which case the mutation is stale and goes`
       : `the anchor appears ${occurrences} times, not once`;
     notRun.push(`${mutation.id}: ${because}`);
     console.log(`SKIP  ${mutation.id} (${leftBehind ? "LEFT MUTATED" : `anchor matched ${occurrences} times`})`);

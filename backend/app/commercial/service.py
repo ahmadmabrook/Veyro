@@ -351,6 +351,59 @@ def _walk_from(seed_where: str) -> str:
         " FROM walk ORDER BY membership_id, depth DESC)")
 
 
+#: What "this membership is live" means, in one place.
+#:
+#: **By the dates rather than the cached status**, which is MOD-022's own rule for a door:
+#: `status_as_of` is the function that tells the truth and `mem_memberships.status` is what a
+#: cancellation leaves behind. Two readers ask this -- the board's batch standing and one
+#: lead's trial window -- and a second spelling of it would let them disagree about whether
+#: somebody is on a trial, which is the one thing both are for.
+_LIVE_MEMBERSHIP = (
+    "m.status = 'active' AND m.starts_on <= %s"
+    " AND (m.ends_on IS NULL OR m.ends_on >= %s)")
+
+
+def live_trial(
+    conn: Connection[Any], person_id: str, *, at: date | None = None,
+) -> dict[str, Any] | None:
+    """The trial this person is on right now, or `None`.
+
+    **ADM-CRM-05's window, which the four figures on that card are all derived from.**
+    `membership_standing` answers "which board column" for many people and this answers "what
+    is the window" for one; both seed the same chain walk with `_LIVE_MEMBERSHIP`, so they
+    cannot disagree about whether somebody is on a trial.
+
+    **Through the chain, not the root**, for the reason the standing read gives: a member who
+    converted by superseding the trial's agreement still points at the trial, so a read that
+    stopped at `mem_memberships.agreement_id` would report a paying member as a trialist.
+    """
+    today = at or _today()
+    row = conn.execute(
+        "WITH RECURSIVE " + _walk_from("m.person_id = %s AND " + _LIVE_MEMBERSHIP)
+        + " SELECT m.membership_id, m.starts_on, m.ends_on, t.trial_days, live.depth"
+          " FROM live"
+          " JOIN plt01.mem_memberships m ON m.membership_id = live.membership_id"
+          " JOIN plt01.mem_agreements a ON a.agreement_id = live.agreement_id"
+          " JOIN plt01.mem_membership_terms t"
+          "   ON t.membership_terms_id = a.membership_terms_id"
+          " WHERE t.trial_days IS NOT NULL"
+          " ORDER BY m.starts_on DESC, m.membership_id LIMIT 1",
+        (person_id, today, today, today),
+    ).fetchone()
+    if row is None:
+        return None
+    _refuse_a_truncated_chain([row], 4)
+    # **A trial always has an end**, because `activate_membership` derives it from
+    # `trial_days` -- so a live trial membership with no `ends_on` is a row written before
+    # this derivation existed, and reporting it as an open-ended trial would give the card a
+    # countdown with no end. It reads as not-a-trial instead, which is the fail-closed
+    # direction: a figure nobody can compute is better absent than invented.
+    if row[2] is None:
+        return None
+    return {"membership_id": str(row[0]), "starts_on": row[1], "ends_on": row[2],
+            "trial_days": int(row[3])}
+
+
 def trial_window_end(starts_on: date, trial_days: int | None) -> date | None:
     """When a membership that runs for `trial_days` from `starts_on` ends.
 
@@ -419,9 +472,7 @@ def membership_standing(
     wanted = tuple({str(one) for one in person_ids})
     rows = conn.execute(
         "WITH RECURSIVE "
-        + _walk_from(
-            "m.person_id = ANY(%s) AND m.status = 'active'"
-            " AND m.starts_on <= %s AND (m.ends_on IS NULL OR m.ends_on >= %s)")
+        + _walk_from("m.person_id = ANY(%s) AND " + _LIVE_MEMBERSHIP)
         # Explicit joins rather than `USING`: every one of these tables carries `tenant_id`,
         # so a `USING (tenant_id, ...)` is ambiguous once two of them are in the left side --
         # and RLS bounds the tenant on each of them anyway, which is what makes the single
@@ -4240,7 +4291,11 @@ def list_memberships(
             " m.starts_on, m.ends_on, m.current_period_start, m.current_period_end,"
             " m.status_effective_on, l.agreement_id, a.amount_minor, a.currency,"
             " a.minimum_term_ends_on, t.membership_kind, t.billing_period, t.is_off_peak,"
-            " m.agreement_id, l.depth"
+            # **Appended rather than inserted.** Every index below is positional and
+            # `_refuse_a_truncated_chain` is told which one `depth` is, so a column added in
+            # the middle silently re-points four fields -- which is the kind of change a type
+            # checker cannot see.
+            " m.agreement_id, l.depth, t.trial_days"
             " FROM plt01.mem_memberships m"
             # **The agreement is the chain's live end, not `m.agreement_id`.** The obvious
             # join is on the root, which after an upgrade carries the amount, currency and
@@ -4271,7 +4326,11 @@ def list_memberships(
              "amount_minor": int(r[10]), "currency": str(r[11]),
              "minimum_term_ends_on": r[12].isoformat() if r[12] else None,
              "membership_kind": str(r[13]), "billing_period": str(r[14]),
-             "is_off_peak": bool(r[15])}
+             "is_off_peak": bool(r[15]),
+             # ADR-0010 D7's marker, so a list can tell a trial from a membership without
+             # joining the terms itself.
+             "trial_days": int(r[18]) if r[18] is not None else None,
+             "is_a_trial": r[18] is not None}
             for r in rows],
         "count": len(rows), "limit": limit,
         "truncated": len(rows) == limit,
@@ -4296,7 +4355,8 @@ def get_membership(
             " a.ends_on, a.minimum_term_ends_on, a.status, a.signed_at, a.signature_kind,"
             " a.price_resolution_id, a.contract_version_id, t.membership_terms_id,"
             " t.contract_key, t.membership_kind, t.billing_period, t.installment_count,"
-            " t.prepaid_days, t.is_off_peak, t.product_id, m.agreement_id, l.depth"
+            " t.prepaid_days, t.is_off_peak, t.product_id, m.agreement_id, l.depth,"
+            " t.trial_days"
             " FROM plt01.mem_memberships m"
             # The chain's live end, not its root -- every `a.` column below is a figure the
             # member is held to and after an upgrade the root carries the one they left.
@@ -4347,6 +4407,16 @@ def get_membership(
             "installment_count": int(row[24]) if row[24] is not None else None,
             "prepaid_days": int(row[25]) if row[25] is not None else None,
             "is_off_peak": bool(row[26]), "product_id": str(row[27]),
+            # **Whether this is a trial, and for how long it was sold.** ADR-0010 D7: the
+            # column is the only thing that marks a trial product, so a surface that could not
+            # see it would have to join the terms itself -- the second definition the column
+            # exists to avoid. ADM-CRM-05's "DAY 6 OF 7" is this beside the membership's own
+            # `starts_on` and `ends_on`.
+            # **Index 30, not 29.** `l.depth` is 29 and `_refuse_a_truncated_chain` is told
+            # so; the first version of this line read the chain's depth as the trial's length,
+            # which mypy cannot see and which a test asserting the value is what catches.
+            "trial_days": int(row[30]) if row[30] is not None else None,
+            "is_a_trial": row[30] is not None,
         },
         # The same masking `membership_as_of` applies, for the same reason and to the same
         # kinds: a medical hold's reason is a health fact whatever column it is in, and it is

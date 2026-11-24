@@ -7,17 +7,20 @@ import { RecordHeader } from "@/components/ds/record-header";
 import { Timeline, TimelineItem } from "@/components/ds/timeline";
 import { ProseNote } from "@/components/prose";
 import { Withheld } from "@/components/withheld";
-import { fill, t, type Locale, type MessageKey } from "@/i18n/locale";
+import {
+  fill, formatInteger, t, type Locale, type MessageKey,
+} from "@/i18n/locale";
 import { ApiError, currentSession, gateAll, gateMessage, gateVerdict } from "@/lib/api";
 import { readNames } from "@/lib/desk-reads";
 import {
-  INTERESTS, interestWord, kindWord, nextStage, sinceLabel, stageWord,
-  type LeadDetail,
+  INTERESTS, engagementWord, interestWord, kindWord, nextStage, sinceLabel, stageWord,
+  type LeadDetail, type TrialCard,
 } from "@/lib/leads";
-import { readLead } from "@/lib/leads-reads";
+import { readLead, readLeadTrial } from "@/lib/leads-reads";
 import { isWithheld } from "@/lib/people";
 import { presentation } from "@/lib/preferences";
 import { dayLabel, timeOfDay } from "@/lib/time";
+import { urgencyKey, usageSentence } from "@/lib/trial";
 
 import {
   InterestsForm, NextActionForm, OwnerForm, StageForm, TouchpointForm,
@@ -54,8 +57,13 @@ export default async function LeadPage({
 
   if (!(await currentSession())) redirect("/login");
 
-  const [mayLead, mayTouch, mayWrite, mayPeople] = await gateAll([
+  const [mayLead, mayTouch, mayWrite, mayPeople, mayVisits, mayBookings] = await gateAll([
     "crm.lead.read", "crm.touchpoint.write", "crm.lead.write", "people.person.read",
+    // **ADM-CRM-05's card carries three modules' facts**, so it asks for all three: the
+    // window is MOD-017's, the visits are MOD-022's entry events and the classes are
+    // MOD-020's settled bookings. Three of its four cells is not the card the canvas draws,
+    // so the read is skipped rather than half-made and the screen says which reads it wants.
+    "access.decision.read", "booking.booking.read",
   ] as const);
 
   if (!mayLead.allowed) {
@@ -71,11 +79,15 @@ export default async function LeadPage({
   }
 
   let lead: LeadDetail | null = null;
+  let trial: TrialCard | null = null;
   let missing = false;
   let failed = false;
   let names = new Map<string, { person_id: string; legal_name: string | null }>();
   try {
     lead = await readLead(leadId);
+    trial = mayVisits.allowed && mayBookings.allowed
+      ? await readLeadTrial(leadId).catch(() => null)
+      : null;
     const wanted = [lead.person_id, ...(lead.owner_person_id ? [lead.owner_person_id] : [])];
     names = mayPeople.allowed
       ? await readNames(wanted).catch(() => new Map())
@@ -116,6 +128,33 @@ export default async function LeadPage({
     return key === null ? lead.stage : t(locale, key);
   })();
   const onward = nextStage(lead.stage);
+  //: The trial, where there is one. ADM-CRM-05 is a *state* of this screen rather than a
+  //: route of its own, which the canvas says by labelling one card with both ids -- so the
+  //: band, the metric row and one section change and everything else stays.
+  const running = trial !== null && trial.on_trial ? trial : null;
+  // The same `as const` every other screen uses, and the reason the integer formatter takes
+  // it as an argument rather than reading a locale: a numeral system is a tenant setting this
+  // build does not carry, and one number path is what the cross-runtime parity test holds.
+  const numbering = "latn" as const;
+  /**
+   * The header's one band.
+   *
+   * **A running trial outranks the cold mark.** "DAY 6 OF 7" is the canvas's own band on this
+   * card, and a trialist is not somebody nobody has rung -- the clock that matters is the one
+   * running out. `RecordHeader` draws one band, so this is a choice rather than two, and it
+   * is computed here because a JSX comment cannot sit in an attribute position.
+   */
+  const band = running !== null
+    ? {
+        band: {
+          text: fill(locale, "trial.band",
+                     { day: running.day_of, of: running.of_days }),
+          tone: "warning" as const,
+        },
+      }
+    : lead.going_cold
+      ? { band: { text: text("lead.bandCold"), tone: "warning" as const } }
+      : {};
 
   return (
     <div className="stack">
@@ -124,9 +163,7 @@ export default async function LeadPage({
         name={
           name ?? <Withheld locale={locale} reason="member.withheldIdentity" />
         }
-        {...(lead.going_cold
-          ? { band: { text: text("lead.bandCold"), tone: "warning" as const } }
-          : {})}
+        {...band}
         subline={
           <>
             {lead.source === null
@@ -145,22 +182,93 @@ export default async function LeadPage({
         }
       />
 
-      <section className="metrics" aria-label={text("lead.title")}>
-        <MetricCell label={text("lead.metaStage")} value={stage} />
-        <MetricCell
-          label={text("lead.metaSince")}
-          value={sinceLabel(locale, lead.hours_since_contact)}
-        />
-        <MetricCell
-          label={text("lead.metaTouchpoints")}
-          value={String(lead.touchpoint_count)}
-        />
-        <MetricCell
-          label={text("lead.metaNext")}
-          value={lead.next_action ?? text("leads.noNext")}
-          {...(lead.next_action_on !== null ? { comparison: lead.next_action_on } : {})}
-        />
-      </section>
+      {/* **The metric row is the trial's four while one is running**, which is ADM-CRM-05's
+          own card: `4 VISITS · 4 CLASSES · 2 DAYS LEFT · High ENGAGEMENT`. A row that showed
+          the sales four beside them would be eight cells where the canvas draws four, and the
+          sales figures are the ones a trial has already answered -- the stage is "on trial"
+          and the last contact is a visit. */}
+      {running === null ? (
+        <section className="metrics" aria-label={text("lead.title")}>
+          <MetricCell label={text("lead.metaStage")} value={stage} />
+          <MetricCell
+            label={text("lead.metaSince")}
+            value={sinceLabel(locale, lead.hours_since_contact)}
+          />
+          <MetricCell
+            label={text("lead.metaTouchpoints")}
+            value={String(lead.touchpoint_count)}
+          />
+          <MetricCell
+            label={text("lead.metaNext")}
+            value={lead.next_action ?? text("leads.noNext")}
+            {...(lead.next_action_on !== null ? { comparison: lead.next_action_on } : {})}
+          />
+        </section>
+      ) : (
+        <section className="metrics" aria-label={text("trial.engagement")}>
+          <MetricCell
+            label={text("trial.visits")}
+            value={formatInteger(running.visits, numbering)}
+          />
+          <MetricCell
+            label={text("trial.classes")}
+            value={formatInteger(running.classes, numbering)}
+          />
+          <MetricCell
+            label={text("trial.daysLeft")}
+            value={formatInteger(running.days_left, numbering)}
+          />
+          {/* **A word, never the stored band.** A vocabulary the backend stores is never a
+              label, which this app has five recorded defects from -- and `null` falls through
+              to the stored form rather than to a guess, because the set is the server's and
+              may grow. */}
+          <MetricCell
+            label={text("trial.engagement")}
+            value={(() => {
+              const key = engagementWord(running.engagement);
+              return key === null ? running.engagement : text(key);
+            })()}
+          />
+        </section>
+      )}
+
+      {/* ADM-CRM-05's consequence panel: the urgency, the sentence, and the one action --
+          which this build cannot take, so it says what it would take instead. */}
+      {running === null ? null : (
+        <section className="page-section" aria-labelledby="lead-trial">
+          <h2 id="lead-trial">
+            {running.ends_tomorrow || running.days_left <= 1
+              ? text(urgencyKey(running))
+              : fill(locale, "trial.running", { count: running.days_left })}
+          </h2>
+          <p>{text(usageSentence(running))}</p>
+          <ProseNote>{text("trial.visitsAreEntries")}</ProseNote>
+          <ProseNote>{text("trial.engagementIsUse")}</ProseNote>
+          {/* **One `dd` per `dt`.** `.facts` is a two-column grid whose items are the `dt`
+              and the `dd` themselves, so a second `dd` under one `dt` is auto-placed into a
+              track with **zero width**: 5,687 pixels tall, `visibility: visible`, and a box
+              a reader cannot see -- which Playwright correctly calls hidden. The membership
+              block paid for the other half of this rule, where wrapping each pair in a
+              `<div>` made the div the grid item and put both labels on one row. */}
+          <dl className="facts">
+            <dt>{text("trial.convert")}</dt>
+            <dd>{text("trial.convertNeedsAPlan")}</dd>
+            <dt>{text("trial.takeThePayment")}</dt>
+            <dd>{text("trial.convertTakesNoPayment")}</dd>
+          </dl>
+        </section>
+      )}
+
+      {/* **Which of the two absences this is.** A reader who may not make the card's three
+          reads is told so; a reader who may and got nothing back had a request fail, which is
+          a different fact with a different next step. **Not a note for "no trial"**: three of
+          the five board columns are people without one, so the ordinary state says nothing and
+          the sales metric row above is the screen. */}
+      {mayVisits.allowed && mayBookings.allowed ? (
+        trial === null ? <ProseNote>{text("error.unexpected")}</ProseNote> : null
+      ) : (
+        <ProseNote>{text("trial.refused")}</ProseNote>
+      )}
 
       {/* **The empty state is not inside the list.** `Timeline` renders an `<ol>`, and an
           `<ol>` may hold only `<li>` -- a banner in there is an axe violation, which the

@@ -153,6 +153,16 @@ on its author. One command covers everything a local run can answer:
 tools/local_ci.sh
 ```
 
+**And it omitted two of CI's own web steps until this session**, which is the gap it exists
+to close reappearing inside it: the loop ran `audit:ci`, `lint`, `design:check`,
+`tokens:check`, `test:foundation` and `typecheck`, while CI's web job also runs `npm test` --
+the Vitest component suite, the only layer that renders a tree and therefore the only one
+that catches a hand-written fixture or an accessibility violation -- and `npm run build`, the
+only step that compiles the client/server boundary this app has two recorded 500s from.
+Found by adding a component test and noticing the gate said nothing about it. **A script
+whose whole purpose is "I ran the checks CI runs" is itself a claim to re-derive against the
+workflow**, not once when it is written.
+
 It omits only what needs Docker (the container build, its smoke test, the rollback rehearsal)
 and the browser suite, which needs a provisioned fixture and a port. **It also runs Python
 with `-B`, as CI does**, because the domain-closure check refuses a `__pycache__` inside a
@@ -4793,8 +4803,8 @@ Known gaps, deliberate:
   converted member in the trial column for ever, which is the defect the chain's reader was
   written for, met from a new direction. And **live by the dates rather than the status
   cache**, which is MOD-022's own rule for a door, so a trial that ran out yesterday is in
-  neither column. What is still owed is the *screens* -- ADM-CRM-05 and ADM-CRM-06 -- and the
-  conversion's charge, which is the payment provider.
+  neither column. **ADM-CRM-05 is built** -- see "The web app" -- so what is owed is
+  ADM-CRM-06 and the conversion's charge, which is the payment provider.
 - **No lost and no reopen**, which is slice 3, and `crm_lead_interests` has no withdrawal for
   the same reason: there is no UPDATE and no DELETE grant on it, so an interest recorded by
   mistake is uncorrectable on a routine permission. That is MOD-013's "an irreversible act must
@@ -5033,6 +5043,35 @@ renders another nests it -- invalid HTML, and it costs *both* their landmark rol
 rendered correctly and `main` was not in the accessibility tree at all. Found by reading the
 tree out of a failing spec; no assertion about text could have seen it, because the text was
 all there.
+
+**ADM-CRM-05 is the trial running, and it is a *state* of ADM-CRM-03 rather than a screen of
+its own** -- which the canvas says by labelling one card with both ids. So the band becomes
+`DAY 6 OF 7`, the metric row becomes the trial's four cells and one section carries the
+urgency, the sentence and the conversion; everything else on the lead profile stays. Its
+decisions are argued in `contracts/ui/design-compliance.md`; three things are worth carrying
+here:
+
+- **It describes use and refuses to predict.** The drawn canvas's fourth cell is
+  `ENGAGEMENT` and the prototype calls the same cell `CONVERSION LIKELIHOOD` -- a prediction
+  about a person, which MOD-020 refuses outright for the no-show score. The drawn canvas is
+  the deliverable and the same reasoning holds, so the cell says how much of the trial has
+  been used, which is what the canvas's own prose argues from.
+- **Every figure is the server's and inclusive of today.** `DAY 6 OF 7` beside `2 DAYS LEFT`
+  beside "ends tomorrow" only agree under the inclusive reading, and one unit test pins all
+  three against one window. A browser deriving them would count days in the wrong frame,
+  which this app has three recorded defects from.
+- **Three permissions for one card.** The window is MOD-017's, the visits MOD-022's entry
+  events and the classes MOD-020's settled bookings, so a reader holding only the lead read
+  would otherwise get two other modules' figures out of a CRM route.
+
+**And it corrected the coverage index.** `ADM-CRM-05` was one of three screens
+`screens.generated.json` called *genuinely unspecified* -- and its whole design was in the
+folder: the extractor's title pattern is "one or more ids, then the description", so a card
+titled `ADM-CRM-03 · LEAD PROFILE · ADM-CRM-05 · TRIAL RUNNING` lost the second id into the
+prose. It now collects every `·`-separated segment that is exactly an id, which is a co-label;
+an id mentioned *inside* a description is still a cross-reference and still attributed to
+nobody. **Exactly one screen moved** -- 168 of 178 specified, two unspecified -- which is what
+makes the change surgical rather than a re-reading of the folder.
 
 **ADM-CRM-04's add form is `/leads/new`, and it is where the duplicate the whole pipeline
 rests on is prevented rather than cleaned up.** Its decisions, and the two defects it found
@@ -6502,8 +6541,19 @@ on one of the eight external causes, or put in the backlog under the module whos
 `GateCoverageTests.UNGATED`'s discipline one layer up: adding to either list is meant to be
 uncomfortable.
 
-It reads **90 specified screens on Admin and Front desk: 40 in the inventory, 6 states of
-those, 12 blocked on something external, 32 in the backlog**, and it names the five surfaces
+**And "named" and "a state of" answer different questions, which ADM-CRM-05 is the case that
+settled.** It shares `/leads/{lead_id}` with ADM-CRM-03 -- the canvas says so by titling one
+card with both ids -- so the first version of that slice put it in `STATE_OF` on exactly that
+reading, and the check refused it for being in the inventory as well. The check is right:
+`STATE_OF` means "no entry of its own, because the parent's covers it", which is true of the
+six remaining ones -- filtered views of one board, with no decisions and no tests of their
+own. A screen with its own inventory entry, its own domain module, its own specs and its own
+arguments is *built*, whatever route it is reached at. **Routes are not the unit; accounted-for
+work is**, and a shared route is the design's call rather than a reason to let a parent's
+section stand in for a screen somebody built.
+
+It reads **91 specified screens on Admin and Front desk: 48 in the inventory, 6 states of
+those, 12 blocked on something external, 25 in the backlog**, and it names the five surfaces
 it does *not* cover with their counts. It checks both directions -- a reason for a screen the inventory now argues is a
 stale excuse and fails, which is the schedule board's "gap note that outlived its gap" caught
 structurally. My own hand audit had said 43 were missing; the truth was that most were built,
@@ -6598,8 +6648,8 @@ edges exist, and being a trial is orthogonal to that), and not a boolean beside 
 `mem_memberships.ends_on`, which already existed and was written only by a cancellation**:
 deriving it at activation buys the door's refusal, the grant sweep and the countdown, all three
 already built, where a trial clock of MOD-027's own would be a fourth definition of when a
-trial ends. So the board's last two columns are real and what is left of slice 2 is the two
-screens, ADM-CRM-05 and ADM-CRM-06 -- whose own "Take 21.29" button is the payment provider.
+trial ends. So the board's last two columns are real, ADM-CRM-05 draws the trial running, and
+what is left of slice 2 is ADM-CRM-06 -- whose own "Take 21.29" button is the payment provider.
 
 The backlogged Admin screens are still mostly MOD-027's, more than any other module's, and each
 says what is left in it rather than that the module does not exist. Four things that record

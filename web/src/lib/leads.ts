@@ -99,6 +99,62 @@ export type LeadDetail = LeadRow & {
   touchpoints_truncated: boolean;
 };
 
+/**
+ * What `GET /crm/leads/{id}/trial` answers.
+ *
+ * **A discriminated union on `on_trial`**, because a lead with no trial is the ordinary case
+ * -- three of the five board columns -- and a shape that carried four optional zeros would let
+ * a screen render `0 VISITS` for somebody who is not on a trial at all. That is MOD-014's "a
+ * confident wrong answer where a missing one would have been honest", which its own 360 was
+ * bitten by.
+ */
+export type TrialCard =
+  | {
+      on_trial: false;
+      lead_id: string;
+      person_id: string;
+      stage: string;
+      not_on_a_trial: string;
+    }
+  | {
+      on_trial: true;
+      lead_id: string;
+      person_id: string;
+      stage: string;
+      membership_id: string;
+      starts_on: string;
+      ends_on: string;
+      trial_days: number;
+      visits: number;
+      classes: number;
+      day_of: number;
+      of_days: number;
+      days_left: number;
+      ends_tomorrow: boolean;
+      /** One of ENGAGEMENT, which is how much of the trial has been used. */
+      engagement: string;
+    };
+
+/**
+ * The reader's word for an engagement band, or `null` where this build has none.
+ *
+ * **Use, not likelihood.** The drawn canvas's cell is `ENGAGEMENT` and the prototype calls the
+ * same cell conversion likelihood -- a prediction about a person, which MOD-020 refuses
+ * outright for the no-show score because "paragraph 1889's 'must not discriminate unlawfully'
+ * is a property of a population under a model rather than of an expression". So these four
+ * words describe what happened.
+ */
+export function engagementWord(band: string): MessageKey | null {
+  return ENGAGEMENT_WORDS[band] ?? null;
+}
+
+const ENGAGEMENT_WORDS: Record<string, MessageKey> = {
+  none: "trial.engagementNone",
+  light: "trial.engagementLight",
+  steady: "trial.engagementSteady",
+  high: "trial.engagementHigh",
+};
+
 export type SourceRow = {
   source_id: string;
   source_key: string;

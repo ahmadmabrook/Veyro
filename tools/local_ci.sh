@@ -47,7 +47,15 @@ step "trusted gate suite"        $PY -m unittest discover -s tools/trusted_gate/
 step "screen contract identity"  node tools/screen_contracts/screen_contracts.mjs check-identity
 step "backend ruff"              $PY -m ruff check backend
 ( cd backend && ../.venv/bin/python3 -m mypy >/dev/null 2>&1 ) && echo "ok    backend mypy" || { fail=1; echo "FAIL  backend mypy"; }
-for s in audit:ci lint design:check tokens:check test:foundation typecheck; do
+# **CI's own web steps, in CI's order, and all of them.** This loop omitted two of them --
+# `npm test`, the Vitest component suite, and `npm run build` -- which is exactly the gap the
+# header above exists to close, found by adding a component test and noticing the gate said
+# nothing about it. `npm test` is the layer that renders a tree, so it is where a hand-written
+# fixture and an accessibility violation are caught; `build` is the only step that compiles
+# the client/server boundary, which this app has two recorded 500s from, and the rules file
+# records that `CI=1` alone does not build. Both are slower than the rest. They are still
+# cheaper than a red `main`.
+for s in audit:ci lint design:check tokens:check test:foundation test typecheck build; do
   out=$(cd web && npm run "$s" 2>&1); code=$?
   if [ "$code" -eq 0 ]; then printf 'ok    web %s\n' "$s"
   else fail=1; printf 'FAIL  web %s\n' "$s"; echo "$out" | tail -8 | sed 's/^/        /'; fi

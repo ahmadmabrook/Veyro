@@ -78,15 +78,15 @@ class DeviceApiTestCase(GatedApiTestCase):
             # is cached per tenant: each one costs two scrypt hashes to step up.
             published = self.client.post(
                 f"/fleet/types/{type_id}/publish", json=self.correlation(),
-                headers=self.headers(tenant_id, self.publisher(tenant_id)))
+                headers=self.headers(tenant_id, self.device_publisher(tenant_id)))
             self.assertEqual(published.status_code, 200, published.text)
         return type_id
 
-    def publisher(self, tenant_id: str) -> str:
+    def device_publisher(self, tenant_id: str) -> str:
         """A stepped-up session that may publish a device type, and did not author one."""
-        cached = getattr(self, "_publishers", None)
+        cached = getattr(self, "_device_publishers", None)
         if cached is None:
-            cached = self._publishers = {}
+            cached = self._device_publishers = {}
         if tenant_id not in cached:
             cached[tenant_id] = self.stepped_grant(
                 tenant_id, ["devices.type.publish", "devices.type.write",

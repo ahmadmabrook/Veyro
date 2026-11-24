@@ -74,23 +74,37 @@ function documentsThatTitleScreens() {
   return found;
 }
 
-test("the extraction covers 167 of the 178 V1 screens", () => {
+test("the extraction covers 168 of the 178 V1 screens", () => {
   const { v1_screens, specified, no_ui, unspecified } = generated.coverage;
   assert.equal(v1_screens, 178, "the registry's V1 count moved");
-  // Pinned. A narrowed boundary rule drops this and fails here rather than being written into
-  // the compliance ledger as a gap in the design.
-  assert.equal(specified, 167);
+  // **Pinned, and it fired in the direction this comment did not anticipate.** It warned that
+  // a *narrowed* boundary rule would drop the count and fail here rather than be written into
+  // the compliance ledger as a gap in the design. What happened was the opposite: the title
+  // rule *widened* -- it now collects every `·`-separated segment that is exactly an id, so a
+  // card titled with two screens attributes both -- and one screen moved from unspecified to
+  // specified. A tripwire is symmetric whether or not its reason is, which is the useful half:
+  // either direction brings somebody to this file, and this one brought a screen whose design
+  // had been in the folder all along.
+  assert.equal(specified, 168);
   assert.equal(no_ui, 8);
-  assert.equal(unspecified, 3);
+  assert.equal(unspecified, 2);
+  // The staleness-proof half, which holds whatever the three literals are.
   assert.equal(specified + no_ui + unspecified, v1_screens);
 });
 
-test("the three unspecified screens are named, not counted", () => {
+test("the unspecified screens are named, not counted", () => {
   // §5 of the directive: record the precise missing information rather than inventing a design
-  // or certifying compliance. These three have a registry identity and a one-line note and no
+  // or certifying compliance. These two have a registry identity and a one-line note and no
   // drawn screen anywhere in the folder.
+  //
+  // **`ADM-CRM-05` was the third and was never unspecified.** Its entire design is in Batch F,
+  // on a card titled `ADM-CRM-03 · LEAD PROFILE · ADM-CRM-05 · TRIAL RUNNING` -- two screens,
+  // each with its own label -- and the extractor's pattern took the ids before the *first*
+  // label, leaving the second in the prose. So this list said the design did not exist when
+  // what did not exist was the attribution. The property under test is unchanged and is the
+  // reason to keep the test rather than the list: an unspecified screen is **named**, so a
+  // reader can go and look, and the thing that was wrong here was found by exactly that.
   assert.deepEqual(generated.coverage.unspecified_ids.slice().sort(), [
-    "ADM-CRM-05",
     "ADM-POS-02",
     "MBR-33",
   ]);

@@ -164,6 +164,7 @@ READ_ROUTES = [
     ("get", "/crm/board", None),
     ("get", "/crm/leads", None),
     ("get", f"/crm/leads/{_ID}", None),
+    ("get", f"/crm/leads/{_ID}/trial", None),
 ]
 
 WRITE_ROUTES = [

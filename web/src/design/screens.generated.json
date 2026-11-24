@@ -4,11 +4,10 @@
   "authority": "These are the screen designs. contracts/ui/screen-contracts.yaml is the identity registry and carries no layout; this carries what each screen actually specifies.",
   "coverage": {
     "v1_screens": 178,
-    "specified": 167,
+    "specified": 168,
     "no_ui": 8,
-    "unspecified": 3,
+    "unspecified": 2,
     "unspecified_ids": [
-      "ADM-CRM-05",
       "ADM-POS-02",
       "MBR-33"
     ]
@@ -333,6 +332,12 @@
       "sections": [
         {
           "kind": "screen",
+          "title": "ADM-CC-07 · RESOLVED TODAY · ADM-CRM-02 · LEAD TABLE",
+          "file": "veyro-product-experience-design/project/Veyro V1 Batch F Command and CRM.dc.html",
+          "text": "ADM-CC-07 · RESOLVED TODAY · ADM-CRM-02 · LEAD TABLE\nTwo grids at Compact"
+        },
+        {
+          "kind": "screen",
           "title": "ADM-CRM-02 · LEAD LIST · TABLE VIEW",
           "file": "veyro-product-experience-design/project/Veyro V1 Batch F Command and CRM.dc.html",
           "text": "ADM-CRM-02 · LEAD LIST · TABLE VIEW\nNo contact 48h · 7\nTrial ending · 4\nMine · 12\nBoard view\nLEAD\nSOURCE\nOWNER\nAGE\nNEXT ACTION\n{{ l.name }}\n{{ l.source }}\n{{ l.owner }}\n{{ l.age }}\n{{ l.next }}\nSame grid component as the members list at the same 34px. Sales sees their own leads by default with a Mine toggle; a Club Manager sees the team.\nAge is the sortable column that matters\n— a lead's value decays by the hour, so it carries colour where the others do not."
@@ -395,8 +400,15 @@
       "arabic_reference": null,
       "registry_status": "GAP",
       "registry_note": "Trial clock, usage, conversion prompt",
-      "specified": false,
-      "sections": []
+      "specified": true,
+      "sections": [
+        {
+          "kind": "screen",
+          "title": "ADM-CRM-03 · LEAD PROFILE · ADM-CRM-05 · TRIAL RUNNING",
+          "file": "veyro-product-experience-design/project/Veyro V1 Batch F Command and CRM.dc.html",
+          "text": "ADM-CRM-03 · LEAD PROFILE · ADM-CRM-05 · TRIAL RUNNING\nRana Sabbagh\nSweifieh open day · Yasmin ·\n+962 79 411 0288\nDAY 6 OF 7\nHer trial ends tomorrow\nFour visits, four classes, all spin. She has used the trial more than most — this is a conversion, not a chase.\nConvert to member\n4\nVISITS\n4\nCLASSES\n2\nDAYS LEFT\nHigh\nENGAGEMENT\nTOUCHPOINTS\nToday\nAttended 19:00 spin · 4th class\n15 Aug\nTrial started · credential issued\n13 Aug\nMet Yasmin at the open day · asked twice about spin"
+        }
+      ]
     },
     {
       "id": "ADM-CRM-06",
@@ -1024,6 +1036,12 @@
       "sections": [
         {
           "kind": "screen",
+          "title": "ADM-PAY-04 · ADM-PAY-08 · ADM-PAY-07",
+          "file": "veyro-product-experience-design/project/Veyro V1 Batch H Payments and Retail.dc.html",
+          "text": "ADM-PAY-04 · ADM-PAY-08 · ADM-PAY-07\nTake payment, partial refund, wallet"
+        },
+        {
+          "kind": "screen",
           "title": "ADM-PAY-07 · WALLET & CREDITS",
           "file": "veyro-product-experience-design/project/Veyro V1 Batch H Payments and Retail.dc.html",
           "text": "ADM-PAY-07 · WALLET & CREDITS\nJOD 12.50\nDANA'S BALANCE\n8.00\nEXPIRES 30 SEP\nDATE\nMOVEMENT\nAMOUNT\n{{ w.date }}\n{{ w.what }}\n{{ w.amt }}\nTop up\nAdd credit · tier 3\nAlways labelled credit, never a negative balance. Each entry names its origin — a cancelled class, an overpayment, a goodwill gesture — because unexplained credit is indistinguishable from an error."
@@ -1094,6 +1112,12 @@
       "registry_note": "Evidence deadline, submission, outcome",
       "specified": true,
       "sections": [
+        {
+          "kind": "screen",
+          "title": "ADM-PAY-06 · ADM-PAY-09 · ADM-PAY-10",
+          "file": "veyro-product-experience-design/project/Veyro V1 Batch H Payments and Retail.dc.html",
+          "text": "ADM-PAY-06 · ADM-PAY-09 · ADM-PAY-10\nDunning rules, the cash drawer, and a disputed charge"
+        },
         {
           "kind": "screen",
           "title": "ADM-PAY-10 · DISPUTE · ACCOUNTANT ONLY",
@@ -1187,6 +1211,12 @@
       "registry_note": "V1 Admin Billing c3 · roster, waitlist, cancel path",
       "specified": true,
       "sections": [
+        {
+          "kind": "screen",
+          "title": "ADM-PAY-05 · FAILED PAYMENT RECOVERY · ADM-SCH-02 · CLASS ROSTER",
+          "file": "veyro-product-experience-design/project/Veyro V1 Admin Billing and Ops.dc.html",
+          "text": "ADM-PAY-05 · FAILED PAYMENT RECOVERY · ADM-SCH-02 · CLASS ROSTER\nTwo workspaces"
+        },
         {
           "kind": "screen",
           "title": "ADM-SCH-02 · CLASS ROSTER · THU 19:00 SPIN",
@@ -1565,6 +1595,12 @@
       "sections": [
         {
           "kind": "screen",
+          "title": "ADM-COM-02 · 03 · 04 · ADM-TSK-01",
+          "file": "veyro-product-experience-design/project/Veyro V1 Batch J Staff and Communication.dc.html",
+          "text": "ADM-COM-02 · 03 · 04 · ADM-TSK-01\nTemplates, broadcast, notifications, tasks"
+        },
+        {
+          "kind": "screen",
           "title": "ADM-TSK-01 · TASKS",
           "file": "veyro-product-experience-design/project/Veyro V1 Batch J Staff and Communication.dc.html",
           "text": "ADM-TSK-01 · TASKS\nMine · 4\nTeam · 11\nOverdue · 2\n☐\n{{ t.name }}\n{{ t.meta }}\nTasks born from an exception link back to it. Completing the task does not resolve the exception —\nthe work and the record of the work are separate\n, which is why the Command Center count does not drop when someone ticks a box here.\nThree sources: assigned by a person, generated by an automation, or suggested by Veyro. The source is always named — a task nobody can account for gets ignored.\nCOMPONENTS · PermissionMatrix · DataGrid(Compact) ×2 · SideSheet ×3 · GrantRow · ConsentFilter · MessagePreview(bilingual) · TemplateRow · NotificationMatrix · TaskRow · zero new tokens"
@@ -1635,6 +1671,12 @@
       "registry_note": "Per-run outcome, failures, retry",
       "specified": true,
       "sections": [
+        {
+          "kind": "screen",
+          "title": "ADM-AUT-01 · ADM-AUT-03",
+          "file": "veyro-product-experience-design/project/Veyro V1 Batch K Automation Reports and AI.dc.html",
+          "text": "ADM-AUT-01 · ADM-AUT-03\nWhat runs unattended, and what it did"
+        },
         {
           "kind": "screen",
           "title": "ADM-AUT-03 · RUN HISTORY · WIN-BACK RULE",
@@ -1809,6 +1851,12 @@
       "sections": [
         {
           "kind": "screen",
+          "title": "ADM-COM-01 · WHATSAPP · ADM-SET-03 · JOFOTARA",
+          "file": "veyro-product-experience-design/project/Veyro V1 Admin Billing and Ops.dc.html",
+          "text": "ADM-COM-01 · WHATSAPP · ADM-SET-03 · JOFOTARA\nTwo Jordan-shaped screens"
+        },
+        {
+          "kind": "screen",
           "title": "ADM-SET-03 · TAX & E-INVOICING · JORDAN",
           "file": "veyro-product-experience-design/project/Veyro V1 Admin Billing and Ops.dc.html",
           "text": "ADM-SET-03 · TAX & E-INVOICING · JORDAN\nTax and invoicing\nNadi Group · Jordan · JOD\nTAX NUMBER\n1099238471\nSALES TAX RATE\n16%\nRetail only. Memberships are exempt in Jordan.\nCONNECTED\nJoFotara e-invoicing\nSubmitting since 14 June.\n1,847 invoices sent, 3 rejected this month\n— all three for a missing buyer tax number, all corrected and resubmitted.\nTest connection\nSubmission log\nBuyer tax number is required for business sales.\nWhen a member is registered as a company, the field becomes mandatory at the point of sale rather than failing later at submission — which is what caused this month's three rejections, and is now prevented upstream.\nGlobal shape, local content.\nThis screen is\nTaxIntegration\n— JoFotara is the Jordan adapter. A UK tenant sees HMRC MTD in the same frame with different fields. Nothing here is hard-coded to Jordan except the adapter's own configuration.\nREMAINING ADMIN V1 · SPECIFIED AGAINST DRAWN SHAPES\nThirty-three screens, each named and dimensioned\nEvery row states its parent shape, what differs, its states and its permission behaviour. That is the engineering-handoff bar from §64 — an implementer needs no product decision from any of these, only the component library and this row.\nSCREEN ID\nSCREEN\nPARENT SHAPE\nWHAT DIFFERS · STATES · PERMISSIONS\n{{ s.id }}\n{{ s.name }}\n{{ s.parent }}\n{{ s.diff }}"
@@ -1973,6 +2021,12 @@
       "registry_note": "Email, password, MFA challenge",
       "specified": true,
       "sections": [
+        {
+          "kind": "screen",
+          "title": "ADM-SET-01 · 02 · 04 · 08 · ADM-AUTH-01 · 02",
+          "file": "veyro-product-experience-design/project/Veyro V1 Batch L Settings Search and Auth.dc.html",
+          "text": "ADM-SET-01 · 02 · 04 · 08 · ADM-AUTH-01 · 02\nOrganisation, clubs, providers, security, and the door"
+        },
         {
           "kind": "screen",
           "title": "ADM-AUTH-01 · SIGN IN",
@@ -2475,6 +2529,12 @@
       "sections": [
         {
           "kind": "screen",
+          "title": "POS-03 · SPLIT PAYMENT · CCH-05 · CLIENT PROFILE",
+          "file": "veyro-product-experience-design/project/Veyro V1 Front Desk and Coach.dc.html",
+          "text": "POS-03 · SPLIT PAYMENT · CCH-05 · CLIENT PROFILE\nTwo screens with no precedent elsewhere"
+        },
+        {
+          "kind": "screen",
           "title": "CCH-05 · CLIENT PROFILE · 390 WIDE",
           "file": "veyro-product-experience-design/project/Veyro V1 Front Desk and Coach.dc.html",
           "text": "CCH-05 · CLIENT PROFILE · 390 WIDE\nAhmad Nabulsi\nWeek 8 of 12 · 4 credits left\n19 days since he trained\nWas coming 3× a week. No message, no cancellation — he just stopped. Session today at 09:45.\nTraining\nNutrition\nProgress\nNotes\nCURRENT PROGRAMME\nLower-body strength · 12 weeks\n8 done · 1 missed · 3 remaining\nLAST SESSION · 31 JULY\nSquat\n82.5 × 5\n· RDL\n100 × 8\n· leg press\n180 × 10\n\"Knee felt tight on the second set. Watch it next time.\"\nLimitations\nLeft knee — previous meniscus surgery, 2019. No deep loaded flexion.\nRecorded at intake.\nStart today's session"
@@ -2813,6 +2873,12 @@
       "registry_note": "Shared-device consideration",
       "specified": true,
       "sections": [
+        {
+          "kind": "screen",
+          "title": "CCH-15 · CCH-16 · CCH-18 · CCH-19",
+          "file": "veyro-product-experience-design/project/Veyro V1 Batch N Coach.dc.html",
+          "text": "CCH-15 · CCH-16 · CCH-18 · CCH-19\nMessaging, schedule, settings, and the shared iPad"
+        },
         {
           "kind": "screen",
           "title": "CCH-19 · SIGN IN · SHARED GYM iPAD",
@@ -3862,6 +3928,12 @@
       "registry_note": "Per-tenant, percentage, kill switch",
       "specified": true,
       "sections": [
+        {
+          "kind": "screen",
+          "title": "CON-06 · 07 · 13 · CON-10 · 11 · 12 · 16",
+          "file": "veyro-product-experience-design/project/Veyro V1 Batch Q Console.dc.html",
+          "text": "CON-06 · 07 · 13 · CON-10 · 11 · 12 · 16\nSubscriptions, platform, and the door"
+        },
         {
           "kind": "screen",
           "title": "CON-10 · FEATURE FLAGS",

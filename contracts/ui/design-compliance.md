@@ -259,14 +259,23 @@ their canvas prefixes matched nothing.
 
 | | |
 | --- | --- |
-| **Specified** — drawn, with copy, states and layout rules | **167** |
+| **Specified** — drawn, with copy, states and layout rules | **168** |
 | `NO-UI` — the registry says the screen is not needed | 8 |
-| **Genuinely unspecified** | **3** |
+| **Genuinely unspecified** | **2** |
 
-The three are `ADM-CRM-05` (trial in progress · day N of 7), `ADM-POS-02` (inventory and
-stock) and `MBR-33` (security and devices). Each has a registry identity and a one-line note
-and no drawn screen anywhere in the folder; they are named in
-`screens.generated.json → coverage.unspecified_ids` and nothing invents around them.
+The two are `ADM-POS-02` (inventory and stock) and `MBR-33` (security and devices). Each has a
+registry identity and a one-line note and no drawn screen anywhere in the folder; they are
+named in `screens.generated.json → coverage.unspecified_ids` and nothing invents around them.
+
+**It was three, and the third was drawn all along.** `ADM-CRM-05` read as unspecified because
+Batch F titles one card **`ADM-CRM-03 · LEAD PROFILE · ADM-CRM-05 · TRIAL RUNNING`** — two
+screens on one card, each with its own name — and the extractor took the ids *before the first
+label*, so the second sat in the description and was never attributed. Its whole design was in
+the file: a trial clock, four figures, a sentence and a button, indexed as a screen nobody had
+drawn. The extractor now collects every `·`-separated segment that is **exactly** an id, which
+is the shape of a co-label; an id mentioned inside prose ("ADM-MEM-11 exists because prevention
+is never perfect") is still a cross-reference and still attributed to nobody. Exactly one
+screen moved, which is what makes the fix surgical rather than a re-reading of the folder.
 
 **And the registry's own `status` column is stale, which is why it is not the authority here.**
 It marks 41 screens `DONE` and 129 `GAP`, while the batch documents drew 126 more after it was
@@ -345,7 +354,7 @@ of the directive asks for; this section is the implementation column.
 | V1 screens in the registry | 178 |
 | Specified in the design folder | **167** |
 | `NO-UI` — the registry says no screen is needed | 8 |
-| Genuinely unspecified (`ADM-CRM-05`, `ADM-POS-02`, `MBR-33`) | 3 |
+| Genuinely unspecified (`ADM-POS-02`, `MBR-33`) | 2 |
 | **Routes in `web/`** | **24** |
 | Of those, built or rebuilt from their design | **12** |
 
@@ -2081,6 +2090,78 @@ needs a conversion to count, which needs the trial — the same gap as the colum
 
 **The third chip is not offered.** *"Trial ending · 4"* is slice 2's, and a chip that filtered
 to nothing would read as a club with no trials ending rather than as a build with no trials.
+
+## ADM-CRM-05 — the trial running, as a state of the lead profile
+
+**The canvas.** One card titled `ADM-CRM-03 · LEAD PROFILE · ADM-CRM-05 · TRIAL RUNNING`:
+`DAY 6 OF 7` as a band over the name, **"Her trial ends tomorrow"** with *"Four visits, four
+classes, all spin. She has used the trial more than most — this is a conversion, not a
+chase"*, a `Convert to member` button, and four cells — `4 VISITS · 4 CLASSES · 2 DAYS LEFT ·
+High ENGAGEMENT`.
+
+- **ADM-CRM-05 · trial running** — the trial state of `/leads/{lead_id}`, over
+  `GET /crm/leads/{id}/trial`. Not a route of its own: the card's title names both screens, so
+  the band, the metric row and one section change and everything else stays.
+
+### The six things this screen had to settle
+
+**It describes use and refuses to predict.** The drawn canvas's fourth cell is `ENGAGEMENT`;
+the prototype runtime calls the same cell `CONVERSION LIKELIHOOD`, which is a prediction about
+a person — and MOD-020 refuses exactly that for the no-show score, because *"paragraph 1889's
+'must not discriminate unlawfully' is a property of a population under a model rather than of
+an expression, so no function can promise it"*. The drawn canvas is the deliverable and the
+same reasoning holds, so the cell says how much of the trial has been used. That is also what
+the canvas's own prose argues from.
+
+**Every figure is inclusive of the day it is counted on**, because the canvas's three date
+numbers only agree that way: `DAY 6 OF 7` beside `2 DAYS LEFT` beside "ends tomorrow" is a
+seven-day trial on its sixth day with today and tomorrow left. One unit test pins all three
+against one window, because an exclusive count gets two of the three right and a reader would
+not notice which.
+
+**The band measures visits over the days *elapsed*, not over the trial.** On day two of seven,
+two visits is somebody who has come every day; measured against seven it is 0.29 and reads as
+light — so a band keyed on the whole trial would improve as the trial ran out, which is useless
+on the day it matters. And `none` is its own band rather than the bottom of a scale: "nobody has
+been in" is a different conversation from "they came once".
+
+**A visit and a class are different facts and the screen says so.** A visit is MOD-022's entry
+event — somebody came through a door — and a class is a MOD-020 booking settled `attended`, so
+a member who trains in the gym four times has four visits and no classes. The canvas draws both
+cells for that reason, and `attended` rather than `booked` because a booking nobody turned up
+to is a `no_show`.
+
+**Three permissions, because the card carries three modules' facts.** The window is MOD-017's,
+the visits are MOD-022's and the classes are MOD-020's — so a reader holding only the lead read
+would otherwise get the other two modules' figures out of a CRM route, which is MOD-010's
+`events.event.read` finding. All three rather than a partial card: the canvas draws four cells
+together and three of them is not the card.
+
+**And the figures are the server's, which is the opposite of the Member 360's judgement.** That
+screen composes per block and renders a refused one as refused; this one is a single read,
+because every figure on it is an arithmetic over today and a browser comparing dates against
+its own clock counts in the wrong frame — which this app has three recorded defects from. A
+surface handed four counts and asked to work out "day 6 of 7" would be the fourth.
+
+**What is named rather than drawn.** The canvas's `Convert to member` button: converting is a
+plan change onto the membership being sold, which needs a stepped-up financial permission and a
+price, and the payment behind that button is the provider. The arithmetic is built —
+`/memberships/{id}/plan-change-preview` prorates the days left on this product against the one
+being moved to — so what is missing is the form and the charge, both named on the screen. And
+*"all spin"*: nothing here counts classes by what they were, and naming a class the read did
+not identify would be the confident wrong answer MOD-014's own 360 was bitten by.
+
+### Two records this screen corrected
+
+**`ADM-CRM-05` was listed as one of three genuinely unspecified screens, and its design was in
+the folder all along.** The extractor's title pattern is *one or more ids, then the
+description*, so a card labelled with two ids lost the second — see the coverage table above
+for the fix and what it moved.
+
+**And the lead profile's own gap note said "nothing in this build marks a trial product"**,
+which ADR-0010 D7 made false the day it landed. Found by a browser assertion written against
+the *metric row* matching that sentence at the foot of the page, which is the third stale gap
+note this surface has rendered.
 
 ## ADM-CRM-04 — add a lead, and the duplicate the door prevents
 

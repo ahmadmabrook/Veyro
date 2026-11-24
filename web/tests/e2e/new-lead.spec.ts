@@ -168,7 +168,16 @@ test.describe("the add-lead form at an ordinary sign-in", () => {
       .toBeVisible();
     await expect(gaps.getByRole("term").filter({ hasText: "Assigning the lead" }))
       .toBeVisible();
-    await expect(gaps).toContainText("nothing in this build marks a product as a trial");
+
+    // **This asserted "nothing in this build marks a product as a trial", and ADR-0010 D7
+    // made that false.** It was the *reason* under the old state rather than the finding:
+    // what this panel is for is that each gap says what the form does not do and why, and
+    // the trial gap is now a flow with a screen of its own rather than a product this build
+    // cannot express. So the assertion is the reason that holds -- and the absence of the
+    // one that does not, which is the direction that cannot go stale the next time a gap
+    // closes behind it.
+    await expect(gaps).toContainText("an agreement, a signature and an activation");
+    await expect(gaps).not.toContainText("marks a product as a trial");
   });
 
   test("no accessibility violations, with the interruption on screen", async ({ page }) => {

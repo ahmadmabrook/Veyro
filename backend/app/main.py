@@ -9566,7 +9566,7 @@ def create_app(
     @app.get("/access/attendance")
     def read_person_attendance(
         tenant_id: TenantId, session: Session, person_id: str,
-        weeks: int = 8,
+        weeks: int = 8, from_date: date | None = None, to_date: date | None = None,
     ) -> dict[str, Any]:
         """When this member last came in, and how often they were coming before that.
 
@@ -9577,9 +9577,17 @@ def create_app(
         listed and why the Member 360 asks this gate separately from `people.person.read`.
         """
         permit(session, "access.decision.read")
+        # **Both dates or neither.** A half-named window would have the read choose the other
+        # end, and the figure is "visits between these two days" -- a count whose bounds the
+        # caller only half stated is a count nobody can check.
+        if (from_date is None) != (to_date is None):
+            raise InvalidRequest("a_window_needs_both_dates")
+        between = None if from_date is None or to_date is None else (from_date, to_date)
+        if between is not None and between[1] < between[0]:
+            raise InvalidRequest("a_window_cannot_end_before_it_starts")
         return access.person_attendance(
             tenant_pool, tenant_id, person_id=require_uuid(person_id, "person_id"),
-            weeks=weeks)
+            weeks=weeks, between=between)
 
     @app.get("/access/attendance/window")
     def read_entries_between(
@@ -10210,6 +10218,26 @@ def create_app(
             tenant_pool, tenant_id, require_uuid(lead_id, "lead_id"),
             may_read_summaries=("crm.touchpoint.write" in held_permissions(session)),
             limit=limit)
+
+    @app.get("/crm/leads/{lead_id}/trial")
+    def read_lead_trial(
+        tenant_id: TenantId, session: Session, lead_id: str
+    ) -> dict[str, Any]:
+        """ADM-CRM-05: the trial card on a lead's profile, or why there is not one.
+
+        **Three permissions, because the card carries three modules' facts.** The window is
+        MOD-017's, the visits are MOD-022's entry events and the classes are MOD-020's settled
+        bookings -- so a reader holding only the lead read would otherwise get MOD-022's and
+        MOD-020's figures out of a CRM route, which is MOD-010's `events.event.read` finding.
+        All three, rather than a partial card: the canvas draws four cells together and three
+        of them is not the card, and `issue_command` is the precedent for a route that charges
+        more than one.
+        """
+        permit(session, "crm.lead.read")
+        permit(session, "access.decision.read")
+        permit(session, "booking.booking.read")
+        return crm.read_trial(
+            tenant_pool, tenant_id, require_uuid(lead_id, "lead_id"))
 
     @app.post("/crm/leads/{lead_id}/touchpoints", status_code=201)
     def record_lead_touchpoint(

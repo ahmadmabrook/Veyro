@@ -1987,9 +1987,38 @@ def entries_between(
     }
 
 
+def visits_between(
+    conn: Connection[Any], person_id: str, from_date: date, to_date: date,
+) -> int:
+    """How many times this person came in between two local dates, both ends inclusive.
+
+    **One expression, two callers.** `person_attendance` answers it for its own named window
+    and MOD-027's trial card asks it on its own connection, so a second copy of the query
+    would be two definitions of "a visit" -- and the distinction this build already paid for
+    is that a visit is an **entry event**, never a granted decision: a card failing at the
+    door produces refused decisions for exactly the member whose attendance somebody is
+    checking.
+
+    **Each date converted in its own club's zone**, because a member who trains in two cities
+    experienced each visit on that city's day -- so one `date_trunc` in the host's zone would
+    put a visit outside the window for one of them.
+    """
+    row = conn.execute(
+        "SELECT count(*)"
+        " FROM plt01.acc_events e"
+        " JOIN plt01.acc_zones z ON z.zone_id = e.zone_id"
+        " JOIN plt01.locations l ON l.location_id = z.location_id"
+        " WHERE e.person_id = %s AND e.direction = 'entry'"
+        "   AND (e.occurred_at AT TIME ZONE l.timezone)::date >= %s"
+        "   AND (e.occurred_at AT TIME ZONE l.timezone)::date <= %s",
+        (person_id, from_date, to_date),
+    ).fetchone()
+    return int(row[0]) if row else 0
+
+
 def person_attendance(
     pool: Pool, tenant_id: str, *, person_id: str, as_of: date | None = None,
-    weeks: int = 8,
+    weeks: int = 8, between: tuple[date, date] | None = None,
 ) -> dict[str, Any]:
     """When this member last came in, and how often they were coming before that.
 
@@ -2011,6 +2040,14 @@ def person_attendance(
 
     The day is local to the location whose door they walked through -- `acc_events.occurred_at`
     is an instant and the club has a timezone, so "19d ago" is a count of local days.
+
+    **`between` is a named window and is not the same question as `entries_in_window`.** That
+    one is the habit -- the weeks *before the last visit*, which is what makes "was 3x a week"
+    past tense -- and it moves with the member. ADM-CRM-05 needs the count inside a window
+    somebody else chose: "4 VISITS" on a trial is visits between the trial's own two dates,
+    and measuring it over the habit window would count visits from before the trial started.
+    Two fields, because one name for both would be a figure whose meaning depended on the
+    caller.
     """
     if weeks < 1 or weeks > 52:
         raise InvalidRequest("bad_weeks")
@@ -2048,6 +2085,12 @@ def person_attendance(
                 # presence, and the first caller to forget renders `undefined`.
                 "lifetime_entries": 0, "chart_weeks": CHART_WEEKS, "by_week": [],
                 "recent": [], "recent_limit": RECENT_VISITS,
+                # The same keys whether a window was asked for or not, for the reason the
+                # comment above gives: a caller that had to branch on their presence is a
+                # caller whose first forgetting renders `undefined`.
+                "visits_between": None if between is None else 0,
+                "between": None if between is None else [
+                    between[0].isoformat(), between[1].isoformat()],
                 "nothing_recorded_is_not_a_zero_rate":
                     "No entry has ever been recorded for this person, so there is no rate. "
                     "That is not the same as a member who stopped coming.",
@@ -2079,6 +2122,14 @@ def person_attendance(
         # rows, each converted in **its own club's** zone -- a member who trains in two cities
         # experienced each visit on that city's day, and bucketing both in one zone would put
         # a visit in the wrong week for one of them.
+        # **The named window, counted in each club's own zone like every other figure
+        # here.** A member who trains in two cities experienced each visit on that city's
+        # day, so one `date_trunc` in the host's zone would put a visit outside the trial for
+        # one of them.
+        named = (
+            None if between is None
+            else visits_between(conn, person_id, between[0], between[1]))
+
         recent_window = as_of - timedelta(days=7 * CHART_WEEKS)
         visits = conn.execute(
             "SELECT (e.occurred_at AT TIME ZONE l.timezone)::date,"
@@ -2123,6 +2174,11 @@ def person_attendance(
         "last_location": str(last_location),
         "days_since": (as_of - last_on).days,
         "entries_in_window": entries, "weeks": weeks,
+        # **Both ends inclusive**, which is the reading ADM-CRM-05's three date figures agree
+        # under: a seven-day trial counts the day it started and the day it ends.
+        "visits_between": named,
+        "between": None if between is None else [
+            between[0].isoformat(), between[1].isoformat()],
         # One decimal, because "3 a week" and "3.5 a week" are different habits and rounding
         # to an integer makes every twice-weekly member read the same as a thrice-weekly one.
         "entries_per_week": round(entries / weeks, 1),
