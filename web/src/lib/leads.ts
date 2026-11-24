@@ -39,7 +39,18 @@ export function isLeadFilter(value: string | undefined): value is LeadFilter {
 export type LeadRow = {
   lead_id: string;
   person_id: string;
+  /** The stored sales stage, which is what the route's filter takes. */
   stage: string;
+  /**
+   * Which of the five board columns this person is in.
+   *
+   * **Both, because they answer different questions.** The board derives its last two columns
+   * from MOD-017 and the table showed `stage`, so ADM-CRM-02 read "New" for somebody
+   * ADM-CRM-01 put in "On trial" -- two views of one list disagreeing about where a person
+   * is. The server derives this one; a client cannot, because whether a membership is live is
+   * a date comparison in the tenant's own frame.
+   */
+  board_stage: string;
   source_id: string | null;
   source: string | null;
   owner_person_id: string | null;
@@ -211,10 +222,15 @@ export const CARDS_PER_COLUMN = 2;
 /**
  * What a board column is missing, where it is missing something.
  *
- * `on_trial` is always empty in this slice: nothing in this build marks a product as a trial,
- * so the column is drawn with the reason rather than hidden. A hidden column would make the
- * board read as four stages, which is a different product from the one the design draws.
+ * **Nothing, now that a trial is expressible.** `on_trial` carried a note saying nothing in
+ * this build marked a product as a trial; ADR-0010 D7 settled that -- `trial_days` on the
+ * membership terms is the marker, and the server derives the column from MOD-017's
+ * supersession chain. So the note is gone rather than reworded: a gap list is a claim about
+ * the product, and the one direction it goes stale in is the hour the gap closes.
+ *
+ * The function stays because the next column to need a reason will need the same slot, and
+ * `null` for every stage is a cheaper statement than deleting it and re-deriving it later.
  */
-export function columnNote(stage: string): MessageKey | null {
-  return stage === "on_trial" ? "leads.onTrialEmpty" : null;
+export function columnNote(_stage: string): MessageKey | null {
+  return null;
 }

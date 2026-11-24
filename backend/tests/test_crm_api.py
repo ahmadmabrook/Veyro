@@ -17,6 +17,7 @@ from datetime import UTC, date, datetime, timedelta
 
 from app.crm import service as crm
 from tests.support import GatedApiTestCase
+from tests.test_commercial_api import TODAY, CommercialApiTestCase
 
 READ = ["crm.lead.read", "crm.source.read"]
 WRITE = ["crm.lead.write", "crm.touchpoint.write", "crm.source.write"]
@@ -517,8 +518,9 @@ class SourceTests(CrmApiTestCase):
 
 class BoardTests(CrmApiTestCase):
     def test_the_board_draws_five_columns_and_counts_three(self):
-        """ADM-CRM-01's five columns. `on_trial` is empty in this slice and the response says
-        why -- nothing in this build marks a product as a trial."""
+        """ADM-CRM-01's five columns. The last two are derived from MOD-017 and are zero here
+        because none of these leads has a membership -- `TrialColumnTests` below is where the
+        derivation is exercised."""
         tenant_id = self.tenant()
         owner = self.headers(tenant_id)
         new = self.lead(tenant_id)
@@ -533,7 +535,7 @@ class BoardTests(CrmApiTestCase):
         self.assertEqual((counts["new"], counts["contacted"], counts["toured"]), (1, 1, 1))
         self.assertEqual((counts["on_trial"], counts["joined"]), (0, 0))
         self.assertEqual(board["open_leads"], 3)
-        self.assertIn("on_trial_is_empty_in_this_slice", board)
+        self.assertIn("the_last_two_columns_are_derived", board)
         del new
 
     def test_mine_is_zero_without_a_person_record_and_says_so(self):
@@ -572,3 +574,239 @@ class FilterTests(CrmApiTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TrialColumnTests(CrmApiTestCase, CommercialApiTestCase):
+    """ADM-CRM-01's last two columns, which MOD-017 answers.
+
+    **Two test cases joined rather than a helper copied.** Building a trial means a product, a
+    price book, a published price, a contract version, membership terms, an agreement, a
+    signature and an activation -- eight calls that `CommercialApiTestCase` already makes, and
+    a second copy of them here would be two definitions of "a live membership". The MRO puts
+    the CRM helpers first, so `person` is the lead-shaped one.
+    """
+
+    def board_counts(self, tenant_id: str) -> dict[str, int]:
+        board = self.client.get("/crm/board", headers=self.headers(tenant_id)).json()
+        return {c["stage"]: c["count"] for c in board["columns"]}
+
+    def lead_for(self, tenant_id: str, person_id: str) -> dict:
+        made = self.client.post("/crm/leads", json={
+            "person_id": person_id, **self.correlation()},
+            headers=self.headers(tenant_id))
+        self.assertEqual(made.status_code, 201, made.text)
+        return dict(made.json())
+
+    def test_a_lead_on_a_trial_product_is_counted_on_trial(self):
+        tenant_id = self.tenant()
+        live = self.membership(
+            tenant_id, starts_on=TODAY.isoformat(), terms_extra={"trial_days": 7})
+        self.lead_for(tenant_id, live["person_id"])
+        counts = self.board_counts(tenant_id)
+        self.assertEqual(counts["on_trial"], 1)
+        self.assertEqual(counts["joined"], 0)
+        self.assertEqual(counts["new"], 0)
+
+    def test_a_lead_with_an_ordinary_membership_is_counted_joined(self):
+        """The other side of the same derivation, which an `on_trial`-only test cannot see: a
+        rule that counted every active membership as a trial would pass that one."""
+        tenant_id = self.tenant()
+        live = self.membership(tenant_id, starts_on=TODAY.isoformat())
+        self.lead_for(tenant_id, live["person_id"])
+        counts = self.board_counts(tenant_id)
+        self.assertEqual(counts["joined"], 1)
+        self.assertEqual(counts["on_trial"], 0)
+
+    def test_a_trial_that_has_run_out_is_in_neither_column(self):
+        """**Live by the dates rather than the cached status**, which is MOD-022's own rule for
+        a door: the membership still says `active` and its window has closed, so the lead is
+        back in its sales stage. That is what ADM-CRM-07's "trial lapsed" is about, and a read
+        that trusted the status cache would leave somebody on trial for ever."""
+        tenant_id = self.tenant()
+        live = self.membership(
+            tenant_id, starts_on=(TODAY - timedelta(days=30)).isoformat(),
+            terms_extra={"trial_days": 7})
+        self.assertEqual(live["ends_on"], (TODAY - timedelta(days=24)).isoformat())
+        self.lead_for(tenant_id, live["person_id"])
+        counts = self.board_counts(tenant_id)
+        self.assertEqual((counts["on_trial"], counts["joined"]), (0, 0))
+        self.assertEqual(counts["new"], 1)
+
+    def test_a_converted_trial_reads_as_joined_rather_than_on_trial(self):
+        """**The chain, which is the whole reason this read walks it.**
+        `mem_memberships.agreement_id` is the chain's root and immutable by grant, so a member
+        who converted by superseding the trial's agreement still *points at* the trial -- and a
+        read that stopped at the root would leave every converted member in the "On trial"
+        column for ever. The successor is on an ordinary product, so the standing moves."""
+        tenant_id = self.tenant()
+        live = self.membership(
+            tenant_id, starts_on=TODAY.isoformat(), terms_extra={"trial_days": 7})
+        self.lead_for(tenant_id, live["person_id"])
+        self.assertEqual(self.board_counts(tenant_id)["on_trial"], 1)
+        # A successor on its own contract and its own product, which is what a conversion is.
+        self.supersede(tenant_id, live, amount_minor=5500,
+                       contract={"contract_key": f"c{uuid.uuid4().hex[:8]}"},
+                       starts_on=TODAY.isoformat())
+        counts = self.board_counts(tenant_id)
+        self.assertEqual(counts["joined"], 1)
+        self.assertEqual(counts["on_trial"], 0)
+
+    def test_a_conversion_does_not_leave_the_membership_ending_at_the_trial(self):
+        """**The defect a trial created and `change_membership_plan` did not know about.** The
+        plan change writes a superseding agreement and moved no date, so a conversion left
+        `ends_on` at the trial's end -- and MOD-022 reads the dates while
+        `memberships.revoke_ended_grants` sweeps on that column, so the member's door would
+        have stopped and their entitlements been revoked a few days after they paid. Asserted
+        at a moment past the old end, which is the only place the bug is visible."""
+        tenant_id = self.tenant()
+        owner = self.headers(tenant_id)
+        live = self.membership(
+            tenant_id, starts_on=TODAY.isoformat(), terms_extra={"trial_days": 7})
+        self.assertEqual(live["ends_on"], (TODAY + timedelta(days=6)).isoformat())
+        self.lead_for(tenant_id, live["person_id"])
+        # **Through `plan-change`, which is what a conversion is.** `supersede` alone writes
+        # the agreement and records no lifecycle change, which is the other half of this and
+        # the gap named below.
+        target = self.supersede(
+            tenant_id, live, amount_minor=9000, sign=False,
+            contract={"contract_key": f"c{uuid.uuid4().hex[:8]}"},
+            starts_on=TODAY.isoformat())
+        quote = self.client.get(
+            f"/memberships/{live['membership_id']}/plan-change-preview"
+            f"?to_agreement_id={target}", headers=owner)
+        self.assertEqual(quote.status_code, 200, quote.text)
+        done = self.client.post(
+            f"/memberships/{live['membership_id']}/plan-change", json={
+                "to_agreement_id": target, "reason": "converting the trial",
+                "signature_kind": "click_through",
+                "signature_evidence_ref": "s3://signatures/convert",
+                "acknowledged_due_minor": quote.json()["due_minor"],
+                "idempotency_key": f"cv-{uuid.uuid4().hex[:8]}", **self.correlation()},
+            headers=owner)
+        self.assertEqual(done.status_code, 200, done.text)
+        self.assertIsNone(done.json()["ends_on"], done.text)
+        self.assertFalse(done.json()["ends_on_follows_at_the_effective_date"])
+        after = self.client.get(
+            f"/memberships/{live['membership_id']}", headers=owner)
+        self.assertEqual(after.status_code, 200, after.text)
+        self.assertIsNone(after.json()["ends_on"], after.text)
+        # And a month later they are still a member rather than nobody.
+        board = crm.board(self._tenant_pool, tenant_id,
+                          at=datetime.combine(TODAY + timedelta(days=30),
+                                              datetime.min.time(), tzinfo=UTC))
+        counts = {c["stage"]: c["count"] for c in board["columns"]}
+        self.assertEqual(counts["joined"], 1)
+        self.assertEqual(counts["on_trial"], 0)
+
+    def test_the_table_and_the_board_agree_about_where_a_person_is(self):
+        """**Two views of one list, and they disagreed.** The board derived "On trial" from
+        MOD-017 and `list_leads` returned the stored sales stage, so ADM-CRM-02's STAGE column
+        would have read "New" for somebody the board put in "On trial" -- MOD-018's
+        one-module-two-definitions finding across two screens rather than two functions. The
+        row carries both now: `stage` is what the filter takes and `board_stage` is where the
+        person is."""
+        tenant_id = self.tenant()
+        owner = self.headers(tenant_id)
+        live = self.membership(
+            tenant_id, starts_on=TODAY.isoformat(), terms_extra={"trial_days": 7})
+        self.lead_for(tenant_id, live["person_id"])
+        listed = self.client.get("/crm/leads", headers=owner).json()
+        self.assertEqual(len(listed["leads"]), 1, listed)
+        row = listed["leads"][0]
+        self.assertEqual(row["stage"], "new")
+        self.assertEqual(row["board_stage"], "on_trial")
+        self.assertEqual(self.board_counts(tenant_id)["on_trial"], 1)
+        # And a member is not a lead going cold, which the board's own count already said.
+        self.assertFalse(row["going_cold"])
+
+    def test_a_superseding_agreement_alone_leaves_the_end_date_where_it_was(self):
+        """**The gap, asserted rather than left to be found.** There are two ways to supersede:
+        `plan-change`, which records a lifecycle change and moves `ends_on`, and
+        `POST /memberships/agreements` with `supersedes_agreement_id`, which writes the
+        agreement and nothing else. After the second the chain says one thing and the cached
+        end date says another -- so the board follows the new product while the door still
+        expires on the old one. Closing it means either a lifecycle change on that route or an
+        `ends_on` the door derives, and both are decisions rather than fixes."""
+        tenant_id = self.tenant()
+        owner = self.headers(tenant_id)
+        live = self.membership(
+            tenant_id, starts_on=TODAY.isoformat(), terms_extra={"trial_days": 7})
+        self.supersede(tenant_id, live, amount_minor=5500,
+                       contract={"contract_key": f"c{uuid.uuid4().hex[:8]}"},
+                       starts_on=TODAY.isoformat())
+        after = self.client.get(
+            f"/memberships/{live['membership_id']}", headers=owner)
+        self.assertEqual(after.json()["ends_on"], (TODAY + timedelta(days=6)).isoformat())
+
+    def test_a_membership_outranks_a_trial_where_somebody_has_both(self):
+        """Having a real membership is the later and stronger fact, and the board's columns are
+        stages rather than tags -- so one person is in one of them."""
+        tenant_id = self.tenant()
+        person_id = self.person(tenant_id)
+        self.membership_for(tenant_id, person_id, trial=True)
+        self.membership_for(tenant_id, person_id, trial=False)
+        self.lead_for(tenant_id, person_id)
+        counts = self.board_counts(tenant_id)
+        self.assertEqual(counts["joined"], 1)
+        self.assertEqual(counts["on_trial"], 0)
+
+    def test_a_trial_that_has_not_started_is_in_neither_column(self):
+        """The other end of the window. A trial sold today to start next Monday is not one
+        somebody is on, and a read bounded on one side only would put them on the board a week
+        early -- which is the same one-sided bound this repository has found in a CHECK three
+        times."""
+        tenant_id = self.tenant()
+        live = self.membership(
+            tenant_id, starts_on=(TODAY + timedelta(days=7)).isoformat(),
+            terms_extra={"trial_days": 7})
+        self.lead_for(tenant_id, live["person_id"])
+        counts = self.board_counts(tenant_id)
+        self.assertEqual((counts["on_trial"], counts["joined"]), (0, 0))
+        self.assertEqual(counts["new"], 1)
+
+    def test_a_cancelled_membership_is_in_neither_column(self):
+        """**The status half of "live", which the two date cases cannot see.** A membership
+        cancelled with immediate effect is inside its own window and is not one anybody holds,
+        so a read bounded only by the dates would keep showing them as joined."""
+        tenant_id = self.tenant()
+        owner = self.headers(tenant_id)
+        live = self.membership(
+            tenant_id, starts_on=(TODAY - timedelta(days=30)).isoformat(),
+            contract={"notice_days": 0, "cancellation_mode": "immediate"})
+        self.lead_for(tenant_id, live["person_id"])
+        self.assertEqual(self.board_counts(tenant_id)["joined"], 1)
+        cancelled = self.client.post(
+            f"/memberships/{live['membership_id']}/cancel", json={
+                "reason": "moving away", "idempotency_key": "c-now",
+                **self.correlation()}, headers=owner)
+        self.assertEqual(cancelled.status_code, 200, cancelled.text)
+        self.assertTrue(cancelled.json()["takes_effect_immediately"])
+        counts = self.board_counts(tenant_id)
+        self.assertEqual((counts["on_trial"], counts["joined"]), (0, 0))
+
+    def membership_for(self, tenant_id: str, person_id: str, *, trial: bool) -> str:
+        """A live membership for a person who already exists, which `membership` cannot do."""
+        owner = self.headers(tenant_id)
+        contract_key = self.contract(tenant_id)
+        product_id, variant_id = self.membership_product(tenant_id)
+        terms_id = self.terms(tenant_id, contract_key, product_id,
+                              **({"trial_days": 7} if trial else {}))
+        agreement = self.client.post("/memberships/agreements", json={
+            "person_id": person_id, "membership_terms_id": terms_id,
+            "variant_id": variant_id, "amount_minor": 4500, "currency": "JOD",
+            "starts_on": TODAY.isoformat(), **self.correlation()}, headers=owner)
+        self.assertEqual(agreement.status_code, 201, agreement.text)
+        agreement_id = str(agreement.json()["agreement_id"])
+        signed = self.client.post(
+            f"/memberships/agreements/{agreement_id}/sign", json={
+                "signature_kind": "click_through",
+                "signature_evidence_ref": f"s3://signatures/{agreement_id}",
+                "signed_by_person_id": person_id, **self.correlation()}, headers=owner)
+        self.assertEqual(signed.status_code, 200, signed.text)
+        active = self.client.post("/memberships", json={
+            "agreement_id": agreement_id,
+            "membership_number": f"M{uuid.uuid4().hex[:8].upper()}",
+            "idempotency_key": f"act-{uuid.uuid4().hex[:8]}", **self.correlation()},
+            headers=owner)
+        self.assertEqual(active.status_code, 201, active.text)
+        return str(active.json()["membership_id"])

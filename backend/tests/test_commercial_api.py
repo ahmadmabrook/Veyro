@@ -194,14 +194,18 @@ class CommercialApiTestCase(GatedApiTestCase):
         return str(created.json()["membership_terms_id"])
 
     def membership(self, tenant_id: str, *, contract: dict | None = None,
-                   starts_on: str = "") -> dict:
+                   starts_on: str = "", terms_extra: dict | None = None) -> dict:
         """A live membership, from contract through activation. Returns the activation body
-        plus the ids needed to drive the lifecycle."""
+        plus the ids needed to drive the lifecycle.
+
+        `terms_extra` reaches `/memberships/terms`, which is how a test builds a **trial**:
+        `trial_days` is the only thing that marks a product as one (ADR-0010 D7).
+        """
         owner = self.headers(tenant_id)
         starts_on = starts_on or MEMBERSHIP_START.isoformat()
         contract_key = self.contract(tenant_id, **(contract or {}))
         product_id, variant_id = self.membership_product(tenant_id)
-        terms_id = self.terms(tenant_id, contract_key, product_id)
+        terms_id = self.terms(tenant_id, contract_key, product_id, **(terms_extra or {}))
         person_id = self.person(tenant_id)
         agreement = self.client.post("/memberships/agreements", json={
             "person_id": person_id, "membership_terms_id": terms_id,
@@ -224,7 +228,9 @@ class CommercialApiTestCase(GatedApiTestCase):
         return {"membership_id": str(active.json()["membership_id"]),
                 "agreement_id": agreement_id, "person_id": person_id,
                 "variant_id": variant_id, "terms_id": terms_id,
-                "contract_key": contract_key,
+                "contract_key": contract_key, "product_id": product_id,
+                "trial_days": active.json().get("trial_days"),
+                "ends_on": active.json().get("ends_on"),
                 "current_period_start": active.json()["current_period_start"],
                 "current_period_end": active.json()["current_period_end"]}
 
@@ -4774,3 +4780,107 @@ class SupersessionChainTests(CommercialApiTestCase):
         self.assertEqual(
             after.json()["expiring"]["renewal_value"],
             [{"currency": "JOD", "amount_minor": 9000}])
+
+
+class TrialTests(CommercialApiTestCase):
+    """ADR-0010 D7: `trial_days` is what marks a product as a trial, and the clock is the
+    membership's own `ends_on`.
+
+    **The column existed and nothing derived it.** `activate_membership` inserted the
+    membership with `ends_on` NULL and only a cancellation ever wrote it -- so a trial had
+    nowhere to put its end, while three things that a trial needs already read that column:
+    MOD-022 refuses a door on the membership's dates, `memberships.revoke_ended_grants`
+    sweeps the grants of a membership whose `ends_on` has passed, and a countdown is
+    `ends_on` minus today.
+    """
+
+    def test_a_trial_product_gives_its_membership_an_end_date(self):
+        tenant_id = self.tenant()
+        start = (TODAY - timedelta(days=2)).isoformat()
+        live = self.membership(
+            tenant_id, starts_on=start, terms_extra={"trial_days": 7})
+        self.assertEqual(live["trial_days"], 7)
+        # **Inclusive of the start day**, which is what "day 6 of 7" counts: a seven-day
+        # trial starting on the 13th runs to the 19th, not the 20th.
+        self.assertEqual(live["ends_on"], (TODAY - timedelta(days=2) + timedelta(days=6))
+                         .isoformat())
+
+    def test_a_membership_that_is_not_a_trial_has_no_end_and_says_so(self):
+        """The direction that matters most: an ordinary membership is open-ended, and a
+        derivation that set an end on one would make every member's door stop working."""
+        tenant_id = self.tenant()
+        live = self.membership(tenant_id)
+        self.assertIsNone(live["trial_days"])
+        self.assertIsNone(live["ends_on"])
+
+    def test_the_retry_answers_the_trial_fields_from_the_row(self):
+        """**A retry that reported `trial_days: null` for a trial it had already activated**
+        would be this build's most-repeated idempotency defect in its quietest form: the work
+        was right and the answer was not."""
+        tenant_id = self.tenant()
+        owner = self.headers(tenant_id)
+        start = TODAY.isoformat()
+        live = self.membership(tenant_id, starts_on=start, terms_extra={"trial_days": 7})
+        again = self.client.post("/memberships", json={
+            "agreement_id": live["agreement_id"],
+            "membership_number": f"M{uuid.uuid4().hex[:8].upper()}",
+            "idempotency_key": f"act-{uuid.uuid4().hex[:8]}", **self.correlation()},
+            headers=owner)
+        self.assertEqual(again.status_code, 201, again.text)
+        self.assertTrue(again.json()["repeated"])
+        self.assertEqual(again.json()["trial_days"], 7)
+        self.assertEqual(again.json()["ends_on"], live["ends_on"])
+
+    def test_a_trial_of_no_days_and_one_past_the_ceiling_are_refused_at_the_boundary(self):
+        """Bounded at the request boundary rather than left to the CHECK: a bound reached as a
+        `DataError` is a 500 the handlers do not catch, which this build has paid for three
+        times. And **zero is refused**, which is where this diverges from
+        `early_termination_months`: a zero-day trial is a declared value nothing can mean."""
+        tenant_id = self.tenant()
+        product_id, _ = self.membership_product(tenant_id)
+        contract_key = self.contract(tenant_id)
+        for days in (0, -1, 91):
+            with self.subTest(days=days):
+                answer = self.client.post("/memberships/terms", json={
+                    "product_id": product_id, "contract_key": contract_key,
+                    "membership_kind": "recurring", "trial_days": days,
+                    **self.correlation()}, headers=self.headers(tenant_id))
+                self.assertEqual(answer.status_code, 422, answer.text)
+
+    def test_a_trial_is_not_sold_as_a_payment_plan(self):
+        """A trial is neither an instalment plan nor a prepayment -- nothing was paid -- and a
+        row claiming both would make "how long does this last" have two answers with nothing
+        to say which the door should read."""
+        tenant_id = self.tenant()
+        contract_key = self.contract(tenant_id)
+        for kind, extra in (("installment", {"installment_count": 12}),
+                            ("prepaid", {"prepaid_days": 30})):
+            with self.subTest(kind=kind):
+                product_id, _ = self.membership_product(tenant_id)
+                answer = self.client.post("/memberships/terms", json={
+                    "product_id": product_id, "contract_key": contract_key,
+                    "membership_kind": kind, "trial_days": 7, **extra,
+                    **self.correlation()}, headers=self.headers(tenant_id))
+                # 422, because `InvalidRequest` is what `_check_name` raises and this app
+                # answers a refused shape at the boundary the same way it answers a malformed
+                # one -- the constraint's own name is in the body.
+                self.assertEqual(answer.status_code, 422, answer.text)
+                self.assertIn("trial_is_not_a_payment_plan", answer.text)
+
+    def test_the_eight_other_shapes_admit_a_trial(self):
+        """**The permission, which no refusal can see.** What a trial is sold *as* is a
+        different question from whether it is a trial, and a constraint that refused every
+        shape would make the column unusable."""
+        tenant_id = self.tenant()
+        contract_key = self.contract(tenant_id)
+        for kind in ("fixed_term", "recurring", "off_peak", "family", "student",
+                     "corporate", "class_credit", "unlimited"):
+            with self.subTest(kind=kind):
+                product_id, _ = self.membership_product(tenant_id)
+                answer = self.client.post("/memberships/terms", json={
+                    "product_id": product_id, "contract_key": contract_key,
+                    "membership_kind": kind, "trial_days": 7,
+                    **self.correlation()}, headers=self.headers(tenant_id))
+                self.assertEqual(answer.status_code, 201, answer.text)
+                self.assertEqual(answer.json()["trial_days"], 7)
+                self.assertTrue(answer.json()["is_a_trial_product"])

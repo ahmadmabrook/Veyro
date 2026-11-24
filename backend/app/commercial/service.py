@@ -189,12 +189,19 @@ def define_membership_terms(
     pool: Pool, tenant_id: str, *, product_id: str, contract_key: str,
     membership_kind: str, billing_period: str, actor_id: str, correlation_id: str,
     installment_count: int | None = None, prepaid_days: int | None = None,
+    trial_days: int | None = None,
 ) -> dict[str, Any]:
     """Attach membership terms to a catalogue product.
 
     **The product must be a membership.** The catalogue says what a thing is; terms on a retail
     SKU would be a contract nobody could fulfil, and refusing it here is cheaper than
     discovering it at the point of sale.
+
+    **`trial_days` is what makes this a trial product**, and it is the only thing that does --
+    ADR-0010 D7. `NULL` is "not a trial"; a value is the *offered* length in days, which
+    `activate_membership` turns into the membership's own `ends_on`. It is not a product type
+    and not an eleventh membership kind, because a seven-day trial of a membership is a
+    membership and what it is sold *as* is a different question from whether it is a trial.
     """
     with tenant_scope(pool, tenant_id) as conn:
         product = conn.execute(
@@ -210,14 +217,14 @@ def define_membership_terms(
                 """
                 INSERT INTO plt01.mem_membership_terms
                     (tenant_id, product_id, contract_key, membership_kind, billing_period,
-                     installment_count, prepaid_days, is_off_peak, status, created_by,
-                     correlation_id)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'active', %s, %s)
+                     installment_count, prepaid_days, trial_days, is_off_peak, status,
+                     created_by, correlation_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'active', %s, %s)
                 RETURNING membership_terms_id
                 """,
                 (tenant_id, product_id, contract_key, membership_kind, billing_period,
-                 installment_count, prepaid_days, membership_kind == "off_peak",
-                 actor_id, correlation_id),
+                 installment_count, prepaid_days, trial_days,
+                 membership_kind == "off_peak", actor_id, correlation_id),
             ).fetchone()
         except errors.UniqueViolation:
             raise Conflict("this_product_already_has_membership_terms") from None
@@ -225,7 +232,8 @@ def define_membership_terms(
             raise InvalidRequest(_check_name(e)) from None
         assert row is not None
     return {"membership_terms_id": str(row[0]), "product_id": product_id,
-            "membership_kind": membership_kind}
+            "membership_kind": membership_kind, "trial_days": trial_days,
+            "is_a_trial_product": trial_days is not None}
 
 
 # ------------------------------------------------------------------ agreements
@@ -341,6 +349,101 @@ def _walk_from(seed_where: str) -> str:
         + _SUPERSESSION_STEP + "),"
         " live AS (SELECT DISTINCT ON (membership_id) membership_id, agreement_id, depth"
         " FROM walk ORDER BY membership_id, depth DESC)")
+
+
+def trial_window_end(starts_on: date, trial_days: int | None) -> date | None:
+    """When a membership that runs for `trial_days` from `starts_on` ends.
+
+    **Inclusive of the start day**, which is what ADM-CRM-05's "day 6 of 7" counts: a
+    seven-day trial starting on the 13th runs to the 19th, not the 20th. `mem_freezes` counts
+    the same way and for the same reason.
+
+    One expression, called by the activation and by a plan change, because two would be two
+    definitions of when a trial ends -- and the door, the grant sweep and the countdown all
+    read the one column it writes.
+    """
+    return None if trial_days is None else starts_on + _days(trial_days - 1)
+
+
+def _trial_end(
+    conn: Connection[Any], agreement_id: str, starts_on: date,
+) -> date | None:
+    """The same answer for an agreement whose terms the caller has not read."""
+    row = conn.execute(
+        "SELECT t.trial_days FROM plt01.mem_agreements a"
+        " JOIN plt01.mem_membership_terms t"
+        "   ON t.membership_terms_id = a.membership_terms_id"
+        " WHERE a.agreement_id = %s",
+        (agreement_id,),
+    ).fetchone()
+    return trial_window_end(
+        starts_on, None if row is None or row[0] is None else int(row[0]))
+
+
+def membership_standing(
+    conn: Connection[Any], person_ids: Sequence[str], *, at: date | None = None,
+) -> dict[str, str]:
+    """Where each of these people stands: `"trial"`, `"member"`, or absent.
+
+    **MOD-027's pipeline draws two columns it cannot answer itself.** ADR-0010 D3: "On trial is
+    *this person has an active membership on a trial product*, which MOD-017 answers", and
+    "Joined is *this person has an active membership that is not a trial*, likewise". A stored
+    stage for either would be a second definition of whether somebody has a membership and
+    would go stale the moment a trial lapsed, which is MOD-018's one-module-two-definitions
+    finding. So the stage is derived, here, where the memberships are.
+
+    **It takes a connection, because the caller reads it inside its own transaction.** A board
+    that asked per lead would be one query per card on the busiest read in MOD-027; a pool-
+    taking version would put the counts and the stages in two transactions, so a conversion
+    landing between them would show a person in two columns at once.
+
+    **Live by the dates, not by the cached status**, which is MOD-022's own rule for a door:
+    `status_as_of` is the function that tells the truth and the cache is what a cancellation
+    leaves behind. A membership counts here when it says `active` *and* its own window
+    contains today -- so a trial that ran out yesterday is neither column, which is exactly
+    what ADM-CRM-07's "trial lapsed" is about.
+
+    **Through the supersession chain, not the root.** `mem_memberships.agreement_id` is the
+    chain's root and immutable by grant, so a member who converted from a trial by superseding
+    the trial's agreement still points at the trial -- and a read that stopped at the root
+    would leave every converted member in the "On trial" column for ever. That is the defect
+    the chain's reader was written for, met from a new direction.
+
+    **`member` outranks `trial`** where somebody has both, because having a real membership is
+    the later and stronger fact: a joined member who also holds a lapsed trial is joined. The
+    board's columns are stages rather than tags, so one person is in one of them.
+    """
+    if not person_ids:
+        return {}
+    today = at or _today()
+    wanted = tuple({str(one) for one in person_ids})
+    rows = conn.execute(
+        "WITH RECURSIVE "
+        + _walk_from(
+            "m.person_id = ANY(%s) AND m.status = 'active'"
+            " AND m.starts_on <= %s AND (m.ends_on IS NULL OR m.ends_on >= %s)")
+        # Explicit joins rather than `USING`: every one of these tables carries `tenant_id`,
+        # so a `USING (tenant_id, ...)` is ambiguous once two of them are in the left side --
+        # and RLS bounds the tenant on each of them anyway, which is what makes the single
+        # column safe here.
+        + " SELECT m.person_id, t.trial_days IS NOT NULL AS is_trial, live.depth"
+          " FROM live"
+          " JOIN plt01.mem_memberships m ON m.membership_id = live.membership_id"
+          " JOIN plt01.mem_agreements a ON a.agreement_id = live.agreement_id"
+          " JOIN plt01.mem_membership_terms t"
+          "   ON t.membership_terms_id = a.membership_terms_id",
+        (list(wanted), today, today, today),
+    ).fetchall()
+    _refuse_a_truncated_chain(rows, 2)
+    standing: dict[str, str] = {}
+    for row in rows:
+        person = str(row[0])
+        # `member` wins, so a second row cannot demote somebody who has joined.
+        if bool(row[1]) and standing.get(person) != "member":
+            standing[person] = "trial"
+        elif not bool(row[1]):
+            standing[person] = "member"
+    return standing
 
 
 def _refuse_a_truncated_chain(rows: Sequence[Any], depth_at: int) -> None:
@@ -750,23 +853,48 @@ def activate_membership(
         # `_record_change` beside it was carefully idempotent. The agreement is locked above,
         # so this read and the insert below cannot race.
         existing = conn.execute(
-            "SELECT membership_id, membership_number, status, current_period_start,"
-            " current_period_end FROM plt01.mem_memberships WHERE agreement_id = %s",
+            "SELECT m.membership_id, m.membership_number, m.status,"
+            " m.current_period_start, m.current_period_end, t.trial_days, m.ends_on"
+            " FROM plt01.mem_memberships m"
+            " JOIN plt01.mem_agreements a USING (tenant_id, agreement_id)"
+            " JOIN plt01.mem_membership_terms t"
+            "   USING (tenant_id, membership_terms_id)"
+            " WHERE m.agreement_id = %s",
             (agreement_id,),
         ).fetchone()
         if existing is not None:
+            # **The repeat answers the same fields, from the row.** A retry that reported
+            # `trial_days: null` for a trial it had already activated would be this build's
+            # most-repeated idempotency defect in its quietest form: the work was right and
+            # the answer was not.
             return {"membership_id": str(existing[0]), "status": str(existing[2]),
                     "membership_number": str(existing[1]),
                     "current_period_start": existing[3].isoformat(),
                     "current_period_end": existing[4].isoformat(),
+                    "trial_days": None if existing[5] is None else int(existing[5]),
+                    "ends_on": None if existing[6] is None else existing[6].isoformat(),
                     "repeated": True}
         period = conn.execute(
-            "SELECT billing_period FROM plt01.mem_membership_terms"
+            "SELECT billing_period, trial_days FROM plt01.mem_membership_terms"
             " WHERE membership_terms_id = %s",
             (str(agreement[4]),),
         ).fetchone()
         assert period is not None
         starts_on = agreement[2]
+        # **A trial's clock is the membership's own `ends_on`, derived here** -- ADR-0010 D7.
+        # The column already existed, was written only by a cancellation, and is already read
+        # by three things that a trial needs: MOD-022 refuses a door on the membership's dates
+        # rather than its cached status, `memberships.revoke_ended_grants` sweeps the grants of
+        # a membership whose `ends_on` has passed, and a countdown is `ends_on` minus today. A
+        # clock of MOD-027's own would be a fourth definition of when a trial ends, and the
+        # first time it disagreed the door and the screen would say different things about one
+        # person.
+        #
+        # `trial_window_end` is the one expression, which a plan change reads as well: a
+        # conversion has to move this column or the member's door stops a few days after they
+        # paid, and two copies of the arithmetic would be two definitions of when a trial ends.
+        trial_days = None if period[1] is None else int(period[1])
+        ends_on = trial_window_end(starts_on, trial_days)
         if str(period[0]) == "one_off":
             period_start, period_end = starts_on, starts_on
         else:
@@ -784,13 +912,14 @@ def activate_membership(
                 """
                 INSERT INTO plt01.mem_memberships
                     (tenant_id, agreement_id, person_id, membership_number, status,
-                     starts_on, status_effective_on, current_period_start,
+                     starts_on, ends_on, status_effective_on, current_period_start,
                      current_period_end, created_by, correlation_id)
-                VALUES (%s, %s, %s, %s, 'pending', %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, 'pending', %s, %s, %s, %s, %s, %s, %s)
                 RETURNING membership_id
                 """,
                 (tenant_id, agreement_id, str(agreement[0]), membership_number.upper(),
-                 starts_on, today, period_start, period_end, actor_id, correlation_id),
+                 starts_on, ends_on, today, period_start, period_end, actor_id,
+                 correlation_id),
             ).fetchone()
         except errors.UniqueViolation:
             raise Conflict(
@@ -829,7 +958,13 @@ def activate_membership(
     return {"membership_id": membership_id, "status": "active",
             "membership_number": membership_number.upper(),
             "current_period_start": period_start.isoformat(),
-            "current_period_end": period_end.isoformat(), "repeated": False}
+            "current_period_end": period_end.isoformat(),
+            # **The trial's two facts, said rather than left to be derived twice.** A caller
+            # that wanted "is this a trial" would otherwise join the agreement to its terms,
+            # which is the second definition this column exists to avoid.
+            "trial_days": trial_days,
+            "ends_on": None if ends_on is None else ends_on.isoformat(),
+            "repeated": False}
 
 
 def freeze_allowance(
@@ -1683,10 +1818,30 @@ def change_membership_plan(
         # latest effective *status* change and this act changes no status, so writing one
         # would be caching a move that did not happen -- the shape `freeze_membership` paid
         # for when it wrote `frozen` for a freeze that had not started.
-        conn.execute(
-            "UPDATE plt01.mem_memberships SET version = version + 1"
-            " WHERE membership_id = %s",
-            (membership_id,))
+        #
+        # **`ends_on` does move, and a trial is what made that load-bearing.** A membership's
+        # end follows the agreement that governs it, so converting a trial onto an ordinary
+        # product makes the membership open-ended -- and leaving the trial's end on the row
+        # would stop the member's door and revoke their grants a few days after they paid,
+        # because MOD-022 reads the dates and `memberships.revoke_ended_grants` sweeps on
+        # exactly this column. The window is measured from the change's own effective date
+        # rather than the membership's original start, because the successor is what governs.
+        #
+        # **Only where the change is effective now.** A downgrade takes effect at the next
+        # renewal, and writing the successor's end today would be the same caching mistake as
+        # writing its status: the door reads this column *now*. A future-dated change leaves
+        # it, which is the gap the status cache already has and the same sweep would close.
+        ends_on = _trial_end(conn, to_agreement_id, change.effective_on)
+        if change.effective_on <= today:
+            conn.execute(
+                "UPDATE plt01.mem_memberships"
+                " SET version = version + 1, ends_on = %s WHERE membership_id = %s",
+                (ends_on, membership_id))
+        else:
+            conn.execute(
+                "UPDATE plt01.mem_memberships SET version = version + 1"
+                " WHERE membership_id = %s",
+                (membership_id,))
         # `membership.changed` is the TSD's own name for this event in COM-01's published
         # list, which is why it is declared rather than invented -- MOD-012's rule about
         # `integration.disconnected`, met from the other side.
@@ -1699,6 +1854,8 @@ def change_membership_plan(
                 correlation_id=correlation_id, actor_id=actor_id)
     return {"membership_id": membership_id, "change_id": change_id, "kind": change.kind,
             "from_agreement_id": from_agreement_id, "to_agreement_id": to_agreement_id,
+            "ends_on": None if ends_on is None else ends_on.isoformat(),
+            "ends_on_follows_at_the_effective_date": change.effective_on > today,
             "effective_on": change.effective_on.isoformat(),
             "takes_effect_immediately": change.effective_on <= today,
             "credit_minor": change.credit_minor, "charge_minor": change.charge_minor,

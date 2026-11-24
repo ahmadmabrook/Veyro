@@ -26,6 +26,7 @@ from typing import Any
 
 from psycopg import Connection, errors
 
+from app.commercial import service as commercial
 from app.crm import pipeline
 from app.db import Pool, tenant_scope
 from app.errors import Conflict, InvalidRequest, NotFound
@@ -426,7 +427,16 @@ def list_leads(
             " LIMIT %s",
             (*params, limit),
         ).fetchall()
-    leads = [_lead_row(r, now) for r in rows]
+        # **The same derivation the board makes, because this is the same list.**
+        # ADM-CRM-02's STAGE column over ADM-CRM-01's board: a table that showed the stored
+        # sales stage while the board showed "On trial" would be two views of one list
+        # disagreeing about where a person is -- MOD-018's one-module-two-definitions finding
+        # across two screens rather than two functions. The stored stage stays on the row,
+        # because the route's `?stage=` filter is over the three sales stages and a derived
+        # stage is not something a `WHERE` can take.
+        standing = commercial.membership_standing(
+            conn, [str(r[1]) for r in rows], at=now.date())
+    leads = [_lead_row(r, now, standing) for r in rows]
     if going_cold:
         leads = [row for row in leads if row["going_cold"]]
     return {
@@ -435,6 +445,10 @@ def list_leads(
         "ordered_by": "the oldest contact first, because a lead's value decays by the hour",
         "going_cold_after_hours": int(
             pipeline.GOING_COLD_AFTER.total_seconds() // 3600),
+        "board_stage_is_derived": (
+            "the stored stage is the sales stage and the last two board columns are "
+            "MOD-017's answer, so a row carries both: `stage` is what the filter takes and "
+            "`board_stage` is where the person is"),
         "no_name_is_returned_here": (
             "a lead is a ppl_persons row; the name, the number and the email are MOD-014's "
             "and are read through its own gate and masked by its rules"),
@@ -510,12 +524,22 @@ def board(
 ) -> dict[str, Any]:
     """ADM-CRM-01's five columns and the header's two counts.
 
-    **The last two columns are derived from MOD-017 and one of them is empty in this slice.**
-    "On trial" is "this person has an active membership on a trial product", and nothing in
-    this build marks a product as a trial -- `cat_products.product_type` and
-    `mem_membership_terms.membership_kind` both have no such value, which is slice 2's work.
-    So an active membership reads as `joined` here, the response says so, and the column is
-    drawn rather than hidden because the design draws it.
+    **The last two columns are derived from MOD-017, and both are real now.** ADR-0010 D3:
+    "On trial" is *this person has an active membership on a trial product* and "Joined" is
+    *an active membership that is not a trial*, "which MOD-017 answers" -- so the stored stage
+    is the sales stage and the last two are derived. A stored `on trial` would be a second
+    definition of whether somebody has a membership and would go stale the moment a trial
+    lapsed, which is MOD-018's one-module-two-definitions finding.
+
+    **`commercial.membership_standing` is that one definition**, called on this transaction's
+    own connection: it walks the supersession chain rather than the agreement a membership
+    points at, because the root is immutable by grant and a member who converted by
+    superseding the trial's agreement still points at the trial. A read that stopped at the
+    root would leave every converted member in the "On trial" column for ever.
+
+    **Live by the dates rather than the cached status**, which is the same rule MOD-022's door
+    follows -- so a trial that ran out yesterday is in neither column, which is what
+    ADM-CRM-07's "trial lapsed" is about.
     """
     now = at or _now()
     where = ["true"]
@@ -527,18 +551,21 @@ def board(
         rows = conn.execute(
             "SELECT l.lead_id, l.person_id, l.stage, l.created_at,"
             " (SELECT max(t.occurred_at) FROM plt01.crm_touchpoints t"
-            "   WHERE t.lead_id = l.lead_id),"
-            " (SELECT count(*) FROM plt01.mem_memberships m"
-            "   WHERE m.person_id = l.person_id AND m.status = 'active')"
+            "   WHERE t.lead_id = l.lead_id)"
             " FROM plt01.crm_leads l"
             f" WHERE {' AND '.join(where)}",
             tuple(params),
         ).fetchall()
+        # One query for every lead's standing, in this transaction, so a conversion landing
+        # mid-read cannot put one person in two columns.
+        standing = commercial.membership_standing(
+            conn, [str(r[1]) for r in rows], at=now.date())
     counts = dict.fromkeys(pipeline.BOARD_COLUMNS, 0)
     cold = 0
     for r in rows:
-        member = (pipeline.Membership(active=True, on_trial_product=False)
-                  if int(r[5]) > 0 else None)
+        where_they_stand = standing.get(str(r[1]))
+        member = (None if where_they_stand is None else pipeline.Membership(
+            active=True, on_trial_product=where_they_stand == "trial"))
         counts[pipeline.board_stage(str(r[2]), member)] += 1
         if member is None and pipeline.is_going_cold(
                 last_touch_at=r[4], created_at=r[3], now=now):
@@ -548,10 +575,11 @@ def board(
         "columns": [{"stage": c, "count": counts[c]} for c in pipeline.BOARD_COLUMNS],
         "open_leads": open_leads,
         "going_cold": cold,
-        "on_trial_is_empty_in_this_slice": (
-            "nothing in this build marks a product as a trial -- product_type and "
-            "membership_kind both have no such value -- so an active membership reads as "
-            "joined. Slice 2 defines the marker"),
+        "the_last_two_columns_are_derived": (
+            "on_trial is an active membership on a product whose terms declare trial_days "
+            "and joined is one whose terms do not, both through MOD-017's supersession "
+            "chain and both judged by the membership's own dates rather than its status "
+            "cache"),
         "going_cold_counts_open_leads_only": (
             "a member is not a lead going cold, and the header's two figures are over the "
             "three stored stages"),
@@ -599,9 +627,18 @@ def _membership_of(
     return pipeline.Membership(active=True, on_trial_product=False)
 
 
-def _lead_row(r: Any, now: datetime) -> dict[str, Any]:
+def _lead_row(
+    r: Any, now: datetime, standing: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    where_they_stand = (standing or {}).get(str(r[1]))
+    member = (None if where_they_stand is None else pipeline.Membership(
+        active=True, on_trial_product=where_they_stand == "trial"))
     return {
         "lead_id": str(r[0]), "person_id": str(r[1]), "stage": str(r[2]),
+        # The stored sales stage *and* the column the board puts them in. Both, because they
+        # answer different questions: `stage` is what somebody typed and is what the filter
+        # takes, `board_stage` is where the person actually is.
+        "board_stage": pipeline.board_stage(str(r[2]), member),
         "source_id": (None if r[3] is None else str(r[3])),
         "source": (None if r[4] is None else str(r[4])),
         "owner_person_id": (None if r[5] is None else str(r[5])),
@@ -614,7 +651,9 @@ def _lead_row(r: Any, now: datetime) -> dict[str, Any]:
         # this build has three recorded defects from.
         "hours_since_contact": pipeline.hours_since_contact(
             last_touch_at=r[10], created_at=r[8], now=now),
-        "going_cold": pipeline.is_going_cold(
+        # **A member is not a lead going cold**, which the board's own count already says: a
+        # person who joined is not somebody nobody has rung.
+        "going_cold": member is None and pipeline.is_going_cold(
             last_touch_at=r[10], created_at=r[8], now=now),
     }
 

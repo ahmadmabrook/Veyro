@@ -36,6 +36,24 @@ def day(offset: int) -> str:
     return (TODAY + timedelta(days=offset)).isoformat()
 
 
+#: The weekday the default template runs on, chosen so its first occurrence is always two
+#: days out.
+#:
+#: **A fixed weekday makes the suite fail one day in seven.** The booking window is
+#: `opens_hours_before`, which defaults to 168 and which no route can set -- so a session more
+#: than a week away is correctly refused, and a rule hard-coded to Tuesday puts its first
+#: occurrence eight days out whenever the suite runs on a Monday. Twelve tests across
+#: `CapacityTests`, `ConcurrencyTests`, `EligibilityTests` and `TemplateTests` then fail with
+#: "booking opens at ..." -- the product being right and the fixture asking for a session
+#: nobody could book yet.
+#:
+#: **`next_weekday` was written for this and the default template never used it**: its own
+#: docstring says "so a window is always open". This is the day-of-week form of the flake this
+#: module already records at the top of the file, and it cost twenty minutes of suspecting an
+#: unrelated change before a worktree at HEAD reproduced it.
+BOOKABLE_WEEKDAY = (TODAY + timedelta(days=2)).weekday()
+
+
 def next_weekday(weekday: int, *, after: int = 1) -> date:
     """The next date on `weekday` at least `after` days out, so a window is always open."""
     moment = TODAY + timedelta(days=after)
@@ -113,7 +131,7 @@ class SchedulingApiTestCase(GatedApiTestCase):
             "location_id": gym["location_id"],
             "rule": {
                 "frequency": "weekly", "local_time": "18:00", "duration_minutes": 60,
-                "starts_on": day(1), "until": day(60), "weekdays": [1],
+                "starts_on": day(1), "until": day(60), "weekdays": [BOOKABLE_WEEKDAY],
             },
             "policy": {"capacity": 12, "setup_minutes": 10, "cleanup_minutes": 10},
             "requirements": [
@@ -298,7 +316,8 @@ class TemplateTests(SchedulingApiTestCase):
         self.assertGreater(created["created"], 5, created)
         for row in created["sessions"]:
             self.assertEqual(row["capacity"], 12)
-            self.assertEqual(date.fromisoformat(row["local_date"]).weekday(), 1)
+            self.assertEqual(
+                date.fromisoformat(row["local_date"]).weekday(), BOOKABLE_WEEKDAY)
 
     def test_generating_twice_creates_nothing_the_second_time(self) -> None:
         """One session per rule per instant: a retried publish is the ordinary case."""
@@ -1542,7 +1561,7 @@ class RotaWeekApiTests(SchedulingApiTestCase):
         # is never reached. The canvas's case is a day he *does* work, with the afternoon off
         # -- so the rota covers the evening and the exception is what the booking collides
         # with. Found by the test reading back a correct refusal for the other reason.
-        self.window(gym, gym["coach"], "working", "09:00", "21:00", weekday=1)
+        self.window(gym, gym["coach"], "working", "09:00", "21:00", weekday=BOOKABLE_WEEKDAY)
         self.window(gym, gym["coach"], "time_off", "12:00", "20:00",
                     on_date=booked["local_date"], reason="annual leave")
 
@@ -1559,7 +1578,7 @@ class RotaWeekApiTests(SchedulingApiTestCase):
         created = self.generate(gym, self.published(gym))
         booked = created["sessions"][0]
         # 18:00 for an hour, with setup and cleanup either side, sits inside 09:00-21:00.
-        self.window(gym, gym["coach"], "working", "09:00", "21:00", weekday=1)
+        self.window(gym, gym["coach"], "working", "09:00", "21:00", weekday=BOOKABLE_WEEKDAY)
         body = self.week(gym, gym["coach"], from_date=booked["local_date"])
         held = [s for s in body["sessions"] if s["session_id"] == booked["session_id"]]
         self.assertEqual(1, len(held))
@@ -1573,7 +1592,7 @@ class RotaWeekApiTests(SchedulingApiTestCase):
         gym = self.gym()
         created = self.generate(gym, self.published(gym))
         booked = created["sessions"][0]
-        self.window(gym, gym["coach"], "working", "09:00", "10:00", weekday=1)
+        self.window(gym, gym["coach"], "working", "09:00", "10:00", weekday=BOOKABLE_WEEKDAY)
         body = self.week(gym, gym["coach"], from_date=booked["local_date"])
         self.assertGreater(body["booked_minutes"], 0)
         assert body["open_minutes"] is not None
@@ -1583,7 +1602,7 @@ class RotaWeekApiTests(SchedulingApiTestCase):
         gym = self.gym()
         created = self.generate(gym, self.published(gym))
         booked = created["sessions"][0]
-        self.window(gym, gym["coach"], "working", "09:00", "21:00", weekday=1)
+        self.window(gym, gym["coach"], "working", "09:00", "21:00", weekday=BOOKABLE_WEEKDAY)
         cancelled = self.client.post(
             f"/scheduling/sessions/{booked['session_id']}/cancel",
             json={"cancellation_reason": "instructor_unavailable",

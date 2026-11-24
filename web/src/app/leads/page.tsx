@@ -39,9 +39,13 @@ import { LeadTable, type LeadDisplay } from "./lead-table";
  * members-list finding, where summing the page was honest and still the wrong number in the
  * place a manager reads the business.
  *
- * **"On trial" is drawn and empty, with the reason on the column.** Nothing in this build
- * marks a product as a trial, so no lead can be on one; hiding the column would make the
- * board read as four stages, which is a different product from the one the design draws.
+ * **The last two columns are the server's derivation, not this screen's.** "On trial" is an
+ * active membership on a product whose terms declare `trial_days` and "Joined" is one whose
+ * terms do not -- both through MOD-017's supersession chain, so a member who converted by
+ * superseding the trial's agreement moves out of the trial column rather than staying in it
+ * for ever. They carried a "nothing marks a product as a trial" note until ADR-0010 D7
+ * settled the marker; the note is deleted rather than reworded, because a gap list is a claim
+ * about the product.
  */
 export default async function LeadsPage({
   searchParams,
@@ -146,7 +150,9 @@ export default async function LeadsPage({
     owner: lead.owner_person_id === null ? null : (nameOf(lead.owner_person_id) ?? ""),
     age: sinceLabel(locale, lead.hours_since_contact),
     next: lead.next_action ?? text("leads.noNext"),
-    stage: wordFor(locale, stageWord(lead.stage), lead.stage),
+    // **The board's column, not the stored sales stage.** The two disagree for anybody
+    // with a membership, and the table is the other view of the same list.
+    stage: wordFor(locale, stageWord(lead.board_stage), lead.board_stage),
     cold: lead.going_cold,
   }));
 

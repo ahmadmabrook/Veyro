@@ -1405,6 +1405,12 @@ class MembershipTermsBody(BaseModel):  # noqa: D101
     billing_period: Literal["weekly", "monthly", "quarterly", "annual", "one_off"] = "monthly"
     installment_count: int | None = Field(default=None, ge=2, le=120)
     prepaid_days: int | None = Field(default=None, ge=1, le=3650)
+    # **The one thing that marks a product as a trial** -- ADR-0010 D7. Bounded at the
+    # boundary rather than left to the CHECK, because a bound reached as a `DataError` is a
+    # 500 the handlers do not catch, which this build has paid for in MOD-011, MOD-012 and
+    # MOD-013. `None` is "not a trial"; zero is refused, because a zero-day trial is a
+    # declared value nothing can mean.
+    trial_days: int | None = Field(default=None, ge=1, le=90)
     correlation_id: str
 
 
@@ -6873,6 +6879,7 @@ def create_app(
             contract_key=body.contract_key, membership_kind=body.membership_kind,
             billing_period=body.billing_period,
             installment_count=body.installment_count, prepaid_days=body.prepaid_days,
+            trial_days=body.trial_days,
             actor_id=session["identity_id"], correlation_id=body.correlation_id,
         )
 

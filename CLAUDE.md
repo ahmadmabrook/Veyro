@@ -2693,6 +2693,34 @@ Proven: 16 HTTP tests, 9 domain tests with no database, 12 mutations in
 one per side -- and four schema mutations against it, every one caught by the case that names
 it.
 
+**A membership can end on a known date now, and the column for it was already there.**
+`mem_memberships.ends_on` existed from `0011`, was in the UPDATE grant, and was written only
+by a cancellation -- while three things that a fixed-length membership needs already honoured
+it: MOD-022 refuses a door on the membership's dates rather than its cached status,
+`memberships.revoke_ended_grants` sweeps the grants of a membership whose `ends_on` has
+passed, and a countdown is `ends_on` minus today. `activate_membership` derives it from
+`mem_membership_terms.trial_days` (ADR-0010 D7), inclusive of the start day because that is
+what "day 6 of 7" counts, and both paths -- the activation and its retry -- answer `trial_days`
+and `ends_on`, because a retry reporting `null` for a trial it had already activated is this
+build's most-repeated idempotency defect in its quietest form.
+
+**And `membership_standing` is the one definition of where a person stands**, which MOD-027's
+pipeline derives two of its five columns from. It takes a connection, walks the supersession
+chain rather than the root (a member who converted by superseding the trial's agreement still
+*points at* the trial), judges "live" by the membership's own window rather than its status
+cache, and lets a real membership outrank a trial where somebody holds both. Proven: 7 HTTP
+tests through the board and the table, 6 service tests, 8 Python mutations and 9 schema
+mutations, all caught.
+
+**And MOD-027's two views had to agree about it.** `crm.board` derived the last two columns and
+`crm.list_leads` returned the stored sales stage, so ADM-CRM-02's STAGE column would have read
+"New" for somebody ADM-CRM-01 put in "On trial" -- two views of one list disagreeing about where
+a person is, which is MOD-018's one-module-two-definitions finding across two screens rather
+than two functions. A row carries both now: `stage` is what the route's filter takes and
+`board_stage` is where the person is, derived on the server because whether a membership is live
+is a date comparison in the tenant's own frame. **And a member is no longer counted as a lead
+going cold** on the listing, which the board's own count already said.
+
 **Two things the design asks for and this does not do**, both named rather than implied. The
 canvas's button is "Upgrade and charge 8.43": the figure is disclosed and recorded against the
 change and **no invoice is issued and no payment taken**, which is the payment provider at the
@@ -3385,6 +3413,15 @@ Known gaps, deliberate:
   makes anybody do -- is six hours open and was reported as eight. That figure is the
   denominator of ADM-SCH-04's own "26 of 34 available hours booked", so inflating it makes
   somebody look less booked than they are. `availability._merge` is the fix.
+- **The booking window is not settable, and every tenant's is exactly one week.**
+  `sch_capacity_policies.opens_hours_before` defaults to 168 with a CHECK behind it,
+  `closes_minutes_before` to 0, `capacity.booking_window` takes both and decides -- and
+  `CapacityPolicyBody` carries neither field, so no route can write them. OPS-01-R04's lead
+  time is therefore a column with a reader, a default and no writer, which is this build's
+  most-repeated shape in its plainest form. **Found while fixing a test**: the default
+  template ran on a fixed weekday, so on one day in seven its first occurrence fell outside
+  that fixed week and twelve tests failed asking to book a session nobody could book. The
+  harness picks a day two out now; the missing fields are the product gap.
 - **No travel buffer is enforced.** `availability.check_travel` decides and nothing calls it:
   the buffer is a per-tenant figure the sources do not state, and paragraph 1835's
   cross-location case needs a resource scheduled at two sites in one day, which the location
@@ -4747,11 +4784,17 @@ Known gaps, deliberate:
   nothing in the product ever passed it a person the duplicate check had just found, so the
   one write that *prevents* a duplicate rather than cleaning one up was unreachable. That is
   this build's "a writer with no reader" shape read from the write side.
-- **No trial, so the `On trial` column is always empty** and the board says so rather than
-  hiding it. Nothing in this build marks a product as a trial -- neither
-  `cat_products.product_type` nor `mem_membership_terms.membership_kind` has such a value --
-  which is the first thing slice 2 has to decide. MOD-017's `change_membership_plan` is the
-  conversion and is built.
+- **A trial is expressible now, and both derived columns are real.** ADR-0010 D7:
+  `mem_membership_terms.trial_days` is the only thing that marks a product as a trial, and
+  `commercial.membership_standing` is the one definition the board reads -- an active
+  membership on a product whose terms declare `trial_days` is "On trial" and one whose terms
+  do not is "Joined". **Through the supersession chain, not the agreement a membership points
+  at**, because the root is immutable by grant: a read that stopped there would leave every
+  converted member in the trial column for ever, which is the defect the chain's reader was
+  written for, met from a new direction. And **live by the dates rather than the status
+  cache**, which is MOD-022's own rule for a door, so a trial that ran out yesterday is in
+  neither column. What is still owed is the *screens* -- ADM-CRM-05 and ADM-CRM-06 -- and the
+  conversion's charge, which is the payment provider.
 - **No lost and no reopen**, which is slice 3, and `crm_lead_interests` has no withdrawal for
   the same reason: there is no UPDATE and no DELETE grant on it, so an interest recorded by
   mistake is uncorrectable on a routine permission. That is MOD-013's "an irreversible act must
@@ -6544,15 +6587,22 @@ on it. The one requirement fragment with nothing to point at is R04's payroll ac
 which waits on a payroll module this build does not have: a policy naming it would be a policy
 for an action nothing can perform.
 
-**MOD-027's first slice is built** -- see its section above --
-and its design record is `knowledge/00-Decisions/ADR-0010-mod027-crm-lead-pipeline-and-trial.md`.
-**Slice 2 is the next piece and it has one decision in front of it**: what marks a product as
-a trial. "A trial is an active membership on a trial product" is the ADR's own shape and
-neither `cat_products.product_type` nor `mem_membership_terms.membership_kind` carries such a
-value, so the board's `On trial` column is empty until that is settled -- and
-`change_membership_plan`, which the conversion goes through, is built. The eight backlogged
-Admin screens are still MOD-027's, more than any other module's, and each now says what is
-left in it rather than that the module does not exist. Four things that record
+**MOD-027's first slice is built, with its add form, and slice 2's decision is made** -- see
+its section above; the design record is
+`knowledge/00-Decisions/ADR-0010-mod027-crm-lead-pipeline-and-trial.md`, amended as D7.
+**What marks a product as a trial is `mem_membership_terms.trial_days`**, nullable and bounded
+1 to 90: not a ninth `PRODUCT_TYPES` value (a seven-day trial of a membership is a membership),
+not an eleventh `membership_kind` (`0011`'s own comment says a shape decides which lifecycle
+edges exist, and being a trial is orthogonal to that), and not a boolean beside a length --
+`early_termination_months`' precedent, because two columns can disagree. **And the clock is
+`mem_memberships.ends_on`, which already existed and was written only by a cancellation**:
+deriving it at activation buys the door's refusal, the grant sweep and the countdown, all three
+already built, where a trial clock of MOD-027's own would be a fourth definition of when a
+trial ends. So the board's last two columns are real and what is left of slice 2 is the two
+screens, ADM-CRM-05 and ADM-CRM-06 -- whose own "Take 21.29" button is the payment provider.
+
+The backlogged Admin screens are still mostly MOD-027's, more than any other module's, and each
+says what is left in it rather than that the module does not exist. Four things that record
 settles, because the canvas is unusually explicit about them:
 
 - **A lead, a trialist and a member are one `ppl_persons` row**, which the canvas states as a

@@ -18,6 +18,10 @@ const LEAD = (over: Partial<LeadRow> = {}): LeadRow => ({
   lead_id: "l1",
   person_id: "p1",
   stage: "new",
+  // The server sends both; a fixture that left this out would be testing a row the route
+  // cannot produce, which is the hand-written-fixture trap this app has one recorded defect
+  // from.
+  board_stage: "new",
   source_id: "s1",
   source: "Sweifieh open day",
   owner_person_id: null,
@@ -36,9 +40,14 @@ describe("the board's five columns", () => {
     expect(BOARD_COLUMNS).toEqual(["new", "contacted", "toured", "on_trial", "joined"]);
   });
 
-  test("the On trial column carries its reason and no other does", () => {
-    expect(columnNote("on_trial")).toBe("leads.onTrialEmpty");
-    for (const stage of BOARD_COLUMNS.filter((one) => one !== "on_trial")) {
+  test("no column claims a reason, now that a trial is expressible", () => {
+    // **This asserted `leads.onTrialEmpty` for `on_trial`**, which was the *consequence* of a
+    // gap rather than the finding: the finding was that a column with nothing in it is drawn
+    // with its reason rather than hidden, because a hidden column makes the board read as four
+    // stages. ADR-0010 D7 settled the marker and the server derives the column, so there is
+    // no reason left to carry -- and a test insisting on one would be the gap note outliving
+    // its gap, which this repository has paid for on a screen twice.
+    for (const stage of BOARD_COLUMNS) {
       expect(columnNote(stage)).toBeNull();
     }
   });

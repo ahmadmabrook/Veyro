@@ -12753,7 +12753,7 @@ BEGIN
         ('plt01.mem_membership_terms',
          'billing_period,contract_key,correlation_id,created_at,created_by,'
          'installment_count,is_off_peak,membership_kind,membership_terms_id,'
-         'prepaid_days,product_id,status,tenant_id,version'),
+         'prepaid_days,product_id,status,tenant_id,trial_days,version'),
         ('plt01.mem_memberships',
          'agreement_id,correlation_id,created_at,created_by,'
          'current_period_end,current_period_start,ends_on,membership_id,'
@@ -14301,6 +14301,165 @@ BEGIN
         RAISE EXCEPTION 'CHECK 78 FAILED: a second set of membership terms on one product';
     EXCEPTION
         WHEN unique_violation THEN NULL;
+    END;
+
+    -- **ADR-0010 D7's trial length, both bounds and both sides of the shape rule.** A trial is
+    -- marked by `trial_days` and nothing else, so what the schema has to hold is that the
+    -- value is a short clock somebody meant and that it does not contradict the shape the
+    -- product is sold on. `NULL` is "not a trial", which every case above already exercises.
+    --
+    -- **Zero, refused.** This is where `trial_days` diverges from
+    -- `early_termination_months`, where 0 is a real product: a zero-day trial is a declared
+    -- value nothing can mean.
+
+    BEGIN
+        INSERT INTO plt01.mem_membership_terms
+            (billing_period, contract_key, correlation_id, created_by,
+             installment_count, is_off_peak, membership_kind,
+             prepaid_days, product_id, status, tenant_id, trial_days, version)
+        VALUES ('monthly',
+                'standard',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                false,
+                'recurring',
+                NULL,
+                'dddddddd-2000-4000-8000-000000000001',
+                'draft',
+                '11111111-1111-4111-8111-111111111111',
+                0,
+                1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a trial of no days at all';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender <> 'mem_membership_terms_trial_days_sane' THEN
+                RAISE EXCEPTION
+                    'CHECK 78 FAILED: a trial of no days at all was refused by % instead', offender;
+            END IF;
+    END;
+
+    -- And the other end, because a one-sided case cannot catch a weakening that admits the
+    -- row it sends: 90 is the ceiling and 91 is the first value past it.
+
+    BEGIN
+        INSERT INTO plt01.mem_membership_terms
+            (billing_period, contract_key, correlation_id, created_by,
+             installment_count, is_off_peak, membership_kind,
+             prepaid_days, product_id, status, tenant_id, trial_days, version)
+        VALUES ('monthly',
+                'standard',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                false,
+                'recurring',
+                NULL,
+                'dddddddd-2000-4000-8000-000000000001',
+                'draft',
+                '11111111-1111-4111-8111-111111111111',
+                91,
+                1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a trial longer than the stated ceiling';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender <> 'mem_membership_terms_trial_days_sane' THEN
+                RAISE EXCEPTION
+                    'CHECK 78 FAILED: a trial longer than the stated ceiling was refused by % instead', offender;
+            END IF;
+    END;
+
+    -- **A trial is not a payment plan**, and an `installment` row claiming one would make "how
+    -- long does this last" have two answers with nothing to say which the door should read.
+
+    BEGIN
+        INSERT INTO plt01.mem_membership_terms
+            (billing_period, contract_key, correlation_id, created_by,
+             installment_count, is_off_peak, membership_kind,
+             prepaid_days, product_id, status, tenant_id, trial_days, version)
+        VALUES ('monthly',
+                'standard',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                12,
+                false,
+                'installment',
+                NULL,
+                'dddddddd-2000-4000-8000-000000000001',
+                'draft',
+                '11111111-1111-4111-8111-111111111111',
+                7,
+                1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a trial sold as an instalment plan';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender <> 'mem_membership_terms_trial_is_not_a_payment_plan' THEN
+                RAISE EXCEPTION
+                    'CHECK 78 FAILED: a trial sold as an instalment plan was refused by % instead', offender;
+            END IF;
+    END;
+
+    -- The prepaid half of the same rule, which the case above cannot reach: the shape check
+    -- names two kinds and a case per conjunct is what this file's own sweep requires.
+
+    BEGIN
+        INSERT INTO plt01.mem_membership_terms
+            (billing_period, contract_key, correlation_id, created_by,
+             installment_count, is_off_peak, membership_kind,
+             prepaid_days, product_id, status, tenant_id, trial_days, version)
+        VALUES ('monthly',
+                'standard',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                false,
+                'prepaid',
+                30,
+                'dddddddd-2000-4000-8000-000000000001',
+                'draft',
+                '11111111-1111-4111-8111-111111111111',
+                7,
+                1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a trial sold as a prepayment';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender <> 'mem_membership_terms_trial_is_not_a_payment_plan' THEN
+                RAISE EXCEPTION
+                    'CHECK 78 FAILED: a trial sold as a prepayment was refused by % instead', offender;
+            END IF;
+    END;
+
+    -- **A permission, which no refusal above can see.** The other eight shapes are admissible:
+    -- what a trial is sold *as* is a different question from whether it is a trial, and a
+    -- constraint that refused all ten would make the column unusable.
+
+    BEGIN
+        INSERT INTO plt01.mem_membership_terms
+            (billing_period, contract_key, correlation_id, created_by,
+             installment_count, is_off_peak, membership_kind,
+             prepaid_days, product_id, status, tenant_id, trial_days, version)
+        VALUES ('monthly',
+                'standard',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                false,
+                'fixed_term',
+                NULL,
+                'dddddddd-2000-4000-8000-000000000001',
+                'draft',
+                '11111111-1111-4111-8111-111111111111',
+                7,
+                1);
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            RAISE EXCEPTION
+                'CHECK 78 FAILED: an ordinary seven-day trial was refused by %', offender;
     END;
 
     BEGIN

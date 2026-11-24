@@ -185,12 +185,75 @@ MOD-013's notifications is work, and the inbound half is the seam.
 3. **Lost and reopen** (ADM-CRM-07) plus the source-effectiveness read ADM-RPT-06 draws.
 4. **The conversation record**, to the seam, with the provider named.
 
+## D7 — What marks a product as a trial, and where the clock lives
+
+**Amendment, after slice 1; built as slice 2.** D3 derives the board's last two columns from
+MOD-017 -- *"On trial is 'this person has an active membership on a trial product', which
+MOD-017 answers"* -- and nothing in this build could tell a trial product from a real one, so
+that column was drawn empty with the reason on it. This settles it, and the decision is two
+parts because checking the code found the second one.
+
+**`mem_membership_terms.trial_days`, nullable, 1 to 90.** Three things it is not, each refused
+for a stated reason:
+
+- **Not a `PRODUCT_TYPES` value.** COM-02-R01 names eight and a trial is not a ninth kind of
+  thing to sell: a 7-day trial of a membership is a membership. Adding one would make every
+  reader of that vocabulary -- the catalogue, the bundle fulfilment kinds, the entitlement
+  rule -- answer about a taxonomy the requirement does not have.
+- **Not an eleventh `membership_kind`.** `0011`'s own comment says "COM-01-R01 in full. An
+  eleventh shape is a product decision, not a migration", and a shape *decides which lifecycle
+  edges exist and how the billing schedule is built*. A trial has the edges of whatever it is
+  sold as; what makes it a trial is orthogonal to its shape.
+- **Not a boolean beside a length.** MOD-017's `early_termination_months` is the precedent: one
+  nullable integer rather than a flag and a count, because two columns can disagree and this
+  build has created that defect on purpose once. `NULL` is "not a trial"; **0 is refused**,
+  unlike `early_termination_months` where zero is a real product -- a zero-day trial is not a
+  thing a gym sells, so admitting it would be a declared value nothing can mean.
+
+It sits on the terms rather than the product because `mem_membership_terms` is already 1:1 with
+a product (`UNIQUE (tenant_id, product_id)`) and is where the contract *shape* lives, beside
+`billing_period`, `installment_count` and `prepaid_days`. So "a trial product" and "a product
+whose terms declare a trial length" are the same row, and no join has to choose between them.
+
+**And the length in days is a fact nothing else can carry**, which is what makes this one
+column rather than a flag. The term fields are months (`minimum_term_months`) and
+`prepaid_days` is bound to `membership_kind = 'prepaid'` by a biconditional -- a trial is not a
+prepayment, because nothing was paid. This record's own earlier line said the length "lives on
+the agreement, so it is configuration"; that is true of the *actual* end and false of the
+*offered* one, and the offered one is what ADM-CRM-01's "Start a 7-day trial" button needs. A
+length typed at the desk is two receptionists giving two different trials.
+
+**The second part is that the clock is `mem_memberships.ends_on`, which already exists and is
+already read.** `activate_membership` inserts the membership with `ends_on` NULL and nothing
+derives it; the column is written only by a cancellation. Setting it at activation from
+`trial_days` buys three behaviours that are already built:
+
+- **The door refuses after it ends.** MOD-022 reads the membership's dates rather than its
+  cached status, which MOD-017's gap list records in as many words.
+- **The grants are revoked.** `memberships.revoke_ended_grants` is a worker job on the
+  `ends_on` predicate, which is also the sweep this ADR's D4 says owns the MOD-017 half of a
+  lapsed trial.
+- **"2 DAYS LEFT" is derived.** ADM-CRM-05's countdown is `ends_on` minus today in the club's
+  own zone, with no second definition of when a trial ends.
+
+A trial clock of MOD-027's own would be a fourth copy of "when does this end", and the first
+time it disagreed with `ends_on` the door and the screen would say different things about the
+same person.
+
+**What this does not settle** is whether a conversion supersedes the trial's agreement or sells
+a fresh one -- the question D2 left for slice 2, which is now answerable because MOD-017's
+supersession chain has its reader (eight of them, which is the dependency this record named and
+the only one it had).
+
 ## What this record does not decide
 
 - **Which AI provider**, or whether the model is an eighth external blocker. Stated above as a
   question for whoever writes slice 4 rather than settled here.
-- **The trial's length.** The canvas draws seven days and that is a tenant's decision; the term
-  lives on the agreement, so it is configuration.
+- **The trial's length** was listed here and is decided in D7: the *offered* length is
+  `mem_membership_terms.trial_days` and the *actual* end is `mem_memberships.ends_on`. The line
+  this replaced said the length "lives on the agreement, so it is configuration", which is
+  right about the end and wrong about the offer -- and the offer is what a button saying
+  "Start a 7-day trial" has to read.
 - **Whether a lead has a member number.** MOD-017 and MOD-014 already carry two human-facing
   numbers with nothing relating them, and adding a third before that is resolved would make it
   worse.

@@ -2478,3 +2478,78 @@ for a tenant that **is** present — because the tick is reading the other datab
 names the right tenant and the wrong cause, which is what makes it expensive. The rule is the
 one this file already states for a server started by hand, one layer down: read the harness's
 own env block and match it, or point both halves at the documented default.
+
+
+**A column whose readers already exist and whose writer is missing is a feature to adopt, not
+a column to add.** MOD-027's trial needed a clock, and `mem_memberships.ends_on` was already
+there -- in the UPDATE grant, written only by a cancellation, and honoured by *three* things a
+trial needs: MOD-022 refuses a door on the membership's dates rather than its cached status,
+`memberships.revoke_ended_grants` sweeps the grants of a membership whose `ends_on` has
+passed, and a countdown is `ends_on` minus today. Deriving it at activation bought all three
+and added no mechanism; a trial clock of MOD-027's own would have been a fourth definition of
+when a trial ends, and the first time it disagreed the door and the screen would say different
+things about one person.
+
+This is the inverse of the finding this file records most often. "A column implying a control
+nobody implemented" is a column with a writer and no reader; this is a column with *readers*
+and no writer, and it looks identical in a grep. The question to ask of a new fact is not only
+"where would I store this" but "what already reads a column of this shape" -- and the answer
+was in MOD-017's own gap list, which says in as many words that the door reads the dates.
+
+**`USING (tenant_id, ...)` is ambiguous the moment two joined tables carry `tenant_id`, which
+in `plt01` is all of them.** `JOIN a USING (tenant_id, agreement_id) JOIN t USING (tenant_id,
+membership_terms_id)` is `AmbiguousColumn` at runtime, not a planning error a reader would
+spot -- so it reaches whichever test first exercises the query. Explicit single-column `ON`
+clauses are what the module's existing walk-joins use, and they are safe for the reason the
+composite keys exist in the first place: RLS bounds the tenant on every one of those tables, so
+the tenant equality is already enforced rather than being the join's job.
+
+
+**A mutation sweep's *restore* overwrites concurrent edits to the file it is mutating, which is
+a third way to lose work to one.** This file already records two: a stopped sweep leaving a
+mutation behind, and `import`ing a sweep module running it. The third is quieter and cost two
+edits here: the harness captures `original = path.read_text()` before each mutation and writes
+it back afterwards, so anything written to that file *between* a mutation's write and its
+restore is replaced by a copy taken minutes earlier. `ruff` and `mypy` had just passed on the
+edits; `grep` for the new symbols found them gone.
+
+The tell is that *some* of a session's edits to one file survive and some do not -- the ones
+made before the sweep started are in every `original` it captures, and the ones made during it
+are not. So the check after a sweep is not only "is a mutation left behind" but "are my own
+edits still there", and the rule in front of it is the one the suites already have: **do not
+touch a file while a sweep is reading or writing it.** A sweep over `app/` means the whole
+module is off limits until it finishes.
+
+**And two writers of one cached fact is a gap to disclose, not a fix to half-make.** A
+membership's `ends_on` is written by the activation, by a cancellation and now by a plan
+change -- and a superseding agreement written straight through `POST /memberships/agreements`
+records no lifecycle change and moves nothing, so after it the supersession chain says one
+thing and the cached date says another: the board follows the new product while the door
+expires on the old one. The honest shape is a test that asserts what actually happens with the
+reason on it, because closing it is a decision (a lifecycle change on that route, or an end
+date the door derives) rather than a line.
+
+
+**A fixed weekday in a test fixture is a suite that fails one day in seven, and the fix was
+already in the file.** MOD-019's default template runs "weekly on Tuesday at 18:00" from
+tomorrow, and the booking window is `opens_hours_before`, which defaults to 168. Run on a
+Tuesday, the first occurrence is eight days out, the window has not opened, and **twelve tests
+across four classes** fail with `booking opens at ...` -- the product being exactly right and
+the fixture asking for a session nobody could book yet. `next_weekday` has been in that file
+since the module was built and its own docstring says "so a window is always open"; the default
+template never used it.
+
+This is the day-of-week form of the time-of-day flake this file already records, and it has the
+same worst property: CI sees it on one day in seven and the green runs prove nothing about the
+red one. **The expensive part was the attribution** -- the failures arrived in a run that also
+carried an unrelated change, and the first instinct was to look at the change. A `git worktree
+add /tmp/x HEAD` and the same suite against the same database reproduced them in forty seconds,
+which is the cheapest decisive test available and the one to reach for first: *reproduce at HEAD
+before diagnosing.*
+
+**And the column the window is read from has no writer.** `sch_capacity_policies
+.opens_hours_before` and `closes_minutes_before` have a default, a CHECK and a decision function
+that takes both -- and `CapacityPolicyBody` carries neither, so OPS-01-R04's lead time is not
+settable through any route and every tenant's booking window is exactly one week. That is this
+file's recurring shape in its plainest form, found while fixing a test rather than by reading
+the module.
