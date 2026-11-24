@@ -3512,6 +3512,43 @@ Known gaps, deliberate:
   nothing completes a session whose time has passed, sweeps a lapsed hold or expires a booking
   window. The worker runtime exists and none of these is wired: completing a session is a
   statement that it happened, which is the same judgement MOD-020's settlement needs.
+- **A class can be checked before it exists, and `preview_publish` could not answer that.**
+  ADM-SCH-03 is where a recurring class is created, and its canvas says when the answer has
+  to arrive: "conflicts surface as the coach field changes, not on save -- a save-time error
+  means re-deciding everything else too." The preview takes a `template_id` and assesses what
+  republishing it would move; there is no template on that screen yet.
+  `POST /scheduling/conflict-check` takes the proposed rule, policy and requirements and runs
+  the generation's own four questions -- `_held_over`, `conflicts.detect`, `_assign` and
+  `availability.unavailable_reason` -- from the generation's own helpers, because a second
+  definition of "is the studio free" would clear a class the publish then refuses.
+  **It warns and does not block**, which is the canvas's own sentence ("a manager may know
+  Omar's PT is moving"): a clash is a 200 with a report, and publishing over one still costs
+  `scheduling.conflict.override` and a written reason.
+  **The alternatives are *free*, not *qualified*.** "Dana and Yousef are both qualified and
+  free at that hour" is answered on the half that exists -- nothing in this build stores a
+  skill, and `skills` is already the caller's word -- and the response says which half it
+  cannot answer rather than letting a list imply it.
+  **And the spare quantity of each anonymous requirement travels with it**, which is what
+  bounds the capacity field: "Studio 2 holds 20 bikes. Capacity cannot exceed the room" is a
+  fact about the equipment that exists rather than a seat count on a room, which this schema
+  deliberately does not carry -- "twenty bikes is one row with a quantity of twenty".
+  **The walk is bounded at eight occurrences and the answer says which dates it looked at**,
+  because the screen asks per keystroke and each occurrence costs a query. The *dates* are
+  there because a count could not see the sweep's own finding: a walk that started at the
+  rule's first date rather than at today examined eight of the past, and eight of the past is
+  still eight.
+  Proven: 16 HTTP tests and 13 mutations in `tests/mutate_conflict_check.py`, all caught --
+  **11 of 13 uncaught on the first run**, which is this build's "a sample proves the sample"
+  at the scale where it is worth stating: three of those were guards subsumed by a sibling and
+  were deleted (the three `check_*` calls the parsers already make, the request body's second
+  ceiling, and the conflicting-coach filter the busy, rota and location guards already cover),
+  and the other eight were cases that did not exist -- a coach at another site, a coach whose
+  rota refuses the hour, a coach busy on *another* class, five free coaches for the bound,
+  equipment held and equipment elsewhere, and the two above. **And the first version keyed
+  its alternatives on a conflict kind nothing produces** -- `busy`, where `conflicts.py`
+  raises `double_booked`, `over_capacity` and `elsewhere` -- so the suggestion list came back
+  empty, which is MOD-012's "a control keyed on a value that never occurs" and which the
+  tests caught at once.
 - **`sch_availability_windows` has a reader now, and had none since the module was built.**
   `set_availability` wrote working hours, breaks and dated absences and nothing in the product
   could show what it wrote -- so a rota could be set and the only way to learn what it said
@@ -3588,17 +3625,21 @@ Known gaps, deliberate:
   is a person's own name and *is* cleared, because the row says which person it is.
 - **The timeline does not know about any of this.** MOD-014 projects nine event types and none
   of MOD-019's five is among them, so a member's timeline shows no class they were booked into.
-- **The surface is read-only, and one of its writes was never the reason why.** `web/`
-  renders the calendar, one session and now a resource's rota -- see "The web app" -- and
-  every write here is a form that does not exist: publishing a schedule, generating
-  occurrences, substituting an instructor, cancelling and relocating. **This bullet used to
-  say each is a stepped-up permission, and that was false for the one the design puts a
-  button on.** `scheduling.availability.write` is `configuration` with no financial class --
-  routine, AAL 1 -- and the catalogue says why: "a rota is edited by the people who run the
-  floor, and refusing them a step-up every time somebody books a day off would make the rota
-  wrong instead". So ADM-SCH-04's "Add an exception" is a form this app could build today,
-  and `/rota` names it as the next piece of work rather than as a refusal. The other five
-  writes really are stepped-up, which is the same reason the hierarchy surface is read-only.
+- **The surface writes now, and twice this bullet was wrong about why it did not.** `web/`
+  renders the calendar, one session and a resource's rota, and **`/schedule/new` creates a
+  class** -- the template, its publication and its sessions, in three writes with a live clash
+  check beside them. The first correction was that
+  `scheduling.availability.write` is `configuration` with no financial class, so ADM-SCH-04's
+  "Add an exception" was buildable all along and the blanket "each is a stepped-up permission"
+  was false for the one the design puts a button on. The second is this one: the three
+  permissions ADM-SCH-03 needs *are* stepped-up, and that was never the obstacle either -- the
+  step-up offered before the button is what FD-05 and ADM-MSH-03 already do, and what was
+  actually missing was a *read*, because `preview_publish` takes a template id and that screen
+  has no template yet. **A blanket reason covering five writes was wrong about two of them for
+  two different reasons**, which is the argument for re-deriving one per screen.
+  Still a form that does not exist: substituting an instructor, cancelling a session and
+  relocating one -- ADM-SCH-07's own canvas requires a message with the cancellation, and
+  nothing in this build sends one.
 - **The board shows today onwards**, which means its row count drops by one each time UTC
   midnight passes after a fixture is seeded. That is a property of the window rather than a
   defect, and it is why the spec asserts what every row *says* rather than how many there
@@ -5890,6 +5931,42 @@ decisions rather than rendering:
     form writes a dated absence and takes one back, and a reader without the write
     permission is given neither control rather than one that answers 403.
 
+**ADM-SCH-03 is the create-a-class form, and it is MOD-019's first write on this surface.**
+The canvas is seven controls and two instructions: "conflicts surface as the coach field
+changes, not on save -- a save-time error means re-deciding everything else too", and "it
+warns, it does not block: a manager may know Omar's PT is moving". The read it needed is in
+MOD-019's section above; four things are the surface's own.
+
+  * **A clash never holds the button.** What it changes is the *permission* the create costs:
+    generating over one needs `scheduling.conflict.override` and a written reason, which is
+    paragraph 1842's Critical Control -- so the canvas's "Keep Omar anyway" opens the reason
+    rather than being the decision, and the thing that is required is the reason rather than
+    the absence of a clash. `mayCreate` is a function for exactly that, with a component test
+    asserting it stays true over a clash.
+  * **Three writes, so three windows.** Drafting, publishing and generating are MOD-019's own
+    division, so the state names which one it stopped at -- a reader told only "that was
+    refused" after the draft landed would fill the form in again and be refused for a
+    duplicate code.
+  * **The answer carries the proposal it was about**, and the linter is what insisted: a
+    synchronous `setState` in an effect is a value that should have been derived, and holding
+    the answer beside a separate "have we asked" boolean is how a reply about an edited
+    proposal comes to be rendered as the answer to the one on screen. `@/lib/walk-in` records
+    the same shape from the duplicate check, where the first version needed a ref to catch it.
+  * **`ChoiceChips` gained an uncontrolled `onChange`.** The count on the canvas's own button
+    moves with the chips and the check is asked as they are tapped, so the component tells a
+    caller when the selection changes while the DOM stays the source of truth -- which is what
+    keeps it working with JavaScript disabled. **And its hidden control bit a spec for the
+    second time**: `.check()` waits for an input that is never visible, so the click a reader
+    makes is on the chip's face, which FD-05's spec had already paid for.
+
+**Four facts the canvas does not draw are derived and said**: the template's code and display
+name, the date range (because `recurrence.Rule` requires an end and "repeats weekly" has none),
+and the site from the link. **And the capacity ceiling it *does* draw is named as absent**,
+because "Studio 2 holds 20 bikes. Capacity cannot exceed the room" needs one fact nothing
+records -- that a class format takes one unit of equipment per attendee. Showing the spare
+figure as advice while not enforcing it would be a field explaining why the product did not do
+what it was asked, which this build calls the defect rather than the disclosure.
+
 **FD-05 is the walk-in trial, and it is where a plural message's own strictness found two
 live 500s in screens that had shipped.** The canvas is the shortest in the inventory -- two
 fields, one button and "Creates a lead already in trial with the clock running, a credential,
@@ -6672,7 +6749,7 @@ Known gaps: the surface covers the sign-in, the step-up, the account page, MOD-0
 MOD-007, MOD-008, MOD-009, MOD-010, MOD-011, MOD-012, MOD-013, MOD-014, MOD-016, MOD-017,
 MOD-018, MOD-019, MOD-021, MOD-022, MOD-026 and MOD-027's board, table, profile and add form, plus
 MOD-020's roster on a session,
-ADM-SCH-04's availability grid at `/rota`, ADM-MSH-07's cancellation sheet at
+ADM-SCH-03's create-a-class form at `/schedule/new`, ADM-SCH-04's availability grid at `/rota`, ADM-MSH-07's cancellation sheet at
 `/people/{id}?tab=membership&cancel=1`, ADM-MEM-10's walk-in form at
 `/members/new`, FD-05's walk-in trial at `/desk/trial`, FD-06's class check-in at
 `/desk/classes/{id}` and FD-03's denial resolution at `/desk/denials/{id}`, with FD-08's

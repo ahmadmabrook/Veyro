@@ -111,6 +111,12 @@ const surfaces: [string, string][] = [
   // first `/desk` route in this sweep that is reachable without an id, so it carries FD-08's
   // device strip above a form rather than above a roster.
   ["the walk-in trial form", "/desk/trial"],
+  // **ADM-SCH-03, which is seven fields and a live panel** -- the densest form on this
+  // surface, and the one whose weekday chips are a seven-across group at 375px.
+  [
+    "the create-a-class form",
+    `/schedule/new?location=${creds.locationId}`,
+  ],
   ["the lead board", "/leads"],
   ["the lead table", "/leads?view=table"],
   // The profile is a record header over four metric cells, a timeline and five forms,

@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { ChangeEvent, ReactNode } from "react";
 
 /**
  * A small single- or multi-select drawn as chips — ADM-CRM-04's `INTEREST · OPTIONAL` and
@@ -43,6 +43,7 @@ export function ChoiceChips({
   note,
   single = false,
   required = false,
+  onChange,
 }: {
   name: string;
   legend: string;
@@ -75,6 +76,20 @@ export function ChoiceChips({
    * becomes unreachable. The server refuses and says which field.
    */
   required?: boolean;
+  /**
+   * Told when the choice changes, without taking control of it.
+   *
+   * **The group stays uncontrolled and the DOM stays the source of truth**, which is what
+   * makes it work with JavaScript disabled: the checkboxes feed `FormData` exactly as they
+   * did and this is a notification rather than a value. ADM-SCH-03 needs it because the
+   * canvas requires an answer *as* the field changes -- "conflicts surface as the coach field
+   * changes, not on save" -- and the count on its own button moves with the chips.
+   *
+   * Reading the group from the event's own form is what keeps the two in step: a callback
+   * that maintained its own array would be a second copy of the selection, and the day they
+   * disagreed the button would state a count the submit does not send.
+   */
+  onChange?: (selected: string[]) => void;
 }) {
   return (
     <fieldset className="ds-choice-group">
@@ -99,6 +114,18 @@ export function ChoiceChips({
               defaultChecked={defaultSelected.includes(one.value)}
               aria-required={required ? true : undefined}
               className="ds-visually-hidden"
+              {...(onChange === undefined ? {} : {
+                onChange: (event: ChangeEvent<HTMLInputElement>) => {
+                  const form = event.target.form;
+                  if (form === null) return;
+                  onChange(
+                    [...form.elements]
+                      .filter((element): element is HTMLInputElement =>
+                        element instanceof HTMLInputElement
+                        && element.name === name && element.checked)
+                      .map((element) => element.value));
+                },
+              })}
             />
             <span className="ds-choice-chip-face">{one.label}</span>
           </label>

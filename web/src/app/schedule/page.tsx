@@ -3,17 +3,14 @@ import { redirect } from "next/navigation";
 
 import { AttentionQueue, AttentionRow } from "@/components/ds/attention-row";
 import { Banner } from "@/components/ds/banner";
+import { Button } from "@/components/ds/button";
 import { ClassCell, WeekGrid } from "@/components/ds/week-grid";
 import { fill, formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
-import { ApiError, currentSession, gate, gateMessage } from "@/lib/api";
+import { ApiError, currentSession, gate, gateMessage, gateVerdict } from "@/lib/api";
 import { listLocations, type Location } from "@/lib/organization";
 import { presentation } from "@/lib/preferences";
 import {
-  needsAttention,
-  readCalendar,
-  weekDays,
-  weekRows,
-  weekSummary,
+  isUuid, needsAttention, readCalendar, weekDays, weekRows, weekSummary,
   type ScheduledSession,
 } from "@/lib/scheduling";
 import { inZone } from "@/lib/time";
@@ -82,6 +79,12 @@ export default async function SchedulePage({
   // one -- which would read as "this tenant has no sites".
   const maySites = await gate("tenancy.organization.read");
   const sites = maySites.allowed ? await listLocations().catch(toNull) : null;
+  // **The board is the route to ADM-SCH-03**, which had none. A screen with no way to it is
+  // unreachable, which this app has recorded twice -- ADM-MEM-05's missing "Add member" and
+  // the lead table's missing `Lost` chip, both found by somebody looking for the control. The
+  // write permission is financial class, so a session that cannot step up is not shown a
+  // button that would be refused; one that can is, and the screen offers the step-up.
+  const mayCreateClass = await gate("scheduling.template.write");
 
   const params = await searchParams;
   const chosen = isUuid(params.site) ? params.site : sites?.[0]?.location_id;
@@ -151,6 +154,16 @@ export default async function SchedulePage({
         {t(locale, "schedule.timezone")}{" "}
         <span className="data" dir="ltr">{calendar.timezone}</span>
       </p>
+
+      {mayCreateClass.allowed || gateVerdict(mayCreateClass) === "needs_step_up" ? (
+        <p style={{ margin: 0 }}>
+          <Button
+            variant="primary" size="md"
+            href={`/schedule/new?location=${chosen}`}
+            label={text("schedule.createClass")}
+          />
+        </p>
+      ) : null}
 
       {sites !== null && sites.length > 1 ? (
         <nav
@@ -369,16 +382,7 @@ function isDate(value: string | undefined): value is string {
   return value !== undefined && /^\d{4}-\d{2}-\d{2}$/.test(value);
 }
 
-/**
- * A site id out of a query string, checked for shape.
- *
- * The backend answers 422 for a malformed one -- `require_uuid` is in that route -- so this is
- * not the control. It is what keeps a mistyped link rendering the board's own refusal instead
- * of an unexpected-error panel.
- */
-function isUuid(value: string | undefined): value is string {
-  return value !== undefined && /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(value);
-}
+
 
 
 

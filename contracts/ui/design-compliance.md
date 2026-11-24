@@ -315,6 +315,7 @@ corresponds to them. The others map loosely:
 | `/schedule` | ADM-SCH-01 Class schedule · week grid | **built from the canvas** |
 | `/rota` | ADM-SCH-04 Coach availability · week grid | **built from the canvas** — the schedule board's own missing third view, over a read that did not exist |
 | `/desk/*` (layout) | FD-08 Device strip | **built from the canvas** — always visible above the Front Desk surface, worst row first, and every degraded row names what to do instead; the canvas's own "type the name instead" is replaced because this product has no member search, and the receipt printer and card terminal it draws are not kinds of device this build registers |
+| `/schedule/new` | ADM-SCH-03 Create a class | **built from the canvas** — type, coach, room, capacity, time, the weekday chips and the waitlist, with the clash reported as the fields change rather than on save and the two answers the canvas draws (use somebody free, or keep them with the written reason paragraph 1842 requires); the capacity ceiling, the waitlist's other two settings and editing a class that already has bookings are each named as absent with what they need |
 | `/desk/trial` | FD-05 Walk-in trial | **built from the canvas** — two fields and a button that creates a person, opens a lead, signs an agreement on the trial product and activates it in one request; the duplicate panel is borrowed from ADM-MEM-10 because this screen creates a `ppl_persons` row exactly as that one does, the heading names the plan's own `trial_days`, and the credential and the app invitation the canvas promises are each named as absent with what they wait on |
 | `/desk/denials/{id}` | FD-03 Access denial resolution | **built from the canvas** — the discreet line a password-only desk gets and the real reason once stepped up, which is the screen's own thesis; the door is named from the zone the refusal cites, the override offers the step-up rather than a button that would be refused, and the renewal, the day pass, the photo and the canvas's own club-and-plan header line are each named as absent with a reason |
 | `/desk/classes/{id}` | FD-06 Class check-in | **built from the canvas, and the first Front Desk screen** — Touch density, the roster composed with MOD-014's batched names, the only working write form here that is not behind a step-up; the automatic release and the waitlist notification the canvas promises are named as absent |
@@ -2531,3 +2532,76 @@ across a retry, and said to be a handle rather than printed as a number.
 Proven: 15 Python mutations against the command, all caught; 12 HTTP tests; 9 component tests
 over the plan states and the confirmation's wording; 7 browser tests, two of which step up and
 one of which starts a real trial; and the phone sweep carries the route.
+
+## ADM-SCH-03 — create a class, and the read that could not be asked
+
+The canvas is seven controls and one live answer, and two of its sentences are instructions
+rather than labels:
+
+> Conflicts surface as the coach field changes, not on save — a save-time error means
+> re-deciding everything else too.
+>
+> It warns, it does not block: a manager may know Omar's PT is moving.
+
+`/schedule/new` is it, and **MOD-019's first write form**. Seven decisions carry it.
+
+**The read it needed did not exist, and the gap note did not say so.** That entry named the
+two halves correctly — the template writes existed with no form, and "qualified" needs a skill
+nothing stores — and missed the thing in the way: `preview_publish` takes a `template_id` and
+assesses what *republishing* would move, and this is the screen where there is no template yet.
+`POST /scheduling/conflict-check` takes the proposed rule, policy and requirements and runs the
+generation's own four questions from the generation's own helpers, because a second definition
+of "is the studio free" would clear a class the publish then refuses.
+
+**It warns and does not block, so the clash never holds the button.** What a clash changes is
+the *permission* the create costs: generating over one needs `scheduling.conflict.override` and
+a written reason, which is paragraph 1842's Critical Control. So the canvas's **Keep Omar
+anyway** opens the reason rather than being the decision, and a reader who may not override is
+told so instead of being given a control that would be refused. `mayCreate` is a function
+rather than a comment for exactly this: the thing that is required is the reason, not the
+absence of a clash.
+
+**Three writes, so three windows, and the state names which one it is in.** Drafting,
+publishing and generating are MOD-019's own division — "a draft affects nobody and a
+publication is what members plan their week around" — and nothing makes three HTTP writes
+atomic from a browser. A reader told only "that was refused" after the draft landed would fill
+the form in again; told which step stopped, they can carry on.
+
+**The answer carries the proposal it was about.** `proposalKey` and `checkState` are the
+derivation, and the linter is what insisted: a synchronous `setState` in an effect is a value
+that should have been derived, and storing the answer beside a separate "have we asked" boolean
+is how a reply about an edited proposal comes to be rendered as the answer to the one on
+screen. `@/lib/walk-in` records the same shape from the duplicate check, where the first
+version needed a ref to catch it.
+
+**`unchecked` is not `clear`.** A check the server could not be asked has not told anybody the
+hour is free, so it is its own panel with its own sentence — and the create still goes ahead,
+because the generation refuses what it cannot place. The screen says that rather than implying
+a green field.
+
+**Four facts the canvas does not draw are derived and said.** The template's code and its
+display name, because this build has no template numbering scheme and asking a manager to
+invent one would be asking them to do the product's job (FD-05's membership handle and
+MOD-026's case number, for the third time); the date range, because `recurrence.Rule` requires
+an end and "repeats weekly" has none, so a quarter is the default and the form prints the two
+dates; and the site, from the link, which is the board's own pattern.
+
+**`ChoiceChips` gained an `onChange` and stayed uncontrolled.** The canvas needs an answer *as*
+the field changes and the count on its own button moves with the chips, so the component tells
+a caller when the selection changes and the DOM stays the source of truth — which is what keeps
+it working with JavaScript disabled. A callback that maintained its own array would be a second
+copy of the selection, and the day they disagreed the button would state a count the submit
+does not send.
+
+**What is still owed**, each named on the screen: the capacity ceiling the canvas states
+("Studio 2 holds 20 bikes. Capacity cannot exceed the room"), which needs one fact nothing
+records — that a class *format* takes one unit of equipment per attendee, where how many exist
+is on the resource and how many a session takes is on the requirement and nothing relates
+either to the capacity; two of the waitlist's three settings, where promotion is built and runs
+on a schedule and notifying is the messaging provider; the qualification half of the coach
+suggestion; and editing a class that already has bookings, whose impact the server already
+computes and which is the acknowledgement that preview exists for.
+
+Proven: 16 HTTP tests and 13 mutations against the read (all caught, **11 of 13 uncaught on the
+first run**); 12 component tests over the decisions; a browser spec; and the phone sweep
+carries the route.

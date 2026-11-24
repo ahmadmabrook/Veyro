@@ -254,3 +254,15 @@ export function weekSummary(sessions: ScheduledSession[]): {
     averageFillPercent: places === 0 ? null : Math.round((held / places) * 100),
   };
 }
+
+
+/**
+ * A site id out of a query string, checked for shape.
+ *
+ * The backend answers 422 for a malformed one -- `require_uuid` is in that route -- so this is
+ * not the control. It is what keeps a mistyped link rendering the board's own refusal instead
+ * of an unexpected-error panel.
+ */
+export function isUuid(value: string | undefined): value is string {
+  return value !== undefined && /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(value);
+}

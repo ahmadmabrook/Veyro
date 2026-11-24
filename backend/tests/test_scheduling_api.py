@@ -1690,3 +1690,338 @@ class RotaWeekApiTests(SchedulingApiTestCase):
         body = json.dumps(self.week(gym, gym["coach"]))
         for leaked in ("legal_name", "date_of_birth", "email", "phone"):
             self.assertNotIn(leaked, body)
+
+
+class ConflictCheckTests(SchedulingApiTestCase):
+    """ADM-SCH-03's live check: a class that does not exist yet, asked about.
+
+    **The read `preview_publish` could not answer.** That one takes a template id and assesses
+    what republishing it would move; this screen is the one where there is no template yet, and
+    the canvas says when the answer has to arrive: "conflicts surface as the coach field
+    changes, not on save".
+    """
+
+    def proposal(self, gym: dict[str, Any], **over: Any) -> dict[str, Any]:
+        body: dict[str, Any] = {
+            "location_id": gym["location_id"],
+            "rule": {
+                "frequency": "weekly", "local_time": "18:00", "duration_minutes": 60,
+                "starts_on": day(1), "until": day(21),
+                "weekdays": [BOOKABLE_WEEKDAY],
+            },
+            "policy": {"capacity": 12, "setup_minutes": 10, "cleanup_minutes": 10},
+            "requirements": [
+                {"kind": "room", "quantity": 1, "resource_id": gym["studio"]},
+                {"kind": "staff", "quantity": 1, "resource_id": gym["coach"]},
+            ],
+        }
+        body.update(over)
+        return body
+
+    def check(self, gym: dict[str, Any], **over: Any) -> Any:
+        return self.client.post(
+            "/scheduling/conflict-check", json=self.proposal(gym, **over),
+            headers=self.headers(gym["tenant_id"]))
+
+    def test_a_clear_hour_comes_back_clear_with_the_count_the_button_states(self) -> None:
+        """"Create · 2 classes a week" is a figure, so the read answers it."""
+        gym = self.gym()
+        answer = self.check(gym)
+        self.assertEqual(answer.status_code, 200, answer.text)
+        body = answer.json()
+        self.assertTrue(body["clear"])
+        self.assertEqual(body["conflicts"], [])
+        self.assertEqual(body["per_week"], 1)
+        self.assertGreaterEqual(body["occurrences"], 2)
+        self.assertEqual(body["timezone"], "Asia/Amman")
+
+    def test_per_week_is_absent_where_the_rule_is_not_weekly(self) -> None:
+        """A monthly or one-off rule has no weekly figure, so there is none to state.
+
+        Computed from a span it would be a number nobody wrote -- MOD-022's own refusal to
+        divide by a capacity it cannot defend.
+        """
+        gym = self.gym()
+        once = self.check(gym, rule={
+            "frequency": "once", "local_time": "18:00", "duration_minutes": 60,
+            "starts_on": day(2), "until": day(2), "weekdays": []})
+        self.assertEqual(once.status_code, 200, once.text)
+        self.assertIsNone(once.json()["per_week"])
+
+    def test_a_studio_already_held_is_reported_with_the_class_that_holds_it(self) -> None:
+        """The clash the canvas draws, and the session it points at.
+
+        A published template's generated session holds the studio, so a second class at the
+        same hour is the ordinary collision -- and the report names the resource and the
+        session rather than saying "busy".
+        """
+        gym = self.gym()
+        self.a_session(gym)
+        answer = self.check(gym)
+        self.assertEqual(answer.status_code, 200, answer.text)
+        body = answer.json()
+        self.assertFalse(body["clear"])
+        kinds = {c["kind"] for c in body["conflicts"]}
+        self.assertIn("double_booked", kinds)
+        clash = next(c for c in body["conflicts"] if c["kind"] == "double_booked")
+        self.assertIsNotNone(clash["resource_id"])
+        self.assertIsNotNone(clash["with_session_id"])
+        self.assertIsNotNone(clash["resource_name"])
+        self.assertEqual(clash["local_date"], body["conflicts"][0]["local_date"])
+
+    def test_it_warns_and_does_not_block(self) -> None:
+        """The canvas's own sentence: "a manager may know Omar's PT is moving".
+
+        So a clash is a 200 with a report rather than a refusal, and the response says what
+        publishing over one would cost.
+        """
+        gym = self.gym()
+        self.a_session(gym)
+        answer = self.check(gym)
+        self.assertEqual(answer.status_code, 200)
+        self.assertIn("scheduling.conflict.override",
+                      answer.json()["it_warns_it_does_not_block"])
+
+    def test_a_busy_coach_brings_back_the_staff_who_are_free(self) -> None:
+        """"Dana and Yousef are both qualified and free at that hour" -- the free half.
+
+        Nothing in this build stores a skill, so the response offers the staff whose rota
+        admits the hour and who hold nothing else over it, and says that is what it means.
+        """
+        gym = self.gym()
+        self.a_session(gym)
+        spare = self.resource(
+            gym["tenant_id"], "staff", f"DANA-{uuid.uuid4().hex[:6].upper()}",
+            location_id=gym["location_id"])
+        answer = self.check(gym)
+        self.assertEqual(answer.status_code, 200, answer.text)
+        body = answer.json()
+        self.assertIn(spare, [a["resource_id"] for a in body["alternatives"]])
+        self.assertNotIn(gym["coach"], [a["resource_id"] for a in body["alternatives"]])
+        self.assertIn("stores a skill", body["alternatives_are_free_not_qualified"])
+
+    def test_the_spare_quantity_of_an_anonymous_requirement_bounds_the_capacity(self) -> None:
+        """"Studio 2 holds 20 bikes. Capacity cannot exceed the room."
+
+        The ceiling is the quantity that exists rather than a seat count on a room, which this
+        schema deliberately does not carry: twenty bikes is one row with a quantity of twenty.
+        A *named* requirement contributes none, because the ceiling there is the thing itself.
+        """
+        gym = self.gym()
+        answer = self.check(gym, requirements=[
+            {"kind": "room", "quantity": 1, "resource_id": gym["studio"]},
+            {"kind": "equipment", "quantity": 12},
+        ])
+        self.assertEqual(answer.status_code, 200, answer.text)
+        body = answer.json()
+        self.assertEqual(body["spare"], {"equipment": 20})
+
+    def test_the_walk_is_bounded_and_says_how_far_it_looked(self) -> None:
+        """Asked per keystroke, so the walk is bounded and the answer is not silent about it.
+
+        A daily rule over three weeks is twenty-one occurrences and each costs a query; the
+        response carries what it examined and out of how many.
+        """
+        gym = self.gym()
+        answer = self.check(gym, rule={
+            "frequency": "daily", "local_time": "18:00", "duration_minutes": 60,
+            "starts_on": day(1), "until": day(21), "weekdays": []})
+        self.assertEqual(answer.status_code, 200, answer.text)
+        body = answer.json()
+        self.assertEqual(body["examined"], 8)
+        self.assertGreater(body["examined_of"], 8)
+        refused = self.client.post(
+            "/scheduling/conflict-check",
+            json={**self.proposal(gym), "limit": 99},
+            headers=self.headers(gym["tenant_id"]))
+        self.assertEqual(refused.status_code, 422, refused.text)
+
+    def test_a_rule_the_engine_could_not_use_is_refused_rather_than_called_clear(self) -> None:
+        """A dry run that accepted an impossible rule would report "no conflicts" about a class
+        nobody can create, which is the confident wrong answer this read exists to avoid."""
+        gym = self.gym()
+        answer = self.check(gym, rule={
+            "frequency": "weekly", "local_time": "18:00", "duration_minutes": 60,
+            "starts_on": day(1), "until": day(21), "weekdays": []})
+        self.assertEqual(answer.status_code, 422, answer.text)
+
+    def test_a_malformed_location_is_refused_rather_than_crashing(self) -> None:
+        gym = self.gym()
+        answer = self.client.post(
+            "/scheduling/conflict-check",
+            json={**self.proposal(gym), "location_id": "not-a-uuid"},
+            headers=self.headers(gym["tenant_id"]))
+        self.assertEqual(answer.status_code, 422, answer.text)
+        missing = self.client.post(
+            "/scheduling/conflict-check",
+            json={**self.proposal(gym), "location_id": str(uuid.uuid4())},
+            headers=self.headers(gym["tenant_id"]))
+        self.assertEqual(missing.status_code, 404, missing.text)
+
+    def test_a_coach_whose_rota_refuses_the_hour_is_its_own_conflict_kind(self) -> None:
+        """"The rota says no" and "the room is busy" have different remedies, so they are
+        different kinds -- the generation's own split, asked here before anything is written."""
+        gym = self.gym()
+        window = self.client.post("/scheduling/availability", json={
+            "resource_id": gym["coach"], "window_kind": "working",
+            "weekday": BOOKABLE_WEEKDAY,
+            "starts_at": "09:00", "ends_at": "11:00", **self.correlation()},
+            headers=self.headers(gym["tenant_id"]))
+        self.assertEqual(window.status_code, 201, window.text)
+        answer = self.check(gym)
+        self.assertEqual(answer.status_code, 200, answer.text)
+        body = answer.json()
+        self.assertIn("unavailable", {c["kind"] for c in body["conflicts"]})
+
+    def test_the_walk_starts_at_today_rather_than_at_the_rule_s_first_date(self) -> None:
+        """A rule that began last week says nothing about the class being created now.
+
+        And examining its past dates spends the bound on occurrences nobody asked about, so
+        the first one examined is on or after today.
+        """
+        gym = self.gym()
+        answer = self.check(gym, rule={
+            "frequency": "daily", "local_time": "18:00", "duration_minutes": 60,
+            "starts_on": day(-10), "until": day(21), "weekdays": []})
+        self.assertEqual(answer.status_code, 200, answer.text)
+        body = answer.json()
+        self.assertEqual(body["examined"], 8)
+        # **The dates, because the count cannot see this.** Eight of the past is still eight,
+        # which is why the mutation that started the walk at the rule's first date came back
+        # uncaught against a count assertion.
+        self.assertGreaterEqual(body["examined_from"], TODAY.isoformat())
+        self.assertLess(body["examined_of"], body["occurrences"])
+
+    def test_a_clash_inside_the_proposals_own_setup_margin_is_a_clash(self) -> None:
+        """The margins are part of the window this check asks about.
+
+        **The proposal's own margins, which is the half a count cannot see.** The existing
+        class runs 18:00-19:00 and holds exactly that; the proposed one starts at 19:10 with
+        fifteen minutes of setup, so its *window* opens at 18:55 and overlaps. Asking about
+        the bare session would report it clear -- the two questions asked about different
+        spans, which is the defect a reviewer found in the generation.
+        """
+        gym = self.gym()
+        template_id = self.published(gym, policy={"capacity": 12})
+        self.assertGreater(self.generate(gym, template_id)["created"], 0)
+        bare = self.check(gym, policy={"capacity": 12}, rule={
+            "frequency": "weekly", "local_time": "19:10", "duration_minutes": 30,
+            "starts_on": day(1), "until": day(21), "weekdays": [BOOKABLE_WEEKDAY]})
+        self.assertEqual(bare.status_code, 200, bare.text)
+        self.assertTrue(bare.json()["clear"], bare.text)
+        with_setup = self.check(
+            gym, policy={"capacity": 12, "setup_minutes": 15}, rule={
+                "frequency": "weekly", "local_time": "19:10", "duration_minutes": 30,
+                "starts_on": day(1), "until": day(21), "weekdays": [BOOKABLE_WEEKDAY]})
+        self.assertEqual(with_setup.status_code, 200, with_setup.text)
+        self.assertFalse(with_setup.json()["clear"], with_setup.text)
+
+    def test_the_suggestions_are_the_coaches_free_at_this_site(self) -> None:
+        """Three guards, and each needs a coach the others admit.
+
+        A coach at another site is not an alternative at this one; a coach whose rota refuses
+        the hour is not free however empty their diary; and a coach holding something else over
+        the window is not free either -- which needs a *second* class, because the coach this
+        proposal names is already excluded for being the one the clash is about.
+        """
+        gym = self.gym()
+        tenant_id = gym["tenant_id"]
+        suffix = uuid.uuid4().hex[:6].upper()
+        self.a_session(gym)
+
+        elsewhere = self.location(tenant_id, timezone="Asia/Amman")
+        away = self.resource(tenant_id, "staff", f"AWAY-{suffix}", location_id=elsewhere)
+        rostered_off = self.resource(
+            tenant_id, "staff", f"OFF-{suffix}", location_id=gym["location_id"])
+        self.assertEqual(self.client.post("/scheduling/availability", json={
+            "resource_id": rostered_off, "window_kind": "working",
+            "weekday": BOOKABLE_WEEKDAY, "starts_at": "09:00", "ends_at": "11:00",
+            **self.correlation()}, headers=self.headers(tenant_id)).status_code, 201)
+        free = self.resource(
+            tenant_id, "staff", f"FREE-{suffix}", location_id=gym["location_id"])
+
+        # A second class at the same hour, so its coach is busy without being named by this
+        # proposal: the only guard that can exclude them is the held-over check.
+        other_studio = self.resource(
+            tenant_id, "room", f"ROOM2-{suffix}", location_id=gym["location_id"])
+        other_coach = self.resource(
+            tenant_id, "staff", f"BUSY2-{suffix}", location_id=gym["location_id"])
+        # **Its own service format too**, because the first class is already holding the
+        # shared one at that hour -- a service resource exists once, so two classes of the
+        # same format at the same instant is the over-capacity the engine correctly refuses.
+        other_service = self.resource(tenant_id, "service", f"YOGA-{suffix}")
+        other = self.published(gym, requirements=[
+            {"kind": "service", "quantity": 1, "resource_id": other_service},
+            {"kind": "room", "quantity": 1, "resource_id": other_studio},
+            {"kind": "staff", "quantity": 1, "resource_id": other_coach},
+        ], service_resource_id=other_service, template_code=f"SPIN2-{suffix}")
+        self.assertGreater(self.generate(gym, other)["created"], 0)
+
+        offered = [a["resource_id"] for a in self.check(gym).json()["alternatives"]]
+        self.assertIn(free, offered)
+        self.assertNotIn(away, offered)
+        self.assertNotIn(rostered_off, offered)
+        self.assertNotIn(other_coach, offered)
+        self.assertNotIn(gym["coach"], offered)
+
+    def test_the_coach_the_clash_is_about_is_not_their_own_alternative(self) -> None:
+        """The guard the busy check cannot stand in for.
+
+        When the conflict is the *rota* rather than a hold, the coach it names holds nothing --
+        so nothing but `besides` keeps them off a list offering a way round their own absence.
+        """
+        gym = self.gym()
+        tenant_id = gym["tenant_id"]
+        self.assertEqual(self.client.post("/scheduling/availability", json={
+            "resource_id": gym["coach"], "window_kind": "working",
+            "weekday": BOOKABLE_WEEKDAY, "starts_at": "09:00", "ends_at": "11:00",
+            **self.correlation()}, headers=self.headers(tenant_id)).status_code, 201)
+        spare = self.resource(
+            tenant_id, "staff", f"SPARE-{uuid.uuid4().hex[:6].upper()}",
+            location_id=gym["location_id"])
+        body = self.check(gym).json()
+        self.assertIn("unavailable", {c["kind"] for c in body["conflicts"]})
+        offered = [a["resource_id"] for a in body["alternatives"]]
+        self.assertIn(spare, offered)
+        self.assertNotIn(gym["coach"], offered)
+
+    def test_the_suggestions_are_bounded(self) -> None:
+        """A tenant with sixty coaches would otherwise put sixty names under one field, which
+        is a list rather than a suggestion."""
+        gym = self.gym()
+        self.a_session(gym)
+        for n in range(FREE := 6):
+            self.resource(gym["tenant_id"], "staff",
+                          f"SPARE{n}-{uuid.uuid4().hex[:6].upper()}",
+                          location_id=gym["location_id"])
+        self.assertGreater(FREE, 4)
+        self.assertEqual(len(self.check(gym).json()["alternatives"]), 4)
+
+    def test_the_spare_count_is_what_is_free_here_and_now(self) -> None:
+        """Two guards on the figure that bounds the capacity field.
+
+        Equipment at another site is not in this room, and equipment the published class is
+        already holding is not available to a second one at the same hour -- a ceiling that
+        counted either would put a capacity on screen the publish then refuses.
+        """
+        gym = self.gym()
+        tenant_id = gym["tenant_id"]
+        suffix = uuid.uuid4().hex[:6].upper()
+        elsewhere = self.location(tenant_id, timezone="Asia/Amman")
+        self.resource(tenant_id, "equipment", f"AWAYBIKES-{suffix}",
+                      quantity=50, location_id=elsewhere)
+        requirements = [
+            {"kind": "service", "quantity": 1, "resource_id": gym["service"]},
+            {"kind": "room", "quantity": 1, "resource_id": gym["studio"]},
+            {"kind": "equipment", "quantity": 8},
+        ]
+        # Nothing held yet: twenty bikes here, and the fifty at the other site are not in
+        # this room.
+        self.assertEqual(
+            self.check(gym, requirements=requirements).json()["spare"], {"equipment": 20})
+        # A class that holds eight of them leaves twelve.
+        template_id = self.published(gym, requirements=requirements,
+                                     template_code=f"SPIN3-{suffix}")
+        self.assertGreater(self.generate(gym, template_id)["created"], 0)
+        self.assertEqual(
+            self.check(gym, requirements=requirements).json()["spare"], {"equipment": 12})

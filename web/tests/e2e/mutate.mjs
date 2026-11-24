@@ -2533,6 +2533,52 @@ const MUTATIONS = [
     runner: "playwright",
     grep: "starts a trial and reports day one of it",
   },
+  // ---- ADM-SCH-03 · CREATE A CLASS ------------------------------------------------------
+  {
+    id: "new-class-answer-carries-its-proposal",
+    why: "a reply about a proposal the reader has already changed is not the answer to the "
+      + "one on screen -- without the key comparison a clear hour reads as booked, or worse, "
+      + "a booked one reads as clear",
+    file: "src/lib/new-class.ts",
+    from: '  if (answer === null || answer.key !== key) return { kind: "asking" };',
+    to: '  if (answer === null) return { kind: "asking" };',
+    runner: "vitest",
+    grep: "is the answer only where the answer is about this proposal",
+  },
+  {
+    id: "new-class-override-needs-a-reason",
+    why: "paragraph 1842 is permission *and* reason, so a clash with no reason written is the "
+      + "one thing that holds this button -- without it the create is attempted and the "
+      + "generation refuses every occurrence, which is the save-time error the canvas is "
+      + "built to avoid",
+    file: "src/lib/new-class.ts",
+    from: "  if (check !== null && !check.clear && overrideReason.trim().length === 0) "
+      + "return false;",
+    to: "  if (false) return false;",
+    runner: "vitest",
+    grep: "is the written reason paragraph 1842 requires",
+  },
+  {
+    id: "new-class-clash-is-a-word",
+    why: "a vocabulary the backend stores is never a label, and this app has five recorded "
+      + "defects from rendering one -- `double_booked` in the middle of an Arabic line",
+    file: "src/lib/new-class.ts",
+    from: '    case "double_booked": return "newClass.clashBooked";',
+    to: '    case "double_booked": return null;',
+    runner: "vitest",
+    grep: "is a word from the catalogue and never the stored kind",
+  },
+  {
+    id: "new-class-is-reachable",
+    why: "the calendar is the only route to this screen, and a screen with no way to it is "
+      + "unreachable -- which this app has recorded twice, both found by somebody looking "
+      + "for the control rather than by a test",
+    file: "src/app/schedule/page.tsx",
+    from: '            label={text("schedule.createClass")}',
+    to: '            label={text("schedule.site")}',
+    runner: "playwright",
+    grep: "is reachable from the calendar, which is the only route to it",
+  },
   // **Not a mutation, because the client's gate check is not the control.** Removing it makes
   // the page attempt `GET /crm/leads/{id}/trial` for a reader who may not have it -- and the
   // route answers 403, the `.catch` returns null and the card is absent either way, so the

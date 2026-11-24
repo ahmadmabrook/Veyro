@@ -2571,6 +2571,27 @@ class ScheduleTemplateBody(BaseModel):
     correlation_id: str
 
 
+class ConflictCheckBody(BaseModel):
+    """ADM-SCH-03's live check: a class that does not exist yet, asked about.
+
+    **The same three blocks `ScheduleTemplateBody` takes**, so the dry run and the draft cannot
+    be asked different questions -- which is `PreviewScheduleBody`'s own reason for mirroring
+    the publish. What it does not take is a code, a name or a service resource: those are
+    facts about the template rather than about the hour, and a read that demanded them could
+    not answer until the form was finished.
+    """
+
+    location_id: str
+    rule: RecurrenceBody
+    policy: CapacityPolicyBody
+    requirements: list[RequirementBody] = Field(min_length=1, max_length=20)
+    #: **Bounded by the service rather than by this field**, which is `sellable_plans`'
+    #: precedent: a `le` here would make the ceiling two numbers that can disagree, and the
+    #: service is callable from somewhere other than a route. The sweep found it -- with the
+    #: field bound, removing the service's guard changed nothing a caller could observe.
+    limit: int = Field(default=scheduling.CONFLICT_PREVIEW, ge=1)
+
+
 class PreviewScheduleBody(BaseModel):
     """What a publish would do, before it does it. The same fields the publish takes, so the
     two cannot be asked different questions."""
@@ -8457,6 +8478,37 @@ def create_app(
                 for r in body.requirements],
             restrictions=[{"kind": r.kind, "value": r.value} for r in body.restrictions],
             actor_id=session["identity_id"], correlation_id=body.correlation_id)
+
+    @app.post("/scheduling/conflict-check")
+    def check_schedule_conflicts(
+        tenant_id: TenantId, session: Session, body: ConflictCheckBody,
+    ) -> dict[str, Any]:
+        """What a class would clash with, before a template exists. ADM-SCH-03's live check.
+
+        **`/templates/{id}/preview` could not answer this**, which is why this is a second
+        read rather than a parameter on that one: the preview takes a template id and assesses
+        what republishing it would move, and this screen is the one where there is no template
+        yet. The canvas says when the answer has to arrive -- "conflicts surface as the coach
+        field changes, not on save" -- so it is asked per change rather than at the end.
+
+        **A POST that writes nothing**, for the preview's reason: the rule, the policy and the
+        requirements are structured bodies and a GET cannot carry them honestly. Gated on the
+        read permission, and the gating sweep knows it is a read.
+
+        **It warns and does not block**, which is the canvas's own sentence. Publishing over a
+        clash still costs `scheduling.conflict.override` and a written reason; this is the read
+        that informs whoever decides.
+        """
+        permit(session, "scheduling.schedule.read")
+        return scheduling.check_schedule(
+            tenant_pool, tenant_id,
+            location_id=require_uuid(body.location_id, "location_id"),
+            rule=_recurrence(body.rule), policy=body.policy.model_dump(),
+            requirements=[
+                {"kind": r.kind, "quantity": r.quantity,
+                 "resource_id": optional_uuid(r.resource_id, "resource_id")}
+                for r in body.requirements],
+            limit=body.limit)
 
     @app.post("/scheduling/templates/{template_id}/preview")
     def preview_schedule_publish(

@@ -12,7 +12,21 @@ jobs:
   foundation:
     name: foundation (MOD-000 focused checks)
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    # **Raised from 25 because the backend suite reached 22.5 minutes and the job was cut in
+    # its last step.** Everything had passed -- the isolation suite, both linters, the backend
+    # tests, the container build and its smoke -- and the rollback rehearsal was cancelled
+    # mid-run, so the run read `cancelled` rather than `failed` on a commit with nothing wrong
+    # in it. A red `main` for a reason unrelated to the code is worse than one for a defect,
+    # because it is the kind that teaches a reader to skim past CI.
+    #
+    # **The number is the symptom and the cost per tenant is the cause.** `support.py` already
+    # says it: "the HTTP path spends a dozen scrypt hashes per tenant and that is most of the
+    # suite's wall-clock", and the suite is 2,943 tests each provisioning one. `hash_secret`
+    # already takes its parameters and `verify_secret` reads them from the stored record, so a
+    # lower cost factor in `local` is self-consistent and is the real fix -- the same shape as
+    # `VEYRO_API_REQUEST_BUDGET`, which `config.load_settings` refuses outside `local`. Until
+    # that lands, this is headroom rather than a smaller gate: no check is skipped.
+    timeout-minutes: 45
     services:
       # Tenant isolation is a property of the database, so it is tested against a real one.
       postgres:

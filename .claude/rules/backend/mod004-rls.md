@@ -2833,3 +2833,73 @@ shell renders more. The property is "the canvas's two fields and nothing else", 
 as the positional-cell and attribute-order traps: the number is a coincidence of the current
 markup, and a shell change breaks the assertion for a reason that has nothing to do with the
 screen.
+
+
+**A guard whose siblings already cover every reachable case is a guard with no case, and the
+sweep is the only thing that distinguishes it from one with a missing case.** MOD-019's
+conflict dry run came back 4 of 15 caught, and the eleven split three ways, which is the
+distinction worth having a name for:
+
+- **Three were subsumed and were deleted.** `recurrence.check_rule` beside a `_parse_rule`
+  that already calls it; a request body's `le=` beside the service's own ceiling, so no route
+  could reach the service guard at all; and a filter skipping the conflicting coach, which the
+  busy set, the rota check and the location filter each already exclude by every route a staff
+  conflict can arrive by. For each, no case could be written because there is none.
+- **Eight were cases that did not exist.** A coach at another site, a coach whose rota refuses
+  the hour, a coach busy on *another* class, five coaches for the bound, equipment held and
+  equipment elsewhere. Every one needed a fixture the first pass did not build.
+- **And two needed a different assertion rather than a different fixture.** A count cannot see
+  a walk that started in the past, because eight of the past is still eight -- so the read
+  now returns the dates it examined and the test asserts those. And a margin mutation is
+  invisible unless the *proposal* carries the margins: the existing hold is wide either way,
+  so the case has to be a proposal whose own setup window is what overlaps.
+
+**The tell for each is different and all three look identical in the sweep's output.** Ask, in
+order: which reader is unguarded (none → delete it); which input would reach this guard alone
+(none in the fixture → build it); and would the assertion I have change if the mutation
+applied (no → assert the thing that moves). The third is the one that produces a green test
+over a dead protection, which is this file's oldest subject.
+
+**And a trigger keyed on a value nothing produces is the same defect in new code.** That dry
+run offered alternatives only when a clash was `"busy"`, and `conflicts.py` raises
+`double_booked`, `over_capacity` and `elsewhere` -- so the suggestion list was always empty.
+MOD-012's board shipped exactly this (`live_critical`, where the column holds `critical`), and
+in both cases the cause was taking the *prose* for the stored value. The tests caught it in
+minutes because the list was asserted; a screen reading an empty list would have shown nothing
+and looked like a tenant with no spare coaches.
+
+
+**A blanket reason covering several screens is wrong about one of them for a reason the blanket
+cannot express, and MOD-019's surface was wrong twice.** That gap bullet said all five
+scheduling writes had no form because each is a stepped-up permission. The first correction was
+that `scheduling.availability.write` is not one -- `configuration` with no financial class --
+so ADM-SCH-04's "Add an exception" had been buildable all along. The second is the opposite
+shape: ADM-SCH-03's three permissions *are* stepped-up and that was never the obstacle either,
+because a step-up offered before the button is what two other screens already do. What was
+actually in the way was a **read**: `preview_publish` takes a `template_id` and the create
+screen has no template yet.
+
+So the rule has a second clause. The first is the one already here: re-derive a blanket reason
+per screen, because it is a claim about each of them. The second is sharper -- **when a screen's
+reason names the write, check whether the read exists**. A form is a read and a write, and this
+build's gap notes name the write every time because that is the half a permission has a name
+for.
+
+**And a component's hidden control bites every spec that drives it.** `ChoiceChips` draws the
+chip on its label and hides the input, so `.check()` waits for an element that is never visible
+and times out at thirty seconds -- which looks like a product defect and is a locator. Twice in
+one session, on two screens. The click a reader makes is on the face: `.ds-choice-chip`.
+`{ force: true }` would skip the actionability check and hide real problems, which is the wrong
+remedy for the same symptom.
+
+**A CI timeout is a red `main` that teaches a reader to skim past CI, so it is worth its own
+note.** The foundation job's `timeout-minutes: 25` cut the run in its *last* step -- the
+rollback rehearsal -- after the isolation suite, both linters, the backend tests, the container
+build and its smoke had all passed. The run read `cancelled` rather than `failed`, on a commit
+with nothing wrong in it, and the cause was that "Backend focused tests" had reached 22.5
+minutes. The number is the symptom; `support.py` already names the cause -- "the HTTP path
+spends a dozen scrypt hashes per tenant and that is most of the suite's wall-clock" -- and
+`hash_secret` already takes its parameters while `verify_secret` reads them from the stored
+record, so a lower cost factor in `local` is self-consistent and is the real fix. Headroom
+first, so the gate works; the cost per tenant is its own change. **Check the job's duration
+trend when a suite grows, not only its result.**

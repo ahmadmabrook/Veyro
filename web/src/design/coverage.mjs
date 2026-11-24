@@ -260,11 +260,12 @@ const BACKLOG = {
     + "-- how many of a thing there are -- capacity lives on a template's own policy per "
     + "class, and there is no equipment column at all, so the screen needs two columns "
     + "written before it has anything but the name to draw",
-  "ADM-SCH-03": "work: MOD-019. Creating a template and publishing it are built and have no "
-    + "form; what the canvas adds is the warning as the coach field changes -- 'Omar already "
-    + "has PT at 19:00 Thursdays ... Dana and Yousef are both qualified and free'. The "
-    + "conflict half is `conflicts.detect`, and 'qualified' needs a skill, which `skills` "
-    + "leaves as the caller's word because nothing stores one",
+  // **ADM-SCH-03 was here and is built.** Its reason named the two halves correctly -- the
+  // template writes existed with no form, and 'qualified' needs a skill nothing stores -- and
+  // what it did not name is the read that was actually missing: `preview_publish` takes a
+  // template id, so the screen where there is no template yet had nothing to ask.
+  // `POST /scheduling/conflict-check` is that read and `/schedule/new` is the screen; the
+  // qualification half is answered as *free* and says which half it cannot answer.
   "ADM-SCH-05": "work: MOD-019 does not distinguish a personal-training session from a class "
     + "-- a session comes from a template, and a template is a service and a place. A PT "
     + "kind, and a booking that is one member rather than a roster, is what this needs",

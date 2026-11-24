@@ -818,6 +818,225 @@ def _instances(
         held=int(r[4])) for r in rows]
 
 
+
+#: How many occurrences a dry run examines. ADM-SCH-03 asks this as the coach field changes --
+#: "conflicts surface as the coach field changes, not on save" -- and each occurrence costs a
+#: `_held_over` query, so the walk is bounded and the answer says how far it looked. A rule's
+#: own span is bounded at `recurrence.MAX_HORIZON_DAYS`, which is 400 days: a weekly class is
+#: fifty-seven occurrences and a daily one is four hundred, and asking about all of them per
+#: keystroke would make the field feel broken rather than informed.
+CONFLICT_PREVIEW = 8
+
+
+def check_schedule(
+    pool: Pool, tenant_id: str, *, location_id: str, rule: dict[str, Any],
+    policy: dict[str, Any], requirements: list[dict[str, Any]],
+    limit: int = CONFLICT_PREVIEW, at: date | None = None,
+) -> dict[str, Any]:
+    """What a class *would* clash with, before a template exists. ADM-SCH-03's live check.
+
+    **`preview_publish` could not answer this and that is why it exists.** That read takes a
+    `template_id` and assesses what republishing it would move; ADM-SCH-03 is the screen where
+    there is no template yet, and the canvas is explicit about when the answer has to arrive:
+    "Conflicts surface as the coach field changes, not on save -- a save-time error means
+    re-deciding everything else too."
+
+    **It warns, it does not block**, which is the canvas's own sentence: "a manager may know
+    Omar's PT is moving". So nothing here refuses a clash -- the override permission and its
+    written reason are what the publish charges, and this is the read that informs the person
+    deciding. What it *does* refuse is a rule, a policy or a requirement set the engine could
+    not use at all, because a dry run that accepted an impossible rule would report "no
+    conflicts" about a class nobody can create.
+
+    **The same four questions the generation asks, in the same order, from the same helpers.**
+    `_held_over`, `conflicts.detect`, `_assign` and `availability.unavailable_reason` are the
+    generation's own, called here rather than reimplemented: a second definition of "is the
+    studio free" would be a screen that cleared a class the publish then refused, which is
+    this build's one-module-two-definitions finding pointed at a form.
+
+    **The alternatives are *free*, not *qualified*.** The canvas says "Dana and Yousef are both
+    qualified and free at that hour" and this answers the second half: nothing in this build
+    stores a skill -- MOD-019's `skills` restriction is the caller's word and says so -- so a
+    read claiming somebody is qualified would be inventing the fact. The response names the
+    half it cannot answer rather than leaving a list to imply it.
+
+    **And the spare quantity of each anonymous requirement travels with it**, because that is
+    what bounds the capacity field: "Studio 2 holds 20 bikes. Capacity cannot exceed the room."
+    A bike row carries `quantity`, so the ceiling is a fact about the equipment that exists
+    rather than a seat count on a room, which this schema deliberately does not have.
+    """
+    today = at or _today()
+    if limit < 1 or limit > CONFLICT_PREVIEW:
+        raise InvalidRequest("a_conflict_preview_is_bounded")
+    with tenant_scope(pool, tenant_id) as conn:
+        where = _location(conn, location_id)
+        # **The parsers are the validation**, and a second check here was a control that could
+        # not fail: `_parse_rule`, `_parse_policy` and `_parse_requirements` each call their
+        # module's `check_*` and raise `InvalidRequest` themselves. The first version called
+        # all three again inside a `try`, and the mutation sweep said so by reporting the
+        # removal of `recurrence.check_rule` as uncaught -- deleted rather than tested harder,
+        # which is this repository's judgement for a constraint subsumed by a sibling.
+        proposed = _parse_rule(rule, timezone=where["timezone"])
+        wanted = _parse_policy(policy)
+        needs = _parse_requirements(requirements)
+        chart = _resource_chart(conn)
+        occurrences = recurrence.generate(proposed)
+        upcoming = [o for o in occurrences if o.local_date >= today][:limit]
+        found: list[dict[str, Any]] = []
+        spare: dict[str, int] = {}
+        alternatives: list[dict[str, Any]] = []
+        for occurrence in upcoming:
+            place = availability.Placement(
+                starts_at=occurrence.starts_at, ends_at=occurrence.ends_at,
+                location_id=location_id)
+            window = capacity.resource_window(place, wanted)
+            held = _held_over(
+                conn, holds_from=window.starts_at, holds_until=window.ends_at)
+            clashes = list(conflicts.detect(window, needs, chart, held))
+            # Availability is a different question from a clash, asked separately and reported
+            # as its own kind, because "the rota says no" and "the room is busy" have different
+            # remedies -- the generation's own split.
+            for requirement in needs:
+                for resource_id, kind, _ in _assign(requirement, chart, held, window):
+                    if kind != "staff":
+                        continue
+                    reason = availability.unavailable_reason(
+                        window, _windows(conn, resource_id), timezone=where["timezone"])
+                    if reason is not None:
+                        clashes.append(conflicts.Conflict(
+                            kind="unavailable", resource_id=resource_id, detail=reason))
+            for clash in clashes:
+                found.append({
+                    "local_date": occurrence.local_date.isoformat(),
+                    "starts_at": occurrence.starts_at.isoformat(),
+                    "kind": clash.kind, "resource_id": clash.resource_id,
+                    "detail": clash.detail, "with_session_id": clash.with_session_id,
+                    "resource_name": (
+                        None if clash.resource_id is None
+                        else _resource_name(conn, clash.resource_id))})
+            # **The kinds are `conflicts.py`'s own**, which is the whole list it raises:
+            # `double_booked`, `over_capacity`, `elsewhere` and the `unavailable` this function
+            # adds. The first version named "busy", which nothing produces -- a trigger keyed
+            # on a value that never occurs, which is MOD-012's board finding and which the
+            # tests caught at once because the alternatives came back empty.
+            if not alternatives and any(
+                    c.kind in ("double_booked", "elsewhere", "unavailable")
+                    for c in clashes):
+                alternatives = _free_staff(
+                    conn, chart, held, window, timezone=where["timezone"],
+                    location_id=location_id)
+            if not spare:
+                spare = _spare_of(needs, chart, held, window, location_id=location_id)
+    weekly = (len(proposed.weekdays) if proposed.frequency == "weekly" else None)
+    return {
+        "location_id": location_id, "timezone": where["timezone"],
+        "occurrences": len(occurrences),
+        # **Only for a weekly rule**, because "2 classes a week" is a weekly figure and a
+        # monthly or one-off rule has no such answer. Absent rather than computed from a span,
+        # which would be a number nobody wrote.
+        "per_week": weekly,
+        "examined": len(upcoming),
+        "examined_of": len([o for o in occurrences if o.local_date >= today]),
+        # **Which dates, not only how many.** The screen says "checked the next eight" and a
+        # count alone cannot say *which* eight -- and the mutation that made the walk start at
+        # the rule's first date rather than at today came back uncaught against the count,
+        # because eight of the past is still eight. A reader who cannot see the window cannot
+        # tell a check of next month from a check of last.
+        "examined_from": upcoming[0].local_date.isoformat() if upcoming else None,
+        "examined_to": upcoming[-1].local_date.isoformat() if upcoming else None,
+        "conflicts": found,
+        "clear": not found,
+        "alternatives": alternatives,
+        "spare": spare,
+        "it_warns_it_does_not_block": (
+            "a clash is reported and nothing here refuses it; publishing over one needs "
+            "scheduling.conflict.override and a written reason"),
+        "alternatives_are_free_not_qualified": (
+            "nothing in this build stores a skill, so these are the staff whose rota admits "
+            "the hour and who hold nothing else over it -- whether they can teach this class "
+            "is not a fact any table here carries"),
+    }
+
+
+def _resource_name(conn: Connection[Any], resource_id: str) -> str | None:
+    row = conn.execute(
+        "SELECT display_name FROM plt01.sch_resources WHERE resource_id = %s",
+        (resource_id,)).fetchone()
+    return None if row is None else str(row[0])
+
+
+def _free_staff(
+    conn: Connection[Any], chart: dict[str, resources.Resource],
+    held: list[conflicts.Held], window: availability.Placement, *, timezone: str,
+    location_id: str,
+) -> list[dict[str, Any]]:
+    """The staff this hour is open for, which is the half of the canvas's offer that is real.
+
+    Ordered by id so two identical checks answer the same way -- MOD-018's `chart_for` finding
+    -- and bounded, because a tenant with sixty coaches would put sixty names under a field.
+
+    **The coach the clash is about is excluded by the three guards below and not by a fourth.**
+    The first version also took the conflicting resource ids and skipped them, which reads as
+    the control that keeps a coach off a list offering a way round their own absence -- and
+    every route to a staff conflict already excludes them here: held over the window is the
+    `busy` set, a rota that refuses the hour is `unavailable_reason`, and a coach at another
+    site is the location filter. The sweep said so by reporting its removal as uncaught, and
+    no case could be written because there is none: deleted rather than tested harder, which
+    is this repository's judgement for a constraint subsumed by a sibling.
+    """
+    busy = {h.resource_id for h in held
+            if h.kind == "staff" and conflicts.overlaps(h.placement, window)}
+    out: list[dict[str, Any]] = []
+    for resource in sorted(chart.values(), key=lambda r: r.resource_id):
+        if resource.kind != "staff" or resource.resource_id in busy:
+            continue
+        if resource.location_id is not None and resource.location_id != location_id:
+            continue
+        if availability.unavailable_reason(
+                window, _windows(conn, resource.resource_id), timezone=timezone) is not None:
+            continue
+        out.append({"resource_id": resource.resource_id,
+                    "display_name": _resource_name(conn, resource.resource_id)})
+        if len(out) == FREE_STAFF_SUGGESTIONS:
+            break
+    return out
+
+
+#: How many alternatives a conflicting coach field offers. The canvas names two; a tenant with
+#: sixty coaches would otherwise put sixty under one field, which is a list rather than a
+#: suggestion.
+FREE_STAFF_SUGGESTIONS = 4
+
+
+def _spare_of(
+    needs: list[resources.Requirement], chart: dict[str, resources.Resource],
+    held: list[conflicts.Held], window: availability.Placement, *, location_id: str,
+) -> dict[str, int]:
+    """How many of each anonymous requirement's kind are free over this window.
+
+    This is what bounds ADM-SCH-03's capacity field: a spin class of twenty needs twenty bikes,
+    and the ceiling is the quantity that exists rather than a seat count on a room -- which
+    `sch_resources` deliberately does not carry, because "twenty bikes is one row with a
+    quantity of twenty" and a room's own capacity would be a second answer to the same
+    question.
+    """
+    out: dict[str, int] = {}
+    for requirement in needs:
+        if requirement.resource_id is not None:
+            continue
+        total = 0
+        for resource in chart.values():
+            if resource.kind != requirement.kind:
+                continue
+            if resource.location_id is not None and resource.location_id != location_id:
+                continue
+            taken = sum(h.quantity for h in held
+                        if h.resource_id == resource.resource_id
+                        and conflicts.overlaps(h.placement, window))
+            total += max(0, resource.quantity - taken)
+        out[requirement.kind] = total
+    return out
+
 def publish_template(
     pool: Pool, tenant_id: str, template_id: str, *, actor_id: str,
     correlation_id: str, rule: dict[str, Any] | None = None,

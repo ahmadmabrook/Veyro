@@ -572,6 +572,16 @@ WRITE_ROUTES = [
     # `scheduling.schedule.publish_disruptive` did not exist -- a reviewer found the second as
     # a Critical Control bought with a free bool.
     ("post", f"/scheduling/templates/{_ID}/preview", {}),
+    # **ADM-SCH-03's live check, which is a read that posts.** It is in the *write* sweep
+    # because its method is POST and the sweep is keyed on the request, not on the gate: it
+    # charges `scheduling.schedule.read`, so a session holding only that read is allowed it
+    # and a session holding nothing is refused -- which is the assertion either way.
+    ("post", "/scheduling/conflict-check",
+     {"location_id": _ID,
+      "rule": {"frequency": "weekly", "local_time": "19:00", "duration_minutes": 45,
+               "starts_on": "2026-09-01", "until": "2026-10-01", "weekdays": [3]},
+      "policy": {"capacity": 20},
+      "requirements": [{"kind": "room", "quantity": 1}]}),
     ("post", f"/scheduling/templates/{_ID}/publish", {**_CORR}),
     ("post", f"/scheduling/templates/{_ID}/publish",
      {"acknowledged_impact": True, **_CORR}),
