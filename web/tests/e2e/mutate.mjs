@@ -42,6 +42,72 @@ const web = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
  * does not collect those files and so reported no failure rather than no test.
  */
 const MUTATIONS = [
+  // ---------------------------------------------------------------- FD-02, member lookup
+  {
+    id: "lookup-one-character-is-refused",
+    why: "one letter is every member whose name starts with it, in alphabetical order -- not"
+      + " an ambiguous match a desk resolves by photo, and returning the first ten would read"
+      + " as 'these are the matches'",
+    file: "src/lib/lookup.ts",
+    from: "  if (folded.length < MIN_QUERY) return { kind: \"tooShort\", typed: folded };",
+    to: "  if (false) return { kind: \"tooShort\", typed: folded };",
+    grep: "is too short at one character",
+    runner: "vitest",
+  },
+  {
+    id: "lookup-withheld-name-is-not-a-check",
+    why: "a marker is not a name, so a desk confirming identity against `***` is confirming"
+      + " nothing -- MOD-027's board paid for rendering the marker as though somebody were"
+      + " called that",
+    file: "src/lib/lookup.ts",
+    from: "    name: match.legal_name !== null && !isWithheld(match.legal_name),",
+    to: "    name: match.legal_name !== null,",
+    grep: "counts a withheld name as no check",
+    runner: "vitest",
+  },
+  {
+    id: "lookup-a-row-says-when-it-can-confirm-nobody",
+    why: "with the photo gone there are two checks and both can be withheld, so a row a desk"
+      + " cannot check anybody by has to say so -- the alternative is letting somebody through"
+      + " on a match nobody verified",
+    file: "src/lib/lookup.ts",
+    from: "  return checks.name || checks.digits;",
+    to: "  return true;",
+    grep: "says a row with neither cannot confirm anybody",
+    runner: "vitest",
+  },
+  {
+    id: "lookup-withheld-digits-are-not-printed",
+    why: "`···***` would read as four digits somebody could ask for, which is a check that"
+      + " does not exist dressed as one that does",
+    file: "src/lib/lookup.ts",
+    from: "  if (match.phone !== null && !isWithheld(match.phone)) {",
+    to: "  if (match.phone !== null) {",
+    grep: "leaves a withheld number out rather than printing the marker as digits",
+    runner: "vitest",
+  },
+  {
+    id: "lookup-the-sentence-names-the-check-that-exists",
+    why: "the canvas says 'check the photo before you let them through' and there is no photo,"
+      + " so the screen names the digits its own footnote calls the second check -- a sentence"
+      + " pointing at a control that does not exist is worse than no sentence",
+    file: "src/app/desk/lookup/page.tsx",
+    from: "            {text(\"lookup.checkTheDigits\")}",
+    to: "            {null}",
+    grep: "finds two people who share the start of a name",
+    runner: "playwright",
+  },
+  {
+    id: "lookup-neither-offers-the-half-that-exists",
+    why: "'no-match offers guest entry or lead capture' -- guest entry takes a payment at the"
+      + " door and lead capture is built, so the link is real and dropping it leaves a desk"
+      + " with a dead end for somebody standing in front of them",
+    file: "src/app/desk/lookup/page.tsx",
+    from: "        <Link href=\"/desk/trial\" className=\"ds-filter-chip\">",
+    to: "        <Link href=\"/desk/lookup\" className=\"ds-filter-chip\">",
+    grep: "offers the trial when nobody matches",
+    runner: "playwright",
+  },
   // ---------------------------------------------------------------- FD-07, the shift
   {
     id: "shift-handover-draws-nothing",

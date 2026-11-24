@@ -3016,3 +3016,34 @@ offending shape is caught, and a docstring that merely mentions it is not. Mutat
 putting the UTC date back and watching it fire, and its three conditions are asserted reachable
 before the sweep is believed, because a structural check that passes vacuously is the thing it
 exists to prevent.
+
+
+**A splice whose end anchor is absent falls through to the next one and eats everything
+between, and a check that validates *claims* cannot see it.** Retiring FD-02's
+`design:coverage` entry used `s.index('  "FD-07"', start)` as the end — and FD-07 had already
+been retired to a *comment*, so there was no such key: the fallback anchor was `"FD-09"`, and
+the splice deleted FD-07's own "was here and is built" note on the way. `design:coverage`
+passed, because a comment is not one of the three shapes it checks; the full gate passed for
+the same reason. It was found by reading `git diff | grep '^-[^-]'` afterwards, which is the
+check this file already prescribes for a different cause.
+
+Two rules, and the second is the general one. **Assert the end anchor exists before splicing to
+it**, exactly as the text anchors are asserted — `s.index` raising is better than a silent
+fallback, and a fallback anchor is the thing that makes it silent. And **a gate that validates
+structured claims is blind to the prose beside them**, which this repository already records
+for a backlog reason whose sentence went stale while its module id stayed right; here the prose
+was not stale but deleted, and the only instrument that saw it was the diff.
+
+**And a splice script that writes once at the end loses every substitution that worked when a
+later one raises.** This file already records it — "several Python splice scripts asserted after
+a partial edit and wrote nothing" — and I hit it again without noticing, because the retry
+succeeded: a four-substitution `CLAUDE.md` script raised on its fourth, so the MOD-018 handover
+bullet, the built-screen list and the Front Desk list were all discarded, and the fix-up script
+only re-did the fourth. The most consequential documentation of that session's largest finding
+was absent from `CLAUDE.md` for three commits, and nothing could see it: a gate checks
+structured claims and prose is not one.
+
+**One `write_text` per substitution**, each reporting whether its anchor matched, so a skip is
+visible and never silent. The tell when it has happened is a `grep -c` for the new text coming
+back `0` after a script that printed success — so grep for what was added rather than trusting
+the exit code, which is also the cheapest check after any splice.

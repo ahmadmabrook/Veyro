@@ -153,6 +153,11 @@ export default async function RootLayout({
       // judgement: without `people.person.read` there is nothing for the page to do, and the
       // five write permissions it needs are answered on the page with the step-up beside
       // them. Hiding the entry from a session that could step up would hide the offer too.
+      // **First in the rail among the desk's screens, because it is the one a receptionist
+      // starts from.** FD-01, the live check-in, is unbuilt; this is the lookup, and it is
+      // gated on the person read because without it there is nothing to find.
+      { href: "/desk/lookup", label: "nav.lookup", allowed: people.allowed,
+        group: "nav.groupOperate", icon: "front-desk" },
       { href: "/desk/trial", label: "nav.walkInTrial", allowed: people.allowed,
         group: "nav.groupOperate", icon: "members" },
       // **Named for the screen rather than the surface**, as the walk-in is: FD-01 is unbuilt,

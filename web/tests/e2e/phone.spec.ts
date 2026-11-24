@@ -117,6 +117,10 @@ const surfaces: [string, string][] = [
     "the create-a-class form",
     `/schedule/new?location=${creds.locationId}`,
   ],
+  // **FD-02, which is a field, a sentence and two touch rows** -- the rows are FD-06's own
+  // family, and a match's meta line is the one place on this surface where a name, a club and
+  // a bidi-isolated digit group share a line at 375px.
+  ["the member lookup", "/desk/lookup?q=hala"],
   // **FD-07, which is a picker, a handover panel and a count on one narrow column.** The
   // close half of it is ADM-PAY-09's own form, already swept at `/payments/cash`; what is new
   // here is the drawer chip bar, which is a link row whose width is a count of tills.

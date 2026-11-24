@@ -318,6 +318,7 @@ corresponds to them. The others map loosely:
 | `/schedule/new` | ADM-SCH-03 Create a class | **built from the canvas** — type, coach, room, capacity, time, the weekday chips and the waitlist, with the clash reported as the fields change rather than on save and the two answers the canvas draws (use somebody free, or keep them with the written reason paragraph 1842 requires); the capacity ceiling, the waitlist's other two settings and editing a class that already has bookings are each named as absent with what they need |
 | `/desk/trial` | FD-05 Walk-in trial | **built from the canvas** — two fields and a button that creates a person, opens a lead, signs an agreement on the trial product and activates it in one request; the duplicate panel is borrowed from ADM-MEM-10 because this screen creates a `ppl_persons` row exactly as that one does, the heading names the plan's own `trial_days`, and the credential and the app invitation the canvas promises are each named as absent with what they wait on |
 | `/desk/denials/{id}` | FD-03 Access denial resolution | **built from the canvas** — the discreet line a password-only desk gets and the real reason once stepped up, which is the screen's own thesis; the door is named from the zone the refusal cites, the override offers the step-up rather than a button that would be refused, and the renewal, the day pass, the photo and the canvas's own club-and-plan header line are each named as absent with a reason |
+| `/desk/lookup` | FD-02 Member lookup | **built from the canvas, with the check it confirms by replaced rather than drawn empty** — scan or type, the matches side by side as the canvas requires, each row linking to the record with the last four digits beside it; the photo it argues the size of needs an object store, so the sentence names the digits instead of a face, and the plan, the "Let in" and the guest entry are each named as absent with what they need |
 | `/desk/shift` | FD-07 Shift open and close | **built from the canvas, and the open is the half this build had no notion of** — the previous shift's own figure, the float count, the canvas's "a discrepancy found at open belongs to the previous shift" as a real attribution rather than a sentence, and the handover note that travels between the two ends; the close is ADM-PAY-09's own form rather than a second one, and the shift report, the variance threshold and the abandoned till are each named as absent with a reason |
 | `/desk/classes/{id}` | FD-06 Class check-in | **built from the canvas, and the first Front Desk screen** — Touch density, the roster composed with MOD-014's batched names, the only working write form here that is not behind a step-up; the automatic release and the waitlist notification the canvas promises are named as absent |
 | `/schedule/{id}` | ADM-SCH-02 Class detail and roster | **rebuilt** — the band, four MetricCells, the roster; the three actions are stepped-up writes with no form |
@@ -2675,3 +2676,65 @@ ADM-PAY-09 already draws, and the headings are plain, which is what that screen 
 `utcStamp` is the one timestamp renderer and `readNames` the one batched name read. A class that
 styles nothing is invisible to every layer that is not a screenshot, which is why that sweep
 exists; a *component* that exists and was not used is invisible to every layer at all.
+
+
+## FD-02 — a lookup, and the identity check that is left when the photo is gone
+
+ADR-0012 settles whose work this is: a lookup is not paragraph 4218's search, so MOD-014's "no
+search" stands and ADM-SRCH-01 remains MOD-059's. The read, the index and the measurement that
+narrowed my own claim about it are in that record and in `CLAUDE.md`. What belongs here is the
+screen.
+
+**A form, not a live fetch, and "SCAN OR TYPE" is the argument.** A barcode scanner emits
+characters and an Enter, which is a submit — so the ordinary path through this screen is a GET
+form, it works with JavaScript disabled for the reason the sign-in does, and there is no
+debounce to get wrong. ADM-MEM-10 checks as a phone is typed because it is *interrupting*
+somebody mid-form; this screen is the whole task, which is a different shape.
+
+**The photo is the decision that shapes everything else.** The canvas confirms identity by a
+face and argues the size: "A receptionist confirming identity at a busy desk needs a face they
+can actually recognise." A photo needs an object store, which is the third external blocker. Two
+things follow and neither is cosmetic:
+
+- **The sentence cannot say "check the photo".** The canvas's own footnote names the fallback —
+  "partial phone digits are the second check, because two members can share a name but not a
+  number" — so that is what the screen says, and the digits became a field on the read for this
+  reason rather than for completeness.
+- **There is no 44px circle.** A grey placeholder reads as a photo missing from the *record*,
+  which is a different fact from one missing from the product and would send a receptionist
+  looking for an upload button. The absence is named.
+
+Five more decisions:
+
+- **A row says when it can confirm nobody.** With the photo gone there are two checks, and both
+  can be withheld: `legal_name` is `identity` class and `phone` is `contact`, so a session
+  holding neither gets a row it cannot check anybody by. `confirmable` is that question and the
+  row says so — the alternative is a receptionist letting somebody through on a match they
+  could not verify, which is worse than being told they cannot.
+- **A withheld name is still a link.** `WithheldLink` puts the marker *inside* the link, which
+  the members and staff lists both needed after an outside tester found them dead ends on the
+  front desk's own credential — where every identity field is masked.
+- **The plan is absent and the reason is a finding.** The canvas prints `Club · Sweifieh`, and
+  "Club" is a product's display name: `GET /memberships` carries the membership and its dates,
+  `GET /memberships/{id}` adds `terms.product_id`, and the name behind that id is a third
+  request. Three per match, on a screen used with somebody waiting. `terms.membership_kind` is
+  two away and is "recurring", which is a stored vocabulary rather than a plan a member would
+  recognise — the enum-as-label defect this build has recorded five times.
+- **The club is drawn, because it costs one request for every match rather than one each.**
+  `location_id` is on the lookup row and the names come from one hierarchy read.
+- **"Let in" is named as absent, and the reason is what the module actually does.**
+  `override_access` is a decision of its own: it names the door and states a reason, and it is
+  financial class. This screen knows neither the door nor a reason — it is a lookup, and FD-03
+  is where both are already on the page, which is also what FD-02's own registry line implies
+  by saying the receptionist confirms identity "before acting". A one-tap admission here would
+  be a button the module answers 422 to, which is FD-06's rule.
+
+**And "Neither" offers the half of the registry line that exists.** "No-match offers guest entry
+or lead capture": guest entry is FD-04, which takes a payment at the door, and lead capture is
+FD-05, which is built — so the link is real and the other is named rather than both being drawn
+as buttons.
+
+**Ten class names were caught by the undefined-class sweep**, which is the third screen to
+learn this: FD-06's `ds-desk-rows` family is a touch row with a name, a meta line and a trailing
+state, and both screens are Front Desk at Touch density. A second row style on one surface is
+two answers to "what does a row at this desk look like".

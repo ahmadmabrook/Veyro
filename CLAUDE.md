@@ -3330,6 +3330,27 @@ Known gaps, deliberate:
 - **Nineteen free-text columns are residue an erasure cannot reach**, all declared in
   `SUBJECT_COLUMNS` by hand because the sweep matches column *names*, and pinned by a named
   test because a reviewer deleted one declaration and watched every test pass.
+- **A till is handed over rather than emptied, and the float was being posted twice.**
+  FD-07's canvas is a *handover* -- "Kareem left JOD 50.00 at 16:04. If your count differs,
+  say so now -- a discrepancy found at open belongs to the previous shift" -- which only
+  means anything if the next person is counting the same money. `0012`'s model was a drawer
+  that is emptied, so `open_cash_session` drew the float from the safe every time: measured
+  through the routes, a 50.00 float left overnight made the drawer account read 100.00 with
+  50.00 in notes, the next close posted a 50.00 shortfall to suspense against the name of
+  whoever found it, the safe went 50.00 short with nothing having left it, and it compounded
+  every shift. **Which case a drawer is in comes from its own balance** -- a flag on the
+  request would let a desk choose whether their own count is checked -- so an empty drawer is
+  funded exactly as before and a drawer that holds money is handed over, with any difference
+  posted to suspense as a `handover_variance` case: a different kind from `cash_variance`,
+  because a morning discrepancy recorded as an evening one is attributed to whoever found it.
+  **And the deposit is the second consequence**: `deposit_matches` compared the bag against
+  the sessions' closing counts, so once a float legitimately stays behind every honest banking
+  opened a case -- a case per shift, which is how a reconciliation board stops being read.
+  `retained_minor` is declared instead, defaulting to zero so no deposit already written
+  changes verdict, and checked at the other end by the next open's count. The handover note
+  travels with it, written at the close and immutable by the trigger that was already there.
+  Proven: 115/115 isolation checks with ten new cases, three of them permissions; 20 schema
+  mutations and 17 behaviour mutations, all caught.
 - **The drawers can be listed now, and until they could ADM-PAY-09 was unbuildable.**
   `open_cash_session` and `close_cash_session` had no reader of any kind -- the sixth
   instance of this build's "a writer with no reader" shape -- so a till could be opened and
@@ -6798,11 +6819,13 @@ Known gaps: the surface covers the sign-in, the step-up, the account page, MOD-0
 MOD-007, MOD-008, MOD-009, MOD-010, MOD-011, MOD-012, MOD-013, MOD-014, MOD-016, MOD-017,
 MOD-018, MOD-019, MOD-021, MOD-022, MOD-026 and MOD-027's board, table, profile and add form, plus
 MOD-020's roster on a session,
-ADM-SCH-03's create-a-class form at `/schedule/new`, ADM-SCH-04's availability grid at `/rota`, ADM-MSH-07's cancellation sheet at
+ADM-SCH-03's create-a-class form at `/schedule/new`, ADM-SCH-04's availability grid at `/rota`, FD-07's shift open and close at `/desk/shift`,
+FD-02's member lookup at `/desk/lookup`, ADM-MSH-07's cancellation sheet at
 `/people/{id}?tab=membership&cancel=1`, ADM-MEM-10's walk-in form at
 `/members/new`, FD-05's walk-in trial at `/desk/trial`, FD-06's class check-in at
-`/desk/classes/{id}` and FD-03's denial resolution at `/desk/denials/{id}`, with FD-08's
-device strip above all three -- the first Front Desk screens -- ADM-STF-01/02's
+`/desk/classes/{id}`, FD-03's denial resolution at `/desk/denials/{id}`, FD-07's shift at
+`/desk/shift` and FD-02's member lookup at `/desk/lookup`, with FD-08's device strip above all
+five -- the first Front Desk screens -- ADM-STF-01/02's
 staff list and staff record, ADM-PAY-05's
 recovery workspace, ADM-PAY-10's dispute board, ADM-RPT-01/02/03/04
 under `/reports`, ADM-PAY-07's wallet on a member's billing tab and ADM-MEM-07's attendance
@@ -6897,20 +6920,21 @@ certificate is mTLS and a signature nothing here makes, which is the vault rathe
 WebAuthn, and MOD-022 still opens doors on an identity nothing verifies.
 
 **The Front desk is where the reclassification bites hardest**, nine screens whose modules
-are all built and all on the authenticated tenant plane. **Five are built**: FD-03 denial
+are all built and all on the authenticated tenant plane. **Six are built**: FD-03 denial
 resolution and FD-08's device strip are MOD-022's and MOD-021's, FD-06 class check-in is
 MOD-020's, **FD-05's walk-in trial is MOD-027's** -- the one that was named as needing "a
 trial state `mem_memberships` has no value for", which ADR-0010 D7 settled two slices before
-the screen was built -- and **FD-07's shift is MOD-018's**. Four are not: FD-01 live check-in
-is MOD-022's, FD-02 member lookup is MOD-014's (and now its contact-match read), FD-04 day
-pass is sales, and FD-09 is the service worker. **`design:coverage` holds this surface to the
-Admin one's standard**, so each of those four carries a written reason -- and under the
+the screen was built -- **FD-07's shift is MOD-018's**, and **FD-02's lookup is MOD-014's**
+over the index ADR-0012 settles the need for. Three are not: FD-01 live check-in is MOD-022's,
+FD-04 day pass is sales, and FD-09 is the service worker. **`design:coverage` holds this surface to the
+Admin one's standard**, so each of those three carries a written reason -- and under the
 external-blocker rule only two of them are blockers. **FD-01 and FD-04 are payments at the
 door**, which is the provider the owner supplies. The rest are this session's work and were
-mislabelled: FD-02's search is a gated, masked read over `ppl_contact_points_by_value`, and
-calling it ENG-01's was an architecture decision of mine rather than a constraint (only its
-44px photo wants the object store); and FD-09's service worker and write queue are weeks of
-work and still work.
+mislabelled, and FD-02 was the sharpest of them: calling its lookup ENG-01's was an
+architecture decision of mine rather than a constraint, which ADR-0012 settles -- and the
+reason that said so named the wrong index, because `ppl_contact_points_by_value` holds phone
+numbers and no name at all. FD-09's service worker and write queue are weeks of work and still
+work.
 
 **FD-07's own note said it needed "a migration and a form" and that was an understatement**,
 which is the sharpest instance this build has of "a claimed gap is a claim to check". The

@@ -504,7 +504,18 @@ def lookup_people(
         rows = conn.execute(
             "SELECT p.person_id, p.legal_name, p.preferred_name, p.date_of_birth,"
             "       m.lifecycle_state, m.member_number, m.joined_on,"
-            "       t.location_id"
+            "       t.location_id,"
+            # **The last four of a phone, derived in SQL and never the whole number.** FD-02's
+            # footnote calls this "the second check, because two members can share a name but
+            # not a number" -- and it is the *only* identity check this build can offer, since
+            # the photo the canvas confirms by needs an object store. A column holding the
+            # whole value and a surface slicing it would put every member's number on the
+            # wire to answer a question about four digits.
+            "       (SELECT right(c.value_normalized, 4)"
+            "          FROM plt01.ppl_contact_points c"
+            "         WHERE c.person_id = p.person_id AND c.kind = 'phone'"
+            "         ORDER BY c.is_primary DESC, c.created_at"
+            "         LIMIT 1)"
             "  FROM plt01.ppl_persons p"
             "  LEFT JOIN plt01.ppl_member_profiles m ON m.person_id = p.person_id"
             "  LEFT JOIN plt01.ppl_tenant_profiles t ON t.person_id = p.person_id"
@@ -529,6 +540,12 @@ def lookup_people(
                 # MOD-017's. This is the tenant profile's own location, composed by name on the
                 # surface because `ppl_tenant_profiles` holds an id.
                 "location_id": str(r[7]) if r[7] else None,
+                # Named `phone` so MOD-014's own class map masks it: `phone` is `contact`
+                # class, which a routine front desk reads and a session holding less does not.
+                # Calling it `phone_last4` would have been a contact value under a name the
+                # mask does not know, which is the restricted-field rule MOD-010 records --
+                # the check reads declared *names*, and a value carries anything.
+                "phone": r[8],
             },
             masks,
         )
@@ -550,6 +567,12 @@ def lookup_people(
             "a phone or an email is `GET /people/contact-match`, which normalizes and matches "
             "the whole value on purpose: a mistyped digit finding somebody else is worse than "
             "finding nobody"),
+        "the_phone_is_four_digits_and_never_the_number": (
+            "`phone` is the last four of the primary number, derived in the query. FD-02 calls "
+            "it the second check because two members can share a name but not a number, and "
+            "it is the only identity check this build has -- the photo the canvas confirms by "
+            "needs an object store. It is `contact` class, so a session that may not read a "
+            "contact point gets the marker here too"),
         "the_plan_and_the_photo_are_not_this_module_s": (
             "FD-02 confirms identity by a photo and shows a plan beside it. The plan is "
             "MOD-017's and the photo needs an object store, so a surface composes the first "

@@ -319,16 +319,12 @@ const BACKLOG = {
     + "custom fields, and a segment is a saved query this module has no language for, so "
     + "tags are the static half. MOD-013's dispatcher is the seam the send stops at, behind "
     + "that",
-  "FD-02": "work: MOD-014. 'Name, phone, partial match, photo confirm' -- "
-    + "`GET /people/contact-match` is the exact-match half and is deliberately exact, "
-    + "because a mistyped digit finding somebody else is worse than finding nobody. The "
-    + "partial half is a gated, masked prefix read by name over `ppl_persons`, which is this "
-    + "module's own work rather than MOD-059's index: ADR-0012 settles the distinction, "
-    + "because MOD-014's own gap list calls search ENG-01's and this reason used to claim the "
-    + "opposite about the same screen. It needs one index -- `0009`'s name index is on "
-    + "`lower(legal_name)` with the default operator class, which serves the equality "
-    + "`find_duplicates` uses and gives a sequential scan for a prefix, measured. The 44px "
-    + "photo the canvas confirms identity by is where the object store is the seam",
+  // **FD-02 was here and is built.** ADR-0012 settled the question its reason used to have
+  // on both sides -- MOD-014's gap list calls search ENG-01's and this entry claimed the
+  // opposite about the same screen -- and the lookup is `/desk/lookup` over migration `0032`'s
+  // index. The photo it confirms identity by is still the object store, so the screen names
+  // the digits the canvas calls the second check instead of drawing an empty circle.
+  //
   // **FD-07 was here and is built.** Its reason named the first half correctly -- the count,
   // the expected figure and the variance are `/payments/cash` -- and understated the second:
   // "the handover note, which no table holds" is true, and the canvas is an *open*, which

@@ -966,6 +966,45 @@ class LookupTests(PeopleApiTestCase):
         found = self.client.get("/people/lookup?q=100%25", headers=owner).json()
         self.assertEqual([one["person_id"] for one in found["people"]], [odd], found)
 
+    def test_the_last_four_of_the_phone_is_the_second_check_and_never_the_number(self):
+        """FD-02's footnote: "Partial phone digits are the second check, because two members
+        can share a name but not a number" -- and it matters more than the canvas knows, since
+        the photo it confirms identity by needs an object store this build does not have.
+        """
+        tenant_id = self.tenant()
+        owner = self.headers(tenant_id)
+        created = self.client.post("/people", json={
+            "legal_name": "Hala Barakat",
+            "contacts": [{"kind": "phone", "value": "+962 79 000 4180",
+                          "is_primary": True}],
+            **self.correlation()}, headers=owner)
+        self.assertEqual(created.status_code, 201, created.text)
+        body = self.client.get("/people/lookup?q=hala", headers=owner).json()
+        row = body["people"][0]
+        self.assertEqual(row["phone"], "4180", row)
+        # **The whole number never leaves.** Four digits answer the question; a column holding
+        # the value with a surface slicing it would put every member's number on the wire.
+        self.assertNotIn("9620790004180", read_text := str(body))
+        self.assertNotIn("0004180", read_text)
+
+    def test_the_four_digits_are_masked_for_a_session_that_may_not_read_a_contact(self):
+        """`phone` is `contact` class under MOD-014's own map, which is why the field is named
+        that rather than `phone_last4`: the mask reads declared *names*, so a contact value
+        under a name it does not know would go out in the clear -- MOD-010's restricted-field
+        finding, where the rule checks names and a value carries anything."""
+        tenant_id = self.tenant()
+        owner = self.headers(tenant_id)
+        created = self.client.post("/people", json={
+            "legal_name": "Hala Barakat",
+            "contacts": [{"kind": "phone", "value": "+962 79 000 4180",
+                          "is_primary": True}],
+            **self.correlation()}, headers=owner)
+        self.assertEqual(created.status_code, 201, created.text)
+        # A session holding the person read and nothing that opens `contact`.
+        thin = self.scoped(tenant_id, ["people.person.read"])
+        row = self.client.get("/people/lookup?q=hala", headers=thin).json()["people"][0]
+        self.assertEqual(row["phone"], visibility.MASK, row)
+
     def test_a_name_this_session_may_not_read_comes_back_withheld_not_absent(self):
         """**A redacted record still exists**, which is MOD-014's own rule: a desk told nobody
         matches would create a second record for the person in front of them. `legal_name` is

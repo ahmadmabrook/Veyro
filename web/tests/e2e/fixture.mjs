@@ -2746,6 +2746,24 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
             membership_kind: "fixed_term", billing_period: "one_off",
             trial_days: 7, correlation_id: cid() },
   });
+  // **FD-02's own case, seeded as the canvas draws it.** "Two members match. Check the photo
+  // before you let them through": `Hala Barakat · ···4180` and `Hala Nasser · ···7712`. Two
+  // people sharing the start of a name is the state the whole screen exists for -- and this
+  // repository's rule is that a fixture carries both members of the distinction a surface is
+  // about, so one Hala would demonstrate nothing. The numbers are the second check, which is
+  // the only identity check this build has: the photo needs an object store.
+  for (const [name, phone] of [
+    ["Hala Barakat", "+962 79 100 4180"],
+    ["Hala Nasser", "+962 79 100 7712"],
+  ]) {
+    await call("/people", {
+      method: "POST", ...as(token),
+      body: { legal_name: name, profile_kinds: ["member"],
+              contacts: [{ kind: "phone", value: phone, is_primary: true }],
+              correlation_id: cid() },
+    });
+  }
+
   const trialist = await call("/people", {
     method: "POST", ...as(token),
     body: { legal_name: "Yara Nimri", profile_kinds: ["lead"], correlation_id: cid() },
@@ -2965,6 +2983,9 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
     // holds is the account its money is in. The Front desk till has a shift open (so the
     // screen closes it) and the Shop till closed with 175.00 still in it and a note (so the
     // screen hands it over), which is the pair the surface is about.
+    // FD-02: the prefix two seeded people share, so the spec asks for the ambiguous state
+    // rather than relying on two names that happen to start alike.
+    lookupPrefix: "hala",
     tillAccountId: tillAccount.account_id,
     shopTillAccountId: secondTill.account_id,
     // MOD-026's three screens. `taskEmail` is the only session in this fixture whose identity
@@ -3058,6 +3079,7 @@ if (invokedDirectly) {
       `VEYRO_E2E_DESK_EMAIL=${fixture.deskEmail}`,
       `VEYRO_E2E_DESK_PASSWORD=${fixture.deskPassword}`,
       `VEYRO_E2E_LOCATION_ID=${fixture.locationId}`,
+      `VEYRO_E2E_LOOKUP_PREFIX=${fixture.lookupPrefix}`,
       `VEYRO_E2E_TILL_ACCOUNT_ID=${fixture.tillAccountId}`,
       `VEYRO_E2E_SHOP_TILL_ACCOUNT_ID=${fixture.shopTillAccountId}`,
       `VEYRO_E2E_SESSION_ID=${fixture.firstSessionId}`,
