@@ -108,6 +108,75 @@ export type LeadDetail = LeadRow & {
  * confident wrong answer where a missing one would have been honest", which its own 360 was
  * bitten by.
  */
+/**
+ * One row of ADM-CRM-06's plan pick.
+ *
+ * **No amount, by design.** A price needs `catalog.price.read` and only a quote may name it,
+ * so a picker that carried figures would make "see the catalog" buy "see what every sale
+ * costs". The billing period and anchor are here because a screen can derive neither and
+ * together they decide which boundary the first charge is prorated to.
+ */
+export type SellablePlan = {
+  product_id: string;
+  variant_id: string;
+  display_name: string;
+  product_key: string;
+  billing_period: string;
+  billing_anchor: string;
+  membership_kind: string;
+  trial_days: number | null;
+  is_a_trial_product: boolean;
+};
+
+/**
+ * ADM-CRM-06's answer: what it costs this person to become a member on this plan, today.
+ *
+ * **`recurring_minor` and `first_charge_minor` are different numbers and neither is derivable
+ * from the other.** The design's own note on the sale sheet says confusing them is "the most
+ * common membership-sale complaint in the industry", which is why both are on the wire and
+ * why `prorated` is a field rather than a comparison a client makes.
+ */
+export type ConversionQuote = {
+  lead_id: string;
+  person_id: string;
+  stage: string;
+  /** The server's day, so the screen never consults its own clock. */
+  today: string;
+  plan: {
+    variant_id: string;
+    display_name: string;
+    product_key: string;
+    billing_period: string;
+    billing_anchor: string;
+  };
+  currency: string;
+  price_book_id: string;
+  price_id: string;
+  recurring_minor: number;
+  list_amount_minor: number;
+  discount_minor: number;
+  first_charge_minor: number;
+  first_period_ends_on: string;
+  recurring_starts_on: string;
+  prorated: boolean;
+  explanation: string[];
+  converting_from_a_trial: boolean;
+  trial: {
+    membership_id: string;
+    starts_on: string;
+    ends_on: string;
+    trial_days: number;
+  } | null;
+  carries_over: {
+    classes: number;
+    visits: number;
+    touchpoints: number;
+    the_record_does_not_change: string;
+    no_credential_count_here: string;
+  };
+  nothing_is_charged_here: string;
+};
+
 export type TrialCard =
   | {
       on_trial: false;

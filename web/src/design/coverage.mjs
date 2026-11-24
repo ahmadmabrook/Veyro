@@ -219,16 +219,6 @@ const BACKLOG = {
   // MOD-027's own dependency chain runs through MOD-026, so the seven CRM screens are two
   // modules deep rather than one. The pipeline, a lead, its stages and the unified inbox are
   // all its; `lifecycle_state` on a MOD-014 person is the only part of any of it here.
-  "ADM-CRM-06": "work: MOD-027 slice 2's last screen, and what is left in it is a price "
-    + "read rather than a decision. ADR-0010 D7 settled what marks a product as a trial and "
-    + "ADR-0011 settled the part-month boundary the canvas charges to, so both of this "
-    + "entry's old obstacles are gone: `lifecycle.first_charge` produces the card's own "
-    + "21.29 to 31 Aug and 55.00 from 1 Sep. What has no reader is the recurring figure "
-    + "itself -- `resolve_price` is the sale and redeems the coupon it applies, and "
-    + "`list_prices` says in as many words that a row in its window is not the resolved "
-    + "price -- so a quote has to call `pricing.resolve` without the receipt, which is one "
-    + "more caller of one definition. The canvas's take-the-payment button is the provider "
-    + "either way",
   "ADM-CRM-07": "work: MOD-027 slice 3. `crm_leads.stage` deliberately admits only the three sales "
     + "stages, because a declared value nothing writes is this build's most-repeated "
     + "finding -- so the slice that writes `lost` adds it to the domain, along with the "

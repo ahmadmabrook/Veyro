@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import { MESSAGES, type MessageKey } from "@/i18n/locale";
-import { monthDayLabel, shiftWeek } from "@/lib/scheduling";
+import { shiftWeek } from "@/lib/scheduling";
+import { monthDayLabel } from "@/lib/time";
 import {
   anyRota,
   CELL_LABEL,

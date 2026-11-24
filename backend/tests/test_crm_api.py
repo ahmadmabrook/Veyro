@@ -950,24 +950,32 @@ class TrialCardTests(CrmApiTestCase, CommercialApiTestCase, AccessApiTestCase):
         body = self.card(tenant_id, live["lead_id"])
         self.assertFalse(body["on_trial"], body)
 
-    def test_the_card_charges_all_three_permissions(self):
-        """**Three modules' facts, so three permissions.** A reader holding only the lead read
-        would otherwise get MOD-022's visits and MOD-020's classes out of a CRM route, which is
-        MOD-010's `events.event.read` finding."""
+    ALL_FOUR = ["crm.lead.read", "access.decision.read", "booking.booking.read",
+                "membership.record.read"]
+
+    def test_the_card_charges_all_four_permissions(self):
+        """**Four modules' facts, so four permissions.** A reader holding only the lead read
+        would otherwise get MOD-022's visits, MOD-020's classes and MOD-017's membership window
+        out of a CRM route, which is MOD-010's `events.event.read` finding.
+
+        **This asserted three and `membership.record.read` was the one missing.** The card
+        returns a membership id, a start, an end and the terms' `trial_days`, which is verbatim
+        what that permission is described as granting -- so the route was a sales permission
+        reaching a membership row, and the test said so was correct. Each subset here is every
+        way to hold three of the four, so the case for each permission is its own.
+        """
         tenant_id = self.tenant()
         live = self.trialist(tenant_id)
-        for held in (["crm.lead.read"],
-                     ["crm.lead.read", "access.decision.read"],
-                     ["crm.lead.read", "booking.booking.read"]):
-            with self.subTest(held=held):
+        for dropped in self.ALL_FOUR:
+            held = [p for p in self.ALL_FOUR if p != dropped]
+            with self.subTest(without=dropped):
                 answer = self.client.get(
                     f"/crm/leads/{live['lead_id']}/trial",
                     headers=self.scoped(tenant_id, held))
                 self.assertEqual(answer.status_code, 403, answer.text)
         allowed = self.client.get(
             f"/crm/leads/{live['lead_id']}/trial",
-            headers=self.scoped(tenant_id, [
-                "crm.lead.read", "access.decision.read", "booking.booking.read"]))
+            headers=self.scoped(tenant_id, self.ALL_FOUR))
         self.assertEqual(allowed.status_code, 200, allowed.text)
 
     def test_an_unknown_lead_is_a_404_and_a_malformed_id_is_a_422(self):

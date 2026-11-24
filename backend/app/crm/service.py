@@ -28,6 +28,8 @@ from psycopg import Connection, errors
 
 from app.access import service as access
 from app.booking import service as booking
+from app.catalog import service as catalog
+from app.commercial import lifecycle
 from app.commercial import service as commercial
 from app.crm import pipeline, trial
 from app.db import Pool, tenant_scope
@@ -653,6 +655,155 @@ def read_trial(
         "a_visit_and_a_class_are_different_facts": (
             "a visit is an entry event and a class is a booking settled attended, so a "
             "member who trains in the gym four times has four visits and no classes"),
+    }
+
+
+def read_conversion_quote(
+    pool: Pool, tenant_id: str, lead_id: str, *, variant_id: str, currency: str,
+    actor_id: str, correlation_id: str, channel: str = "crm",
+    at: datetime | None = None,
+) -> dict[str, Any]:
+    """ADM-CRM-06: what it costs this person to become a member on this plan, today.
+
+    The canvas is four lines -- "Club · monthly · JOD 55.00 / Pro-rata to 31 Aug · JOD 21.29 /
+    Then 55.00 from 1 Sep / Her four class attendances, her credential and Yasmin's notes all
+    carry over. Nothing is re-entered." -- and every figure in them is produced here rather
+    than in a browser.
+
+    **The recurring figure is a quote and not a sale.** `catalog.quote_price` runs the whole
+    resolution -- the derived segment, the book choice, the automatic promotions -- and writes
+    nothing, which is what `catalog.price.read` is described as granting. Calling
+    `resolve_price` to put a number on a screen would store a receipt and redeem a coupon for
+    somebody who has not agreed to anything, and `list_prices` is explicit that a row in its
+    own window is not the resolved price.
+
+    **The part-period figure is `lifecycle.first_charge`**, so the boundary is the one the
+    contract declares (ADR-0011). A plan on a `calendar` anchor converting mid-month charges
+    to the month end and the full amount from the first; one on `agreement_start` charges the
+    whole period from today and the read says `prorated: false` rather than quoting a
+    proration that is not one. The canvas's 21.29 is the first of those, and a client deriving
+    it would be counting days in its own frame -- which this build has three recorded defects
+    from.
+
+    **The quote runs outside the read's transaction, deliberately.** `quote_price` takes a
+    pool and opens its own scope, so the trial and the price are two snapshots; for a
+    read-only quote that is harmless, and the alternative is threading a connection through
+    MOD-016's resolver, which would be a change to the sale's own path for the benefit of a
+    screen. What must be atomic is a write, and this writes nothing.
+
+    **A trial product is refused as a target.** `trial_days` is what marks one (ADR-0010 D7),
+    so converting a trial onto another trial is not a sale -- and the refusal is here as well
+    as in `sellable_plans`' filter, because a caller can name a variant the picker did not
+    offer.
+
+    **The carry-over is structural and is stated as such.** "The lead ID becomes the member ID"
+    is ADM-CRM-01's own requirement, enforced by there being one `ppl_persons` row: the
+    conversion writes a superseding agreement and touches neither the credential, nor the
+    attendance, nor the touchpoints. So the counts here are evidence of what already exists
+    rather than a promise about a migration, and the credential is named without a number
+    because that count is MOD-022's own read with its own permission.
+    """
+    now = at or _now()
+    today = now.date()
+    with tenant_scope(pool, tenant_id) as conn:
+        lead = conn.execute(
+            "SELECT person_id, stage FROM plt01.crm_leads WHERE lead_id = %s",
+            (lead_id,),
+        ).fetchone()
+        if lead is None:
+            raise NotFound("lead_not_found")
+        person_id = str(lead[0])
+        plan = conn.execute(
+            """
+            SELECT v.display_name, p.product_key, t.billing_period, t.billing_anchor,
+                   t.trial_days, p.status, v.status, t.status
+            FROM plt01.cat_variants v
+            JOIN plt01.cat_products p
+                ON p.tenant_id = v.tenant_id AND p.product_id = v.product_id
+            JOIN plt01.mem_membership_terms t
+                ON t.tenant_id = p.tenant_id AND t.product_id = p.product_id
+            WHERE v.variant_id = %s
+            """,
+            (variant_id,),
+        ).fetchone()
+        if plan is None:
+            raise NotFound("plan_not_found")
+        if plan[4] is not None:
+            raise Conflict("a_trial_product_is_not_a_conversion_target")
+        if str(plan[5]) != "published" or str(plan[6]) != "active" \
+                or str(plan[7]) != "active":
+            raise Conflict("this_plan_is_not_sellable")
+        window = commercial.live_trial(conn, person_id, at=today)
+        touchpoints = conn.execute(
+            "SELECT count(*) FROM plt01.crm_touchpoints WHERE lead_id = %s",
+            (lead_id,),
+        ).fetchone()
+        classes = 0
+        visits = 0
+        if window is not None:
+            classes = booking.attended_between(
+                conn, person_id, window["starts_on"], window["ends_on"])
+            visits = access.visits_between(
+                conn, person_id, window["starts_on"], window["ends_on"])
+
+    quoted = catalog.quote_price(
+        pool, tenant_id, variant_id=variant_id, currency=currency,
+        subject_id=person_id, channel=channel, actor_id=actor_id,
+        correlation_id=correlation_id, at=now)
+    recurring = int(quoted["final_amount_minor"])
+    first_minor, ends_on, recurring_from, steps = lifecycle.first_charge(
+        full_amount_minor=recurring, starts_on=today,
+        billing_period=str(plan[2]), anchor=str(plan[3]))
+    return {
+        "lead_id": lead_id, "person_id": person_id, "stage": str(lead[1]),
+        "today": today.isoformat(),
+        "plan": {
+            "variant_id": variant_id, "display_name": str(plan[0]),
+            "product_key": str(plan[1]), "billing_period": str(plan[2]),
+            "billing_anchor": str(plan[3]),
+        },
+        # The canvas's three money lines, in its own order. `recurring_minor` is what the sale
+        # would charge for a whole period and `first_charge_minor` is what is due today; the
+        # design's note on the sale sheet says confusing the two is "the most common
+        # membership-sale complaint in the industry", which is why both are here and neither
+        # is derivable from the other.
+        "currency": str(quoted["currency"]),
+        # Which book and which row produced the figure. MOD-016's own resolution returns both
+        # and a reader asking "why is this 30.00" has nowhere else to look -- the receipt that
+        # would normally answer it is the thing a quote deliberately does not write.
+        "price_book_id": quoted["price_book_id"],
+        "price_id": quoted["price_id"],
+        "recurring_minor": recurring,
+        "list_amount_minor": int(quoted["list_amount_minor"]),
+        "discount_minor": int(quoted["discount_minor"]),
+        "first_charge_minor": first_minor,
+        "first_period_ends_on": ends_on.isoformat(),
+        "recurring_starts_on": recurring_from.isoformat(),
+        "prorated": first_minor != recurring,
+        "explanation": list(steps) + list(quoted["explanation"]),
+        "converting_from_a_trial": window is not None,
+        "trial": None if window is None else {
+            "membership_id": window["membership_id"],
+            "starts_on": window["starts_on"].isoformat(),
+            "ends_on": window["ends_on"].isoformat(),
+            "trial_days": window["trial_days"],
+        },
+        "carries_over": {
+            "classes": classes,
+            "visits": visits,
+            "touchpoints": 0 if touchpoints is None else int(touchpoints[0]),
+            "the_record_does_not_change": (
+                "a lead, a trialist and a member are one ppl_persons row at three stages, so "
+                "the credential, the attendance and the notes are untouched by a conversion -- "
+                "nothing is re-entered because nothing moves"),
+            "no_credential_count_here": (
+                "what this person can present at a door is MOD-022's own read and has its own "
+                "permission, so it is composed by a surface rather than returned from a CRM "
+                "route"),
+        },
+        "nothing_is_charged_here": (
+            "this is the arithmetic and the disclosure; taking the money needs the payment "
+            "provider, which is owner-reserved, and no invoice is issued by a conversion"),
     }
 
 

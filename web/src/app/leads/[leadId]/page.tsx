@@ -35,12 +35,14 @@ import {
  * is absent because its permission is a stepped-up financial one and "a button that answered
  * 403 is worse than its absence"; none of these is.
  *
- * **Four of the canvas's figures are the trial's and are not drawn.** `4 VISITS`, `4
- * CLASSES`, `2 DAYS LEFT` and `High ENGAGEMENT` all need a trial, and nothing in this build
- * marks a product as one — so the metric row carries what this slice can answer and the gap
- * list names the four rather than drawing them as zeros. A metric cell reading `0 VISITS` for
- * a member who has been four times is the confident wrong answer MOD-014's own 360 was bitten
- * by.
+ * **The canvas's four trial figures are drawn now, and this paragraph used to say they were
+ * not.** `4 VISITS`, `4 CLASSES`, `2 DAYS LEFT` and `High ENGAGEMENT` all need a trial, and
+ * the note here said "nothing in this build marks a product as one" -- which ADR-0010 D7
+ * settled and ADM-CRM-05 rendered. A gap note outliving its gap is a claim about the product,
+ * and this one sat in the docstring of the file that closed it. What is still true is the
+ * reason the cells are conditional: a cell reading `0 VISITS` for a member who has been four
+ * times is the confident wrong answer MOD-014's own 360 was bitten by, so the sales row is
+ * drawn for a lead with no trial and the trial row for one with.
  *
  * **The phone number is not here either.** The canvas puts it in the subline; it is a contact
  * point on the member record behind its own permission, and this screen composes the name
@@ -250,12 +252,16 @@ export default async function LeadPage({
               a reader cannot see -- which Playwright correctly calls hidden. The membership
               block paid for the other half of this rule, where wrapping each pair in a
               `<div>` made the div the grid item and put both labels on one row. */}
-          <dl className="facts">
-            <dt>{text("trial.convert")}</dt>
-            <dd>{text("trial.convertNeedsAPlan")}</dd>
-            <dt>{text("trial.takeThePayment")}</dt>
-            <dd>{text("trial.convertTakesNoPayment")}</dd>
-          </dl>
+          {/* **The canvas's own control, which was a gap entry until ADM-CRM-06 existed.**
+              It read "Converting is a plan change ... so it is a form this screen does not
+              have yet", and the screen is there now -- so the note goes with the gap, in the
+              same change, which is this repository's rule about a gap list being a claim
+              about the product. What the conversion screen still does not do is take the
+              money, and it says so where the figure is rather than here. */}
+          <p>
+            <Link href={`/leads/${leadId}/convert`}>{text("trial.convert")}</Link>
+          </p>
+          <ProseNote>{text("trial.convertShowsTheCost")}</ProseNote>
         </section>
       )}
 

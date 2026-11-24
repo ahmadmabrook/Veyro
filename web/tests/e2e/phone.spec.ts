@@ -116,6 +116,12 @@ const surfaces: [string, string][] = [
   // layout from the sales one above and is the one with a 5,687-pixel zero-width box in its
   // history.
   ["a lead on a trial", `/leads/${creds.trialLeadId}`],
+  // **The conversion quote, which is reachable only with a query string** -- so it is exactly
+  // the kind of surface a route list leaves out, which ADM-MSH-07's cancellation sheet had to
+  // be added by hand for. Two metric cells beside a definition list, at the width where
+  // `.facts` collapses.
+  ["a conversion quote",
+    `/leads/${creds.trialLeadId}/convert?variant=${creds.clubVariantId}`],
   ["the task list", "/tasks"],
   ["an attention item", `/tasks/cases/${creds.moneyCaseId}`],
   ["resolved today", "/tasks/resolved"],

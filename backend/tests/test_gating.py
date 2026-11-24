@@ -165,6 +165,10 @@ READ_ROUTES = [
     ("get", "/crm/leads", None),
     ("get", f"/crm/leads/{_ID}", None),
     ("get", f"/crm/leads/{_ID}/trial", None),
+    # ADM-CRM-06. Five permissions, so a session holding nothing is refused five times over --
+    # and the query parameters are here because a route whose required params are missing
+    # answers 422 before the gate, which would prove the validator rather than the gate.
+    ("get", f"/crm/leads/{_ID}/conversion-quote?variant_id={_ID}&currency=JOD", None),
 ]
 
 WRITE_ROUTES = [
@@ -345,6 +349,8 @@ WRITE_ROUTES = [
     ("post", f"/catalog/coupons/{_ID}/revoke", {"reason": "leaked", **_CORR}),
     ("post", "/catalog/promotions/validate",
      {"code": "SWEEP10", "subtotal_minor": 5000, "currency": "JOD"}),
+    ("post", "/catalog/prices/quote",
+     {"variant_id": _ID, "currency": "JOD", **_CORR}),
     ("post", "/catalog/prices/resolve",
      {"variant_id": _ID, "currency": "JOD", **_CORR}),
     ("post", "/catalog/discount-requests",
@@ -396,6 +402,7 @@ WRITE_ROUTES = [
     # and each is gated on the permission whose own description already covers it -- so a
     # session holding nothing must be refused all five, which is what this sweep proves.
     ("get", "/memberships", None),
+    ("get", "/memberships/plans", None),
     ("get", f"/memberships/{_ID}", None),
     ("get", "/member-entitlements", None),
     ("get", "/finance/accounts", None),

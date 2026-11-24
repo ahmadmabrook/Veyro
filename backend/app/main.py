@@ -42,7 +42,7 @@ from uuid import uuid4
 from fastapi import Depends, FastAPI, Header, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from pydantic import AwareDatetime, BaseModel, Field, model_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from app import db
 from app.access import service as access
@@ -1270,6 +1270,43 @@ class ResolvePriceBody(BaseModel):
     approval_id: str | None = None
 
 
+class QuotePriceBody(BaseModel):
+    """QuotePrice: what a sale would cost, with nothing recorded.
+
+    **`ResolvePriceBody`'s fields minus the four that are sale decisions.** There is no
+    `coupon_code` (a coupon is quoted by `/catalog/promotions/validate`, which is where its
+    usage rules are explained -- two coupon-quoting paths are two answers to "is this code
+    still good"), no `idempotency_key` (nothing is written), and no override or approval,
+    because an override needs an approval row that covers the variant at the list amount and a
+    figure nobody may charge is not a quote.
+
+    `customer_segment` and `brand_id` are absent for the same reason they are absent from the
+    sale: both chose which book the price came from and both were free strings, so a routine
+    session took a 90% reduction by sending one. The segment is derived from the subject's own
+    tags and the brand from the location.
+
+    **This is the one body in this application that forbids unknown fields, and the reason is
+    that its distinguishing feature is an absence.** Pydantic ignores an extra by default, so
+    a caller that sent `coupon_code` here got a figure with the coupon *not* applied -- and a
+    till that showed that figure while believing the code had been taken is a worse outcome
+    than a refusal, because the number is plausible. An absence that is silently tolerated is
+    a convention rather than a control, which is MOD-012's `vault_ref` lesson applied to a
+    request body; `extra="forbid"` is what makes the four missing fields mean something. The
+    cost is that a client sending a field this route does not have gets a 422 instead of a
+    quiet success, which is the direction worth failing in.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    variant_id: str
+    currency: str = Field(min_length=3, max_length=3)
+    correlation_id: str
+    quantity: int = Field(default=1, ge=1, le=1000000)
+    channel: Literal["any", "pos", "member_app", "admin_web", "crm", "kiosk", "web"] = "any"
+    location_id: str | None = None
+    subject_id: str | None = None
+
+
 class ValidatePromotionBody(BaseModel):
     code: str = Field(min_length=3, max_length=32)
     subtotal_minor: int = Field(ge=0, le=10**12)
@@ -2323,6 +2360,23 @@ def _require_person(person_id: str | None) -> str:
     if person_id is None:
         raise InvalidRequest("no_person_record_for_this_identity")
     return person_id
+
+
+def _currency(value: str) -> str:
+    """Shape-check a currency code arriving in a query string.
+
+    Every other currency in this application reaches a body, where
+    `Field(min_length=3, max_length=3)` refuses a bad one at the boundary. A query parameter
+    has no such field, so without this a four-letter code would travel to a `char(3)` column
+    and come back as `StringDataRightTruncation` -- a `DataError` rather than the
+    `CheckViolation` the handlers catch, which is MOD-011's, MOD-012's and MOD-013's finding
+    for the fourth time. Upper-cased because the figures are compared against a book's own
+    currency and `jod` is the same money as `JOD`.
+    """
+    code = value.strip().upper()
+    if len(code) != 3 or not code.isalpha():
+        raise InvalidRequest("bad_currency")
+    return code
 
 
 def require_uuids(values: list[str], field: str, *, limit: int) -> list[str]:
@@ -6713,6 +6767,33 @@ def create_app(
             subject_id=optional_uuid(body.subject_id, "subject_id"),
         )
 
+    @app.post("/catalog/prices/quote")
+    def quote_price(
+        tenant_id: TenantId, session: Session, body: QuotePriceBody
+    ) -> dict[str, Any]:
+        """QuotePrice: what a sale would cost, recording nothing.
+
+        **The reader `catalog.price.read` was described as granting and did not have.** Its
+        own line in the catalogue is "See price books and what a sale would cost", and until
+        now the only thing that could answer the second half was `/catalog/prices/resolve` --
+        which *is* the sale: it stores the explanation insert-only and redeems the coupon it
+        applies, so a screen that wanted a figure before anybody agreed had to make one.
+
+        **It is a read, so it is on the read permission and not the sale's.** Both are
+        `data_access` with no financial class, so neither needs a step-up; what separates them
+        is that one writes. `catalog.price.resolve` stays the permission that can spend a
+        coupon and consume an approval.
+        """
+        permit(session, "catalog.price.read", body.correlation_id)
+        return catalog.quote_price(
+            tenant_pool, tenant_id,
+            variant_id=require_uuid(body.variant_id, "variant_id"),
+            currency=body.currency, quantity=body.quantity, channel=body.channel,
+            location_id=optional_uuid(body.location_id, "location_id"),
+            subject_id=optional_uuid(body.subject_id, "subject_id"),
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
     @app.post("/catalog/prices/resolve", status_code=201)
     def resolve_price(
         tenant_id: TenantId, session: Session, body: ResolvePriceBody
@@ -7084,6 +7165,30 @@ def create_app(
     # **A person id is a filter, never an authorization.** Passing one narrows the list; it
     # does not make a weaker permission sufficient, and it does not reach anything about the
     # person. MOD-014 answers who they are, through its own gate.
+
+    @app.get("/memberships/plans")
+    def list_sellable_plans(
+        tenant_id: TenantId, session: Session, include_trials: bool = False,
+        limit: int = commercial.SELLABLE_PLANS,
+    ) -> dict[str, Any]:
+        """Which membership plans can be sold: ADM-CRM-06's plan pick, and ADM-MSH-01's.
+
+        **`catalog.product.read`, because everything here is a product and its contract
+        shape.** There is no figure in the answer -- a price needs `catalog.price.read` and
+        only a quote may name it -- and no member data of any kind, so the narrower of the two
+        catalogue reads is the right one and the one that would also buy "what every sale
+        costs" is not.
+
+        **`include_trials` is off by default and is the field that makes this a conversion
+        list.** A product whose terms declare `trial_days` is what somebody converts *from*,
+        so offering it as a target would let a trial be converted into another trial. With it
+        on, this is "every membership this gym sells", which is a different and equally real
+        question -- and a caller wanting the second and given the first would be missing
+        exactly the product a trial starts from.
+        """
+        permit(session, "catalog.product.read")
+        return commercial.sellable_plans(
+            tenant_pool, tenant_id, exclude_trials=not include_trials, limit=limit)
 
     @app.get("/memberships")
     def list_memberships(
@@ -10233,19 +10338,58 @@ def create_app(
     ) -> dict[str, Any]:
         """ADM-CRM-05: the trial card on a lead's profile, or why there is not one.
 
-        **Three permissions, because the card carries three modules' facts.** The window is
-        MOD-017's, the visits are MOD-022's entry events and the classes are MOD-020's settled
-        bookings -- so a reader holding only the lead read would otherwise get MOD-022's and
-        MOD-020's figures out of a CRM route, which is MOD-010's `events.event.read` finding.
-        All three, rather than a partial card: the canvas draws four cells together and three
-        of them is not the card, and `issue_command` is the precedent for a route that charges
-        more than one.
+        **Four permissions, because the card carries four modules' facts.** The visits are
+        MOD-022's entry events, the classes are MOD-020's settled bookings and the window is
+        MOD-017's membership row -- so a reader holding only the lead read would otherwise get
+        all three out of a CRM route, which is MOD-010's `events.event.read` finding. All four,
+        rather than a partial card: the canvas draws four cells together and three of them is
+        not the card, and `issue_command` is the precedent for a route charging more than one.
+
+        **`membership.record.read` was missing when this route was written, and that was the
+        same finding one module short.** The docstring said three and named MOD-017's window as
+        one of the three facts; the card returns a `membership_id`, a start, an end and the
+        terms' `trial_days`, which is verbatim what that permission is described as granting --
+        "See a membership, its history and its terms". It is routine and AAL 1, so a
+        salesperson holds it anyway and nothing real is refused by adding it; what is closed is
+        a sales permission reaching a membership row.
         """
         permit(session, "crm.lead.read")
         permit(session, "access.decision.read")
         permit(session, "booking.booking.read")
+        permit(session, "membership.record.read")
         return crm.read_trial(
             tenant_pool, tenant_id, require_uuid(lead_id, "lead_id"))
+
+    @app.get("/crm/leads/{lead_id}/conversion-quote")
+    def read_conversion_quote(
+        tenant_id: TenantId, session: Session, lead_id: str, variant_id: str,
+        currency: str = "JOD",
+    ) -> dict[str, Any]:
+        """ADM-CRM-06: what it costs this person to become a member on this plan, today.
+
+        **Five permissions, because the card carries five modules' facts.** The recurring
+        figure is MOD-016's resolution, the part-period boundary is MOD-017's contract, the
+        membership window is MOD-017's row, the class attendances are MOD-020's settled
+        bookings and the visits are MOD-022's entry events -- so a reader holding only the
+        lead read would get four other modules' data out of a CRM route, which is MOD-010's
+        `events.event.read` finding. All five rather than a partial card, for ADM-CRM-05's
+        reason: the canvas draws the money and the carry-over together and one without the
+        other is not the screen.
+
+        **`catalog.price.read` and not `catalog.price.resolve`**, because this quotes and does
+        not sell: nothing is recorded and no coupon is redeemed. Charging the sale's permission
+        would make a figure unreadable by the salesperson who needs it before anybody agrees.
+        """
+        permit(session, "crm.lead.read")
+        permit(session, "catalog.price.read")
+        permit(session, "membership.record.read")
+        permit(session, "booking.booking.read")
+        permit(session, "access.decision.read")
+        return crm.read_conversion_quote(
+            tenant_pool, tenant_id, require_uuid(lead_id, "lead_id"),
+            variant_id=require_uuid(variant_id, "variant_id"),
+            currency=_currency(currency),
+            actor_id=session["identity_id"], correlation_id=str(uuid4()))
 
     @app.post("/crm/leads/{lead_id}/touchpoints", status_code=201)
     def record_lead_touchpoint(

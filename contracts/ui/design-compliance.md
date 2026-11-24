@@ -2163,6 +2163,92 @@ which ADR-0010 D7 made false the day it landed. Found by a browser assertion wri
 the *metric row* matching that sentence at the foot of the page, which is the third stale gap
 note this surface has rendered.
 
+## ADM-CRM-06 — convert a trial, and the quote that did not exist
+
+**The canvas.** `ADM-CRM-06 · CONVERT`: **"Rana becomes a member"** over three money lines —
+`Club · monthly · JOD 55.00` / **`Pro-rata to 31 Aug · JOD 21.29`** / `Then 55.00 from 1 Sep`
+— then *"Her four class attendances, her credential and Yasmin's notes all carry over. Nothing
+is re-entered."*, two buttons `Take 21.29` and `Send link`, and the footnote *"Same record, new
+state. The lead ID becomes the member ID — this is the duplicate-entry fix from the UX review,
+enforced structurally rather than by discipline."*
+
+- **ADM-CRM-06 · convert** — `/leads/{lead_id}/convert`, over `GET /memberships/plans` for the
+  plan pick and `GET /crm/leads/{id}/conversion-quote` for the figures. Its own route rather
+  than a state of the profile: this canvas is a card with its own id, and the plan pick is a
+  selection the profile has nowhere to put.
+
+### What the figure cost to produce
+
+**21.29 is `55.00 × 12/31` and this build could not express it.** `renewal_period` tiled from
+the previous period's end, so a membership sold on the twentieth billed 20 Aug–19 Sep and the
+boundary the canvas states — 31 August, with the recurring charge from the first — was
+unreachable. That is ADR-0011, and the arithmetic now reproduces the card exactly.
+
+**And the recurring figure had no reader that was not a sale.** `resolve_price` stores the
+explanation insert-only and redeems the coupon it applies, so calling it to put a number on a
+screen would write a receipt for somebody who has agreed to nothing; `list_prices` says in as
+many words that a row in its own window is not the resolved price. The quote took no new
+arithmetic: `resolve_price` has carried `store: bool = True` since MOD-016 was built, with the
+receipt and the redemption both inside its `if store:` block, and **nothing had ever passed
+`store=False`** — a parameter with no reader, implementing the read `catalog.price.read` is
+described as granting.
+
+### The five things this screen had to settle
+
+**Neither of the canvas's buttons is drawn, and the reason is not the usual one.** Every other
+absent form in this app is a stepped-up financial permission and is absent because "a button
+that answered 403 is worse than its absence". `Take 21.29` is the payment provider and
+`Send link` is the messaging one — two of the seven things this build waits on from outside —
+so the screen names each with its own cause rather than letting a reader conclude they need a
+stronger sign-in and go and get one for nothing.
+
+**A third absence is named with them, and it is a judgement rather than a blocker.**
+`change_membership_plan` is built and is what ADM-MSH-05 rests on, so writing the superseding
+agreement is available — and it issues no invoice, so a button that converted without charging
+would leave a member with access nobody has paid for. Converting and charging are one act at
+this door and half of it is worse than neither.
+
+**Nothing with a count of zero is claimed.** *"Her four class attendances ... carry over"* is
+true of Rana and false of a lead who has never booked anything, and a line reading `0 class
+attendances` is the confident wrong answer MOD-014's own Member 360 was bitten by. The
+structural sentence is shown either way, because that one is true of everybody: there is one
+person row, so a conversion moves nothing. **The credential is in the sentence and not in the
+list**, because what somebody can present at a door is MOD-022's own read behind its own
+permission and the quote carries no count — claiming it for a member who has none would be the
+same wrong answer in the other direction.
+
+**The plan pick is links, not a control**, so a chosen plan survives being sent to somebody and
+works with no JavaScript — the members list's, the schedule board's and the attendance report's
+decision. And the picker carries **no figure**: a price needs `catalog.price.read` and only a
+quote may name it, so "see the catalog" must not buy "see what every sale costs".
+
+**Seven gates, and five of them are the quote's.** The figures are MOD-016's resolution and
+MOD-017's contract, the window is MOD-017's row, the attendance is MOD-020's and the visits are
+MOD-022's; the picker is MOD-016's catalogue and the name is MOD-014's. Without any one of the
+five the server refuses the whole card rather than returning part of it, so the screen says so
+rather than drawing a figure it cannot complete.
+
+### What this screen found outside itself
+
+**The lead profile's "Convert to member" was a gap entry**, reading *"it is a form this screen
+does not have yet"* — so closing the gap meant deleting the note in the same change, and the
+control is a link now. **The profile's own docstring had a second stale paragraph**, claiming
+the canvas's four trial figures "are not drawn" because "nothing in this build marks a product
+as one"; ADR-0010 D7 settled that and ADM-CRM-05 drew them.
+
+**And the trial card was a lateral read path.** `GET /crm/leads/{id}/trial` charged three
+permissions and its own docstring named MOD-017's window as one of the three facts, while
+`membership.record.read` — "See a membership, its history and its terms" — was not among them.
+The card returns a membership id, a start, an end and the terms' `trial_days`. It is routine
+and AAL 1, so a salesperson holds it anyway and nothing real is refused by adding it; what is
+closed is a sales permission reaching a membership row.
+
+**The fixture had no plan this screen could use.** Every plan it seeded was called "Monthly"
+and sat on the `agreement_start` anchor, so the picker was a row of identical chips and the
+canvas's pro-rata line could never render in a browser — this repository's "a surface branch
+no fixture can reach" trap for the fifth time. A Club plan on the `calendar` anchor is seeded
+for it.
+
 ## ADM-CRM-04 — add a lead, and the duplicate the door prevents
 
 **The canvas.** *"New lead · Name and phone are enough. Everything else can wait."* Two fields,

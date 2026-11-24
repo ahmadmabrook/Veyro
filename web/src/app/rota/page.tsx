@@ -17,8 +17,8 @@ import {
 } from "@/lib/api";
 import { listLocations, type Location } from "@/lib/organization";
 import { presentation } from "@/lib/preferences";
-import { monthDayLabel, shiftWeek, weekDays } from "@/lib/scheduling";
-import { inZone } from "@/lib/time";
+import { shiftWeek, weekDays } from "@/lib/scheduling";
+import { inZone, monthDayLabel } from "@/lib/time";
 import {
   anyRota,
   CELL_LABEL,

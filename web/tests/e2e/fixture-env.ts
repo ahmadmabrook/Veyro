@@ -38,6 +38,8 @@ export type Fixture = {
   coldLeadId: string;
   ownedLeadId: string;
   trialLeadId: string;
+  /** ADM-CRM-06's conversion target: a Club plan on the `calendar` anchor. */
+  clubVariantId: string;
   trialMembershipId: string;
   touredLeadId: string;
   /** ADM-CC-06's own subject: "6 payments failed overnight", unassigned, with six records. */
@@ -242,6 +244,7 @@ export function fixture(): Fixture {
     coldLeadId: env.VEYRO_E2E_COLD_LEAD_ID!,
     ownedLeadId: env.VEYRO_E2E_OWNED_LEAD_ID!,
     trialLeadId: env.VEYRO_E2E_TRIAL_LEAD_ID!,
+    clubVariantId: env.VEYRO_E2E_CLUB_VARIANT_ID!,
     trialMembershipId: env.VEYRO_E2E_TRIAL_MEMBERSHIP_ID!,
     touredLeadId: env.VEYRO_E2E_TOURED_LEAD_ID!,
     moneyCaseId: env.VEYRO_E2E_MONEY_CASE_ID!,

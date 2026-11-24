@@ -688,6 +688,56 @@ def validate_promotion(
 
 # ---------------------------------------------------------------------- price resolution
 
+def quote_price(
+    pool: Pool, tenant_id: str, *, variant_id: str, currency: str, actor_id: str,
+    correlation_id: str, quantity: int = 1, channel: str = "any",
+    location_id: str | None = None, subject_id: str | None = None,
+    at: datetime | None = None,
+) -> dict[str, Any]:
+    """What a sale would cost, with nothing recorded. `catalog.price.read`'s own description.
+
+    **`resolve_price` is the sale and this is the quote, and the difference is one flag that
+    had no caller.** That function has carried `store: bool = False` since the module was
+    built -- the receipt insert and the coupon redemption are both inside its `if store:`
+    block -- and nothing in the app or the tests ever passed it. A parameter with no reader is
+    this build's most-repeated shape, and here it sat in the money path implementing the read
+    `catalog.price.read` is described as granting: "See price books and what a sale would
+    cost". `list_prices` answers whether a *row* is in its window and says in as many words
+    that this is not the same claim, because the book must also be active and must win the
+    priority comparison; this is the claim.
+
+    **It is one more caller of one definition, which is why it delegates rather than
+    recomposing.** Everything that decides the figure -- the derived segment, the derived
+    brand, the book choice, the automatic promotions and their usage counts, both passes of
+    `pricing.resolve` -- is read-only already. A second assembly of those inputs here would be
+    one-module-two-definitions on a price, and the day they disagreed a screen would quote a
+    figure the till then refused.
+
+    **No coupon, no override and no approval.** A coupon is quoted by
+    `validate_promotion`, which exists for exactly that and is where its usage rules are
+    explained; a second coupon-quoting path would be two answers to "is this code still
+    good". An override needs an approval row that covers the variant at the list amount, and
+    an override nobody may charge is not a quote. Automatic promotions *are* applied, because
+    the point of the figure is that it is what the sale would charge.
+
+    **A sale that would need an approval is refused here too**, by `resolve_price`'s own
+    check, and that is deliberate: a figure nobody is allowed to charge is worse than no
+    figure, because a screen would print it beside a button.
+    """
+    quoted = resolve_price(
+        pool, tenant_id, variant_id=variant_id, currency=currency, actor_id=actor_id,
+        correlation_id=correlation_id, quantity=quantity, channel=channel,
+        location_id=location_id, subject_id=subject_id, at=at, store=False)
+    # Said rather than left to be inferred from a null id, because `resolution_id: null` on a
+    # response whose sibling route always carries one reads as a write that failed.
+    quoted["recorded"] = False
+    quoted["nothing_was_recorded_because"] = (
+        "this is a quote: resolve the price to make the sale, which stores the explanation "
+        "insert-only and redeems any coupon it applies"
+    )
+    return quoted
+
+
 def resolve_price(
     pool: Pool, tenant_id: str, *, variant_id: str, currency: str, actor_id: str,
     correlation_id: str, quantity: int = 1, channel: str = "any",

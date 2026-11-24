@@ -105,6 +105,27 @@ export function dayLabel(instant: string, now: Date = new Date()): string {
 }
 
 /**
+ * A calendar date as a day and a month -- "to 31 August", which is the boundary ADM-CRM-06
+ * prorates a first charge to and the week heading `/rota` draws.
+ *
+ * **Moved here from `src/lib/scheduling.ts`, where it was beside `weekDays`.** It shares that
+ * function's UTC-parse subtlety -- a bare `YYYY-MM-DD` is UTC midnight, so the formatter is
+ * pinned to UTC and reads back the calendar date it was given, where the host's own zone
+ * renders a date west of UTC as the day before for part of every day -- but it is a *date
+ * formatter*, and its sibling `monthYearLabel` has lived in this module all along with a
+ * docstring that cites this function by name. A CRM screen importing a scheduling helper to
+ * render a date is the smell; two copies of the same formatter would be the defect.
+ *
+ * No year, because every caller's heading carries the range and a date that needs a year to
+ * disambiguate is one nobody is looking at.
+ */
+export function monthDayLabel(date: string, locale: "en" | "ar"): string {
+  return new Intl.DateTimeFormat(locale === "ar" ? "ar" : "en-GB", {
+    timeZone: "UTC", day: "numeric", month: "long",
+  }).format(new Date(`${date}T00:00:00Z`));
+}
+
+/**
  * A calendar date as a month and a year — "joined Feb 2025", which is how ADM-MEM-10's
  * duplicate banner identifies the record it found.
  *

@@ -2772,6 +2772,55 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
       },
     });
   }
+  // **ADM-CRM-06's conversion target, and the fixture had none the screen could use.** Every
+  // other plan this fixture seeds is called "Monthly" and sits on the `agreement_start`
+  // anchor -- so the picker was a row of identical chips and the canvas's own pro-rata line,
+  // "Pro-rata to 31 Aug · JOD 21.29", could never render in a browser at all. That is this
+  // repository's "a surface branch no fixture can reach" trap, which it has recorded four
+  // times; the remedy is a plan that is distinguishable and calendar-anchored.
+  //
+  // **`calendar` is the anchor ADR-0011 added and this is its only browser fixture.** A
+  // monthly contract on it prorates to the month end on every day but the first, so the
+  // part-period figure and the boundary are both rendered rather than merely unit-tested.
+  const clubContract = `club${Math.random().toString(36).slice(2, 8)}`;
+  const clubVersion = await call("/memberships/contract-versions", {
+    method: "POST", ...as(token),
+    body: { contract_key: clubContract, body: "Terms: Club, billed on calendar months.",
+            minimum_term_months: 0, notice_days: 30,
+            cancellation_mode: "end_of_notice", freeze_days_per_year: 30,
+            correlation_id: cid() },
+  });
+  await call(`/memberships/contract-versions/${clubVersion.contract_version_id}/publish`, {
+    method: "POST", ...as(publisherToken), body: { correlation_id: cid() },
+  });
+  const clubProduct = await call("/catalog/products", {
+    method: "POST", ...as(token),
+    body: { product_key: `${clubContract}p`, product_type: "membership",
+            texts: [{ locale: "en", display_name: "Club" }],
+            variants: [{ variant_key: "club", display_name: "Club", term_days: 30 }],
+            correlation_id: cid() },
+  });
+  await call("/catalog/prices", {
+    method: "POST", ...as(token),
+    body: { price_book_id: priceBook.price_book_id,
+            // **55,000 fils, not 5,500.** JOD is stored in three digits and shown in two
+            // -- `conventions` keeps two tables and says why -- so the canvas's `JOD 55.00`
+            // is 55,000 minor units. The first version wrote 5,500 and the screen read
+            // `JOD 5.50`, which is the storage-versus-display distinction costing a figure.
+            variant_id: clubProduct.variants[0].variant_id, amount_minor: 55000,
+            effective_from: "2026-01-01T00:00:00+00:00", correlation_id: cid() },
+  });
+  await call(`/catalog/products/${clubProduct.product_id}/publish`, {
+    method: "POST", ...as(token),
+    body: { expected_version: 1, correlation_id: cid() },
+  });
+  await call("/memberships/terms", {
+    method: "POST", ...as(token),
+    body: { product_id: clubProduct.product_id, contract_key: clubContract,
+            membership_kind: "recurring", billing_period: "monthly",
+            billing_anchor: "calendar", correlation_id: cid() },
+  });
+
   const contactedLead = await leadFor("Omar Zaid");
   await call(`/crm/leads/${contactedLead.lead_id}/touchpoints`, {
     method: "POST", ...as(token),
@@ -2870,6 +2919,7 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
     touredLeadId: touredLead.lead_id,
     ownedLeadId: ownedLead.lead_id,
     trialLeadId: trialLead.lead_id,
+    clubVariantId: clubProduct.variants[0].variant_id,
     trialMembershipId: trialMembership.membership_id,
     overdueTaskId: overdueTask.task_id,
     mineTaskId: mineTask.task_id,
@@ -2960,6 +3010,7 @@ if (invokedDirectly) {
       `VEYRO_E2E_COLD_LEAD_ID=${fixture.coldLeadId}`,
       `VEYRO_E2E_OWNED_LEAD_ID=${fixture.ownedLeadId}`,
       `VEYRO_E2E_TRIAL_LEAD_ID=${fixture.trialLeadId}`,
+      `VEYRO_E2E_CLUB_VARIANT_ID=${fixture.clubVariantId}`,
       `VEYRO_E2E_TRIAL_MEMBERSHIP_ID=${fixture.trialMembershipId}`,
       `VEYRO_E2E_TOURED_LEAD_ID=${fixture.touredLeadId}`,
       `VEYRO_E2E_MONEY_CASE_ID=${fixture.moneyCaseId}`,

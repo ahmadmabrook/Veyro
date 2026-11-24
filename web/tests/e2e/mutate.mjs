@@ -2097,6 +2097,65 @@ const MUTATIONS = [
     runner: "playwright",
     grep: "five columns, in its order",
   },
+  // ---- ADM-CRM-06, the conversion quote -------------------------------------------
+  {
+    id: "convert-discloses-the-list-and-the-discount",
+    why: "a heading reading `JOD 49.50` over a plan a tenant prices at `JOD 55.00` is a "
+      + "figure a member cannot reconcile, and the fixture's four automatic promotions are "
+      + "the ordinary state of a catalogue rather than an edge case",
+    file: "src/app/leads/[leadId]/convert/page.tsx",
+    from: "            {quote.discount_minor > 0 ? (",
+    to: "            {false ? (",
+    runner: "playwright",
+    grep: "draws the canvas's three money lines",
+  },
+  {
+    id: "convert-claims-nothing-with-a-count-of-zero",
+    why: "\"her four class attendances carry over\" is true of Rana and false of a lead who "
+      + "has never booked anything; a line reading `0 class attendances` is the confident "
+      + "wrong answer MOD-014's own Member 360 was bitten by",
+    file: "src/lib/convert.ts",
+    from: "  return items.filter((item) => item.count > 0);",
+    to: "  return items;",
+    runner: "playwright",
+    grep: "names what carries over",
+  },
+  {
+    id: "convert-is-reachable-from-the-lead-profile",
+    why: "the canvas puts `Convert to member` on the trial card, and a page nothing links to "
+      + "is the dead end this app has recorded twice -- on the members list and the staff "
+      + "list, both found by an outside tester rather than by a spec",
+    file: "src/app/leads/[leadId]/page.tsx",
+    from: "            <Link href={`/leads/${leadId}/convert`}>{text(\"trial.convert\")}</Link>",
+    to: "            {text(\"trial.convert\")}",
+    runner: "playwright",
+    grep: "is reachable from the lead profile",
+  },
+  {
+    id: "convert-renders-the-stored-period-as-a-word",
+    why: "a vocabulary the backend stores is never a label: `monthly` rendered raw is Latin "
+      + "letters in the middle of an Arabic line, which this app has four recorded defects "
+      + "from, and `MESSAGE_KEYS` is structurally blind to a string that never became a key",
+    file: "src/app/leads/[leadId]/convert/page.tsx",
+    from: "                  const key = planName(quote.plan.billing_period);\n"
+      + "                  return key === null ? quote.plan.billing_period : text(key);",
+    to: "                  return quote.plan.billing_period;",
+    runner: "playwright",
+    grep: "reads in Arabic, including the stored billing period",
+  },
+  {
+    id: "convert-shape-follows-the-server",
+    why: "a contract that does not prorate must not be given a pro-rata line: under the "
+      + "`agreement_start` anchor the first period is whole and the figure equals the "
+      + "recurring one, so printing it as a proration reads as a coincidence rather than a "
+      + "rule",
+    file: "src/lib/convert.ts",
+    from: "  return quote.prorated ? \"prorated\" : \"full_period\";",
+    to: "  return \"prorated\";",
+    runner: "vitest",
+    grep: "is a full period where the contract does not prorate",
+  },
+
   // **`lead-on-trial-says-why` is deleted, and the harness's diagnosis of it was wrong.**
   // It mutated `columnNote` to return null, which ADR-0010 D7 made the production code: the
   // column is derived from MOD-017 now and carries no reason, so the protection it named does

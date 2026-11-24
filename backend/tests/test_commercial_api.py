@@ -15,6 +15,7 @@ settles nothing.
 
 from __future__ import annotations
 
+import calendar
 import json
 import unittest
 import uuid
@@ -4997,3 +4998,324 @@ class BillingAnchorApiTests(CommercialApiTestCase):
         self.assertEqual(
             refused.json()["error"],
             "mem_membership_terms_calendar_anchor_has_a_boundary")
+
+
+class ConversionQuoteTests(CommercialApiTestCase):
+    """ADM-CRM-06: what it costs this person to become a member on this plan, today.
+
+    **The route takes no instant, deliberately**, so these assert the relationships between
+    the four figures while `BillingAnchorTests` pins the canvas's own literals against a fixed
+    20 August. A caller-supplied "now" would decide what somebody is charged, which is
+    MOD-011's unbounded `observed_at` in the place it costs money.
+    """
+
+    FIVE = ["crm.lead.read", "catalog.price.read", "membership.record.read",
+            "booking.booking.read", "access.decision.read"]
+
+    #: The price `membership_product` writes. Asserted against rather than re-created,
+    #: because a second price book matching the same variant at the same priority makes the
+    #: planner choose which one wins -- MOD-018's unordered-lookup finding, which the first
+    #: version of this helper shipped by building its own book.
+    MONTHLY = 4500
+
+    def plan(self, tenant_id: str, *, anchor: str = "calendar") -> dict:
+        """A sellable, published membership plan on `anchor`.
+
+        `membership_product` already writes the product, an active book, a live price and the
+        publication -- publishing refuses a product with no live price, so it has to -- and the
+        only thing missing for a conversion target is the terms that say which contract and
+        which billing anchor.
+        """
+        contract_key = self.contract(tenant_id)
+        product_id, variant_id = self.membership_product(tenant_id)
+        terms_id = self.terms(
+            tenant_id, contract_key, product_id, billing_anchor=anchor)
+        return {"product_id": product_id, "variant_id": variant_id,
+                "membership_terms_id": terms_id}
+
+    def lead_for_a_new_person(self, tenant_id: str) -> dict:
+        person_id = self.person(tenant_id)
+        made = self.client.post("/crm/leads", json={
+            "person_id": person_id, **self.correlation()},
+            headers=self.headers(tenant_id))
+        self.assertEqual(made.status_code, 201, made.text)
+        return {"person_id": person_id, "lead_id": str(made.json()["lead_id"])}
+
+    def quote(self, tenant_id: str, lead_id: str, variant_id: str, **kwargs) -> dict:
+        answer = self.client.get(
+            f"/crm/leads/{lead_id}/conversion-quote",
+            params={"variant_id": variant_id, "currency": "JOD", **kwargs},
+            headers=self.headers(tenant_id))
+        self.assertEqual(answer.status_code, 200, answer.text)
+        return dict(answer.json())
+
+    def test_the_four_figures_agree_with_each_other(self) -> None:
+        """**The canvas's three money lines plus the boundary.** 21.29 to 31 Aug and 55.00
+        from 1 Sep only make sense together: the part-period cannot exceed a whole one, the
+        recurring charge starts the day after the boundary, and a calendar anchor's boundary is
+        the end of the month this read was asked in."""
+        tenant_id = self.tenant()
+        plan = self.plan(tenant_id)
+        lead = self.lead_for_a_new_person(tenant_id)
+        quoted = self.quote(tenant_id, lead["lead_id"], plan["variant_id"])
+
+        today = date.fromisoformat(quoted["today"])
+        month_end = date(today.year, today.month,
+                         calendar.monthrange(today.year, today.month)[1])
+        self.assertEqual(quoted["recurring_minor"], self.MONTHLY)
+        self.assertEqual(quoted["first_period_ends_on"], month_end.isoformat())
+        self.assertEqual(
+            quoted["recurring_starts_on"], (month_end + timedelta(days=1)).isoformat())
+        self.assertLessEqual(quoted["first_charge_minor"], quoted["recurring_minor"])
+        # Prorated on every day but the first, where the member gets the whole month.
+        self.assertEqual(quoted["prorated"], today.day != 1)
+        self.assertEqual(quoted["plan"]["billing_anchor"], "calendar")
+        self.assertEqual(quoted["currency"], "JOD")
+
+    def test_an_agreement_start_plan_charges_the_whole_period_and_says_so(self) -> None:
+        """ADR-0011 D1's other side. A contract that does not prorate must not disclose a
+        pro-rata figure, because a number equal to the recurring one would read as a
+        coincidence rather than as the rule."""
+        tenant_id = self.tenant()
+        plan = self.plan(tenant_id, anchor="agreement_start")
+        lead = self.lead_for_a_new_person(tenant_id)
+        quoted = self.quote(tenant_id, lead["lead_id"], plan["variant_id"])
+        self.assertFalse(quoted["prorated"])
+        self.assertEqual(quoted["first_charge_minor"], quoted["recurring_minor"])
+        self.assertIn("nothing is prorated", " ".join(quoted["explanation"]))
+
+    def test_a_trial_product_is_refused_as_a_target(self) -> None:
+        """ADR-0010 D7. A product declaring `trial_days` is what somebody converts *from*, and
+        the refusal is on the route as well as in the picker's filter -- because a caller can
+        name a variant the picker did not offer."""
+        tenant_id = self.tenant()
+        live = self.membership(
+            tenant_id, starts_on=(TODAY - timedelta(days=5)).isoformat(),
+            terms_extra={"trial_days": 7})
+        made = self.client.post("/crm/leads", json={
+            "person_id": live["person_id"], **self.correlation()},
+            headers=self.headers(tenant_id))
+        self.assertEqual(made.status_code, 201, made.text)
+        refused = self.client.get(
+            f"/crm/leads/{made.json()['lead_id']}/conversion-quote",
+            params={"variant_id": live["variant_id"], "currency": "JOD"},
+            headers=self.headers(tenant_id))
+        self.assertEqual(refused.status_code, 409, refused.text)
+        self.assertEqual(
+            refused.json()["error"], "a_trial_product_is_not_a_conversion_target")
+
+    def test_converting_from_a_trial_carries_the_window_and_the_counts(self) -> None:
+        """The canvas's carry-over line. The counts are evidence of what already exists rather
+        than a promise about a migration: the conversion writes a superseding agreement and
+        touches neither the attendance nor the notes, because there is one person row."""
+        tenant_id = self.tenant()
+        plan = self.plan(tenant_id)
+        live = self.membership(
+            tenant_id, starts_on=(TODAY - timedelta(days=5)).isoformat(),
+            terms_extra={"trial_days": 7})
+        made = self.client.post("/crm/leads", json={
+            "person_id": live["person_id"], **self.correlation()},
+            headers=self.headers(tenant_id))
+        self.assertEqual(made.status_code, 201, made.text)
+        quoted = self.quote(
+            tenant_id, str(made.json()["lead_id"]), plan["variant_id"])
+        self.assertTrue(quoted["converting_from_a_trial"])
+        self.assertEqual(quoted["trial"]["trial_days"], 7)
+        self.assertEqual(quoted["carries_over"]["classes"], 0)
+        self.assertIn("one ppl_persons row",
+                      quoted["carries_over"]["the_record_does_not_change"])
+
+    def test_a_lead_with_no_trial_quotes_just_as_well_and_says_which(self) -> None:
+        """A lead can become a member without a trial -- three of the five board columns are
+        people who never had one -- so the absence is a field rather than a refusal."""
+        tenant_id = self.tenant()
+        plan = self.plan(tenant_id)
+        lead = self.lead_for_a_new_person(tenant_id)
+        quoted = self.quote(tenant_id, lead["lead_id"], plan["variant_id"])
+        self.assertFalse(quoted["converting_from_a_trial"])
+        self.assertIsNone(quoted["trial"])
+
+    def test_nothing_is_charged_and_the_read_says_so(self) -> None:
+        tenant_id = self.tenant()
+        plan = self.plan(tenant_id)
+        lead = self.lead_for_a_new_person(tenant_id)
+        quoted = self.quote(tenant_id, lead["lead_id"], plan["variant_id"])
+        self.assertIn("payment provider", quoted["nothing_is_charged_here"])
+
+    def test_the_quote_charges_all_five_permissions(self) -> None:
+        """Five modules' facts, so five permissions: MOD-016's resolution, MOD-017's contract
+        and row, MOD-020's classes and MOD-022's visits. Each subset is every way to hold four
+        of the five, so the case for each one is its own."""
+        tenant_id = self.tenant()
+        plan = self.plan(tenant_id)
+        lead = self.lead_for_a_new_person(tenant_id)
+        for dropped in self.FIVE:
+            held = [p for p in self.FIVE if p != dropped]
+            with self.subTest(without=dropped):
+                answer = self.client.get(
+                    f"/crm/leads/{lead['lead_id']}/conversion-quote",
+                    params={"variant_id": plan["variant_id"], "currency": "JOD"},
+                    headers=self.scoped(tenant_id, held))
+                self.assertEqual(answer.status_code, 403, answer.text)
+        allowed = self.client.get(
+            f"/crm/leads/{lead['lead_id']}/conversion-quote",
+            params={"variant_id": plan["variant_id"], "currency": "JOD"},
+            headers=self.scoped(tenant_id, self.FIVE))
+        self.assertEqual(allowed.status_code, 200, allowed.text)
+
+    def test_the_quote_is_priced_for_this_person_and_not_for_nobody(self) -> None:
+        """**The subject is what makes it their price.** COM-02-R02's dimensional matching
+        decides which book a sale prices from, and MOD-016's review found that a caller able to
+        state its own `customer_segment` could state the cheapest one -- so the segment is
+        derived from the named person's own MOD-014 tags. Passing the person through is
+        therefore the difference between quoting this member and quoting nobody, and without
+        this case the mutation that drops it was uncaught: a corporate member would have been
+        shown the public figure on a screen that exists to tell them what they will pay.
+        """
+        tenant_id = self.tenant()
+        owner = self.headers(tenant_id)
+        plan = self.plan(tenant_id)
+        lead = self.lead_for_a_new_person(tenant_id)
+
+        tag = self.client.post("/people/tags", json={
+            "tag_key": "corporate", "display_name": "Corporate",
+            **self.correlation()}, headers=owner)
+        self.assertEqual(tag.status_code, 201, tag.text)
+        applied = self.client.post(
+            f"/people/{lead['person_id']}/tags",
+            json={"tag_id": str(tag.json()["tag_id"]), **self.correlation()},
+            headers=owner)
+        self.assertEqual(applied.status_code, 201, applied.text)
+
+        # A segmented book at a higher priority, which is the mechanism rather than a
+        # collision: `book_specificity` is what makes a book naming a segment beat the
+        # catch-all one for a member in it.
+        book = self.client.post("/catalog/price-books", json={
+            "price_book_key": f"corp{uuid.uuid4().hex[:6]}", "display_name": "Corporate",
+            "currency": "JOD", "effective_from": FROM, "customer_segment": "corporate",
+            "priority": 50, **self.correlation()}, headers=owner)
+        self.assertEqual(book.status_code, 201, book.text)
+        book_id = str(book.json()["price_book_id"])
+        self.assertEqual(self.client.post(
+            f"/catalog/price-books/{book_id}/activate", json=self.correlation(),
+            headers=owner).status_code, 200)
+        self.assertEqual(self.client.post("/catalog/prices", json={
+            "price_book_id": book_id, "variant_id": plan["variant_id"],
+            "amount_minor": 3000, "effective_from": FROM, **self.correlation()},
+            headers=owner).status_code, 201)
+
+        quoted = self.quote(tenant_id, lead["lead_id"], plan["variant_id"])
+        self.assertEqual(quoted["recurring_minor"], 3000)
+        # **Named rather than inferred from the figure.** The first version of this assertion
+        # was `quoted["price_book_id"] if "price_book_id" in quoted else book_id`, which is a
+        # tautology when the key is absent -- and it was absent, so the assertion proved
+        # nothing. The response carries the book now, which is also what a reader asking "why
+        # is this 30.00" has to look at, since a quote writes no receipt.
+        self.assertEqual(quoted["price_book_id"], book_id)
+
+    def test_an_unpublished_plan_is_refused_rather_than_quoted(self) -> None:
+        """**A figure for a product nobody may sell is worse than no figure**, because a screen
+        prints it beside a button. `publish_product` refuses a product with no live price and
+        nothing re-checks afterwards, so "published" is the only thing that says a plan is
+        sellable -- and this branch had no reachable case until this test, because the harness
+        that builds a membership product publishes it.
+        """
+        tenant_id = self.tenant()
+        owner = self.headers(tenant_id)
+        contract_key = self.contract(tenant_id)
+        draft = self.client.post("/catalog/products", json={
+            "product_key": f"m{uuid.uuid4().hex[:8]}", "product_type": "membership",
+            "texts": [{"locale": "en", "display_name": "Unpublished membership"}],
+            "variants": [{"variant_key": "monthly", "display_name": "Monthly",
+                          "term_days": 30}],
+            **self.correlation()}, headers=owner)
+        self.assertEqual(draft.status_code, 201, draft.text)
+        self.terms(tenant_id, contract_key, str(draft.json()["product_id"]))
+        lead = self.lead_for_a_new_person(tenant_id)
+        refused = self.client.get(
+            f"/crm/leads/{lead['lead_id']}/conversion-quote",
+            params={"variant_id": str(draft.json()["variants"][0]["variant_id"]),
+                    "currency": "JOD"},
+            headers=owner)
+        self.assertEqual(refused.status_code, 409, refused.text)
+        self.assertEqual(refused.json()["error"], "this_plan_is_not_sellable")
+        # And the picker does not offer it either, which is the same rule one read over.
+        listed = self.client.get("/memberships/plans", headers=owner)
+        self.assertEqual(listed.status_code, 200, listed.text)
+        self.assertNotIn(
+            str(draft.json()["variants"][0]["variant_id"]),
+            [p["variant_id"] for p in listed.json()["plans"]])
+
+    def test_a_malformed_id_or_currency_is_a_422_and_not_a_500(self) -> None:
+        tenant_id = self.tenant()
+        plan = self.plan(tenant_id)
+        lead = self.lead_for_a_new_person(tenant_id)
+        owner = self.headers(tenant_id)
+        base = f"/crm/leads/{lead['lead_id']}/conversion-quote"
+        self.assertEqual(self.client.get(
+            base, params={"variant_id": "not-a-uuid", "currency": "JOD"},
+            headers=owner).status_code, 422)
+        self.assertEqual(self.client.get(
+            base, params={"variant_id": plan["variant_id"], "currency": "JODD"},
+            headers=owner).status_code, 422)
+        self.assertEqual(self.client.get(
+            f"/crm/leads/{uuid.uuid4()}/conversion-quote",
+            params={"variant_id": plan["variant_id"], "currency": "JOD"},
+            headers=owner).status_code, 404)
+        self.assertEqual(self.client.get(
+            base, params={"variant_id": str(uuid.uuid4()), "currency": "JOD"},
+            headers=owner).status_code, 404)
+
+
+class SellablePlanTests(CommercialApiTestCase):
+    """`GET /memberships/plans`: ADM-CRM-06's plan pick, and ADM-MSH-01's."""
+
+    def test_a_trial_product_is_not_a_conversion_target_by_default(self) -> None:
+        """The filter is what makes this a conversion list rather than a catalogue."""
+        tenant_id = self.tenant()
+        self.membership(tenant_id, terms_extra={"trial_days": 7})
+        listed = self.client.get(
+            "/memberships/plans", headers=self.headers(tenant_id))
+        self.assertEqual(listed.status_code, 200, listed.text)
+        body = listed.json()
+        self.assertTrue(body["trials_excluded"])
+        self.assertEqual([p for p in body["plans"] if p["is_a_trial_product"]], [])
+
+        with_trials = self.client.get(
+            "/memberships/plans", params={"include_trials": "true"},
+            headers=self.headers(tenant_id))
+        self.assertEqual(with_trials.status_code, 200, with_trials.text)
+        self.assertTrue(
+            any(p["is_a_trial_product"] for p in with_trials.json()["plans"]))
+
+    def test_it_carries_no_figure(self) -> None:
+        """A price needs `catalog.price.read` and only a quote may name it, so "see the
+        catalog" must not buy "see what every sale costs"."""
+        tenant_id = self.tenant()
+        self.membership(tenant_id)
+        listed = self.client.get("/memberships/plans", headers=self.headers(tenant_id))
+        self.assertEqual(listed.status_code, 200, listed.text)
+        for plan in listed.json()["plans"]:
+            for field in plan:
+                self.assertNotIn("amount", field)
+                self.assertNotIn("price", field)
+
+    def test_the_billing_period_and_anchor_travel_with_each_plan(self) -> None:
+        """A screen can derive neither, and they decide which boundary the first charge is
+        prorated to -- so reading them here rather than when the plan is picked is what stops
+        the picker and the figure disagreeing about which contract was chosen."""
+        tenant_id = self.tenant()
+        self.membership(tenant_id, terms_extra={"billing_anchor": "calendar"})
+        listed = self.client.get("/memberships/plans", headers=self.headers(tenant_id))
+        self.assertEqual(listed.status_code, 200, listed.text)
+        plans = listed.json()["plans"]
+        self.assertTrue(plans)
+        self.assertEqual(plans[0]["billing_anchor"], "calendar")
+        self.assertEqual(plans[0]["billing_period"], "monthly")
+
+    def test_the_listing_is_bounded(self) -> None:
+        tenant_id = self.tenant()
+        refused = self.client.get(
+            "/memberships/plans", params={"limit": 500},
+            headers=self.headers(tenant_id))
+        self.assertEqual(refused.status_code, 422, refused.text)

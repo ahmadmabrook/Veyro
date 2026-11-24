@@ -999,3 +999,99 @@ class CatalogReadTests(CatalogApiTestCase):
         refused = self.client.get("/catalog/prices?limit=501", headers=head)
         self.assertEqual(refused.status_code, 422, refused.text)
         self.assertEqual(refused.json()["error"], "bad_limit")
+
+
+class QuoteTests(CatalogApiTestCase):
+    """`catalog.price.read`'s own second half: what a sale would cost, recording nothing.
+
+    **The flag existed and had no caller.** `resolve_price` has carried `store: bool = True`
+    since the module was built, with the receipt insert and the coupon redemption both inside
+    its `if store:` block, and nothing in the app or the tests ever passed `store=False`. So
+    the read the permission is described as granting was implemented and unreachable.
+    """
+
+    def priced(self, tenant_id: str, *, percent_bp: int = 0) -> str:
+        created = self.product(tenant_id)
+        variant_id = str(created["variants"][0]["variant_id"])
+        self.price(tenant_id, self.book(tenant_id), variant_id, 10000)
+        self.publish(tenant_id, created["product_id"])
+        if percent_bp:
+            self.promotion(tenant_id, percent_bp=percent_bp)
+        return variant_id
+
+    def quote(self, tenant_id: str, variant_id: str, **kwargs) -> dict:
+        body = {"variant_id": variant_id, "currency": "JOD", **self.correlation()}
+        body.update(kwargs)
+        response = self.client.post(
+            "/catalog/prices/quote", json=body, headers=self.headers(tenant_id))
+        self.assertEqual(response.status_code, 200, response.text)
+        return dict(response.json())
+
+    def test_the_quote_is_the_figure_the_sale_would_charge(self) -> None:
+        """**The property that makes it safe to render.** A quote that differed from the sale
+        would be a screen promising a number the till then refused, so the automatic promotion
+        is applied here exactly as it is there -- which is also why this delegates to
+        `resolve_price` rather than assembling the same inputs a second time."""
+        tenant_id = self.tenant()
+        variant_id = self.priced(tenant_id, percent_bp=1500)
+        quoted = self.quote(tenant_id, variant_id, quantity=2)
+        sold = self.resolve(tenant_id, variant_id, quantity=2)
+        for field in ("list_amount_minor", "discount_minor", "final_amount_minor",
+                      "currency", "price_book_id", "price_id"):
+            self.assertEqual(quoted[field], sold[field], field)
+        self.assertEqual(quoted["final_amount_minor"], 17000)
+
+    def test_it_records_nothing_and_says_so(self) -> None:
+        """`resolution_id` comes from the INSERT's own RETURNING, so a null one is the write
+        not having happened rather than a field left out -- and the sentence beside it is there
+        because a null id on a response whose sibling route always carries one reads as a write
+        that failed."""
+        tenant_id = self.tenant()
+        variant_id = self.priced(tenant_id)
+        quoted = self.quote(tenant_id, variant_id)
+        self.assertIsNone(quoted["resolution_id"])
+        self.assertFalse(quoted["recorded"])
+        self.assertIn("this is a quote", quoted["nothing_was_recorded_because"])
+        # And there is nothing to read back, which is the other half of the same fact.
+        self.assertEqual(
+            self.client.get("/catalog/resolutions/None",
+                            headers=self.headers(tenant_id)).status_code, 422)
+
+    def test_a_reader_who_may_not_sell_may_still_quote(self) -> None:
+        """**The product point.** Both permissions are `data_access`, so neither needs a
+        step-up; what separates them is that one writes. A front desk that may see what a sale
+        would cost does not thereby get a permission that can spend a coupon and consume an
+        approval."""
+        tenant_id = self.tenant()
+        variant_id = self.priced(tenant_id)
+        reader = self.headers(tenant_id, self.grant(tenant_id, ["catalog.price.read"]))
+        quoted = self.client.post("/catalog/prices/quote", json={
+            "variant_id": variant_id, "currency": "JOD", **self.correlation()},
+            headers=reader)
+        self.assertEqual(quoted.status_code, 200, quoted.text)
+        refused = self.client.post("/catalog/prices/resolve", json={
+            "variant_id": variant_id, "currency": "JOD", **self.correlation()},
+            headers=reader)
+        self.assertEqual(refused.status_code, 403, refused.text)
+
+    def test_a_session_holding_neither_is_refused_the_quote(self) -> None:
+        tenant_id = self.tenant()
+        variant_id = self.priced(tenant_id)
+        nobody = self.headers(tenant_id, self.grant(tenant_id, ["catalog.product.read"]))
+        refused = self.client.post("/catalog/prices/quote", json={
+            "variant_id": variant_id, "currency": "JOD", **self.correlation()},
+            headers=nobody)
+        self.assertEqual(refused.status_code, 403, refused.text)
+
+    def test_there_is_no_coupon_field_so_there_is_no_second_coupon_path(self) -> None:
+        """A coupon is quoted by `/catalog/promotions/validate`, which is where its usage rules
+        are explained. Two coupon-quoting paths are two answers to "is this code still good",
+        and the one that matters is the one counted from the redemption ledger."""
+        tenant_id = self.tenant()
+        variant_id = self.priced(tenant_id)
+        refused = self.client.post("/catalog/prices/quote", json={
+            "variant_id": variant_id, "currency": "JOD", "coupon_code": "SUMMER10",
+            **self.correlation()}, headers=self.headers(tenant_id))
+        # Pydantic refuses the unknown field rather than ignoring it, which is what makes the
+        # absence a control instead of a convention.
+        self.assertEqual(refused.status_code, 422, refused.text)

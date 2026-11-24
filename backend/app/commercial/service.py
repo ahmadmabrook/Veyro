@@ -4261,6 +4261,83 @@ def _one_of(value: str | None, allowed: frozenset[str], error: str) -> str | Non
     return value
 
 
+#: How many plans one read may offer. ADM-CRM-06 draws a single plan line, so this is the
+#: picker behind it rather than a catalogue: a gym sells a handful of memberships, and an
+#: unbounded list is a bulk read on a sales screen -- which is the bound every other listing
+#: read in this module carries, for the same reason.
+SELLABLE_PLANS = 25
+
+
+def sellable_plans(
+    pool: Pool, tenant_id: str, *, exclude_trials: bool = True,
+    limit: int = SELLABLE_PLANS,
+) -> dict[str, Any]:
+    """The membership plans that can be sold: ADM-CRM-06's plan pick, and ADM-MSH-01's.
+
+    **A plan is sellable when three rows agree**, and until now nothing could ask: the product
+    is published, the variant is active, and the terms are active. A product with no terms is
+    not a membership anybody can sell even though the catalogue lists it, and terms on an
+    unpublished product are a contract with nothing to attach to.
+
+    **`exclude_trials` is what makes this a *conversion* list.** `trial_days` is the one thing
+    that marks a product as a trial (ADR-0010 D7), so a product declaring one is what somebody
+    is converting *from*; offering it as a target would let a trial be converted into another
+    trial, which is not a sale. The flag is on rather than implied, because the same read with
+    it off is "every membership this gym sells", which is a different and equally real
+    question -- and a caller that wanted the second and got the first would be missing exactly
+    the product a trial starts from.
+
+    **It carries no figure, and that is MOD-016's rule rather than an omission.** A price needs
+    `catalog.price.read`, and that module's product read deliberately returns none because
+    returning both would make "see the catalog" buy "see what every sale costs". The figure
+    arrives when a plan is chosen, from `catalog.quote_price`, which is the only thing that may
+    name it -- `list_prices` says in as many words that a row in its own window is not the
+    resolved price.
+
+    **The billing period and the anchor travel with each plan**, because together they decide
+    which boundary the first charge is prorated to (ADR-0011) and a screen can derive them from
+    nothing else. They are returned here rather than re-read when the plan is picked, so the
+    picker and the figure cannot disagree about which contract was chosen.
+    """
+    if limit < 1 or limit > SELLABLE_PLANS:
+        raise InvalidRequest("a_plan_listing_is_bounded")
+    with tenant_scope(pool, tenant_id) as conn:
+        rows = conn.execute(
+            """
+            SELECT p.product_id, v.variant_id, v.display_name, p.product_key,
+                   t.billing_period, t.billing_anchor, t.membership_kind, t.trial_days
+            FROM plt01.mem_membership_terms t
+            JOIN plt01.cat_products p
+                ON p.tenant_id = t.tenant_id AND p.product_id = t.product_id
+            JOIN plt01.cat_variants v
+                ON v.tenant_id = p.tenant_id AND v.product_id = p.product_id
+            WHERE (NOT %s OR t.trial_days IS NULL)
+              AND t.status = 'active'
+              AND p.status = 'published'
+              AND v.status = 'active'
+            ORDER BY p.product_key, v.variant_key
+            LIMIT %s
+            """,
+            (exclude_trials, limit),
+        ).fetchall()
+    return {
+        "plans": [
+            {"product_id": str(r[0]), "variant_id": str(r[1]),
+             "display_name": str(r[2]), "product_key": str(r[3]),
+             "billing_period": str(r[4]), "billing_anchor": str(r[5]),
+             "membership_kind": str(r[6]),
+             "trial_days": None if r[7] is None else int(r[7]),
+             "is_a_trial_product": r[7] is not None}
+            for r in rows
+        ],
+        "limit": limit,
+        "trials_excluded": exclude_trials,
+        "no_figure_here": (
+            "a price needs catalog.price.read and only a quote may name it, because a row in "
+            "its own window is not the resolved price"),
+    }
+
+
 def list_memberships(
     pool: Pool, tenant_id: str, *, person_id: str | None = None,
     status: str | None = None, limit: int = 50, at: date | None = None,

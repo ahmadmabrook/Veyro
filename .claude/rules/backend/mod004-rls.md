@@ -2696,3 +2696,52 @@ only, which is this file's own "run a trigger-branch block as the table owner" r
 column-scoped grant. `GET STACKED DIAGNOSTICS ... state = RETURNED_SQLSTATE` beside the
 constraint name is what turns that into one readable line, and a permission case should report
 both rather than assuming a constraint answered.
+
+**A parameter with no caller is the writer-with-no-reader shape at a function's signature, and
+this one was in the money path.** `catalog.resolve_price` has carried `store: bool = True`
+since MOD-016 was built, with the receipt insert and the coupon redemption both inside its
+`if store:` block -- and nothing in the app or the tests had ever passed `store=False`. So the
+read `catalog.price.read` is described as granting ("See price books and what a sale would
+cost") was implemented, correct, and unreachable, while the only route that could answer it
+was the sale. This build's most-repeated finding is a column with a writer and no reader and
+its inverse a column with readers and no writer; this is the third form. **The check is the
+same one: grep the callers of every optional parameter, and a `bool` that nothing ever flips is
+either dead or a feature nobody can use.**
+
+**A conditional fallback in an assertion is a tautology, and it passes loudest when the key is
+absent.** `self.assertEqual(body["k"] if "k" in body else expected, expected)` is green
+whatever the response contains -- written to be tolerant of a field I was not sure the route
+returned, which is exactly the case where the assertion has to fail. The mutation sweep cannot
+see it either, because the assertion never fails. **If you do not know whether a response
+carries a field, that is the thing to find out before writing the case**; and a defensive
+`if key in` inside an `assertEqual` is a signal to go and look rather than a way to be safe.
+
+**A docstring naming a permission the route never charges is caught by the structural check,
+which is the argument for having one.** A new listing route was written with its own paragraph
+explaining why `catalog.product.read` is the right gate for it, and no `permit` call at all.
+`GateCoverageTests` reads `main.py` with `ast` and requires every route to ask the gate, scope
+itself to the caller's own identity, or appear in `UNGATED` with a written reason -- so the
+omission was a red suite within a minute. That is MOD-012's "a docstring is not an
+attribution" met by a check rather than by a reviewer, and the second half of the same run
+found the three new routes missing from the behavioural sweep, which is the other direction:
+a route the sweep never calls is a route nothing proves is gated.
+
+**Pydantic ignores an unknown field by default, so an absence in a request body is a
+convention rather than a control.** A quote body is `ResolvePriceBody` minus four fields that
+are sale decisions, and a caller sending `coupon_code` to it got a figure with the coupon *not*
+applied -- a plausible number, which is worse than a refusal, because a till showing it while
+believing the code had been taken has no way to notice. `model_config = ConfigDict(extra=
+"forbid")` is what makes the four missing fields mean something; it is the only body in this
+application that sets it, and the reason is written beside it. **Where a body's distinguishing
+feature is what it does *not* accept, the default is wrong.**
+
+**A test harness that does not inherit another's helpers will invent its body shapes, and
+every invention is a 422.** A conversion-quote fixture built its own price book with
+`book_key` and `unit_amount_minor`; the real fields are `price_book_key`, `display_name`,
+`effective_from` and `amount_minor`, and seven tests failed identically before the cause was
+obvious. Worse, the second attempt built a *second* price book beside the one the existing
+membership helper already writes -- two books matching one variant at the same priority, which
+makes the planner choose the figure, MOD-018's unordered-lookup finding reproduced in a
+fixture. **Read the helper that already does it: `membership_product` writes the product, an
+active book, a live price and the publication, because publishing refuses a product with no
+live price and so has to.**

@@ -2773,6 +2773,82 @@ what "day 6 of 7" counts, and both paths -- the activation and its retry -- answ
 and `ends_on`, because a retry reporting `null` for a trial it had already activated is this
 build's most-repeated idempotency defect in its quietest form.
 
+**A price can be quoted now, and the flag that does it had no caller.** ADM-CRM-06 needs a
+figure before anybody agrees -- "Club · monthly · JOD 55.00" over a pro-rata line -- and
+`resolve_price` **is the sale**: it stores the explanation insert-only and redeems the coupon
+it applies, so a screen that called it to put a number on the page would write a receipt for
+somebody who has agreed to nothing. `list_prices` is explicit that a row in its own window is
+not the resolved price, because the book must also be active and must win the priority
+comparison. So the authoritative figure had no reader that was not a sale.
+
+**It took no new arithmetic, because `resolve_price` has carried `store: bool = True` since
+the module was built** -- the receipt insert and the coupon redemption are both inside its
+`if store:` block -- and **nothing in the app or the tests had ever passed `store=False`**.
+A parameter with no reader, in the money path, implementing the read `catalog.price.read` is
+described as granting: "See price books and what a sale would cost". `catalog.quote_price`
+delegates to it rather than recomposing the inputs, because everything that decides the figure
+is read-only already and a second assembly would be one-module-two-definitions on a price --
+the day they disagreed a screen would quote what the till then refused.
+
+Four decisions, and three are refusals:
+
+- **It is on the read permission, not the sale's.** Both are `data_access` with no financial
+  class, so neither needs a step-up; what separates them is that one writes. A front desk that
+  may see what a sale would cost does not thereby get a permission that can spend a coupon and
+  consume an approval.
+- **No coupon, no override, no approval.** A coupon is quoted by
+  `/catalog/promotions/validate`, which is where its usage rules live; two coupon-quoting
+  paths are two answers to "is this code still good". An override needs an approval covering
+  the variant at the list amount, and a figure nobody may charge is not a quote -- so a sale
+  that *would* need an approval is refused here too, deliberately, because a screen would
+  print it beside a button.
+- **Automatic promotions are applied**, because the point of the figure is that it is what the
+  sale would charge. The test that matters asserts the quote and the sale agree field for
+  field.
+- **`QuotePriceBody` is the one body in this application that forbids unknown fields.**
+  Pydantic ignores an extra by default, so before `extra="forbid"` a caller sending
+  `coupon_code` got a figure with the coupon *not* applied -- a plausible number, which is
+  worse than a refusal, and a till that showed it while believing the code had been taken is
+  the defect. An absence that is silently tolerated is a convention rather than a control,
+  which is MOD-012's `vault_ref` lesson applied to a request body.
+
+**`GET /memberships/plans` is the picker, and three rows have to agree for a plan to be
+sellable**: the product published, the variant active, the terms active. Nothing could ask
+before. It carries no figure -- MOD-016's rule, because returning both would make "see the
+catalog" buy "see what every sale costs" -- and the billing period and anchor travel with each
+plan, since a screen can derive neither and together they decide which boundary the first
+charge is prorated to. `exclude_trials` is on by default and is what makes it a *conversion*
+list: a product declaring `trial_days` is what somebody converts from.
+
+**`GET /crm/leads/{id}/conversion-quote` is ADM-CRM-06's own read**, composing five modules'
+facts on the server: the recurring figure from the quote, the part-period from
+`lifecycle.first_charge`, the membership window, the class attendances and the visits. It
+charges five permissions for that reason. Two refusals sit in it -- a trial product is not a
+conversion target, and an unpublished plan is refused rather than quoted -- and the second had
+no reachable case until a test built a product and left it unpublished, because every harness
+that makes a membership product publishes it.
+
+**And it found a lateral read path in the trial card, which I had written the session
+before.** `GET /crm/leads/{id}/trial` charged three permissions and its docstring named
+MOD-017's window as one of the three facts -- while `membership.record.read`, whose own
+description is "See a membership, its history and its terms", was not among them. The card
+returns a membership id, a start, an end and the terms' `trial_days`. It is routine and AAL 1
+so a salesperson holds it anyway and nothing real is refused by adding it; what is closed is a
+sales permission reaching a membership row, which is MOD-010's `events.event.read` finding in
+code written to avoid exactly that.
+
+Proven: 10 HTTP tests for the conversion quote, 5 for the quote route, 4 for the picker; 8
+mutations in `tests/mutate_conversion_quote.py` and 4 in `tests/mutate_price_quote.py`, all
+caught -- **two of the eight uncaught on the first run, and each a different kind**: the
+segment mutation had no test, because nothing priced a *person* rather than nobody, so a
+corporate member would have been shown the public figure on the screen that exists to tell
+them what they will pay; and the trial-filter mutation appended `AND true` to a clause that is
+not the filter, which is the harness manufacturing the gap it then reports.
+
+**What is still owed is the screen.** The server half is here and nothing on any surface calls
+it, which is the "writer with no reader" shape one layer up -- named rather than left, and the
+next piece of work.
+
 **And `membership_standing` is the one definition of where a person stands**, which MOD-027's
 pipeline derives two of its five columns from. It takes a connection, walks the supersession
 chain rather than the root (a member who converted by superseding the trial's agreement still

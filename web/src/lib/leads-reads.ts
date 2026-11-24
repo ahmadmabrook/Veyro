@@ -1,7 +1,8 @@
 import { api } from "@/lib/api";
 
 import type {
-  Board, LeadDetail, LeadList, LeadFilter, SourceRow, TrialCard,
+  Board, ConversionQuote, LeadDetail, LeadList, LeadFilter, SellablePlan, SourceRow,
+  TrialCard,
 } from "@/lib/leads";
 
 /**
@@ -61,4 +62,38 @@ export function listSources(): Promise<{ sources: SourceRow[] }> {
  */
 export function readLeadTrial(leadId: string): Promise<TrialCard> {
   return api(`/crm/leads/${leadId}/trial`);
+}
+
+/**
+ * ADM-CRM-06's plan pick.
+ *
+ * **No figure comes back**, which is MOD-016's rule rather than an omission: a price needs
+ * `catalog.price.read` and only a quote may name it, because a row in its own window is not
+ * the resolved price. The billing period and anchor do travel with each plan, since a screen
+ * can derive neither and together they decide which boundary the first charge is prorated to.
+ *
+ * **Trials are excluded**, which is what makes this a conversion list: a product declaring
+ * `trial_days` is what somebody is converting *from*.
+ */
+export function listSellablePlans(): Promise<{ plans: SellablePlan[] }> {
+  return api("/memberships/plans");
+}
+
+/**
+ * ADM-CRM-06's three money lines and its carry-over counts.
+ *
+ * **Five permissions**, because the card carries five modules' facts: MOD-016's resolution,
+ * MOD-017's contract and its membership row, MOD-020's classes and MOD-022's visits.
+ *
+ * **Every figure is the server's, including `today`.** The part-period amount, the boundary
+ * and the day the recurring charge starts are `lifecycle.first_charge`'s, and a browser
+ * deriving them would count days in its own frame rather than the contract's -- which this
+ * app has three recorded defects from. `today` comes back so the screen can say which day the
+ * figures are for without consulting its own clock.
+ */
+export function readConversionQuote(
+  leadId: string, variantId: string, currency = "JOD",
+): Promise<ConversionQuote> {
+  const query = new URLSearchParams({ variant_id: variantId, currency });
+  return api(`/crm/leads/${leadId}/conversion-quote?${query.toString()}`);
 }

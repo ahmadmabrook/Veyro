@@ -64,17 +64,26 @@ test.describe("the trial state of a lead profile", () => {
       .toBeVisible();
   });
 
-  test("the conversion is named rather than drawn, with both halves of why",
+  test("the conversion is a link now, and the gap sentences are gone with the gap",
     async ({ page }) => {
-      // The canvas's button is "Convert to member" and takes a payment. Converting is a
-      // stepped-up financial plan change and the payment is the provider, so the screen says
-      // what it would take -- a button that answered 403 is worse than its absence.
+      // **This asserted the gap and ADM-CRM-06 closed it.** It required
+      // "plan change onto the membership" and "A card is real money" to be *visible* on this
+      // card -- the two sentences explaining why the canvas's `Convert to member` button was
+      // not here -- and the conversion screen exists, so the control is a link and both
+      // sentences went with the gap. A gap list is a claim about the product, which is why
+      // closing one means deleting its note in the same change.
+      //
+      // **What is asserted instead is the property that still holds, plus the absence of the
+      // claim that does not** -- the direction that cannot go stale the next time a gap
+      // closes behind it, which this repository has now paid for three times.
       const main = page.locator("#main");
-      // `getByText`, not `getByRole("term")`: a `<dt>` has the role and Playwright computes
-      // no accessible name for it, so the role locator finds nothing.
-      await expect(main.getByText("Convert to member")).toBeVisible();
-      await expect(main.getByText(/plan change onto the membership/)).toBeVisible();
-      await expect(main.getByText(/A card is real money/)).toBeVisible();
+      const link = main.getByRole("link", { name: "Convert to member" });
+      await expect(link).toBeVisible();
+      await expect(link).toHaveAttribute("href", /\/convert$/);
+      await expect(main).not.toContainText("plan change onto the membership");
+      await expect(main).not.toContainText("A card is real money");
+      // And the payment is still not taken; the conversion screen says so where the figure
+      // is, which is where a reader is deciding.
       await expect(main.getByRole("button", { name: "Convert to member" }))
         .toHaveCount(0);
     });
