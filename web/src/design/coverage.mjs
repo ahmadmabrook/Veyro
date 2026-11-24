@@ -321,10 +321,14 @@ const BACKLOG = {
     + "that",
   "FD-02": "work: MOD-014. 'Name, phone, partial match, photo confirm' -- "
     + "`GET /people/contact-match` is the exact-match half and is deliberately exact, "
-    + "because a mistyped digit finding somebody else is worse than finding nobody. A gated, "
-    + "masked read by name over `ppl_contact_points_by_value` is this module's own work "
-    + "rather than MOD-059's index; the 44px photo the canvas confirms identity by is where "
-    + "the object store is the seam",
+    + "because a mistyped digit finding somebody else is worse than finding nobody. The "
+    + "partial half is a gated, masked prefix read by name over `ppl_persons`, which is this "
+    + "module's own work rather than MOD-059's index: ADR-0012 settles the distinction, "
+    + "because MOD-014's own gap list calls search ENG-01's and this reason used to claim the "
+    + "opposite about the same screen. It needs one index -- `0009`'s name index is on "
+    + "`lower(legal_name)` with the default operator class, which serves the equality "
+    + "`find_duplicates` uses and gives a sequential scan for a prefix, measured. The 44px "
+    + "photo the canvas confirms identity by is where the object store is the seam",
   // **FD-07 was here and is built.** Its reason named the first half correctly -- the count,
   // the expected figure and the variance are `/payments/cash` -- and understated the second:
   // "the handover note, which no table holds" is true, and the canvas is an *open*, which

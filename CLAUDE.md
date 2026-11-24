@@ -2049,10 +2049,22 @@ Known gaps, deliberate:
   boundary**: the design says a club manager sees only their own club's staff and `permit`
   resolves tenant-wide, which is the scope gap two bullets up, said on the screen rather than
   implied by a filter.
-- **No search.** Paragraph 4218's permission-aware search index with a mandatory query
-  pre-filter is ENG-01's, and a `LIKE` scan presented as search would be a read path with no
-  freshness contract and no pre-filter. The duplicate detector draws its candidates through the
-  indexes instead, which is the one place this module needs to find people by a value.
+- **No search, and FD-02's lookup is not one** -- which two notes in this repository
+  disagreed about until ADR-0012 settled it. Paragraph 4218's permission-aware search index
+  with a mandatory query pre-filter is ENG-01's, and a `LIKE` scan presented as search would
+  be a read path with no freshness contract and no pre-filter; the duplicate detector draws
+  its candidates through the indexes instead, which is the one place this module needs to find
+  people by a value. **A member lookup has none of the four properties that objection is
+  about**: one entity, one tenant enforced by RLS below the query (so the pre-filter is the
+  database's rather than something this module remembers), no index to be stale because it
+  reads the table of record, and a bounded page every row of which goes through this module's
+  gate. So the lookup is this module's work and ADM-SRCH-01 stays MOD-059's.
+  **And it needs an index, measured rather than assumed**: `0009`'s
+  `ppl_persons_by_name` is `(tenant_id, lower(legal_name))` with the default operator class,
+  which this database's `en_US.utf8` collation cannot use for a prefix -- 60,002 rows give a
+  sequential scan, and the same expression with `text_pattern_ops` gives an index scan. The
+  existing one serves the *equality* `find_duplicates` folds a name for, so both earn their
+  place and the cost is two b-trees over one column.
 - **A duplicate can be prevented now, and until it could it was only ever cleaned up.**
   `find_duplicates` scores *pairs that already exist* -- both sides have to be rows -- so the
   one moment a duplicate is cheap to stop, the moment before the second record is written,
