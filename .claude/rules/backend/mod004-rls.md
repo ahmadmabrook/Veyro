@@ -2989,3 +2989,30 @@ silently missing icon is a rail item with a hole in it -- so `icon: "finance"` t
 page including sign-in, and the browser suite reported the setup step failing rather than the
 nav. The valid names are a closed set in `components/ds/icon.tsx`; read it rather than guessing
 from the group name.
+
+
+**A flake that fires for a fifth of the day leaves no mark on the fix for its siblings, so
+the instrument is a static check rather than a better assertion.** `VisitTests`' own docstring
+records two tests corrected from `datetime.now(UTC).date()` to the club's zone, and says in as
+many words that CI would fail too because "the frame that matters is neither the runner's nor
+UTC but the *club's*". A third test was written afterwards, missed it, and turned `main` red at
+21:34 UTC with `visits_between` reading 2 of 3 — the entry seeded at `now()` was bucketed on the
+club's own next day and fell outside a window whose end came from UTC. Every local run of that
+test had been green, and always would be outside three hours a day.
+
+**It is not a blanket ban, and the discriminator is what makes the guard honest.** Three tests
+in that same class take `today` from UTC and are correct: one counts a *refused* presentation
+(zero either way), one asserts a 422 for a half-stated window (the date is irrelevant), and one
+asserts zero for a member with no entries. The unsafe thing is the *combination* — seeding an
+entry, and asserting a count against a window built from a UTC date — so that is what
+`VisitDateFrameTests` checks. A blanket rule would have forced three tests into a zone they do
+not care about and buried the reason the fourth needs it.
+
+**And it has to match the syntax tree, not the source text.** The first version flagged the
+multi-zone regression test, whose *docstring* quotes `datetime.now(UTC).date()` while its code
+never calls it — the same false positive `test_migration_shape` paid for with a banned
+expression quoted in a comment. `ast` is precise here and the check asserts both directions: the
+offending shape is caught, and a docstring that merely mentions it is not. Mutation-proven by
+putting the UTC date back and watching it fire, and its three conditions are asserted reachable
+before the sweep is believed, because a structural check that passes vacuously is the thing it
+exists to prevent.

@@ -13,7 +13,9 @@ conditioned on software authorization -- so the exit tests assert an absence of 
 
 from __future__ import annotations
 
+import ast
 import json
+import pathlib
 import unittest
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -1253,11 +1255,20 @@ class VisitTests(AccessApiTestCase):
 
         **Both ends inclusive**, which is the reading ADM-CRM-05's three date figures agree
         under: the entry on the first day of the window counts.
+
+        **And `today` is the club's, which this test took from UTC until CI failed at 21:34.**
+        The class docstring above records two tests fixed for exactly this and says CI would
+        fail too, because the frame that matters is neither the runner's nor UTC but the
+        *club's* -- and this one was written afterwards and missed it. At 21:34 UTC the club is
+        already on tomorrow, so the entry seeded at `now()` was bucketed on the club's own next
+        day and fell outside a window whose end came from UTC: `visits_between` read 2 of 3,
+        and the window printed `['2026-11-19', '2026-11-24']` against a visit on the 25th.
         """
         floor = self.floor()
-        today = datetime.now(UTC).date()
+        now = datetime.now(UTC)
+        today = now.astimezone(self.CLUB).date()
         for back in (0, 2, 5, 20):
-            self.entry(floor, when=datetime.now(UTC) - timedelta(days=back))
+            self.entry(floor, when=now - timedelta(days=back))
         read = self.client.get(
             f"/access/attendance?person_id={floor['person_id']}"
             f"&from_date={(today - timedelta(days=5)).isoformat()}"
@@ -2018,6 +2029,136 @@ class AttendanceReportTests(AccessApiTestCase):
         body = json.dumps(self.report(floor))
         for leaked in ("person_id", "credential_id", "credential_digest", "Jane"):
             self.assertNotIn(leaked, body)
+
+
+class VisitDateFrameTests(unittest.TestCase):
+    """A structural guard on `VisitTests`, because the flake it prevents fires for three
+    hours a day.
+
+    **The frame a visit's date is bucketed in is the club's, not the runner's and not UTC.**
+    `visits_on` buckets each event in the timezone of the location it happened at, and the
+    fixture's club is `Asia/Amman` -- so a test that seeds an entry at `now()` and asserts
+    whether it falls inside a window whose bounds came from `datetime.now(UTC).date()` is
+    wrong for the three hours after 21:00 UTC and right the rest of the day. `VisitTests`'
+    own docstring records two tests fixed for exactly this; a third was written afterwards,
+    missed it, and turned `main` red at 21:34 with `visits_between` reading 2 of 3.
+
+    **A green run proves nothing about it**, which is what makes a static check the right
+    instrument rather than a better assertion: the failing hours are a fifth of the day, so
+    the fix for the first two left no mark a later author would trip over.
+
+    **It is not a blanket ban on UTC dates**, and that distinction is the whole of the rule.
+    Three tests in that class take `today` from UTC and are safe: one asserts that a
+    *refused* presentation counts zero, one asserts a 422 for a half-stated window, and one
+    asserts zero for a member with no entries at all. None of their expected values depends
+    on which day an entry landed on. What is unsafe is the *combination* -- seeding an entry,
+    and asserting a count against a window built from a UTC date -- so that is what this
+    checks.
+
+    **It matches the syntax tree rather than the source text, and the first version did
+    not.** Matching strings flagged the multi-zone regression test, whose *docstring* quotes
+    `datetime.now(UTC).date()` while its code never calls it: a check reporting a defect the
+    suite does not have costs the same trust as one that misses a defect it does, which is
+    `test_migration_shape`'s own finding about a banned expression quoted in a comment.
+    """
+
+    #: The figures whose value depends on which day an entry was bucketed on.
+    COUNTS = frozenset({"visits_between", "entries", "entries_in_window"})
+
+    @staticmethod
+    def _seeds_an_entry(method: ast.FunctionDef) -> bool:
+        """`self.entry(...)`, which records an event at a caller-chosen instant."""
+        return any(
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "entry"
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "self"
+            for node in ast.walk(method))
+
+    @staticmethod
+    def _takes_today_from_utc(method: ast.FunctionDef) -> bool:
+        """`datetime.now(UTC).date()` -- a `.date()` on an instant that never left UTC."""
+        for node in ast.walk(method):
+            if not (isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Attribute)
+                    and node.func.attr == "date"):
+                continue
+            inner = node.func.value
+            if (isinstance(inner, ast.Call)
+                    and isinstance(inner.func, ast.Attribute)
+                    and inner.func.attr == "now"):
+                return True
+        return False
+
+    @classmethod
+    def _counts_a_window(cls, method: ast.FunctionDef) -> bool:
+        """A subscript naming one of the figures a bucketing decides."""
+        return any(
+            isinstance(node, ast.Subscript)
+            and isinstance(node.slice, ast.Constant)
+            and node.slice.value in cls.COUNTS
+            for node in ast.walk(method))
+
+    def _visit_tests(self) -> list[ast.FunctionDef]:
+        tree = ast.parse(pathlib.Path(__file__).read_text())
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ClassDef) and node.name == "VisitTests":
+                return [one for one in node.body
+                        if isinstance(one, ast.FunctionDef)
+                        and one.name.startswith("test_")]
+        self.fail("VisitTests is gone, so this guard is checking nothing")
+
+    def test_a_test_that_seeds_an_entry_and_counts_a_window_uses_the_club_date(self):
+        methods = self._visit_tests()
+        # **A check that passes vacuously is the thing it exists to prevent**, so the three
+        # conditions are asserted to be reachable before the sweep is believed.
+        self.assertTrue(any(self._seeds_an_entry(one) for one in methods))
+        self.assertTrue(any(self._takes_today_from_utc(one) for one in methods))
+        self.assertTrue(any(self._counts_a_window(one) for one in methods))
+        offenders = [
+            one.name for one in methods
+            if self._seeds_an_entry(one)
+            and self._takes_today_from_utc(one)
+            and self._counts_a_window(one)]
+        self.assertEqual(
+            offenders, [],
+            "these tests seed an entry and count a window against a date taken from UTC, "
+            "which disagrees with the club's own for the three hours after 21:00 UTC: "
+            "take it from `self.CLUB` as the rest of the class does")
+
+    def test_the_guard_sees_the_shape_and_not_the_prose(self):
+        """Both directions, because each failure costs the same trust.
+
+        The offending shape has to be caught, and a docstring that merely *quotes* it must
+        not be -- which is what the first version of this guard got wrong against the
+        multi-zone regression test.
+        """
+        bad = ast.parse(
+            "def test_x(self):\n"
+            "    today = datetime.now(UTC).date()\n"
+            "    self.entry(floor, when=datetime.now(UTC))\n"
+            "    assert body[\"visits_between\"] == 1\n").body[0]
+        assert isinstance(bad, ast.FunctionDef)
+        self.assertTrue(self._seeds_an_entry(bad))
+        self.assertTrue(self._takes_today_from_utc(bad))
+        self.assertTrue(self._counts_a_window(bad))
+
+        quoted = ast.parse(
+            "def test_y(self):\n"
+            '    """It used to be datetime.now(UTC).date(), which was wrong."""\n'
+            "    self.entry(floor)\n"
+            "    assert row[\"entries\"] == 1\n").body[0]
+        assert isinstance(quoted, ast.FunctionDef)
+        self.assertTrue(self._seeds_an_entry(quoted))
+        self.assertFalse(self._takes_today_from_utc(quoted))
+
+        safe = ast.parse(
+            "def test_z(self):\n"
+            "    today = datetime.now(UTC).date()\n"
+            "    assert body[\"visits_between\"] == 0\n").body[0]
+        assert isinstance(safe, ast.FunctionDef)
+        self.assertFalse(self._seeds_an_entry(safe))
 
 
 if __name__ == "__main__":  # pragma: no cover

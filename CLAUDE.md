@@ -4269,6 +4269,18 @@ Known gaps, deliberate:
   weeks at an entry-only turnstile climbs all month. `NO_CAPACITY_PERCENTAGE` rides on every
   response, because a reader who took a share for a capacity would be making a staffing
   decision on the wrong number.
+- **Every date on these reads is the club's, and a third test learned that the hard way.**
+  `visits_on` buckets each event in the timezone of the location it happened at, so a member
+  training at two clubs has each visit on the date that club would put on it -- and a test
+  that seeds an entry at `now()` while building its window from `datetime.now(UTC).date()` is
+  right for four fifths of the day. `VisitTests` had two such tests corrected and its own
+  docstring says CI fails too, because the frame that matters is neither the runner's nor UTC;
+  a third was written afterwards, missed it, and turned `main` red at 21:34 UTC. The fix is one
+  line and the guard is `VisitDateFrameTests`, which reads the class with `ast` and flags the
+  *combination* -- a seeded entry plus a count against a UTC-framed window -- rather than
+  banning UTC dates outright, because three tests in that class use one correctly. Its first
+  version matched source text and flagged a docstring that merely quotes the expression, which
+  is `test_migration_shape`'s own false positive in a new place.
 - **An hourly histogram counts presentations, not people, and `visits_on` has the same
   shape.** `GET /reports/attendance` sums every zone of a club unless narrowed, so a member
   who passes the front door and then a studio reader is two entries. Disclosed on both reads
