@@ -76,6 +76,32 @@ one-line screen. A second index with `text_pattern_ops` on the same expression i
 lookup needs: one line, no extension, and no pre-emption of MOD-059, because it answers "a name
 beginning with" and nothing more.
 
+**And that measurement is narrower than this record first claimed, which is worth stating
+rather than quietly leaving.** The plans above are from a bare probe table: no RLS, no
+composite primary key, and no competing index, so the only candidates were the name index and
+a sequential scan — which is exactly the collation question and is what they settle. On the
+real `plt01.ppl_persons` the competing candidate is `ppl_persons_pkey`, which leads with
+`tenant_id`, and at three thousand people in one tenant the planner prefers it and filters the
+name — with `enable_seqscan` off, and with the tenant supplied as a literal rather than through
+the RLS expression. So:
+
+- **What is measured**: a default-opclass b-tree on `lower(legal_name)` cannot serve a prefix
+  at all in this collation, and the `text_pattern_ops` one can. That is a property of the index
+  rather than of any plan, and it is why the index exists.
+- **What is not measured**: that the planner chooses it on the real table at the 450,000
+  profiles MOD-014 is specified for. At three thousand it does not, because reading one tenant
+  through the primary key and filtering is cheaper than a second index's heap fetches.
+
+**Two things follow, and the second is a finding about more than this screen.** The test for
+this index asserts its operator class from the catalogue rather than asserting a plan, because a
+plan assertion at test scale would pass for the wrong reason — the index name appears in the
+plan as the *tenant* bound with the name in a `Filter`, which is vacuous. And under RLS a
+composite index leading with `tenant_id` is less useful than it looks: the predicate is
+`current_setting(...)`, which the planner has no statistics for, so a leading-tenant index
+mostly buys the tenant bound the primary key already gives. `find_duplicates`' own docstring
+claims it "uses the indexes to find the small set" and a reviewer has already measured one scan
+there; whether that claim holds at scale is the same question and is not answered here.
+
 **It is a second index on one expression and that is a cost worth stating.** Two b-trees over
 the same column double the write amplification on a person's name, which changes on a merge and
 on an ordinary correction. The alternative — replacing the existing index with the

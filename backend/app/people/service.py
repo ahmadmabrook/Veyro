@@ -154,6 +154,20 @@ def normalize_contact(kind: str, raw: str) -> str:
 #: less and not for more, which is every other listing read in this build.
 CONTACT_MATCH_PAGE = 10
 
+#: How many people one lookup may name. FD-02 draws two side by side and its canvas's own rule
+#: is that "ambiguous matches list side by side rather than guessing" -- so this is a handful a
+#: receptionist can compare while somebody waits, not a page to scroll. Bounded on the server
+#: for the reason every listing read here is: unbounded would be a bulk export of a tenant's
+#: members on a routine permission.
+LOOKUP_PAGE = 10
+
+#: The shortest prefix a lookup will answer. **Two, because one letter is every member whose
+#: name starts with it** -- which is not an ambiguous match a desk resolves by photo, it is the
+#: whole tenant in alphabetical order, and an index scan over it is no cheaper than a scan. The
+#: refusal says so rather than returning the first ten of three thousand, which would read as
+#: "these are the matches".
+LOOKUP_MIN_PREFIX = 2
+
 
 def holders_of(pool: Pool, tenant_id: str, *, kind: str, value: str) -> list[str]:
     """Which live people already hold this contact value. The existence half of `match_contact`.
@@ -435,6 +449,112 @@ IDENTITY_LINK_PAGE = 200
 #: ceiling rather than no bound because a repeated query parameter with none is a request
 #: whose cost the caller chooses.
 NAMES_BATCH = 200
+
+
+def lookup_people(
+    pool: Pool, tenant_id: str, *, query: str,
+    masked_fields: tuple[str, ...], held_permissions: set[str],
+    limit: int = 5,
+) -> dict[str, Any]:
+    """Find the person standing at the desk, by the start of their name. FD-02. ADR-0012.
+
+    **A lookup, not a search**, and the distinction is the whole of ADR-0012 rather than a
+    nicety: paragraph 4218's permission-aware search index with a mandatory query pre-filter is
+    ENG-01's, and this read has none of the four properties that objection is about. One entity.
+    One tenant, enforced by RLS *below* the query, so the pre-filter is the database's rather
+    than something this function remembers. No index to go stale, because it reads the table of
+    record. And a bounded page every row of which goes through this module's own gate.
+
+    **The prefix is matched against the index `0032` adds, and the one `0009` already had cannot
+    do it.** That one is `(tenant_id, lower(legal_name))` with the default operator class, which
+    serves the equality `find_duplicates` folds a name for and -- because this database is not
+    in the C locale -- gives a sequential scan for `LIKE 'hala%'`. Measured, not assumed.
+
+    **Masked like every other read here**, both halves as required arguments. `legal_name` is
+    `identity` class, so a routine AAL-1 desk gets the withheld marker and the rest of the row,
+    which is still enough to say two people match -- and the screen offers the step-up rather
+    than a column of markers with nothing to act on, which is the members list's own finding.
+
+    **Active records only**, for `match_contact`'s reason: a merge leaves the losing person's
+    rows where they are, so offering the merged-away one would point a desk at a record whose
+    own readers are told to follow a pointer.
+
+    **No ranking and no score.** The canvas requires ambiguous matches "side by side rather
+    than guessing", so the order is the name's own and the desk decides. A relevance figure
+    over two rows would be a confident answer about which person is in front of them.
+    """
+    folded = " ".join(query.split()).lower()
+    if len(folded) < LOOKUP_MIN_PREFIX:
+        raise InvalidRequest("a_lookup_needs_at_least_two_characters")
+    if limit < 1 or limit > LOOKUP_PAGE:
+        raise InvalidRequest("bad_limit")
+    readable = visibility.readable_classes(frozenset(held_permissions))
+    masks = _masks(masked_fields, readable)
+    with tenant_scope(pool, tenant_id) as conn:
+        # **`LIKE`, with the pattern's own metacharacters escaped.** The query is what somebody
+        # typed, so a `%` in it would match everything from that point and a `_` any single
+        # character -- MOD-018 shipped exactly that in a wallet idempotency key and a till
+        # handed over 90.00 of goods for 1.00. `\` is escaped first, because escaping it after
+        # the others would double the escapes they introduced.
+        pattern = (folded.replace("\\", "\\\\")
+                   .replace("%", "\\%").replace("_", "\\_")) + "%"
+        # One extra row, so `more` is a fact rather than an inference -- and ordered by the
+        # folded name then the id, because an unordered lookup makes the planner the author
+        # and two people called Hala would come back in whichever order a scan found them.
+        rows = conn.execute(
+            "SELECT p.person_id, p.legal_name, p.preferred_name, p.date_of_birth,"
+            "       m.lifecycle_state, m.member_number, m.joined_on,"
+            "       t.location_id"
+            "  FROM plt01.ppl_persons p"
+            "  LEFT JOIN plt01.ppl_member_profiles m ON m.person_id = p.person_id"
+            "  LEFT JOIN plt01.ppl_tenant_profiles t ON t.person_id = p.person_id"
+            " WHERE lower(p.legal_name) LIKE %s AND p.merge_status = 'active'"
+            " ORDER BY lower(p.legal_name), p.person_id"
+            " LIMIT %s",
+            (pattern, limit + 1),
+        ).fetchall()
+    more = len(rows) > limit
+    rows = rows[:limit]
+    people = [
+        visibility.apply_record(
+            {
+                "person_id": str(r[0]),
+                "legal_name": r[1],
+                "preferred_name": r[2],
+                "lifecycle_state": r[4],
+                "member_number": r[5],
+                "joined_on": r[6].isoformat() if r[6] else None,
+                # **The club, which is a filter on this module and the only one it has.** The
+                # canvas prints "Club · Sweifieh" -- a plan and a site -- and the plan is
+                # MOD-017's. This is the tenant profile's own location, composed by name on the
+                # surface because `ppl_tenant_profiles` holds an id.
+                "location_id": str(r[7]) if r[7] else None,
+            },
+            masks,
+        )
+        for r in rows
+    ]
+    return {
+        "query": folded,
+        "count": len(people),
+        "more": more,
+        "people": people,
+        "masked_fields": list(masks),
+        # Said on the read rather than left to a surface, because each is a claim a screen
+        # would otherwise make on this module's behalf.
+        "a_prefix_of_the_name_and_nothing_else": (
+            "this matches the start of a person's legal name. It is not a search: there is no "
+            "index to be stale, no ranking, and no match on a preferred name, a note or an "
+            "address -- ADM-SRCH-01's command bar across entities is a different read"),
+        "a_number_is_matched_whole": (
+            "a phone or an email is `GET /people/contact-match`, which normalizes and matches "
+            "the whole value on purpose: a mistyped digit finding somebody else is worse than "
+            "finding nobody"),
+        "the_plan_and_the_photo_are_not_this_module_s": (
+            "FD-02 confirms identity by a photo and shows a plan beside it. The plan is "
+            "MOD-017's and the photo needs an object store, so a surface composes the first "
+            "and says the second is absent"),
+    }
 
 
 def names_of(

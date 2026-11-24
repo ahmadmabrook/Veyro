@@ -6231,6 +6231,29 @@ def create_app(
             limit=limit,
         )
 
+    @app.get("/people/lookup")
+    def lookup_people(
+        tenant_id: TenantId, session: Session, q: str, limit: int = 5,
+    ) -> dict[str, Any]:
+        """Find the person at the desk by the start of their name. FD-02. ADR-0012.
+
+        **A lookup, not a search.** Paragraph 4218's permission-aware search index with a
+        mandatory query pre-filter is ENG-01's, and MOD-014's own gap list sends it there; this
+        read has none of the four properties that objection is about -- one entity, one tenant
+        enforced by RLS below the query, no index to be stale because it reads the table of
+        record, and a bounded page every row of which goes through this module's gate.
+
+        `people.person.read`, masked through the same gate as every other read here, so a
+        routine front-desk session gets the withheld marker and the rest of the row: enough to
+        say two people match, with the step-up offered rather than a column of markers.
+        """
+        gate = permit(session, "people.person.read")
+        return people.lookup_people(
+            tenant_pool, tenant_id, query=q, limit=limit,
+            masked_fields=gate.masked_fields,
+            held_permissions=held_permissions(session),
+        )
+
     @app.get("/people/names")
     def read_people_names(
         tenant_id: TenantId, session: Session,

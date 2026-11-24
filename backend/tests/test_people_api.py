@@ -24,6 +24,7 @@ from __future__ import annotations
 import unittest
 import uuid
 
+from app.db import tenant_scope
 from app.errors import InvalidRequest
 from app.people import service as people
 from app.people import visibility
@@ -885,3 +886,207 @@ class BatchedNamesTests(PeopleApiTestCase):
         nothing = self.scoped(tenant_id, ["people.timeline.read"])
         read = self.client.get(f"/people/names?person_id={a}", headers=nothing)
         self.assertEqual(read.status_code, 403, read.text)
+
+
+class LookupTests(PeopleApiTestCase):
+    """FD-02's member lookup. ADR-0012.
+
+    "Search by name, phone or partial. Results show photo, plan, club and state so the
+    receptionist confirms identity visually before acting. Ambiguous matches list side by side
+    rather than guessing." The canvas types `hala` and gets two people.
+    """
+
+    def test_two_people_whose_names_start_the_same_come_back_side_by_side(self):
+        """The canvas's own case, and the thing it refuses to do is pick one."""
+        tenant_id = self.tenant()
+        owner = self.headers(tenant_id)
+        barakat = self.plain_subject(tenant_id, "Hala Barakat")
+        nasser = self.plain_subject(tenant_id, "Hala Nasser")
+        self.plain_subject(tenant_id, "Omar Zaid")
+        read = self.client.get("/people/lookup?q=hala", headers=owner)
+        self.assertEqual(read.status_code, 200, read.text)
+        body = read.json()
+        self.assertEqual(body["count"], 2, body)
+        self.assertFalse(body["more"], body)
+        # Ordered by the folded name, so two Halas come back the same way every run -- an
+        # unordered lookup makes the planner the author, which is MOD-018's `chart_for`.
+        self.assertEqual([one["person_id"] for one in body["people"]],
+                         [barakat, nasser], body)
+        self.assertEqual([one["legal_name"] for one in body["people"]],
+                         ["Hala Barakat", "Hala Nasser"], body)
+
+    def test_the_query_is_folded_and_matched_on_the_start_of_the_name(self):
+        tenant_id = self.tenant()
+        owner = self.headers(tenant_id)
+        self.plain_subject(tenant_id, "Hala Barakat")
+        for query in ("HALA", "  hala  ", "Hala Bar"):
+            with self.subTest(query=query):
+                body = self.client.get(
+                    f"/people/lookup?q={query.strip()}", headers=owner).json()
+                self.assertEqual(body["count"], 1, body)
+        # **The start, and nothing else.** A match on the middle of a name is what a search
+        # index is for: ADM-SRCH-01's command bar across entities is MOD-059's, and a lookup
+        # that quietly did it would be the `LIKE` scan presented as search that MOD-014's own
+        # gap list refuses.
+        middle = self.client.get("/people/lookup?q=barakat", headers=owner).json()
+        self.assertEqual(middle["count"], 0, middle)
+        self.assertIn("start of a person", middle["a_prefix_of_the_name_and_nothing_else"])
+
+    def test_one_character_is_refused_rather_than_answered(self):
+        """**One letter is every member whose name starts with it**, which is not an ambiguous
+        match a desk resolves by photo -- it is the tenant in alphabetical order, and returning
+        the first ten would read as "these are the matches"."""
+        tenant_id = self.tenant()
+        refused = self.client.get("/people/lookup?q=h", headers=self.headers(tenant_id))
+        self.assertEqual(refused.status_code, 422, refused.text)
+        self.assertIn("two_characters", refused.text)
+        blank = self.client.get("/people/lookup?q=%20%20", headers=self.headers(tenant_id))
+        self.assertEqual(blank.status_code, 422, blank.text)
+
+    def test_a_wildcard_somebody_typed_is_a_character_and_not_a_pattern(self):
+        """**MOD-018 shipped this and a till handed over 90.00 of goods for 1.00.** A
+        caller-supplied value interpolated into a `LIKE` is a pattern: `%` would match every
+        member from the second character on, and `_` any single one."""
+        tenant_id = self.tenant()
+        owner = self.headers(tenant_id)
+        self.plain_subject(tenant_id, "Hala Barakat")
+        self.plain_subject(tenant_id, "Omar Zaid")
+        for query in ("h%", "h_la", "%"):
+            with self.subTest(query=query):
+                read = self.client.get(
+                    f"/people/lookup?q={query.replace('%', '%25')}", headers=owner)
+                # `%` alone is one character, so it is refused for length; the other two are
+                # answered and match nobody, because no name begins with those literals.
+                if read.status_code == 200:
+                    self.assertEqual(read.json()["count"], 0, read.json())
+                else:
+                    self.assertEqual(read.status_code, 422, read.text)
+        # And a person whose name really does contain one is found by it.
+        odd = self.plain_subject(tenant_id, "100% Ali")
+        found = self.client.get("/people/lookup?q=100%25", headers=owner).json()
+        self.assertEqual([one["person_id"] for one in found["people"]], [odd], found)
+
+    def test_a_name_this_session_may_not_read_comes_back_withheld_not_absent(self):
+        """**A redacted record still exists**, which is MOD-014's own rule: a desk told nobody
+        matches would create a second record for the person in front of them. `legal_name` is
+        `identity` class, so a routine AAL-1 session gets the marker and the rest of the row --
+        enough to say two people match, with the step-up offered beside it."""
+        tenant_id = self.tenant()
+        self.plain_subject(tenant_id, "Hala Barakat")
+        desk = self.scoped(tenant_id, ["people.person.read"])
+        body = self.client.get("/people/lookup?q=hala", headers=desk).json()
+        self.assertEqual(body["count"], 1, body)
+        self.assertEqual(body["people"][0]["legal_name"], visibility.MASK, body)
+        self.assertIn("legal_name", body["masked_fields"], body)
+
+    def test_a_merged_away_record_is_not_offered(self):
+        """A merge leaves the losing person's rows where they are, so offering it would point a
+        desk at a record whose own readers are told to follow a pointer."""
+        tenant_id = self.tenant()
+        owner = self.headers(tenant_id)
+        keep = self.plain_subject(tenant_id, "Hala Barakat")
+        lose = self.plain_subject(tenant_id, "Hala Barakat")
+        merged = self.client.post("/people/merges", json={
+            "source_person_id": lose, "target_person_id": keep,
+            "reason": "one person, two records", **self.correlation()}, headers=owner)
+        self.assertEqual(merged.status_code, 201, merged.text)
+        body = self.client.get("/people/lookup?q=hala", headers=owner).json()
+        self.assertEqual([one["person_id"] for one in body["people"]], [keep], body)
+
+    def test_the_page_is_bounded_and_says_when_there_is_more(self):
+        tenant_id = self.tenant()
+        owner = self.headers(tenant_id)
+        for n in range(7):
+            self.plain_subject(tenant_id, f"Hala Number{n}")
+        body = self.client.get("/people/lookup?q=hala&limit=3", headers=owner).json()
+        self.assertEqual(body["count"], 3, body)
+        self.assertTrue(body["more"], body)
+        refused = self.client.get("/people/lookup?q=hala&limit=99", headers=owner)
+        self.assertEqual(refused.status_code, 422, refused.text)
+
+    def test_the_lookup_is_gated_like_every_other_read_here(self):
+        tenant_id = self.tenant()
+        self.plain_subject(tenant_id, "Hala Barakat")
+        nothing = self.scoped(tenant_id, ["people.timeline.read"])
+        read = self.client.get("/people/lookup?q=hala", headers=nothing)
+        self.assertEqual(read.status_code, 403, read.text)
+
+    def test_the_read_says_what_it_is_not_rather_than_leaving_it_to_a_screen(self):
+        tenant_id = self.tenant()
+        body = self.client.get(
+            "/people/lookup?q=hala", headers=self.headers(tenant_id)).json()
+        self.assertIn("matches the whole value", body["a_number_is_matched_whole"])
+        self.assertIn("object store", body["the_plan_and_the_photo_are_not_this_module_s"])
+
+
+class LookupIndexTests(PeopleApiTestCase):
+    """The index ADR-0012 rests on, and what can honestly be asserted about it.
+
+    **The property is the operator class, not a plan.** `0009`'s name index is
+    `(tenant_id, lower(legal_name))` with the default class, and in this database's
+    `en_US.utf8` collation a b-tree on a collated text expression cannot serve a prefix at
+    all; `0032`'s is the same expression with `text_pattern_ops`, which can. That is a fact
+    about the index rather than about any query plan, and it is the whole reason `0032` exists.
+
+    **A plan assertion here would pass for the wrong reason, which I found by writing one.**
+    At test scale the planner reads one tenant through `ppl_persons_pkey` -- which also leads
+    with `tenant_id` -- and puts the name in a `Filter`; forcing `enable_seqscan` off makes
+    *any* leading-tenant index serve the tenant bound, so asserting that the index name appears
+    in the plan is satisfied by something that has nothing to do with a prefix. Measured at
+    three thousand people, with the tenant supplied as a literal as well as through RLS.
+
+    So this asserts the catalogue, in both directions, and ADR-0012 records what was measured
+    and what was not. Nothing in the isolation suite pins MOD-014's indexes, so without this
+    the index could be dropped or re-classed in silence.
+    """
+
+    #: What each index has to be, by name: the expression and the operator class behind it.
+    WANTED = {
+        "ppl_persons_by_name": "text_ops",
+        "ppl_persons_by_name_prefix": "text_pattern_ops",
+    }
+
+    def opclasses(self, tenant_id: str) -> dict[str, list[str]]:
+        """Each `ppl_persons` name index with the operator classes of its columns."""
+        with tenant_scope(self._tenant_pool, tenant_id) as conn:
+            rows = conn.execute(
+                "SELECT c.relname, array_agg(o.opcname ORDER BY k.n)"
+                "  FROM pg_index i"
+                "  JOIN pg_class c ON c.oid = i.indexrelid"
+                "  JOIN pg_class t ON t.oid = i.indrelid"
+                "  JOIN pg_namespace ns ON ns.oid = t.relnamespace,"
+                "       unnest(i.indclass) WITH ORDINALITY AS k(cls, n)"
+                "  JOIN pg_opclass o ON o.oid = k.cls"
+                " WHERE ns.nspname = 'plt01' AND t.relname = 'ppl_persons'"
+                "   AND c.relname = ANY(%s)"
+                " GROUP BY c.relname",
+                (sorted(self.WANTED),),
+            ).fetchall()
+        return {str(r[0]): [str(one) for one in r[1]] for r in rows}
+
+    def test_both_name_indexes_exist_with_the_operator_class_they_need(self):
+        """**Both earn their place**, which is the cost ADR-0012 states. Replacing `0009`'s
+        with the prefix one is not available: `text_pattern_ops` compares byte by byte, so an
+        equality lookup through it is correct only for the exact bytes, and `find_duplicates`
+        folds a name before comparing.
+        """
+        found = self.opclasses(self.tenant())
+        self.assertEqual(sorted(found), sorted(self.WANTED), found)
+        for name, wanted in self.WANTED.items():
+            with self.subTest(index=name):
+                # Leading column is the tenant, which every index in `plt01` starts with.
+                self.assertEqual(found[name][0], "uuid_ops", found[name])
+                self.assertEqual(found[name][1], wanted, found[name])
+
+    def test_the_prefix_index_is_on_the_folded_name_the_lookup_matches(self):
+        """An index on `legal_name` rather than `lower(legal_name)` would be the right operator
+        class on the wrong expression, which the opclass check alone cannot see."""
+        with tenant_scope(self._tenant_pool, self.tenant()) as conn:
+            row = conn.execute(
+                "SELECT pg_get_indexdef(c.oid) FROM pg_class c"
+                " WHERE c.relname = 'ppl_persons_by_name_prefix'",
+            ).fetchone()
+        assert row is not None
+        definition = str(row[0])
+        self.assertIn("lower(legal_name)", definition, definition)
+        self.assertIn("text_pattern_ops", definition, definition)
