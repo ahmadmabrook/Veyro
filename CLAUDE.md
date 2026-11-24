@@ -4971,6 +4971,17 @@ Known gaps, deliberate:
   unique rules, and a *nullable* column with no grant is in none of those, so
   `ALTER TABLE crm_leads ADD COLUMN lost_note text` passed all 115 checks. Every other module
   has one; MOD-027's was missing from the start.
+  **And the report the canvas sends the reason to does not read it -- nor does any other.**
+  ADM-CRM-07's footnote says "The reason feeds source effectiveness in ADM-RPT-03", and
+  ADM-RPT-03 is the *membership* report: it draws `WHY THE 23 LEFT` and says "Reasons come
+  from ADM-MSH-07's required field", so its subject is members cancelling rather than leads
+  who never joined. ADR-0010's build order named **ADM-RPT-06**, which the registry does not
+  contain. So the closed vocabulary stands on what a group-by needs rather than on a
+  destination, and that is stated in the migration, the pipeline and the ADR rather than left
+  as a cross-reference nobody checked. **What ADM-RPT-03 actually wants is the same shape one
+  module over**: its chart is blocked because `mem_lifecycle_changes.reason` is free prose --
+  which that screen already records -- so a structured cancellation reason on MOD-017 is the
+  work that unblocks it, and slice 3 is the worked example.
   **ADM-CRM-07's screen is built too** -- a query parameter on the lead profile, as
   ADM-MSH-07's sheet is, with `ReasonPicker` being `ChoiceChips` in single mode rather than a
   second component for one appearance. **And the table has a `Lost` chip**, which it owed for

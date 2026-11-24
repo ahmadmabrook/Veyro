@@ -2190,11 +2190,20 @@ makes the decision legible rather than implicit.
 
 ### The four things it settled
 
-**The reason is a closed four and there is no "Other".** The registry note is "Structured
-reason, feeds retention analytics" and the canvas says it feeds source effectiveness, so free
-text would make the one report the field exists for a group-by over typos.
-`no_longer_responding` absorbs a lead who simply stopped, and the free-text detail is where a
-salesperson writes what they learned. A fifth is a product decision rather than a migration.
+**The reason is a closed four and there is no "Other".** A group-by needs a closed set, and
+free text would make any such report a group-by over typos. `no_longer_responding` absorbs a
+lead who simply stopped, and the free-text detail is where a salesperson writes what they
+learned. A fifth is a product decision rather than a migration.
+
+**And the report the footnote names is not that report, which building this found.** It sends
+the reason to "source effectiveness in ADM-RPT-03", and ADM-RPT-03 is the *membership* report
+— its own canvas draws `WHY THE 23 LEFT` and states "Reasons come from ADM-MSH-07's required
+field", so its subject is members cancelling rather than leads who never joined. ADR-0010's
+build order named ADM-RPT-06 for the same read, and the registry has no ADM-RPT-06 at all. So
+**no drawn screen consumes a lost-lead reason** and the vocabulary stands on the group-by
+rather than on a destination. What ADM-RPT-03 does want is this same shape one module over: its
+chart is blocked because `mem_lifecycle_changes.reason` is free prose, which that screen already
+records, so a structured cancellation reason on MOD-017 is the work that unblocks it.
 
 **Ninety days is advisory and both sentences say reopening is allowed.** The canvas's emphasis
 is on *"rather than a fresh record"* — re-contact does not duplicate the person, which the

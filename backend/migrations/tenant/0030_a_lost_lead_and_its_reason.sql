@@ -46,11 +46,18 @@ ALTER TABLE plt01.crm_leads
     ADD CONSTRAINT crm_leads_lost_detail_needs_a_loss
         CHECK (lost_detail IS NULL OR lost_at IS NOT NULL);
 
--- **The four the canvas draws, closed because the one thing the field exists for is a
--- report.** The registry note is "Structured reason, feeds retention analytics" and the canvas
--- says the reason feeds source effectiveness in ADM-RPT-03, so free text would make that
--- report a group-by over typos -- which is MOD-026's queue finding and this module's own
--- reason for making a source a row rather than a string.
+-- **The four the canvas draws, closed because a group-by needs a closed set.** The registry
+-- note is "Structured reason, feeds retention analytics", and free text would make any such
+-- report a group-by over typos -- MOD-026's queue finding and this module's own reason for
+-- making a source a row rather than a string.
+--
+-- **And no screen reads it yet, which is a correction to what the canvas says.** ADM-CRM-07's
+-- footnote sends the reason to "source effectiveness in ADM-RPT-03", and ADM-RPT-03 is the
+-- *membership* report: its own canvas draws "WHY THE 23 LEFT" and says "Reasons come from
+-- ADM-MSH-07's required field" -- members cancelling, not leads who never joined. ADR-0010's
+-- build order names ADM-RPT-06 for the same read, and there is no ADM-RPT-06 in the registry
+-- at all. So the destination is a screen nobody has drawn, and the closed set is justified by
+-- what a group-by needs rather than by a report that exists.
 --
 -- **In code and in this CHECK rather than in a tenant's own table, which is the opposite call
 -- from `crm_sources`.** A source is a club's own open day and belongs to that club; a lost

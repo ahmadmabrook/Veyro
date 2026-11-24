@@ -171,8 +171,9 @@ MOD-013's notifications is work, and the inbound half is the seam.
    door. Nothing in it depends on the trial. **Landed**: four `crm_` tables, `app/crm/`, five
    permissions, twelve routes, isolation check 115, and the screens still owed -- see
    `CLAUDE.md`'s MOD-027 section. Two things in this record were corrected by building it: the
-   `lost` stage is *not* in the schema's stage domain, because a declared value nothing writes
-   is this build's most-repeated finding and slice 3 is what writes it; and `gym_only` is
+   `lost` stage is not in the schema's stage domain -- **and slice 3 did not put it there
+   either, which D8 explains: it is a fact beside the stage, because the pipeline runs forward
+   only and a reopening would need the backwards edge D3 rules out**; and `gym_only` is
    refused in combination with another interest, which D3 did not consider and which the words
    themselves require.
 2. **The trial** (ADM-CRM-05, 06): the trial product, the clock derived from the agreement, the
@@ -182,7 +183,16 @@ MOD-013's notifications is work, and the inbound half is the seam.
    `cat_products.product_type` nor `mem_membership_terms.membership_kind` carries such a value,
    so "an active membership on a trial product" is not yet expressible, and slice 1's board
    returns an empty `On trial` column that says so. `change_membership_plan` is built.
-3. **Lost and reopen** (ADM-CRM-07) plus the source-effectiveness read ADM-RPT-06 draws.
+3. **Lost and reopen** (ADM-CRM-07). **Landed**: `0030`, the four columns beside the stage,
+   the interest withdrawal, the screen and the table's `Lost` chip. **This item used to end
+   "plus the source-effectiveness read ADM-RPT-06 draws", and there is no ADM-RPT-06.** The
+   registry has five report screens and none of them is it; ADM-CRM-07's own footnote sends
+   the reason to ADM-RPT-03, which is the *membership* report -- it draws "WHY THE 23 LEFT"
+   and says "Reasons come from ADM-MSH-07's required field", so its subject is members
+   cancelling rather than leads who never joined. **So the reason feeds nothing in this build
+   and the destination is undrawn.** Two cross-references in this record have now named
+   something that does not exist -- `change_plan` for `change_membership_plan`, and this --
+   and both were found by trying to build against them.
 4. **The conversation record**, to the seam, with the provider named.
 
 ## D8 — Lost is a fact beside the stage, not a value in it
@@ -216,17 +226,28 @@ So `crm_leads` gains four nullable columns — `lost_at`, `lost_reason`, `lost_d
 > **ADM-CRM-07.** "Why did Omar Zaid not join?" — Too expensive / Joined somewhere else /
 > Location or hours / No longer responding — and "Which gym, if he said…".
 
-**Closed, because the one thing the field exists for is a report.** The registry note is
-"Structured reason, feeds retention analytics" and the canvas says "The reason feeds source
-effectiveness in ADM-RPT-03", so free text would make that report a group-by over typos —
-MOD-026's queue finding and MOD-027's own source finding. The four are declared in
+**Closed, because a group-by needs a closed set.** The registry note is "Structured reason,
+feeds retention analytics", and free text would make any such report a group-by over typos —
+MOD-026's queue finding and MOD-027's own source finding.
+
+**And the report the canvas names is not that report**, which building this found. ADM-CRM-07's
+footnote says "The reason feeds source effectiveness in ADM-RPT-03"; ADM-RPT-03 is the
+membership report, whose own canvas draws "WHY THE 23 LEFT" and states "Reasons come from
+ADM-MSH-07's required field" — members cancelling, not leads who never joined. So no drawn
+screen consumes a lost-lead reason, and the vocabulary stands on the group-by rather than on a
+destination. **What ADM-RPT-03 does want is this same shape one module over**: its chart is
+blocked because `mem_lifecycle_changes.reason` is free prose, which that screen already
+records — so a structured cancellation reason on MOD-017 is the work that unblocks it, and
+slice 3 is the worked example of what it looks like.
+
+The four are declared in
 `app/crm/pipeline.py` with a CHECK behind them and the Python-against-SQL agreement test
 MOD-026 established.
 
 **In code rather than in a tenant's own table, which is the opposite call from `crm_sources`.**
 A source is a club's own open day and belongs to that club; a lost reason is a category of
-market behaviour, and a per-tenant set would make ADM-RPT-03's columns vary by tenant with
-nothing able to say which set is the product's. A fifth reason is a product decision.
+market behaviour, and a per-tenant set would make any such report's columns vary by tenant
+with nothing able to say which set is the product's. A fifth reason is a product decision.
 
 **There is no "Other", and the detail is the escape.** The canvas draws four and no catch-all;
 "No longer responding" is the one that absorbs a lead who simply stopped. `lost_detail` is

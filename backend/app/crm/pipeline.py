@@ -104,9 +104,15 @@ def board_stage(stage: str, membership: Membership | None) -> str:
 
 
 #: ADM-CRM-07's four, and nothing else. ADR-0010 D9: closed because the one thing the field
-#: exists for is a report -- "The reason feeds source effectiveness in ADM-RPT-03" -- so free
-#: text would make that report a group-by over typos. The same four are a CHECK on the column
-#: and a test compares the two, which is MOD-026's precedent for a vocabulary in both places.
+#: exists for is a report, and a group-by needs a closed set -- free text makes it a group-by
+#: over typos. The same four are a CHECK on the column and a test compares the two, which is
+#: MOD-026's precedent for a vocabulary in both places.
+#:
+#: **No screen reads it yet.** ADM-CRM-07's footnote sends the reason to "source effectiveness
+#: in ADM-RPT-03", and that screen is the *membership* report: it draws "WHY THE 23 LEFT" from
+#: "ADM-MSH-07's required field" -- members cancelling, not leads who never joined. ADR-0010's
+#: build order names ADM-RPT-06, which the registry does not contain. So the destination is
+#: undrawn and the closed set stands on its own reasoning.
 #:
 #: **There is no "Other".** The canvas draws four and no catch-all; `no_longer_responding` is
 #: the one that absorbs a lead who simply stopped, and `lost_detail` is where a salesperson
