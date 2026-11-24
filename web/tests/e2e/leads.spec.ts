@@ -90,7 +90,12 @@ test.describe("the lead pipeline", () => {
       const board = page.getByRole("region", { name: "The pipeline, by stage" });
       const card = board.getByRole("link").first();
       await expect(card).toContainText("Sweifieh open day");
-      await expect(card).toContainText("just now");
+      // **The shape of the age, not a literal.** This asserted "just now", which
+      // `sinceLabel` returns only under an hour -- so the test passed for sixty minutes
+      // after each seeding and failed afterwards, which CI never sees because CI provisions
+      // immediately before the suite. This repository records that trap three times; it is
+      // the same one, in a test asserting a freshness nothing creates.
+      await expect(card).toContainText(/just now|\d+[hd]$/);
       await expect(card).toHaveAttribute("href", /^\/leads\//);
     });
 

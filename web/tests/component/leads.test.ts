@@ -146,6 +146,9 @@ describe("the view and filter parameters", () => {
     expect(isLeadView("kanban")).toBe(false);
     expect(isLeadView(undefined)).toBe(false);
     expect(isLeadFilter("going_cold")).toBe(true);
+    // ADM-CRM-07's own list, which the read took from the day the slice landed and nothing
+    // sent until the chip existed.
+    expect(isLeadFilter("lost")).toBe(true);
     expect(isLeadFilter("trial_ending")).toBe(false);
   });
 });

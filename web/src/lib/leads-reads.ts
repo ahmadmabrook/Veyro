@@ -27,6 +27,10 @@ export function listLeads(params: {
   const query = new URLSearchParams();
   if (params.filter === "going_cold") query.set("going_cold", "true");
   if (params.filter === "mine") query.set("mine", "true");
+  // **ADM-CRM-07's list.** The default excludes a lost lead, so this is the only way to see
+  // one from a list at all -- and the server decides, because "lost" is a column it reads
+  // rather than something the page can filter out of what it was given.
+  if (params.filter === "lost") query.set("lost", "true");
   if (params.stage) query.set("stage", params.stage);
   query.set("limit", String(params.limit ?? 50));
   return api(`/crm/leads?${query.toString()}`);

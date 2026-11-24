@@ -2213,12 +2213,25 @@ interest has a `Take back`, and the section's "an interest cannot be taken back 
 deleted with the gap. Until this existed `crm.lead.write` was a routine permission whose every
 act on an interest was permanent.
 
-### What it still owes
+### The chip, and why it is a filter rather than a view
 
-**The table has no lost chip.** `GET /crm/leads` takes `lost=true` and nothing on `/leads`
-sends it, so a salesperson reviewing refusals reaches them only from a lead's own profile. The
-read is there and the chip is a filter beside `Going cold`; the browser test asserts the
-exclusion rather than navigating to a parameter the page does not read.
+**`Lost` sits beside `Going cold` on the table and nowhere on the board.** It is a filter
+because this is one list of one thing — the board's five columns and the table are the live
+pipeline, and a lead who said no is the same record with a reason on it; two routes would be
+two definitions of what a lead is. And it is table-only because ADM-CRM-01 draws five stages
+and ADM-CRM-07 is a side sheet, so a chip on the board would ask for a list the board cannot
+draw, and one that changed the view under the reader would be worse than one that is absent.
+
+**Without it a refusal was reachable only from its own profile.** `GET /crm/leads` took
+`lost=true` from the hour the read landed and nothing on `/leads` sent it, so a salesperson
+reviewing why people did not join had no list at all — the "writer with no reader" shape at
+the surface, which this app has recorded twice on the members and staff lists and which an
+independent tester found both times rather than a spec.
+
+**And the test for it was vacuous in both directions before it was fixed.** It asserted the
+lost lead's *name*, and every name on these screens is withheld at an ordinary sign-in —
+`legal_name` is an identity-class field — so "Rami Odeh" is absent from the live list and from
+the lost one alike. The row's own `href` is what is rendered and unambiguous.
 
 ## ADM-CRM-06 — convert a trial, and the quote that did not exist
 

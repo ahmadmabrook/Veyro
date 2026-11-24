@@ -57,17 +57,42 @@ test.describe("a lead that said no", () => {
     // ADM-CRM-01 draws five columns and no sixth, so a person who said no is not in the
     // pipeline the board counts -- their refusal is on their own record.
     //
-    // **Only the exclusion is asserted**, because the table has no lost chip yet: the read
-    // takes `lost=true` and nothing on `/leads` sends it, which the compliance record names
-    // as what this screen still owes. Navigating to a parameter the page does not read would
-    // be a test asserting a route rather than a screen.
+    // **Identified by its own link, not by a name.** Every name on these screens is withheld
+    // at an ordinary sign-in -- `legal_name` is an identity-class field -- so an assertion on
+    // "Rami Odeh" is vacuous in *both* directions: it is absent from the live list and from
+    // the lost one alike. The row's `href` is what is rendered and unambiguous.
     await page.goto("/leads?view=table");
-    await expect(page.locator("#main").getByRole("cell", { name: "Rami Odeh" }))
-      .toHaveCount(0);
-    const board = page.locator("#main");
+    const main = page.locator("#main");
+    const row = `a[href="/leads/${lostLeadId}"]`;
+    await expect(main.locator(row)).toHaveCount(0);
     await page.goto("/leads");
-    await expect(board.getByRole("link", { name: /Rami Odeh/ })).toHaveCount(0);
+    await expect(main.locator(row)).toHaveCount(0);
   });
+
+  test("and is in the table's own Lost list, which is the only way to a list of them",
+    async ({ page }) => {
+      // **The chip this slice owed.** `GET /crm/leads` took `lost=true` from the day the
+      // slice landed and nothing on `/leads` sent it, so a salesperson reviewing why people
+      // did not join had no list at all -- the "writer with no reader" shape at the surface,
+      // which this app has recorded twice and a tester found both times.
+      await page.goto("/leads?view=table");
+      const main = page.locator("#main");
+      const chip = main.getByRole("link", { name: "Lost", exact: true });
+      await expect(chip).toBeVisible();
+      await chip.click();
+      await expect(page).toHaveURL(/filter=lost/);
+      await expect(main.locator(`a[href="/leads/${lostLeadId}"]`)).toBeVisible();
+    });
+
+  test("and the board offers no Lost chip, because it has no column for one",
+    async ({ page }) => {
+      // ADM-CRM-01 draws five stages and ADM-CRM-07 is a side sheet, so a chip here would ask
+      // for a list the board cannot draw -- and one that changed the view under the reader
+      // would be worse than one that is not there.
+      await page.goto("/leads");
+      await expect(page.locator("#main").getByRole("link", { name: "Lost" }))
+        .toHaveCount(0);
+    });
 
   test("no accessibility violations, with the lost state on screen", async ({ page }) => {
     const results = await new AxeBuilder({ page })

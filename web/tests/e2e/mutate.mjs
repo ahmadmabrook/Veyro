@@ -2097,6 +2097,19 @@ const MUTATIONS = [
     runner: "playwright",
     grep: "five columns, in its order",
   },
+  {
+    id: "lost-list-has-a-chip",
+    why: "`GET /crm/leads` took `lost=true` from the day slice 3 landed and nothing on "
+      + "`/leads` sent it, so a refusal was reachable only from its own profile -- the "
+      + "\"writer with no reader\" shape at the surface, which this app has recorded twice "
+      + "and a tester found both times",
+    file: "src/lib/leads-reads.ts",
+    from: '  if (params.filter === "lost") query.set("lost", "true");',
+    to: "",
+    runner: "playwright",
+    grep: "is in the table's own Lost list",
+  },
+
   // ---- ADM-CRM-07, mark lost --------------------------------------------------------
   {
     id: "lost-says-the-stage-did-not-move",

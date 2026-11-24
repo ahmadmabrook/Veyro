@@ -185,7 +185,8 @@ export default async function LeadsPage({
       {rows.length === 0 ? (
         <Banner severity="info">
           {text(filter === "going_cold" ? "leads.emptyCold"
-            : filter === "mine" ? "leads.emptyMine" : "leads.empty")}
+            : filter === "mine" ? "leads.emptyMine"
+            : filter === "lost" ? "leads.emptyLost" : "leads.empty")}
         </Banner>
       ) : view === "table" ? (
         <>
@@ -347,6 +348,18 @@ function Shell({
         >
           {text("leads.filterMine")}
         </Link>
+        {/* **Table only, because the board has no column for it.** ADM-CRM-01 draws five
+            stages and ADM-CRM-07 is a side sheet, so a lost chip on the board would ask for a
+            list the board cannot draw -- and a chip that changed the view under the reader
+            would be worse than one that is not there. */}
+        {view === "table" ? (
+          <Link
+            href={here({ filter: "lost" })}
+            aria-current={filter === "lost" ? "page" : undefined}
+          >
+            {text("leads.filterLost")}
+          </Link>
+        ) : null}
         <Link
           href={here({ view: view === "board" ? "table" : "board" })}
           aria-current={undefined}

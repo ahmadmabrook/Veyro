@@ -26,8 +26,20 @@ export function isLeadView(value: string | undefined): value is LeadView {
   return value !== undefined && (LEAD_VIEWS as readonly string[]).includes(value);
 }
 
-/** ADM-CRM-02's three chips. The third is slice 2's and is not offered. */
-export const LEAD_FILTERS = ["all", "going_cold", "mine"] as const;
+/**
+ * ADM-CRM-02's chips, plus the one ADM-CRM-07 needs.
+ *
+ * **`lost` is a filter rather than a view**, because it is one list of one thing: the board's
+ * five columns and this table are the live pipeline, and a lead who said no is the same record
+ * with a reason on it. Two routes would be two definitions of what a lead is.
+ *
+ * **And without it a refusal was reachable only from its own profile.** `GET /crm/leads` took
+ * `lost=true` from the day the slice landed and nothing on this screen sent it, so a
+ * salesperson reviewing why people did not join had no list at all -- the "writer with no
+ * reader" shape at the surface, which this app has recorded twice on the members and staff
+ * lists and both times a tester found it rather than a spec.
+ */
+export const LEAD_FILTERS = ["all", "going_cold", "mine", "lost"] as const;
 
 export type LeadFilter = (typeof LEAD_FILTERS)[number];
 

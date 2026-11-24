@@ -4971,8 +4971,14 @@ Known gaps, deliberate:
   unique rules, and a *nullable* column with no grant is in none of those, so
   `ALTER TABLE crm_leads ADD COLUMN lost_note text` passed all 115 checks. Every other module
   has one; MOD-027's was missing from the start.
-  **What is still owed is ADM-CRM-07's screen**, which is the side sheet the reason picker
-  lives on.
+  **ADM-CRM-07's screen is built too** -- a query parameter on the lead profile, as
+  ADM-MSH-07's sheet is, with `ReasonPicker` being `ChoiceChips` in single mode rather than a
+  second component for one appearance. **And the table has a `Lost` chip**, which it owed for
+  an hour: the read took `lost=true` from the moment it landed and nothing on `/leads` sent
+  it, so a refusal was reachable only from its own profile -- the "writer with no reader"
+  shape at the surface, which this app has recorded twice and a tester found both times. The
+  chip is table-only, because the board draws five stages and a chip asking for a sixth list
+  would be a control the board cannot answer.
 - **No AI suggestion.** ADM-CRM-01 draws "VEYRO SUGGESTS · YOU SEND IT" with a rationale; the
   permission exists and is `privileged`, the record is slice 4's work, and the text needs a
   model nobody has an account with. The ADR leaves open whether that is an eighth external
