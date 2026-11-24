@@ -62,11 +62,20 @@ test.describe("the lead pipeline", () => {
     expect(open).toBeGreaterThanOrEqual(4);
   });
 
-  test("the On trial column says why it is empty rather than being hidden", async ({ page }) => {
+  test("the On trial column is drawn and no longer explains itself", async ({ page }) => {
+    // **This asserted "nothing marks a product as a trial"**, which was the *consequence* of
+    // a gap rather than the finding: the finding was that a column with nothing in it is
+    // drawn with its reason rather than hidden, because hiding it makes the board read as
+    // four stages. ADR-0010 D7 settled the marker and the server derives the column from
+    // MOD-017, so there is no reason left to carry -- and a test insisting on one is the gap
+    // note outliving its gap.
     await page.goto("/leads");
     const column = page.locator("#main").getByRole("region", { name: /^On trial,/ });
     await expect(column).toBeVisible();
-    await expect(column.getByText(/marks a product as a trial/)).toBeVisible();
+    await expect(column.getByText(/marks a product as a trial/)).toHaveCount(0);
+    // The fixture's leads have no memberships, so it is empty -- which is a fact about them
+    // rather than about the product, and the count is the server's.
+    await expect(column).toContainText("0");
   });
 
   test("a card's name is withheld at this assurance and the card is still a link",
@@ -156,7 +165,9 @@ test.describe("the lead pipeline", () => {
     const gaps = page.locator("#main").getByRole("region", { name: /does not do yet/ })
       .or(page.locator("#main"));
     await expect(gaps.getByText(/model nobody here has an account with/)).toBeVisible();
-    await expect(gaps.getByText(/Nothing counts a conversion yet/)).toBeVisible();
+    // Reworded when the trial became expressible: the conversion rate is still uncounted and
+    // the reason is now the window rather than the marker.
+    await expect(gaps.getByText(/nothing counts a conversion/)).toBeVisible();
   });
 
   test("every card points at a lead record", async ({ page }) => {
