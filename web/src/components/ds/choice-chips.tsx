@@ -1,7 +1,8 @@
 import type { ReactNode } from "react";
 
 /**
- * A small multi-select drawn as chips — ADM-CRM-04's `INTEREST · OPTIONAL`.
+ * A small single- or multi-select drawn as chips — ADM-CRM-04's `INTEREST · OPTIONAL` and
+ * ADM-CRM-07's `ReasonPicker`.
  *
  * §23 names eighteen field types and `multiselect` is one of them; nothing in the design
  * system provided it, so the drawing is the specification. The canvas:
@@ -40,6 +41,8 @@ export function ChoiceChips({
   options,
   defaultSelected = [],
   note,
+  single = false,
+  required = false,
 }: {
   name: string;
   legend: string;
@@ -49,6 +52,29 @@ export function ChoiceChips({
   defaultSelected?: readonly string[];
   /** A rule the reader needs before choosing, under the group. At most one. */
   note?: ReactNode;
+  /**
+   * One choice rather than several, drawn identically and submitted as one value.
+   *
+   * **ADM-CRM-07 names a `ReasonPicker` and this is it.** Its canvas draws four chips --
+   * "Too expensive / Joined somewhere else / Location or hours / No longer responding" --
+   * in exactly the shape ADM-CRM-04 draws three interests in, and a lead is lost for one
+   * reason. A second component would be two spellings of one appearance, which is the
+   * duplication-by-divergence this file's own mark note already records.
+   *
+   * The control becomes `<input type="radio">`, so the group keeps the semantics the
+   * appearance implies: arrow keys move within it, one value reaches `FormData`, and the
+   * browser enforces the one-of-many rule rather than a client.
+   */
+  single?: boolean;
+  /**
+   * Whether a choice is required.
+   *
+   * **`aria-required` and not the native attribute**, for the reason ADM-MEM-10 and
+   * ADM-CRM-04 both paid for: a native constraint refuses the submit before any server sees
+   * it, so the message slot a reader would act on never renders and a branch written for it
+   * becomes unreachable. The server refuses and says which field.
+   */
+  required?: boolean;
 }) {
   return (
     <fieldset className="ds-choice-group">
@@ -67,10 +93,11 @@ export function ChoiceChips({
         {options.map((one) => (
           <label key={one.value} className="ds-choice-chip">
             <input
-              type="checkbox"
+              type={single ? "radio" : "checkbox"}
               name={name}
               value={one.value}
               defaultChecked={defaultSelected.includes(one.value)}
+              aria-required={required ? true : undefined}
               className="ds-visually-hidden"
             />
             <span className="ds-choice-chip-face">{one.label}</span>

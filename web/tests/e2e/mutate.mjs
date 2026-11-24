@@ -2097,6 +2097,61 @@ const MUTATIONS = [
     runner: "playwright",
     grep: "five columns, in its order",
   },
+  // ---- ADM-CRM-07, mark lost --------------------------------------------------------
+  {
+    id: "lost-says-the-stage-did-not-move",
+    why: "the whole of ADR-0010 D8 is that a sixth stage value would need a backwards edge "
+      + "on reopen, which would make `Toured · 6` a count nobody can reconstruct -- so the "
+      + "screen says the stage stayed rather than leaving a reader to notice",
+    file: "src/app/leads/[leadId]/page.tsx",
+    from: "                  {fill(locale, \"lost.stageKept\", { stage })}",
+    to: "                  {stage}",
+    runner: "playwright",
+    grep: "keeps its stage, and the screen says why that matters",
+  },
+  {
+    id: "lost-offers-the-reopen",
+    why: "a lost lead with no way back is a record that cannot be corrected, and reopening "
+      + "is never gated on the ninety days -- locking it would make a lead marked lost by "
+      + "mistake uncorrectable for a quarter on a routine permission",
+    file: "src/app/leads/[leadId]/page.tsx",
+    from: "                <ReopenForm locale={locale} leadId={leadId} />",
+    to: "                {null}",
+    runner: "playwright",
+    grep: "offers the reopen",
+  },
+  {
+    id: "lost-says-reopening-is-allowed-either-way",
+    why: "the ninety days is advisory; a sentence that read as a refusal would send somebody "
+      + "away from the one remedy a wrongly-lost lead has",
+    file: "src/lib/lost.ts",
+    from: '  return recontactable ? "lost.reopenable" : "lost.notYetReopenable";',
+    to: '  return "lost.reopenable";',
+    runner: "playwright",
+    grep: "offers the reopen",
+  },
+  {
+    id: "lost-refuses-with-its-own-sentence",
+    why: "`aria-required` announces the reason without refusing the submit, so the server's "
+      + "sentence is what a reader acts on -- the branch ADM-MEM-10's native `required` made "
+      + "unreachable",
+    file: "src/app/leads/[leadId]/actions.ts",
+    from: '  if (reason.length === 0) return { ...IDLE, error: "lost.needsAReason" };',
+    to: "  if (false) return { ...IDLE, error: \"lost.needsAReason\" };",
+    runner: "playwright",
+    grep: "refuses with its own sentence when no reason is chosen",
+  },
+  {
+    id: "lost-offers-the-interest-withdrawal",
+    why: "`0027` said slice 3 owed this remedy: until it existed, a tick on an interest was "
+      + "permanent on a routine permission, which is MOD-013's rule",
+    file: "src/app/leads/[leadId]/page.tsx",
+    from: "            {lead.interests.map((one) => (\n              <WithdrawInterestForm",
+    to: "            {[].map((one) => (\n              <WithdrawInterestForm",
+    runner: "playwright",
+    grep: "can be taken back, which it could not before this slice",
+  },
+
   // ---- ADM-CRM-06, the conversion quote -------------------------------------------
   {
     id: "convert-discloses-the-list-and-the-discount",

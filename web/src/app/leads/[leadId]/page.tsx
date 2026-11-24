@@ -19,11 +19,13 @@ import {
 import { readLead, readLeadTrial } from "@/lib/leads-reads";
 import { isWithheld } from "@/lib/people";
 import { presentation } from "@/lib/preferences";
-import { dayLabel, timeOfDay } from "@/lib/time";
+import { dayLabel, monthDayLabel, timeOfDay } from "@/lib/time";
+import { LOST_REASONS, reasonWord, recontactSentence } from "@/lib/lost";
 import { urgencyKey, usageSentence } from "@/lib/trial";
 
 import {
-  InterestsForm, NextActionForm, OwnerForm, StageForm, TouchpointForm,
+  InterestsForm, MarkLostForm, NextActionForm, OwnerForm, ReopenForm, StageForm,
+  TouchpointForm, WithdrawInterestForm,
 } from "./forms";
 
 /**
@@ -50,12 +52,18 @@ import {
  */
 export default async function LeadPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ leadId: string }>;
+  searchParams: Promise<{ lost?: string }>;
 }) {
   const { locale } = await presentation();
   const text = (key: MessageKey) => t(locale, key);
   const { leadId } = await params;
+  // ADM-CRM-07's side sheet, as a parameter on the profile. ADM-MSH-07's judgement: this app
+  // has no side sheet, and a query string keeps the member's context on screen while giving
+  // "Keep it open" somewhere to go.
+  const sheetOpen = (await searchParams).lost === "1";
 
   if (!(await currentSession())) redirect("/login");
 
@@ -363,6 +371,75 @@ export default async function LeadPage({
                 value: one, label: interestLabel(locale, one),
               }))}
             />
+            {/* **Each held interest can be taken back now**, which is ADR-0010 D11 and the
+                remedy this section's own note used to say was missing: until the withdrawal
+                existed, a tick here was permanent on a routine permission -- MOD-013's rule.
+                A row per interest rather than one multi-select, because taking one back is a
+                single decision and a form that could withdraw three at once would be a
+                control nobody asked for. */}
+            {lead.interests.map((one) => (
+              <WithdrawInterestForm
+                key={one}
+                locale={locale}
+                leadId={leadId}
+                interest={one}
+                label={interestLabel(locale, one)}
+              />
+            ))}
+          </section>
+
+          {/* ADM-CRM-07. **A side sheet in the design and a query parameter here**, which is
+              ADM-MSH-07's judgement: this app has no side sheet, and `?lost=1` keeps the
+              member's context on screen while giving "Keep it open" something to do. A
+              permanently-open destructive form has no way out. */}
+          <section className="page-section" aria-labelledby="lead-lost">
+            <h2 id="lead-lost">{text("lost.title")}</h2>
+            {lead.lost ? (
+              <div className="stack">
+                <Banner severity="info">
+                  {fill(locale, "lost.wasLost", {
+                    date: lead.lost_at === null
+                      ? "" : monthDayLabel(lead.lost_at.slice(0, 10), locale),
+                    reason: (() => {
+                      const key = lead.lost_reason === null
+                        ? null : reasonWord(lead.lost_reason);
+                      return key === null
+                        ? (lead.lost_reason ?? "") : text(key);
+                    })(),
+                  })}
+                </Banner>
+                {lead.lost_detail === null
+                  ? null : <ProseNote>{lead.lost_detail}</ProseNote>}
+                {/* **The stage is still there**, which is the decision this screen exists to
+                    make visible: a sixth stage would have needed a backwards edge on reopen,
+                    and that would make the board's own counts unreconstructable. */}
+                <ProseNote>
+                  {fill(locale, "lost.stageKept", { stage })}
+                </ProseNote>
+                <ProseNote>{text(recontactSentence(lead.recontactable))}</ProseNote>
+                <ReopenForm locale={locale} leadId={leadId} />
+              </div>
+            ) : sheetOpen ? (
+              <div className="stack">
+                <p>
+                  {name === null
+                    ? text("lost.whyUnnamed")
+                    : fill(locale, "lost.why", { name })}
+                </p>
+                <MarkLostForm
+                  locale={locale}
+                  leadId={leadId}
+                  reasons={LOST_REASONS.map((one) => ({
+                    value: one.value, label: text(one.label),
+                  }))}
+                />
+                <ProseNote>{text("lost.note")}</ProseNote>
+                <ProseNote>{text("lost.feedsReport")}</ProseNote>
+                <Link href={`/leads/${leadId}`}>{text("lost.keepOpen")}</Link>
+              </div>
+            ) : (
+              <Link href={`/leads/${leadId}?lost=1`}>{text("lost.title")}</Link>
+            )}
           </section>
         </>
       ) : null}

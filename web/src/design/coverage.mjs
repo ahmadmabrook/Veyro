@@ -219,10 +219,6 @@ const BACKLOG = {
   // MOD-027's own dependency chain runs through MOD-026, so the seven CRM screens are two
   // modules deep rather than one. The pipeline, a lead, its stages and the unified inbox are
   // all its; `lifecycle_state` on a MOD-014 person is the only part of any of it here.
-  "ADM-CRM-07": "work: MOD-027 slice 3. `crm_leads.stage` deliberately admits only the three sales "
-    + "stages, because a declared value nothing writes is this build's most-repeated "
-    + "finding -- so the slice that writes `lost` adds it to the domain, along with the "
-    + "reason, the attribution and the withdrawal `crm_lead_interests` also needs",
   "ADM-COM-01": "work: MOD-027 slice 4, the conversation record. A thread per person, its touchpoints "
     + "and who owns it is work -- slice 1 built the touchpoint half -- and both ends of the "
     + "message are the seam: MOD-013 authors one and sends nothing, and MOD-012 has no "

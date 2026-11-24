@@ -2847,6 +2847,40 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
     },
   });
 
+  // **A lost lead, with an interest it also took back.** ADM-CRM-07's own two states: the
+  // record stays, the stage it reached stays, and both the reason and the free-text detail
+  // are drawn. It is marked lost *after* being toured, because the whole decision the screen
+  // makes visible is that the stage does not move -- a lead lost at `new` would render
+  // correctly and demonstrate nothing.
+  //
+  // **And it is lost today, so `recontactable` is false**: the ninety days is advisory and
+  // both sentences say reopening is allowed, so the state worth seeding is the one a reader
+  // meets first. The other is a unit test's, because `created_at` and `lost_at` are the
+  // server's and no route backdates either.
+  const lostLead = await leadFor("Rami Odeh");
+  await call(`/crm/leads/${lostLead.lead_id}/interests`, {
+    method: "POST", ...as(token),
+    body: { interests: ["classes", "pt"], correlation_id: cid() },
+  });
+  await call(`/crm/leads/${lostLead.lead_id}/interests/withdraw`, {
+    method: "POST", ...as(token),
+    body: { interest: "pt", correlation_id: cid() },
+  });
+  for (const stage of ["contacted", "toured"]) {
+    await call(`/crm/leads/${lostLead.lead_id}/stage`, {
+      method: "POST", ...as(token),
+      body: { to_stage: stage, correlation_id: cid() },
+    });
+  }
+  await call(`/crm/leads/${lostLead.lead_id}/lost`, {
+    method: "POST", ...as(token),
+    body: {
+      reason: "joined_elsewhere",
+      detail: "he joined the one on Mecca Street",
+      correlation_id: cid(),
+    },
+  });
+
   // Last, so it sees everything above. The timeline, the dispatched outbox and the sweeps on
   // the operations board are all these ticks' work.
   //
@@ -2919,6 +2953,7 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
     touredLeadId: touredLead.lead_id,
     ownedLeadId: ownedLead.lead_id,
     trialLeadId: trialLead.lead_id,
+    lostLeadId: lostLead.lead_id,
     clubVariantId: clubProduct.variants[0].variant_id,
     trialMembershipId: trialMembership.membership_id,
     overdueTaskId: overdueTask.task_id,
@@ -3010,6 +3045,7 @@ if (invokedDirectly) {
       `VEYRO_E2E_COLD_LEAD_ID=${fixture.coldLeadId}`,
       `VEYRO_E2E_OWNED_LEAD_ID=${fixture.ownedLeadId}`,
       `VEYRO_E2E_TRIAL_LEAD_ID=${fixture.trialLeadId}`,
+      `VEYRO_E2E_LOST_LEAD_ID=${fixture.lostLeadId}`,
       `VEYRO_E2E_CLUB_VARIANT_ID=${fixture.clubVariantId}`,
       `VEYRO_E2E_TRIAL_MEMBERSHIP_ID=${fixture.trialMembershipId}`,
       `VEYRO_E2E_TOURED_LEAD_ID=${fixture.touredLeadId}`,

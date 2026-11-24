@@ -171,3 +171,79 @@ export async function recordInterests(
     return { ...IDLE, message: "lead.doneInterests" };
   });
 }
+
+/**
+ * ADM-CRM-07: mark a lead lost, with the reason the report groups by.
+ *
+ * **The reason is required and the server says so.** `aria-required` announces it and does not
+ * refuse the submit, for the reason ADM-MEM-10 and ADM-CRM-04 both paid for -- a native
+ * constraint stops the submit before any server sees it, so the message slot a reader would
+ * act on never renders. An empty choice is refused here, with its own sentence.
+ */
+export async function markLost(
+  _previous: LeadState,
+  form: FormData,
+): Promise<LeadState> {
+  const leadId = String(form.get("lead_id") ?? "");
+  const reason = String(form.get("reason") ?? "").trim();
+  const detail = String(form.get("detail") ?? "").trim();
+  if (reason.length === 0) return { ...IDLE, error: "lost.needsAReason" };
+  return act(async () => {
+    await api(`/crm/leads/${encodeURIComponent(leadId)}/lost`, {
+      method: "POST",
+      body: {
+        reason,
+        ...(detail.length > 0 ? { detail } : {}),
+        correlation_id: correlationId(),
+      },
+    });
+    revalidatePath(`/leads/${leadId}`);
+    return { ...IDLE, message: "lead.doneLost" };
+  });
+}
+
+/**
+ * Put a lost lead back in the pipeline.
+ *
+ * **Never gated on the ninety days**, which is ADR-0010 D10: the canvas's emphasis is on
+ * "rather than a fresh record", and a lead marked lost by mistake has to be correctable now
+ * rather than in a quarter. `recontactable` on the read says which are worth another try and
+ * this button works either way.
+ */
+export async function reopenLead(
+  _previous: LeadState,
+  form: FormData,
+): Promise<LeadState> {
+  const leadId = String(form.get("lead_id") ?? "");
+  return act(async () => {
+    await api(`/crm/leads/${encodeURIComponent(leadId)}/reopen`, {
+      method: "POST",
+      body: { correlation_id: correlationId() },
+    });
+    revalidatePath(`/leads/${leadId}`);
+    return { ...IDLE, message: "lead.doneReopen" };
+  });
+}
+
+/**
+ * Take back an interest recorded by mistake — the remedy `0027` said slice 3 owed.
+ *
+ * Until this existed `crm.lead.write` was a routine permission whose every act on an interest
+ * was permanent, which is MOD-013's rule. The row recedes rather than being deleted, so "was
+ * this lead ever interested in PT" stays answerable.
+ */
+export async function withdrawInterest(
+  _previous: LeadState,
+  form: FormData,
+): Promise<LeadState> {
+  const leadId = String(form.get("lead_id") ?? "");
+  const interest = String(form.get("interest") ?? "");
+  return act(async () => {
+    await api(`/crm/leads/${encodeURIComponent(leadId)}/interests/withdraw`, {
+      method: "POST",
+      body: { interest, correlation_id: correlationId() },
+    });
+    revalidatePath(`/leads/${leadId}`);
+    return { ...IDLE, message: "lost.withdrawn" };
+  });
+}

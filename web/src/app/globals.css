@@ -148,6 +148,19 @@ a {
  * screen. The rule that replaced it is `.page-section`, in the design-system block
  * below, and `Card` is for content that genuinely is one. */
 
+/* A form whose whole content is one small control and its outcome — ADM-CRM-07's "Take back"
+   beside each interest. Row rather than column, because a stacked single button leaves a gap
+   above nothing, and `wrap` so the outcome sentence drops under the button at phone width
+   rather than widening the page. Defined here because `ds-inline-form` was used before it
+   existed and the `ds-` class sweep caught it: a class that styles nothing is invisible to
+   every layer that is not a screenshot. */
+.ds-inline-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
 .stack {
   display: flex;
   flex-direction: column;

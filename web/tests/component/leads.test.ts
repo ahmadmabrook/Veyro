@@ -32,6 +32,14 @@ const LEAD = (over: Partial<LeadRow> = {}): LeadRow => ({
   last_touch_at: null,
   hours_since_contact: 48,
   going_cold: true,
+  // ADM-CRM-07's four. The server sends them on every row, so a fixture that left them out
+  // would be a row the route cannot produce -- the hand-written-fixture trap this app has two
+  // recorded defects from.
+  lost: false,
+  lost_at: null,
+  lost_reason: null,
+  lost_detail: null,
+  recontactable: false,
   ...over,
 });
 

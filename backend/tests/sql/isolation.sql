@@ -50024,7 +50024,14 @@ BEGIN
             ('crm_leads', 'stage'), ('crm_leads', 'stage_changed_at'),
             ('crm_leads', 'source_id'), ('crm_leads', 'owner_person_id'),
             ('crm_leads', 'next_action'), ('crm_leads', 'next_action_on'),
-            ('crm_leads', 'version')),
+            ('crm_leads', 'version'),
+            -- ADR-0010 D8: a loss is recorded and a reopening clears it, so these four move
+            -- while the stage they were lost at does not.
+            ('crm_leads', 'lost_at'), ('crm_leads', 'lost_reason'),
+            ('crm_leads', 'lost_detail'), ('crm_leads', 'lost_by'),
+            -- D11: the withdrawal `0027` said slice 3 owed. One way, by trigger.
+            ('crm_lead_interests', 'withdrawn_at'),
+            ('crm_lead_interests', 'withdrawn_by')),
         actual(role, t, c) AS (
             SELECT r.rolname, cl.relname::text, a.attname::text
               FROM pg_class cl
@@ -50045,6 +50052,51 @@ BEGIN
         RAISE EXCEPTION 'CHECK 115 FAILED: %', wrong;
     END LOOP;
 
+    -- ---- every column, as a set, which this check did not have.
+    --
+    -- **The sweep found the hole by adding a column and watching nothing object.** CHECK 115
+    -- pinned the UPDATE grants, the NOT NULLs, the foreign keys and the unique rules -- and a
+    -- *nullable* column with no grant is in none of those, so `ALTER TABLE crm_leads ADD
+    -- COLUMN lost_note text` passed all 115 checks. Every other module in this build has a
+    -- column-list pin (MOD-017's is CHECK 76) and MOD-027's was missing from the start,
+    -- which is this file's own "a per-table list has to be edited when a module adds a table"
+    -- one level in: a per-*property* list has to be complete, and this one had four of five.
+    FOR wrong IN
+        WITH expected(t, cols) AS (VALUES
+            ('crm_lead_interests',
+             'correlation_id,interest,interest_id,lead_id,recorded_at,recorded_by,'
+             'tenant_id,withdrawn_at,withdrawn_by'),
+            ('crm_lead_sources',
+             'create_correlation_id,created_at,created_by,display_name,location_id,'
+             'retire_correlation_id,retire_reason,retired_at,retired_by,source_id,'
+             'source_key,status,tenant_id'),
+            ('crm_leads',
+             'correlation_id,created_at,created_by,lead_id,lost_at,lost_by,lost_detail,'
+             'lost_reason,next_action,next_action_on,owner_person_id,person_id,source_id,'
+             'stage,stage_changed_at,tenant_id,version'),
+            ('crm_touchpoints',
+             'correlation_id,kind,lead_id,occurred_at,recorded_at,recorded_by,summary,'
+             'tenant_id,touchpoint_id')),
+        actual(t, cols) AS (
+            SELECT cl.relname::text, string_agg(a.attname, ',' ORDER BY a.attname)
+              FROM pg_class cl
+              JOIN pg_attribute a ON a.attrelid = cl.oid AND a.attnum > 0
+                                 AND NOT a.attisdropped
+             WHERE cl.relnamespace = 'plt01'::regnamespace
+               AND cl.relkind IN ('r', 'p') AND cl.relname LIKE 'crm\_%'
+             GROUP BY cl.relname)
+        SELECT format('%s column list differs: pinned %s, found %s', a.t, e.cols, a.cols)
+          FROM actual a JOIN expected e ON e.t = a.t WHERE e.cols <> a.cols
+        UNION ALL
+        SELECT format('%s is a crm_ table the pin does not name', t)
+          FROM actual WHERE t NOT IN (SELECT t FROM expected)
+        UNION ALL
+        SELECT format('%s is pinned and is gone', t)
+          FROM expected WHERE t NOT IN (SELECT t FROM actual)
+    LOOP
+        RAISE EXCEPTION 'CHECK 115 FAILED: %', wrong;
+    END LOOP;
+
     -- ---- every NOT NULL, as a set. A NOT NULL is what makes a sibling CHECK bite, and under
     -- MATCH SIMPLE a NULL in any column of a composite foreign key skips the whole check.
     FOR wrong IN
@@ -50060,6 +50112,7 @@ BEGIN
             ('crm_leads', 'created_at'), ('crm_leads', 'created_by'),
             ('crm_leads', 'correlation_id'),
             ('crm_lead_interests', 'tenant_id'), ('crm_lead_interests', 'lead_id'),
+            ('crm_lead_interests', 'interest_id'),
             ('crm_lead_interests', 'interest'), ('crm_lead_interests', 'recorded_at'),
             ('crm_lead_interests', 'recorded_by'),
             ('crm_lead_interests', 'correlation_id'),
@@ -50117,7 +50170,10 @@ BEGIN
     -- ---- one unique rule per thing the design says cannot happen twice.
     FOR wrong IN
         WITH expected(name) AS (VALUES
-            ('crm_lead_sources_one_key'), ('crm_leads_one_per_person')),
+            ('crm_lead_sources_one_key'), ('crm_leads_one_per_person'),
+            -- Partial on live rows, because a lead who withdrew PT and asked for it again
+            -- would otherwise be refused by the row they withdrew.
+            ('crm_lead_interests_one_live')),
         actual(name) AS (
             SELECT ci.relname::text
               FROM pg_index i
@@ -50162,6 +50218,10 @@ DO $$
 DECLARE
     offender text;
     probe int := 0;
+    wrong text;
+    -- The SQLSTATE beside the constraint name: a permission case that comes back
+    -- `insufficient_privilege` has no constraint to name, and its message has to say so.
+    state text;
 BEGIN
     -- A source key that is not a key.
     BEGIN
@@ -50465,9 +50525,258 @@ BEGIN
                 'a salesperson writes up Friday''s open day on Monday';
     END;
 
-    IF probe <> 18 THEN
+
+    -- ---- ADR-0010 D8 to D11: the loss, its reason, and the interest withdrawal ----------
+    --
+    -- One case per rule and per *side* of each biconditional. The attribution constraint has
+    -- three ways to be wrong -- lost with no reason, a reason while live, and a loss nobody
+    -- recorded -- and only one of them is the case a reader would think of first.
+    -- A lead marked lost with nothing to show for it.
+    BEGIN
+        UPDATE plt01.crm_leads SET lost_at = now()
+         WHERE lead_id = 'cccccccc-9000-4000-8000-000000000002';
+        RAISE EXCEPTION 'CHECK 115 FAILED: a lead lost for no stated reason';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender <> 'crm_leads_lost_is_reasoned_and_attributed' THEN
+                RAISE EXCEPTION 'CHECK 115 FAILED: refused by % instead', offender;
+            END IF;
+            probe := probe + 1;
+    END;
+
+    -- The other side: a reason on a lead nobody has lost, which the report would count.
+    BEGIN
+        UPDATE plt01.crm_leads
+           SET lost_reason = 'too_expensive', lost_by = '33333333-3333-4333-8333-333333333333'
+         WHERE lead_id = 'cccccccc-9000-4000-8000-000000000002';
+        RAISE EXCEPTION 'CHECK 115 FAILED: a live lead carrying a lost reason';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender <> 'crm_leads_lost_is_reasoned_and_attributed' THEN
+                RAISE EXCEPTION 'CHECK 115 FAILED: refused by % instead', offender;
+            END IF;
+            probe := probe + 1;
+    END;
+
+    -- And a loss with a reason and nobody's name on it.
+    BEGIN
+        UPDATE plt01.crm_leads
+           SET lost_at = now(), lost_reason = 'too_expensive'
+         WHERE lead_id = 'cccccccc-9000-4000-8000-000000000002';
+        RAISE EXCEPTION 'CHECK 115 FAILED: a loss nobody recorded';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender <> 'crm_leads_lost_is_reasoned_and_attributed' THEN
+                RAISE EXCEPTION 'CHECK 115 FAILED: refused by % instead', offender;
+            END IF;
+            probe := probe + 1;
+    END;
+
+    -- **And a loss with a name and no reason**, which is the third way the attribution
+    -- constraint can be wrong and the one no other case here sends. The sweep found it: with
+    -- the reason conjunct weakened away, every case above was still refused by the actor half.
+    BEGIN
+        UPDATE plt01.crm_leads
+           SET lost_at = now(), lost_by = '33333333-3333-4333-8333-333333333333'
+         WHERE lead_id = 'cccccccc-9000-4000-8000-000000000002';
+        RAISE EXCEPTION 'CHECK 115 FAILED: a loss with a name and no reason';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender <> 'crm_leads_lost_is_reasoned_and_attributed' THEN
+                RAISE EXCEPTION 'CHECK 115 FAILED: refused by % instead', offender;
+            END IF;
+            probe := probe + 1;
+    END;
+
+    -- A reason outside the four ADM-CRM-07 draws. Closed because ADM-RPT-03 groups by it.
+    BEGIN
+        UPDATE plt01.crm_leads
+           SET lost_at = now(), lost_reason = 'changed_their_mind',
+               lost_by = '33333333-3333-4333-8333-333333333333'
+         WHERE lead_id = 'cccccccc-9000-4000-8000-000000000002';
+        RAISE EXCEPTION 'CHECK 115 FAILED: a lost reason outside the four';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender <> 'crm_leads_lost_reason' THEN
+                RAISE EXCEPTION 'CHECK 115 FAILED: refused by % instead', offender;
+            END IF;
+            probe := probe + 1;
+    END;
+
+    -- A detail about a loss that did not happen.
+    BEGIN
+        UPDATE plt01.crm_leads SET lost_detail = 'he joined the one on Mecca Street'
+         WHERE lead_id = 'cccccccc-9000-4000-8000-000000000002';
+        RAISE EXCEPTION 'CHECK 115 FAILED: a detail about a loss that did not happen';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender <> 'crm_leads_lost_detail_needs_a_loss' THEN
+                RAISE EXCEPTION 'CHECK 115 FAILED: refused by % instead', offender;
+            END IF;
+            probe := probe + 1;
+    END;
+
+    -- A detail of whitespace is a field nobody filled in. A tab, not spaces: `btrim` strips
+    -- spaces and nothing else, which is why this repository standardised on the regex form.
+    BEGIN
+        UPDATE plt01.crm_leads
+           SET lost_at = now(), lost_reason = 'joined_elsewhere',
+               lost_by = '33333333-3333-4333-8333-333333333333', lost_detail = E'\t'
+         WHERE lead_id = 'cccccccc-9000-4000-8000-000000000002';
+        RAISE EXCEPTION 'CHECK 115 FAILED: a lost detail of whitespace';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender <> 'crm_leads_lost_detail_said_something' THEN
+                RAISE EXCEPTION 'CHECK 115 FAILED: refused by % instead', offender;
+            END IF;
+            probe := probe + 1;
+    END;
+
+    -- The other conjunct: past its bound, which otherwise reaches a column limit as a
+    -- `DataError` rather than the `CheckViolation` the handlers catch.
+    BEGIN
+        UPDATE plt01.crm_leads
+           SET lost_at = now(), lost_reason = 'joined_elsewhere',
+               lost_by = '33333333-3333-4333-8333-333333333333', lost_detail = repeat('x', 501)
+         WHERE lead_id = 'cccccccc-9000-4000-8000-000000000002';
+        RAISE EXCEPTION 'CHECK 115 FAILED: a lost detail past its bound';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender <> 'crm_leads_lost_detail_said_something' THEN
+                RAISE EXCEPTION 'CHECK 115 FAILED: refused by % instead', offender;
+            END IF;
+            probe := probe + 1;
+    END;
+
+    -- **And the permission, which no refusal case can see.** A constraint set that refused the
+    -- ordinary loss would make the whole feature unusable while every case above still passed.
+    BEGIN
+        UPDATE plt01.crm_leads
+           SET lost_at = now(), lost_reason = 'joined_elsewhere', lost_by = '33333333-3333-4333-8333-333333333333',
+               lost_detail = 'he joined the one on Mecca Street'
+         WHERE lead_id = 'cccccccc-9000-4000-8000-000000000002';
+        UPDATE plt01.crm_leads
+           SET lost_at = NULL, lost_reason = NULL, lost_by = NULL, lost_detail = NULL
+         WHERE lead_id = 'cccccccc-9000-4000-8000-000000000002';
+        probe := probe + 1;
+    EXCEPTION
+        WHEN others THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME, state = RETURNED_SQLSTATE;
+            RAISE EXCEPTION
+                'CHECK 115 FAILED: the ordinary loss and its reopening were refused by % (%)',
+                coalesce(nullif(offender, ''), 'nothing named'), state;
+    END;
+
+    -- ---- the interest withdrawal, which needs rows of its own -------------------------
+    --
+    -- **The seed has no interests**, so these cases insert what they exercise. The first
+    -- version of them did not, and an `UPDATE ... WHERE lead_id = ...` that matches zero rows
+    -- succeeds -- so the case reported a missing constraint that was there all along. A case
+    -- whose row does not exist proves nothing.
+    --
+    -- They share one transaction, so each uses its own interest: `classes` stays live for the
+    -- duplicate case and `pt` is withdrawn for the one-way and re-record cases.
+    INSERT INTO plt01.crm_lead_interests
+        (tenant_id, lead_id, interest, recorded_by, correlation_id)
+    VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-9000-4000-8000-000000000002', 'classes', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333'),
+           ('11111111-1111-4111-8111-111111111111', 'cccccccc-9000-4000-8000-000000000002', 'pt', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+
+    -- A withdrawal with nobody's name on it. Taking an interest back is a decision somebody
+    -- made, and "evidence with nobody's name on it answers nothing".
+    BEGIN
+        UPDATE plt01.crm_lead_interests SET withdrawn_at = now()
+         WHERE lead_id = 'cccccccc-9000-4000-8000-000000000002' AND interest = 'classes';
+        RAISE EXCEPTION 'CHECK 115 FAILED: a withdrawal nobody recorded';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender <> 'crm_lead_interests_withdrawal_is_attributed' THEN
+                RAISE EXCEPTION 'CHECK 115 FAILED: refused by % instead', offender;
+            END IF;
+            probe := probe + 1;
+    END;
+
+    -- Two live rows for one interest is still refused, which is `0027`'s rule surviving the
+    -- index becoming partial.
+    BEGIN
+        INSERT INTO plt01.crm_lead_interests
+            (tenant_id, lead_id, interest, recorded_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-9000-4000-8000-000000000002', 'classes', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 115 FAILED: one interest recorded live twice';
+    EXCEPTION
+        WHEN unique_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender <> 'crm_lead_interests_one_live' THEN
+                RAISE EXCEPTION 'CHECK 115 FAILED: refused by % instead', offender;
+            END IF;
+            probe := probe + 1;
+    END;
+
+    -- **One way, because a CHECK cannot see what a row used to be.** Clearing a withdrawal
+    -- makes the interest read as never withdrawn; re-dating it makes when somebody changed
+    -- their mind unanswerable. Both are the same trigger and the second is the one a
+    -- `withdrawn_at IS NULL` probe would miss entirely.
+    UPDATE plt01.crm_lead_interests
+       SET withdrawn_at = now(), withdrawn_by = '33333333-3333-4333-8333-333333333333'
+     WHERE lead_id = 'cccccccc-9000-4000-8000-000000000002' AND interest = 'pt';
+    BEGIN
+        UPDATE plt01.crm_lead_interests SET withdrawn_at = NULL, withdrawn_by = NULL
+         WHERE lead_id = 'cccccccc-9000-4000-8000-000000000002' AND interest = 'pt';
+        RAISE EXCEPTION 'CHECK 115 FAILED: a withdrawal that was cleared';
+    EXCEPTION
+        -- **The handler has to tell the trigger's refusal from this case's own failure.**
+        -- Both are `raise_exception`, so `WHEN raise_exception THEN probe := probe + 1`
+        -- counted the failure as a pass -- and the sweep found it by dropping the trigger and
+        -- watching the suite stay green. Any `CHECK 115 FAILED` is re-raised.
+        WHEN raise_exception THEN
+            GET STACKED DIAGNOSTICS wrong = MESSAGE_TEXT;
+            IF wrong LIKE 'CHECK 115 FAILED%' THEN
+                RAISE EXCEPTION '%', wrong;
+            END IF;
+            probe := probe + 1;
+    END;
+
+    BEGIN
+        UPDATE plt01.crm_lead_interests SET withdrawn_at = now() - interval '30 days'
+         WHERE lead_id = 'cccccccc-9000-4000-8000-000000000002' AND interest = 'pt';
+        RAISE EXCEPTION 'CHECK 115 FAILED: a withdrawal that was re-dated';
+    EXCEPTION
+        WHEN raise_exception THEN
+            GET STACKED DIAGNOSTICS wrong = MESSAGE_TEXT;
+            IF wrong LIKE 'CHECK 115 FAILED%' THEN
+                RAISE EXCEPTION '%', wrong;
+            END IF;
+            probe := probe + 1;
+    END;
+
+    -- **The partial index, from the side that has to be admitted.** `0027`'s key was one row
+    -- per (tenant, lead, interest), which is right while the set only grows and wrong the
+    -- moment one can be withdrawn: a lead who wanted PT, changed their mind and changed it
+    -- back would be refused by the row they withdrew. Only a case that must *succeed* sees it.
+    BEGIN
+        INSERT INTO plt01.crm_lead_interests
+            (tenant_id, lead_id, interest, recorded_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-9000-4000-8000-000000000002', 'pt', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        probe := probe + 1;
+    EXCEPTION
+        WHEN others THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME, state = RETURNED_SQLSTATE;
+            RAISE EXCEPTION
+                'CHECK 115 FAILED: an interest asked for again after a withdrawal was '
+                'refused by % (%)',
+                coalesce(nullif(offender, ''), 'nothing named'), state;
+    END;
+    IF probe <> 32 THEN
         RAISE EXCEPTION
-            'CHECK 115 FAILED: % cases ran, expected 18 -- a case that stops running is a '
+            'CHECK 115 FAILED: % cases ran, expected 32 -- a case that stops running is a '
             'rule with no evidence behind it', probe;
     END IF;
 END $$;

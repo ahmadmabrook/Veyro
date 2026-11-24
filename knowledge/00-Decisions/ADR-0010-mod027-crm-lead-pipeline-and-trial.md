@@ -185,6 +185,77 @@ MOD-013's notifications is work, and the inbound half is the seam.
 3. **Lost and reopen** (ADM-CRM-07) plus the source-effectiveness read ADM-RPT-06 draws.
 4. **The conversation record**, to the seam, with the provider named.
 
+## D8 — Lost is a fact beside the stage, not a value in it
+
+**This corrects a prediction in this record.** The slice-1 note says "the `lost` stage is *not*
+in the schema's stage domain ... slice 3 is what writes it", which assumed `lost` would become a
+sixth stage. Building slice 3 shows it should not, and the reason is in D3 one section earlier:
+**the pipeline runs forward only, and the design gives no affordance for going back.** That rule
+exists because "a tour that fell through is a *touchpoint* saying so" and a backwards move
+"would make `Toured · 6` a count nobody can reconstruct" — and `lost` as a stage needs exactly
+that backwards edge the moment a lead is reopened, which D4 requires. A prediction about a
+mechanism is a claim like any other.
+
+So `crm_leads` gains four nullable columns — `lost_at`, `lost_reason`, `lost_detail`,
+`lost_by` — all-or-none by constraint, and `stage` is untouched. Three things fall out of it:
+
+- **Reopening is exact.** The lead resumes at the stage they were at, because that stage never
+  moved; and the next touchpoint advances it, since `record_touchpoint` already does. A stage
+  value would have had to choose where a reopened lead lands, and any choice is a number
+  somebody cannot reconstruct.
+- **`EDGES` is unchanged**, so there is one stage machine and it still refuses every backwards
+  move. Two encodings of "where is this lead" that could disagree is MOD-020's waitlist edge;
+  a *position* and a *liveness* are different facts, which is why MOD-017 keeps membership,
+  billing and access state apart rather than folding them together.
+- **The board excludes a lost lead rather than drawing a sixth column**, which is what the
+  canvas shows: ADM-CRM-01 draws five columns and ADM-CRM-07 is a side sheet. And a lost lead
+  is **not counted as going cold**: nobody has failed to ring them, they said no.
+
+## D9 — The reason is a closed four with one free-text escape
+
+> **ADM-CRM-07.** "Why did Omar Zaid not join?" — Too expensive / Joined somewhere else /
+> Location or hours / No longer responding — and "Which gym, if he said…".
+
+**Closed, because the one thing the field exists for is a report.** The registry note is
+"Structured reason, feeds retention analytics" and the canvas says "The reason feeds source
+effectiveness in ADM-RPT-03", so free text would make that report a group-by over typos —
+MOD-026's queue finding and MOD-027's own source finding. The four are declared in
+`app/crm/pipeline.py` with a CHECK behind them and the Python-against-SQL agreement test
+MOD-026 established.
+
+**In code rather than in a tenant's own table, which is the opposite call from `crm_sources`.**
+A source is a club's own open day and belongs to that club; a lost reason is a category of
+market behaviour, and a per-tenant set would make ADM-RPT-03's columns vary by tenant with
+nothing able to say which set is the product's. A fifth reason is a product decision.
+
+**There is no "Other", and the detail is the escape.** The canvas draws four and no catch-all;
+"No longer responding" is the one that absorbs a lead who simply stopped. `lost_detail` is
+nullable free text for the canvas's own "which gym, if he said" and is admitted for any reason,
+because a salesperson who learns something true should be able to write it down.
+
+## D10 — Ninety days is advisory on a read, never a lock on a write
+
+> Reopenable, and re-contact after 90 days is a supported flow rather than a fresh record.
+
+The emphasis in that sentence is on **"rather than a fresh record"** — the point is that
+re-contact does not duplicate the person, which D1 already enforces by index. The ninety days
+is when re-contacting becomes *appropriate*, not when it becomes *permitted*.
+
+So reopening is always allowed and the read says which lost leads have passed ninety days.
+Locking the write for ninety days would make a lead marked lost by mistake uncorrectable for a
+quarter on a routine permission, which is MOD-013's "an irreversible act must not be declarable
+on a routine permission" — and this slice is the one that owes the same remedy for
+`crm_lead_interests`.
+
+## D11 — The interest withdrawal this slice owes
+
+`crm_lead_interests` carries `GRANT SELECT, INSERT` and nothing else, so an interest recorded by
+mistake has no remedy anywhere in the product — a routine permission whose every act is
+permanent, which is MOD-019's rota finding in a smaller place. `0017`'s shape is the precedent:
+withdrawal columns with an attribution constraint and a one-way trigger, **not a delete**,
+because "was this lead ever interested in PT" is asked precisely when somebody has changed
+their mind.
+
 ## D7 — What marks a product as a trial, and where the clock lives
 
 **Amendment, after slice 1; built as slice 2.** D3 derives the board's last two columns from

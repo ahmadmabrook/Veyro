@@ -1570,6 +1570,30 @@ SUBJECT_COLUMNS: tuple[Reachability, ...] = (
     Reachability("plt01", "crm_lead_interests", "recorded_by", "unreachable",
                  "who recorded that a lead is interested in classes, PT or the gym. "
                  "Insert-only, and there is no UPDATE grant on this table at all"),
+    # ---- ADR-0010 D8 to D11's four columns, which the sweep refused until declared -------
+    #
+    # **Two of these the sweep found and two it never will.** `lost_by` and `withdrawn_by`
+    # match the actor pattern, so `test_every_subject_column_in_the_database_is_declared`
+    # turned red the moment `0030` applied -- which is the registry doing exactly what MOD-009
+    # built it for, and the same way it caught MOD-021's four. `lost_detail` names nobody and
+    # is prose a salesperson types, so it is declared **by hand** for `crm_touchpoints
+    # .summary`'s reason: "he joined the one on Mecca Street with his brother" is how one gets
+    # written.
+    Reachability("plt01", "crm_leads", "lost_by", "write_once",
+                 "**who recorded that this lead said no.** Written with the loss and cleared "
+                 "by a reopening, which is the only thing that moves it -- so it is write-once "
+                 "rather than editable, and no erasure path clears it. The act is the one a "
+                 "salesperson is accountable for, and ADM-RPT-03 counts it"),
+    Reachability("plt01", "crm_leads", "lost_detail", "write_once",
+                 "**what a salesperson learned about why somebody did not join.** The "
+                 "canvas's \"which gym, if he said\", so it is prose a caller supplies and "
+                 "names a third party as readily as the lead -- the sweep matches column "
+                 "names and will never find it. Written with the loss, cleared only by a "
+                 "reopening, and residue to an erasure: `plt01` has no prose path"),
+    Reachability("plt01", "crm_lead_interests", "withdrawn_by", "write_once",
+                 "who took an interest back. Written once with the withdrawal and final by "
+                 "trigger, because \"was this lead ever interested in PT\" is asked exactly "
+                 "when somebody changed their mind"),
     Reachability("plt01", "crm_touchpoints", "recorded_by", "unreachable",
                  "who wrote up a conversation. Insert-only, which is what makes the timeline "
                  "a record rather than a draft"),

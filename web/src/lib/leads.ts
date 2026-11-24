@@ -61,6 +61,19 @@ export type LeadRow = {
   last_touch_at: string | null;
   hours_since_contact: number;
   going_cold: boolean;
+  /**
+   * ADM-CRM-07's state, which is a fact beside the stage rather than a sixth value in it.
+   *
+   * `stage` is unchanged while a lead is lost, so a board or a table reading only `stage`
+   * would still place them -- which is why both reads exclude them and this flag is on the
+   * row for the one screen that draws a refusal.
+   */
+  lost: boolean;
+  lost_at: string | null;
+  lost_reason: string | null;
+  lost_detail: string | null;
+  /** Advisory: lost more than ninety days ago. Reopening is allowed either way. */
+  recontactable: boolean;
 };
 
 export type LeadList = {

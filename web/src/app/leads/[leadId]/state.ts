@@ -11,6 +11,8 @@ export type LeadState = {
     | "lead.doneTouched" | "lead.doneStage" | "lead.doneAssigned" | "lead.doneReleased"
     | "lead.doneHandedOver" | "lead.doneNextAction" | "lead.doneNextCleared"
     | "lead.doneInterests"
+    // ADM-CRM-07's three.
+    | "lead.doneLost" | "lead.doneReopen" | "lost.withdrawn"
     | null;
   error:
     | "lead.writeRefused"
@@ -19,6 +21,10 @@ export type LeadState = {
     | "lead.writeNobody"
     | "error.network"
     | "error.tooMany"
+    // **A reason is required and the server says which field.** `aria-required` announces it
+    // without refusing the submit, so this is the sentence a reader acts on -- the branch
+    // ADM-MEM-10's native `required` made unreachable.
+    | "lost.needsAReason"
     | null;
   /** Which fields the reader left out, so the form names them rather than guessing. */
   missing: { summary?: true; action?: true; on?: true; interests?: true };

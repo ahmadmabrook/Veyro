@@ -2745,3 +2745,53 @@ makes the planner choose the figure, MOD-018's unordered-lookup finding reproduc
 fixture. **Read the helper that already does it: `membership_product` writes the product, an
 active book, a live price and the publication, because publishing refuses a product with no
 live price and so has to.**
+
+**A `WHEN raise_exception` handler swallows the case's own failure message, and then the case
+can never fail.** A trigger that refuses with `RAISE EXCEPTION` is caught by
+`WHEN raise_exception`, and so is the `RAISE EXCEPTION 'CHECK nn FAILED: ...'` the case raises
+when the trigger does *not* fire -- so `WHEN raise_exception THEN probe := probe + 1` counts
+the failure as a pass. Two trigger cases were written that way, and the sweep found them by
+dropping the trigger and watching the suite stay green. The handler has to read
+`MESSAGE_TEXT` and re-raise anything starting `CHECK nn FAILED`; a constraint case does not
+have this problem, because `check_violation` and `raise_exception` are different conditions.
+
+**A case whose row does not exist proves nothing, and an UPDATE is where that hides.** This
+file records the INSERT form -- a case naming a parent the seed lacks is answered by the
+foreign key. The UPDATE form is quieter: `UPDATE ... WHERE lead_id = '...'` against a table
+with no matching row **succeeds**, affecting zero rows, so a case written to be refused passes
+and reports a missing constraint that was there all along. Four interest cases were written
+against a seed that has no interests. The fix is for the case to insert what it exercises, and
+the tell is a case that passes the moment it is written.
+
+**A mutation harness copied from another module keeps that module's check number.** The
+lost-lead sweep was copied from MOD-017's and kept `wanted = entry[2] if len(entry) > 2 else
+"CHECK 78"`, so twelve mutations this module's own CHECK 115 caught were reported MUTERR --
+the harness manufacturing the gaps it then reports, which is the same shape as a generated
+mutation that changes nothing. **A sweep's default is a per-module fact**, and the tell is a
+run where almost everything is MUTERR and the message names a check from a different module.
+
+**A guard whose precondition the test does not meet is invisible to the test.** `is_going_cold`
+grew a `lost_at is not None: return False` clause, and the test asserted `going_cold` is false
+for a lead marked lost -- which it was, because the lead had been created a second earlier and
+nothing created a second ago is going cold. The mutation that deletes the guard came back
+uncaught. The pair is what makes it evidence: at the same age, a *live* lead is cold, so the
+test asks both from a later moment. **Ask of any "this is false" assertion what else would make
+it false.**
+
+**Two layers that raise the same exception type are told apart only by the message.** A service
+checked its own vocabulary before writing, and the column's CHECK refuses the same value -- and
+the handler turns `CheckViolation` into the same `InvalidRequest` the service raises. So a test
+asserting `assertRaises(InvalidRequest)` passed with the service check disabled, and the
+mutation was uncaught. What actually differs is what the caller is told: the four admissible
+reasons, or the name of a constraint they cannot look up. **Where a check is defence in depth
+behind an equivalent one, the assertion is on the message** -- or the check is redundant and
+should go.
+
+**A read that filters on a new nullable column has to be found in every caller, and one of
+them will be the write.** Adding a withdrawal to an insert-only table meant `read_lead` had to
+list live interests only -- which was obvious -- and `record_interests`' "what is already
+held" read had to as well, which was not: counting withdrawn rows as held means a withdrawn
+interest **blocks its own return**, so a lead who changed their mind back is told "already
+recorded" and the profile keeps showing one interest. The remedy the column exists to provide,
+defeated by the function that writes it. Found by the test written for the withdrawal, which
+is the argument for testing the round trip rather than the act.

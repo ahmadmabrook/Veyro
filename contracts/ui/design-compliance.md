@@ -2163,6 +2163,63 @@ which ADR-0010 D7 made false the day it landed. Found by a browser assertion wri
 the *metric row* matching that sentence at the foot of the page, which is the third stale gap
 note this surface has rendered.
 
+## ADM-CRM-07 — mark lost, and the stage that does not move
+
+**The canvas.** `ADM-CRM-07 · MARK LOST`: **"Why did Omar Zaid not join?"** over four reasons
+— `Too expensive` / `Joined somewhere else` / `Location or hours` / `No longer responding` —
+then "Which gym, if he said…", a `Mark lost` button, and the footnote the whole design rests
+on: *"Not deleted. Reopenable, and re-contact after 90 days is a supported flow rather than a
+fresh record. The reason feeds source effectiveness in ADM-RPT-03."*
+
+- **ADM-CRM-07 · mark lost** — `/leads/{lead_id}?lost=1`, over
+  `POST /crm/leads/{id}/lost`, `/reopen` and `/interests/withdraw`. A side sheet in the design
+  and a query parameter here, which is ADM-MSH-07's judgement: this app has no side sheet, and
+  the parameter keeps the lead's context on screen while giving "Keep it open" somewhere to go.
+
+### The decision this screen exists to make visible
+
+**`lost` is a fact beside the stage, not a sixth value in it — and that corrects a prediction
+the repository made about itself.** ADR-0010's slice-1 note and `CLAUDE.md` both said the stage
+domain admits three "because a declared value nothing writes is this build's most-repeated
+finding and slice 3 is what writes it", assuming a stage value. ADR-0010 D3 rules it out one
+section earlier: the pipeline runs forward only, because "a tour that fell through is a
+touchpoint saying so" and a backwards move "would make `Toured · 6` a count nobody can
+reconstruct" — and a lost lead that reopens needs exactly that edge. So the screen says **"Still
+at Toured, because the stage does not move when a lead is lost"**, which is the sentence that
+makes the decision legible rather than implicit.
+
+### The four things it settled
+
+**The reason is a closed four and there is no "Other".** The registry note is "Structured
+reason, feeds retention analytics" and the canvas says it feeds source effectiveness, so free
+text would make the one report the field exists for a group-by over typos.
+`no_longer_responding` absorbs a lead who simply stopped, and the free-text detail is where a
+salesperson writes what they learned. A fifth is a product decision rather than a migration.
+
+**Ninety days is advisory and both sentences say reopening is allowed.** The canvas's emphasis
+is on *"rather than a fresh record"* — re-contact does not duplicate the person, which the
+one-lead-per-person index already enforces. Locking the write for a quarter would make a lead
+marked lost by mistake uncorrectable on a routine permission, which is MOD-013's rule; so the
+read says which are worth another try and the button works either way.
+
+**`ReasonPicker` is `ChoiceChips` in single mode, not a second component.** Its canvas draws
+four chips in exactly the shape ADM-CRM-04 draws three interests in, and a lead is lost for one
+reason — so the control becomes `<input type="radio">` and the group keeps the semantics the
+appearance implies. Two components for one appearance is the duplication-by-divergence that
+file's own mark note already records.
+
+**The interest withdrawal landed with it, because `0027` said slice 3 owed it.** Each held
+interest has a `Take back`, and the section's "an interest cannot be taken back yet" note is
+deleted with the gap. Until this existed `crm.lead.write` was a routine permission whose every
+act on an interest was permanent.
+
+### What it still owes
+
+**The table has no lost chip.** `GET /crm/leads` takes `lost=true` and nothing on `/leads`
+sends it, so a salesperson reviewing refusals reaches them only from a lead's own profile. The
+read is there and the chip is a filter beside `Going cold`; the browser test asserts the
+exclusion rather than navigating to a parameter the page does not read.
+
 ## ADM-CRM-06 — convert a trial, and the quote that did not exist
 
 **The canvas.** `ADM-CRM-06 · CONVERT`: **"Rana becomes a member"** over three money lines —

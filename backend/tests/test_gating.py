@@ -679,6 +679,12 @@ WRITE_ROUTES = [
     ("post", f"/crm/leads/{_ID}/touchpoints",
      {"kind": "call", "summary": "left a message", **_CORR}),
     ("post", f"/crm/leads/{_ID}/stage", {"to_stage": "contacted", **_CORR}),
+    # ADM-CRM-07's three writes. Each is `crm.lead.write`, which is routine -- and the
+    # withdrawal is the remedy that permission needed, because until it existed every act on
+    # an interest was permanent.
+    ("post", f"/crm/leads/{_ID}/lost", {"reason": "too_expensive", **_CORR}),
+    ("post", f"/crm/leads/{_ID}/reopen", dict(_CORR)),
+    ("post", f"/crm/leads/{_ID}/interests/withdraw", {"interest": "pt", **_CORR}),
     ("post", f"/crm/leads/{_ID}/assign", {"to_self": True, **_CORR}),
     ("post", f"/crm/leads/{_ID}/next-action",
      {"next_action": "call back", "next_action_on": "2026-09-01", **_CORR}),

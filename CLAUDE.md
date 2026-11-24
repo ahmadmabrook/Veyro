@@ -982,8 +982,8 @@ Known gaps, deliberate:
   existed nowhere before: `plan_dsar` surfaced the same fact per request, so the honest
   answer to "what can you delete" was reachable only after somebody had asked you to delete
   something, and the registry behind it lived in Python and in a test.
-  **The number is worth knowing: 19 of 439 subject-bearing columns are erased or anonymised
-  and 420 survive.** (It was 17 of 388 until MOD-019's `0017` added four withdrawal columns,
+  **The number is worth knowing: 20 of 450 subject-bearing columns are erased or anonymised
+  and 430 survive.** (It was 17 of 388 until MOD-019's `0017` added four withdrawal columns,
   then 17 of 392, and MOD-026's first slice added twenty-six more -- fifteen of which the
   registry's own sweep refused to let through undeclared, which is what MOD-009 built it for.
   The eighteenth reached column is MOD-026's task assignee, and **choosing its mechanism is
@@ -4544,7 +4544,7 @@ which `tsk_cases_snooze_attributed` refuses, because the five snooze columns are
 Clearing all five would have been worse than the refusal: it **un-defers the case**, moving it
 back into a queue somebody has to work, so an erasure would have changed what a tenant has to
 do today. The assignee clears and the two snooze columns are declared `write_once` residue
-with that reason on the row. The disclosure moves to **19 of 438** -- and to **19 of 439**
+with that reason on the row. The disclosure moved to **19 of 438** -- and to **19 of 439**
 with slice 5's staged-approval author, which the registry's own sweep refused to let through
 undeclared, for the second time in two slices.
 
@@ -4940,12 +4940,39 @@ Known gaps, deliberate:
   cache**, which is MOD-022's own rule for a door, so a trial that ran out yesterday is in
   neither column. **ADM-CRM-05 is built** -- see "The web app" -- so what is owed is
   ADM-CRM-06 and the conversion's charge, which is the payment provider.
-- **No lost and no reopen**, which is slice 3, and `crm_lead_interests` has no withdrawal for
-  the same reason: there is no UPDATE and no DELETE grant on it, so an interest recorded by
-  mistake is uncorrectable on a routine permission. That is MOD-013's "an irreversible act must
-  not be declarable on a routine permission" at its mildest -- three values on a sales record
-  rather than a rota somebody is turned away by -- and the slice that adds `lost` adds the
-  withdrawal.
+- **Lost and reopen are built, and the interest withdrawal with them** -- ADR-0010 D8 to D11,
+  which this bullet used to name as slice 3's work. `POST /crm/leads/{id}/lost` takes one of
+  four reasons and the canvas's own free-text "which gym, if he said"; `reopen` puts the lead
+  back; `interests/withdraw` is the remedy `crm_lead_interests` never had.
+  **`lost` is a fact beside the stage rather than a sixth value in it, and that corrects a
+  prediction this file and ADR-0010 both made.** Both said the stage domain admits three
+  "because a declared value nothing writes is this build's most-repeated finding and slice 3 is
+  what writes it" -- which assumed a stage value, and ADR-0010 D3 rules it out one section
+  earlier: the pipeline runs forward only, because a backwards move "would make `Toured · 6` a
+  count nobody can reconstruct", and a lost lead that reopens needs exactly that edge. A
+  prediction about a mechanism is a claim like any other. Beside the stage, reopening is exact
+  (the stage never moved, and the next touchpoint advances it as `record_touchpoint` already
+  does), `EDGES` is untouched, and the board excludes a lost lead rather than drawing a sixth
+  column -- which is what the canvas shows.
+  **A lost lead is also not counted as going cold**, because nobody has failed to ring them:
+  they said no, and the reason is on the record.
+  Proven: isolation check 115 with 13 new cases -- two of them *permissions*, which is the only
+  thing that can see a constraint set tightened until an ordinary loss is unrecordable -- and
+  17 schema mutations in `tests/sql/sweep_lost_lead.py`, all caught; 13 HTTP tests; 11
+  behaviour mutations in `tests/mutate_lost_lead.py`, all caught.
+  **Four findings came out of the evidence rather than the code**, and three were in my own
+  tests: a case whose `UPDATE` matches zero rows succeeds, so four interest cases written
+  against a seed with no interests reported a missing constraint that was there all along; a
+  `WHEN raise_exception` handler catches the case's own `CHECK 115 FAILED` and counts the
+  failure as a pass; a lead created a second ago is not going cold either, so the guard was
+  invisible to the test asserting it; and the service's own vocabulary check raises the same
+  exception type the CHECK does, so only the message tells them apart. **And CHECK 115 had no
+  column-list pin at all** -- it pinned the grants, the NOT NULLs, the foreign keys and the
+  unique rules, and a *nullable* column with no grant is in none of those, so
+  `ALTER TABLE crm_leads ADD COLUMN lost_note text` passed all 115 checks. Every other module
+  has one; MOD-027's was missing from the start.
+  **What is still owed is ADM-CRM-07's screen**, which is the side sheet the reason picker
+  lives on.
 - **No AI suggestion.** ADM-CRM-01 draws "VEYRO SUGGESTS · YOU SEND IT" with a rationale; the
   permission exists and is `privileged`, the record is slice 4's work, and the text needs a
   model nobody has an account with. The ADR leaves open whether that is an eighth external

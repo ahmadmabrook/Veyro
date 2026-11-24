@@ -11,11 +11,15 @@ existed, that record would open instead of a second one being created", "No cont
 
 from __future__ import annotations
 
+import pathlib
+import re
 import unittest
 import uuid
 from datetime import UTC, date, datetime, timedelta
 
+from app.crm import pipeline
 from app.crm import service as crm
+from app.errors import InvalidRequest
 from tests.support import GatedApiTestCase
 from tests.test_access_api import AccessApiTestCase
 from tests.test_commercial_api import TODAY, CommercialApiTestCase
@@ -985,3 +989,255 @@ class TrialCardTests(CrmApiTestCase, CommercialApiTestCase, AccessApiTestCase):
             f"/crm/leads/{uuid.uuid4()}/trial", headers=owner).status_code, 404)
         self.assertEqual(self.client.get(
             "/crm/leads/not-a-uuid/trial", headers=owner).status_code, 422)
+
+
+class LostLeadTests(CrmApiTestCase):
+    """ADM-CRM-07: why did this person not join, and what happens to the record.
+
+    **The one thing every case here rests on is that the stage does not move** (ADR-0010 D8).
+    A sixth stage value would need a backwards edge on reopen, which D3 rules out because it
+    would make `Toured · 6` a count nobody can reconstruct.
+    """
+
+    def toured(self, tenant_id: str) -> dict:
+        """A lead who has been contacted and toured, so the stage is worth preserving."""
+        lead = self.lead(tenant_id)
+        for stage in ("contacted", "toured"):
+            moved = self.client.post(
+                f"/crm/leads/{lead['lead_id']}/stage",
+                json={"to_stage": stage, **self.correlation()},
+                headers=self.headers(tenant_id))
+            self.assertEqual(moved.status_code, 200, moved.text)
+        return lead
+
+    def lose(self, tenant_id: str, lead_id: str, **kwargs) -> dict:
+        body = {"reason": "too_expensive", **self.correlation()}
+        body.update(kwargs)
+        answer = self.client.post(
+            f"/crm/leads/{lead_id}/lost", json=body, headers=self.headers(tenant_id))
+        self.assertEqual(answer.status_code, 200, answer.text)
+        return dict(answer.json())
+
+    def test_the_stage_does_not_move_and_the_read_says_so(self) -> None:
+        tenant_id = self.tenant()
+        lead = self.toured(tenant_id)
+        lost = self.lose(tenant_id, lead["lead_id"],
+                         reason="joined_elsewhere",
+                         detail="he joined the one on Mecca Street")
+        self.assertEqual(lost["stage"], "toured")
+        self.assertTrue(lost["stage_did_not_move"])
+        read = self.client.get(
+            f"/crm/leads/{lead['lead_id']}", headers=self.headers(tenant_id))
+        self.assertEqual(read.status_code, 200, read.text)
+        body = read.json()
+        self.assertEqual(body["stage"], "toured")
+        self.assertTrue(body["lost"])
+        self.assertEqual(body["lost_reason"], "joined_elsewhere")
+        self.assertEqual(body["lost_detail"], "he joined the one on Mecca Street")
+
+    def test_the_loss_is_in_the_timeline_as_well_as_on_the_row(self) -> None:
+        """ADR-0010 D4: "the history is the touchpoint timeline rather than a chain of
+        records". The row keeps the latest loss; the timeline keeps that it happened, which is
+        what makes a lead lost twice for two reasons answerable at all."""
+        tenant_id = self.tenant()
+        lead = self.lead(tenant_id)
+        before = self.client.get(
+            f"/crm/leads/{lead['lead_id']}", headers=self.headers(tenant_id)).json()
+        self.lose(tenant_id, lead["lead_id"], reason="location_or_hours")
+        after = self.client.get(
+            f"/crm/leads/{lead['lead_id']}", headers=self.headers(tenant_id)).json()
+        self.assertEqual(after["touchpoint_count"], before["touchpoint_count"] + 1)
+        self.assertIn("location_or_hours", after["touchpoints"][0]["summary"])
+
+    def test_losing_a_lead_twice_is_refused_rather_than_re_dated(self) -> None:
+        """The second call would move when they said no and drop the first reason from the row
+        with nothing to say it had been there."""
+        tenant_id = self.tenant()
+        lead = self.lead(tenant_id)
+        self.lose(tenant_id, lead["lead_id"])
+        again = self.client.post(
+            f"/crm/leads/{lead['lead_id']}/lost",
+            json={"reason": "no_longer_responding", **self.correlation()},
+            headers=self.headers(tenant_id))
+        self.assertEqual(again.status_code, 409, again.text)
+        self.assertEqual(again.json()["error"], "this_lead_is_already_lost")
+
+    def test_reopening_resumes_the_stage_and_is_not_gated_on_ninety_days(self) -> None:
+        """ADR-0010 D10. A lead marked lost by mistake has to be correctable now, not in a
+        quarter -- locking it would be MOD-013's rule on a routine permission."""
+        tenant_id = self.tenant()
+        lead = self.toured(tenant_id)
+        self.lose(tenant_id, lead["lead_id"])
+        reopened = self.client.post(
+            f"/crm/leads/{lead['lead_id']}/reopen",
+            json=self.correlation(), headers=self.headers(tenant_id))
+        self.assertEqual(reopened.status_code, 200, reopened.text)
+        self.assertFalse(reopened.json()["lost"])
+        self.assertEqual(reopened.json()["stage"], "toured")
+        self.assertEqual(reopened.json()["was_lost_for"], "too_expensive")
+        read = self.client.get(
+            f"/crm/leads/{lead['lead_id']}", headers=self.headers(tenant_id)).json()
+        self.assertFalse(read["lost"])
+        self.assertIsNone(read["lost_reason"])
+        self.assertEqual(read["stage"], "toured")
+
+    def test_reopening_a_live_lead_is_refused(self) -> None:
+        tenant_id = self.tenant()
+        lead = self.lead(tenant_id)
+        refused = self.client.post(
+            f"/crm/leads/{lead['lead_id']}/reopen",
+            json=self.correlation(), headers=self.headers(tenant_id))
+        self.assertEqual(refused.status_code, 409, refused.text)
+        self.assertEqual(refused.json()["error"], "this_lead_is_not_lost")
+
+    def test_a_lost_lead_is_off_the_board_and_out_of_the_default_list(self) -> None:
+        """ADM-CRM-01 draws five columns and no sixth, and ADM-CRM-07 is a side sheet."""
+        tenant_id = self.tenant()
+        owner = self.headers(tenant_id)
+        lead = self.toured(tenant_id)
+        before = self.client.get("/crm/board", headers=owner)
+        self.assertEqual(before.status_code, 200, before.text)
+        toured_before = next(c["count"] for c in before.json()["columns"]
+                             if c["stage"] == "toured")
+        self.lose(tenant_id, lead["lead_id"])
+
+        # **The board answers counts, not cards** -- the cards are `/crm/leads`, which the
+        # surface fetches alongside. So the assertion is the count for the column this lead
+        # was in, before and after: a lost lead leaving the board is a chip going down by one.
+        after = self.client.get("/crm/board", headers=owner)
+        self.assertEqual(after.status_code, 200, after.text)
+        toured_now = next(c["count"] for c in after.json()["columns"]
+                          if c["stage"] == "toured")
+        self.assertEqual(toured_now, toured_before - 1)
+
+        live = self.client.get("/crm/leads", headers=owner)
+        self.assertNotIn(lead["lead_id"], [r["lead_id"] for r in live.json()["leads"]])
+
+        lost = self.client.get("/crm/leads", params={"lost": "true"}, headers=owner)
+        self.assertEqual(lost.status_code, 200, lost.text)
+        rows = {r["lead_id"]: r for r in lost.json()["leads"]}
+        self.assertIn(lead["lead_id"], rows)
+        self.assertEqual(rows[lead["lead_id"]]["lost_reason"], "too_expensive")
+        self.assertEqual(rows[lead["lead_id"]]["stage"], "toured")
+
+    def test_a_lost_lead_is_not_a_lead_going_cold(self) -> None:
+        """Nobody has failed to ring them: they said no, and the reason is on the record.
+        Counting them would put every refusal into the one chip that exists to surface a lead
+        somebody has forgotten."""
+        #
+        # **Asked from a later moment, because a lead created a second ago is not cold
+        # either.** The first version read the listing now and asserted `going_cold` is
+        # false -- which it was, for the wrong reason, and the mutation that deletes the
+        # guard came back uncaught. The pair is what makes it evidence: at the same age, a
+        # live lead *is* cold.
+        tenant_id = self.tenant()
+        live = self.lead(tenant_id)
+        lost = self.lead(tenant_id)
+        self.lose(tenant_id, lost["lead_id"])
+        later = datetime.now(UTC) + timedelta(hours=49)
+
+        cold = crm.list_leads(self._tenant_pool, tenant_id, at=later)["leads"]
+        self.assertTrue(
+            next(r for r in cold if r["lead_id"] == live["lead_id"])["going_cold"])
+
+        refused = crm.list_leads(
+            self._tenant_pool, tenant_id, lost=True, at=later)["leads"]
+        self.assertFalse(
+            next(r for r in refused if r["lead_id"] == lost["lead_id"])["going_cold"])
+
+    def test_an_unknown_reason_is_a_422_at_the_boundary(self) -> None:
+        tenant_id = self.tenant()
+        lead = self.lead(tenant_id)
+        refused = self.client.post(
+            f"/crm/leads/{lead['lead_id']}/lost",
+            json={"reason": "changed_their_mind", **self.correlation()},
+            headers=self.headers(tenant_id))
+        self.assertEqual(refused.status_code, 422, refused.text)
+
+    def test_the_four_reasons_agree_in_three_places(self) -> None:
+        """**The Python set, the request body's `Literal` and the migration's CHECK.** MOD-026
+        shipped a state machine whose two encodings agreed with each other and with neither
+        the service nor the trigger; a regex over the migration is what makes that drift fail
+        in CI rather than at the next sweep."""
+        sql = (pathlib.Path(__file__).resolve().parents[1] / "migrations" / "tenant"
+               / "0030_a_lost_lead_and_its_reason.sql").read_text()
+        found = re.search(
+            r"crm_leads_lost_reason\s*\n?\s*CHECK \(lost_reason IS NULL OR lost_reason IN \("
+            r"(?P<body>.*?)\)\)", sql, re.S)
+        self.assertIsNotNone(found, "the reason CHECK is not where this test looks")
+        assert found is not None
+        in_sql = tuple(sorted(re.findall(r"'([a-z_]+)'", found.group("body"))))
+        self.assertEqual(in_sql, tuple(sorted(pipeline.LOST_REASONS)))
+
+    def test_an_interest_can_be_withdrawn_and_asked_for_again(self) -> None:
+        """ADR-0010 D11, which `0027` said slice 3 owed: until this existed, an interest
+        recorded by mistake had no remedy anywhere in the product."""
+        tenant_id = self.tenant()
+        lead = self.lead(tenant_id)
+        owner = self.headers(tenant_id)
+        recorded = self.client.post(
+            f"/crm/leads/{lead['lead_id']}/interests",
+            json={"interests": ["classes", "pt"], **self.correlation()}, headers=owner)
+        self.assertEqual(recorded.status_code, 200, recorded.text)
+
+        taken = self.client.post(
+            f"/crm/leads/{lead['lead_id']}/interests/withdraw",
+            json={"interest": "pt", **self.correlation()}, headers=owner)
+        self.assertEqual(taken.status_code, 200, taken.text)
+        self.assertTrue(taken.json()["withdrawn"])
+
+        read = self.client.get(f"/crm/leads/{lead['lead_id']}", headers=owner).json()
+        self.assertEqual(read["interests"], ["classes"])
+
+        # **And it can be asked for again**, which the total key `0027` wrote would have
+        # refused for ever: the uniqueness is partial on live rows.
+        again = self.client.post(
+            f"/crm/leads/{lead['lead_id']}/interests",
+            json={"interests": ["classes", "pt"], **self.correlation()}, headers=owner)
+        self.assertEqual(again.status_code, 200, again.text)
+        back = self.client.get(f"/crm/leads/{lead['lead_id']}", headers=owner).json()
+        self.assertEqual(sorted(back["interests"]), ["classes", "pt"])
+
+    def test_withdrawing_an_interest_nobody_holds_is_a_404(self) -> None:
+        tenant_id = self.tenant()
+        lead = self.lead(tenant_id)
+        refused = self.client.post(
+            f"/crm/leads/{lead['lead_id']}/interests/withdraw",
+            json={"interest": "gym_only", **self.correlation()},
+            headers=self.headers(tenant_id))
+        self.assertEqual(refused.status_code, 404, refused.text)
+
+    def test_the_service_refuses_an_unknown_reason_as_well_as_the_route(self) -> None:
+        """**The `Literal` is the boundary and `check_lost_reason` is the layer behind it.**
+        The route refuses first, so this is the only thing that proves the service does too --
+        and a service whose own vocabulary check is unreachable is a check nobody has tested,
+        which is this build's recurring finding about defence in depth.
+        """
+        tenant_id = self.tenant()
+        lead = self.lead(tenant_id)
+        # **The message, not the type.** With the service's own check gone the reason reaches
+        # the CHECK, which raises `CheckViolation`, which the handler turns into the same
+        # `InvalidRequest` -- so asserting the type proved nothing and the mutation that
+        # disables the check came back uncaught. What differs is what the caller is told: the
+        # four reasons, or the name of a constraint they cannot look up.
+        with self.assertRaises(InvalidRequest) as refused:
+            crm.mark_lead_lost(
+                self._tenant_pool, tenant_id, lead["lead_id"],
+                reason="changed_their_mind", detail=None,
+                actor_id="33333333-3333-4333-8333-333333333333",
+                correlation_id=str(uuid.uuid4()))
+        self.assertIn("four reasons", str(refused.exception))
+
+    def test_recontactable_turns_on_at_ninety_days_and_gates_nothing(self) -> None:
+        """**Advisory**, so this is a service test: no route takes an instant, because a
+        caller-supplied "now" would decide which lost leads a manager is told to try again."""
+        tenant_id = self.tenant()
+        lead = self.lead(tenant_id)
+        self.lose(tenant_id, lead["lead_id"])
+        for days, expected in ((89, False), (91, True)):
+            with self.subTest(days=days):
+                rows = crm.list_leads(
+                    self._tenant_pool, tenant_id, lost=True,
+                    at=datetime.now(UTC) + timedelta(days=days))["leads"]
+                mine = next(r for r in rows if r["lead_id"] == lead["lead_id"])
+                self.assertEqual(mine["recontactable"], expected)

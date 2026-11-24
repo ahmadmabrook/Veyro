@@ -4,11 +4,12 @@ import { useActionState } from "react";
 
 import { Banner } from "@/components/ds/banner";
 import { Button } from "@/components/ds/button";
+import { ChoiceChips } from "@/components/ds/choice-chips";
 import { Field } from "@/components/ds/field";
 import { t, type Locale, type MessageKey } from "@/i18n/locale";
 
 import {
-  assignLead, moveStage, recordInterests, recordTouchpoint, setNextAction,
+  withdrawInterest, reopenLead, markLost, assignLead, moveStage, recordInterests, recordTouchpoint, setNextAction,
 } from "./actions";
 import { IDLE, type LeadState } from "./state";
 
@@ -228,10 +229,102 @@ export function InterestsForm({
         label={text("lead.formAddInterests")}
         state={pending ? "loading" : "default"}
       />
-      {/* **The set only grows**, which is MOD-027's own recorded gap: there is no UPDATE and
-          no DELETE grant on the table, so a tick here cannot be untaken until the slice that
-          adds `lost` adds the withdrawal. Said before the tick rather than after it. */}
-      <p className="ds-note">{text("lead.interestsOnlyGrow")}</p>
+    </form>
+  );
+}
+
+
+export function WithdrawInterestForm({
+  locale, leadId, interest, label,
+}: {
+  locale: Locale;
+  leadId: string;
+  interest: string;
+  label: string;
+}) {
+  const [state, action, pending] = useActionState<LeadState, FormData>(
+    withdrawInterest, IDLE);
+  const text = (key: MessageKey) => t(locale, key);
+  return (
+    <form action={action} className="ds-inline-form">
+      <input type="hidden" name="lead_id" value={leadId} />
+      <input type="hidden" name="interest" value={interest} />
+      <Outcome locale={locale} state={state} />
+      <Button
+        type="submit" variant="ghost" size="sm"
+        label={`${text("lost.withdrawInterest")} — ${label}`}
+        state={pending ? "loading" : "default"}
+      />
+    </form>
+  );
+}
+
+
+export function MarkLostForm({
+  locale, leadId, reasons,
+}: {
+  locale: Locale;
+  leadId: string;
+  reasons: readonly { value: string; label: string }[];
+}) {
+  const [state, action, pending] = useActionState<LeadState, FormData>(markLost, IDLE);
+  const text = (key: MessageKey) => t(locale, key);
+  return (
+    <form action={action} className="stack">
+      <input type="hidden" name="lead_id" value={leadId} />
+      <Outcome locale={locale} state={state} />
+      {/* ADM-CRM-07's `ReasonPicker`: `ChoiceChips` in single mode, which is the same
+          appearance ADM-CRM-04 draws its interests in rather than a second component. */}
+      <ChoiceChips
+        name="reason"
+        legend={text("lost.reasonLegend")}
+        options={reasons}
+        single
+        required
+      />
+      {/* **The canvas's "which gym, if he said" -- optional, and marked as such.** `rarer`
+          is the shell's rule: on a form where most fields are required, the optional one
+          carries the word, and the word comes from the catalogue because a hard-coded
+          " (optional)" put Latin letters in the middle of an Arabic line for as long as the
+          account page has had a field. */}
+      <Field
+        id="lost-detail" name="detail" type="text" rarer="optional"
+        optionalLabel={text("field.optional")}
+        label={text("lost.detailLabel")}
+        description={text("lost.detailNote")}
+      >
+        <input
+          id="lost-detail" name="detail" type="text" maxLength={500}
+          className="ds-field-input" autoComplete="off"
+        />
+      </Field>
+      <Button
+        type="submit" variant="primary" size="lg"
+        label={text("lost.submit")}
+        state={pending ? "loading" : "default"}
+      />
+    </form>
+  );
+}
+
+
+export function ReopenForm({
+  locale, leadId,
+}: {
+  locale: Locale;
+  leadId: string;
+}) {
+  const [state, action, pending] = useActionState<LeadState, FormData>(reopenLead, IDLE);
+  const text = (key: MessageKey) => t(locale, key);
+  return (
+    <form action={action} className="stack">
+      <input type="hidden" name="lead_id" value={leadId} />
+      <Outcome locale={locale} state={state} />
+      <Button
+        type="submit" variant="primary" size="lg"
+        label={text("lost.reopen")}
+        state={pending ? "loading" : "default"}
+      />
     </form>
   );
 }

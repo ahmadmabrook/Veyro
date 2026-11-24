@@ -1579,6 +1579,35 @@ class TouchpointBody(BaseModel):
     correlation_id: str
 
 
+class LeadLostBody(BaseModel):
+    """ADM-CRM-07's reason picker and its one free-text field.
+
+    **`reason` is a `Literal` over the four the canvas draws**, so an unknown one is a 422
+    naming the request rather than a `CheckViolation` the handlers turn into one anyway --
+    and the four here, the four in `pipeline.LOST_REASONS` and the four in the CHECK are
+    compared by a test, which is MOD-026's precedent for a vocabulary in three places.
+
+    **`detail` is the canvas's "which gym, if he said".** Optional, bounded here as well as in
+    the schema because a bound reached as a `DataError` is a 500 the handlers do not catch.
+    """
+
+    reason: Literal[
+        "too_expensive", "joined_elsewhere", "location_or_hours", "no_longer_responding"]
+    correlation_id: str
+    detail: str | None = Field(default=None, min_length=1, max_length=500)
+    expected_version: int | None = Field(default=None, ge=1)
+
+
+class LeadReopenBody(BaseModel):
+    correlation_id: str
+    expected_version: int | None = Field(default=None, ge=1)
+
+
+class LeadInterestWithdrawBody(BaseModel):
+    interest: Literal["classes", "pt", "gym_only"]
+    correlation_id: str
+
+
 class LeadStageBody(BaseModel):
     to_stage: str = Field(min_length=1, max_length=40)
     expected_version: int | None = Field(default=None, ge=1)
@@ -10306,9 +10335,15 @@ def create_app(
     def list_leads(
         tenant_id: TenantId, session: Session, stage: str | None = None,
         owner_person_id: str | None = None, mine: bool = False, unowned: bool = False,
-        going_cold: bool = False, limit: int = 50,
+        going_cold: bool = False, limit: int = 50, lost: bool = False,
     ) -> dict[str, Any]:
-        """ADM-CRM-02's table and its chips, oldest contact first."""
+        """ADM-CRM-02's table and its chips, oldest contact first.
+
+        **`lost` is off by default**, because ADM-CRM-01 draws five columns and no sixth: the
+        ordinary list is the live pipeline. With it on, this is the refusals a salesperson
+        reviews and ADM-RPT-03 groups by source -- one list of one thing behind a filter
+        rather than two routes.
+        """
         permit(session, "crm.lead.read")
         own = actor_person_id(tenant_id, session) if mine else None
         if mine and own is None:
@@ -10318,7 +10353,7 @@ def create_app(
         return crm.list_leads(
             tenant_pool, tenant_id, stage=stage,
             owner_person_id=own or optional_uuid(owner_person_id, "owner_person_id"),
-            unowned=unowned, going_cold=going_cold, limit=limit)
+            unowned=unowned, going_cold=going_cold, limit=limit, lost=lost)
 
     @app.get("/crm/leads/{lead_id}")
     def read_lead(
@@ -10412,6 +10447,58 @@ def create_app(
         return crm.advance_stage(
             tenant_pool, tenant_id, require_uuid(lead_id, "lead_id"),
             to_stage=body.to_stage, expected_version=body.expected_version,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id)
+
+    @app.post("/crm/leads/{lead_id}/lost")
+    def mark_lead_lost(
+        tenant_id: TenantId, session: Session, lead_id: str, body: LeadLostBody
+    ) -> dict[str, Any]:
+        """ADM-CRM-07: why did this person not join?
+
+        **The stage is not touched**, which is ADR-0010 D8: the pipeline runs forward only, so
+        a lost lead keeps the stage it reached and a reopening resumes it exactly. The loss
+        also writes a touchpoint, in the same transaction, because D4 says the history is the
+        timeline -- a refusal with nothing in the timeline is one nobody can account for.
+        """
+        permit(session, "crm.lead.write", body.correlation_id)
+        return crm.mark_lead_lost(
+            tenant_pool, tenant_id, require_uuid(lead_id, "lead_id"),
+            reason=body.reason, detail=body.detail,
+            expected_version=body.expected_version,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id)
+
+    @app.post("/crm/leads/{lead_id}/reopen")
+    def reopen_lead(
+        tenant_id: TenantId, session: Session, lead_id: str, body: LeadReopenBody
+    ) -> dict[str, Any]:
+        """Put a lost lead back in the pipeline, at the stage it was already at.
+
+        **Always permitted and never gated on the ninety days**, which is ADR-0010 D10: the
+        canvas's emphasis is on "rather than a fresh record", and locking this for a quarter
+        would make a lead marked lost by mistake uncorrectable on a routine permission.
+        `recontactable` on the read says which are worth another try.
+        """
+        permit(session, "crm.lead.write", body.correlation_id)
+        return crm.reopen_lead(
+            tenant_pool, tenant_id, require_uuid(lead_id, "lead_id"),
+            expected_version=body.expected_version,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id)
+
+    @app.post("/crm/leads/{lead_id}/interests/withdraw")
+    def withdraw_lead_interest(
+        tenant_id: TenantId, session: Session, lead_id: str,
+        body: LeadInterestWithdrawBody
+    ) -> dict[str, Any]:
+        """Take back an interest recorded by mistake -- the remedy `0027` said slice 3 owed.
+
+        A withdrawal rather than a delete, because "was this lead ever interested in PT" is
+        asked precisely when somebody has changed their mind. Until this existed,
+        `crm.lead.write` was a routine permission whose every act was permanent.
+        """
+        permit(session, "crm.lead.write", body.correlation_id)
+        return crm.withdraw_interest(
+            tenant_pool, tenant_id, require_uuid(lead_id, "lead_id"),
+            interest=body.interest,
             actor_id=session["identity_id"], correlation_id=body.correlation_id)
 
     @app.post("/crm/leads/{lead_id}/assign")

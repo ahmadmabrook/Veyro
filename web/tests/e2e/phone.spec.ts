@@ -116,6 +116,12 @@ const surfaces: [string, string][] = [
   // layout from the sales one above and is the one with a 5,687-pixel zero-width box in its
   // history.
   ["a lead on a trial", `/leads/${creds.trialLeadId}`],
+  // **Two states of ADM-CRM-07**, both reachable only with a query string or a seeded row --
+  // the kind of surface a route list leaves out, which ADM-MSH-07's sheet had to be added by
+  // hand for. The sheet is a radio group and a field; the lost state is a banner, three notes
+  // and a button.
+  ["the mark-lost sheet", `/leads/${creds.coldLeadId}?lost=1`],
+  ["a lead that said no", `/leads/${creds.lostLeadId}`],
   // **The conversion quote, which is reachable only with a query string** -- so it is exactly
   // the kind of surface a route list leaves out, which ADM-MSH-07's cancellation sheet had to
   // be added by hand for. Two metric cells beside a definition list, at the width where

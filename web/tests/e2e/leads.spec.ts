@@ -265,16 +265,23 @@ test.describe("the lead pipeline", () => {
       await expect(main.getByRole("button", { name: "Clear it" })).toBeVisible();
     });
 
-  test("an interest already recorded is not offered again", async ({ page }) => {
-    // The cold lead was seeded interested in classes and PT, so only the third is offered --
-    // and the form says the set cannot shrink, which is MOD-027's own recorded gap rather
-    // than this screen's restraint.
-    await page.goto(`/leads/${coldLeadId}`);
-    const main = page.locator("#main");
-    await expect(main.getByRole("checkbox", { name: "Gym only" })).toBeVisible();
-    await expect(main.getByRole("checkbox", { name: "Classes" })).toHaveCount(0);
-    await expect(main.getByText(/cannot be taken back yet/)).toBeVisible();
-  });
+  test("an interest already recorded is not offered again, and can be taken back",
+    async ({ page }) => {
+      // The cold lead was seeded interested in classes and PT, so only the third is offered.
+      //
+      // **This asserted "cannot be taken back yet" and slice 3 closed that gap.** The note
+      // was MOD-027's own recorded one -- `crm_lead_interests` had no UPDATE grant, so a tick
+      // was permanent on a routine permission -- and the withdrawal is the remedy ADR-0010
+      // D11 owed. The note went with the gap in the same change, which is this repository's
+      // rule about a gap list being a claim about the product, and what is asserted instead
+      // is the control that replaced it plus the absence of the claim that is no longer true.
+      await page.goto(`/leads/${coldLeadId}`);
+      const main = page.locator("#main");
+      await expect(main.getByRole("checkbox", { name: "Gym only" })).toBeVisible();
+      await expect(main.getByRole("checkbox", { name: "Classes" })).toHaveCount(0);
+      await expect(main.getByRole("button", { name: /Take back — Classes/ })).toBeVisible();
+      await expect(main).not.toContainText("cannot be taken back yet");
+    });
 
   test("what the trial card still cannot answer is named on the profile", async ({ page }) => {
     // **This asserted "nothing in this build marks one"**, which ADR-0010 D7 made false --

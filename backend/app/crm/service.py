@@ -353,14 +353,13 @@ def record_interests(
 ) -> dict[str, Any]:
     """Add to what a lead is interested in.
 
-    **The set only grows in this slice**, and that is stated rather than discovered: there is
-    no UPDATE and no DELETE grant on the table, so withdrawing an interest is slice 3's work
-    beside `lost`. An interest somebody recorded by mistake is therefore uncorrectable on a
-    routine permission, which is MOD-013's "an irreversible act must not be declarable on a
-    routine permission" -- and unlike `scheduling.availability.write`, whose remedy `0017` had
-    to add before the form could exist, this one is three values on a sales record rather than
-    a rota somebody is turned away by. Named as the gap it is rather than closed here, and the
-    slice that adds `lost` adds the withdrawal.
+    **The set can shrink now**, which this docstring used to say it could not: `withdraw_
+    interest` is the remedy ADR-0010 D11 owed, so an interest recorded by mistake is no longer
+    permanent on a routine permission -- MOD-013's rule, and the gap this paragraph named.
+
+    **Checked against the *live* set.** A withdrawn interest does not block its own return,
+    which is the whole point of the partial uniqueness; what it does block is a second live
+    row for the same interest.
     """
     chosen = _interests(interests)
     if not chosen:
@@ -371,8 +370,14 @@ def record_interests(
         ).fetchone()
         if lead is None:
             raise NotFound("lead_not_found")
+        # **Live rows only, which the withdrawal made necessary.** This read was every row,
+        # which was right while the set only grew -- and the moment one can be taken back it
+        # means a withdrawn interest blocks its own return: a lead who wanted PT, changed
+        # their mind and changed it back was answered "already recorded" and the profile kept
+        # showing one interest. Found by the test written for the withdrawal.
         held = {str(r[0]) for r in conn.execute(
-            "SELECT interest FROM plt01.crm_lead_interests WHERE lead_id = %s",
+            "SELECT interest FROM plt01.crm_lead_interests"
+            " WHERE lead_id = %s AND withdrawn_at IS NULL",
             (lead_id,)).fetchall()}
         # **Checked against what is already recorded**, because `gym_only` excludes the other
         # two and a second call could otherwise build the pair one interest at a time -- which
@@ -389,10 +394,169 @@ def record_interests(
 
 # --------------------------------------------------------------------- the reads
 
+def mark_lead_lost(
+    pool: Pool, tenant_id: str, lead_id: str, *, reason: str, detail: str | None,
+    actor_id: str, correlation_id: str, expected_version: int | None = None,
+    at: datetime | None = None,
+) -> dict[str, Any]:
+    """ADM-CRM-07: why did this person not join?
+
+    **A fact beside the stage, not a sixth value in it** -- ADR-0010 D8. The stage the lead
+    reached is untouched, so a reopening resumes it exactly and `Toured · 6` stays
+    reconstructible; the pipeline still runs forward only and `EDGES` is unchanged.
+
+    **The loss writes a touchpoint as well**, because D4 says the history is the timeline:
+    "the same person is re-contacted, and a new record would defeat D1 ... the history is the
+    touchpoint timeline rather than a chain of records". The row carries the *current* state
+    and the timeline carries that it happened, which is what makes a lead lost twice for two
+    reasons answerable at all -- the row keeps only the latest.
+
+    **In one transaction**, so a lead cannot be lost with nothing in the timeline saying so.
+    That is MOD-010's `append_event` argument applied to a sales record: a loss with no
+    history is a refusal nobody can account for.
+
+    **Marking a lead lost twice is refused**, rather than quietly re-dating it: the second
+    call would move when they said no, and the first reason would disappear from the row with
+    nothing to say it had been there. Reopen first.
+    """
+    now = at or _now()
+    reason = _lost_reason(reason)
+    said = None if detail is None or not detail.strip() else detail.strip()
+    with tenant_scope(pool, tenant_id) as conn:
+        lead = conn.execute(
+            "SELECT version, lost_at, stage FROM plt01.crm_leads"
+            " WHERE lead_id = %s FOR UPDATE",
+            (lead_id,),
+        ).fetchone()
+        if lead is None:
+            raise NotFound("lead_not_found")
+        if expected_version is not None and int(lead[0]) != expected_version:
+            raise Conflict("this_lead_changed_since_it_was_read")
+        if lead[1] is not None:
+            raise Conflict("this_lead_is_already_lost")
+        try:
+            conn.execute(
+                "UPDATE plt01.crm_leads SET lost_at = %s, lost_reason = %s,"
+                " lost_detail = %s, lost_by = %s, version = version + 1"
+                " WHERE lead_id = %s",
+                (now, reason, said, actor_id, lead_id))
+        except errors.CheckViolation as e:
+            raise InvalidRequest(_check_name(e)) from None
+        conn.execute(
+            "INSERT INTO plt01.crm_touchpoints"
+            " (tenant_id, lead_id, kind, occurred_at, summary, recorded_by, correlation_id)"
+            " VALUES (%s, %s, 'note', %s, %s, %s, %s)",
+            (tenant_id, lead_id, now,
+             f"Marked lost: {reason}" + (f" -- {said}" if said else ""),
+             actor_id, correlation_id))
+    return {"lead_id": lead_id, "lost": True, "lost_reason": reason,
+            "lost_detail": said, "lost_at": now.isoformat(),
+            # The stage is answered because it did not move, which is the whole decision: a
+            # reader who expected a sixth stage would otherwise assume it had.
+            "stage": str(lead[2]), "stage_did_not_move": True,
+            "version": int(lead[0]) + 1}
+
+
+def reopen_lead(
+    pool: Pool, tenant_id: str, lead_id: str, *, actor_id: str, correlation_id: str,
+    expected_version: int | None = None, at: datetime | None = None,
+) -> dict[str, Any]:
+    """Put a lost lead back in the pipeline, at the stage it was already at.
+
+    **Always permitted, which is ADR-0010 D10.** The canvas says re-contact after ninety days
+    is a supported flow, and the emphasis is on "rather than a fresh record" -- the point is
+    that re-contact does not duplicate the person. Locking this for ninety days would make a
+    lead marked lost by mistake uncorrectable for a quarter on a routine permission, which is
+    MOD-013's rule; `pipeline.is_recontactable` answers the read instead and gates nothing.
+
+    **The stage is not touched here either.** It never moved, so there is nothing to restore
+    -- and the next touchpoint advances it, because `record_touchpoint` already does. A stage
+    value for `lost` would have had to choose where a reopened lead lands, and any choice is a
+    number nobody can reconstruct.
+    """
+    now = at or _now()
+    with tenant_scope(pool, tenant_id) as conn:
+        lead = conn.execute(
+            "SELECT version, lost_at, lost_reason, stage FROM plt01.crm_leads"
+            " WHERE lead_id = %s FOR UPDATE",
+            (lead_id,),
+        ).fetchone()
+        if lead is None:
+            raise NotFound("lead_not_found")
+        if expected_version is not None and int(lead[0]) != expected_version:
+            raise Conflict("this_lead_changed_since_it_was_read")
+        if lead[1] is None:
+            raise Conflict("this_lead_is_not_lost")
+        conn.execute(
+            "UPDATE plt01.crm_leads SET lost_at = NULL, lost_reason = NULL,"
+            " lost_detail = NULL, lost_by = NULL, version = version + 1"
+            " WHERE lead_id = %s",
+            (lead_id,))
+        conn.execute(
+            "INSERT INTO plt01.crm_touchpoints"
+            " (tenant_id, lead_id, kind, occurred_at, summary, recorded_by, correlation_id)"
+            " VALUES (%s, %s, 'note', %s, %s, %s, %s)",
+            (tenant_id, lead_id, now,
+             f"Reopened after being lost: {lead[2]}", actor_id, correlation_id))
+    return {"lead_id": lead_id, "lost": False, "stage": str(lead[3]),
+            "was_lost_for": str(lead[2]), "version": int(lead[0]) + 1}
+
+
+def withdraw_interest(
+    pool: Pool, tenant_id: str, lead_id: str, *, interest: str, actor_id: str,
+    correlation_id: str, at: datetime | None = None,
+) -> dict[str, Any]:
+    """Take back an interest recorded by mistake. ADR-0010 D11, which `0027` said slice 3 owed.
+
+    **A withdrawal rather than a delete.** "Was this lead ever interested in PT" is asked
+    precisely when somebody has changed their mind, so the row stays and recedes -- MOD-019's
+    rota withdrawal, and the reason `crm_lead_interests` holds DELETE for nobody.
+
+    **It is the remedy a routine permission needs.** `crm.lead.write` is routine and AAL 1, and
+    until now an interest recorded by mistake had no correction anywhere in the product: a
+    routine permission whose every act is uncorrectable is MOD-013's "an irreversible act must
+    not be declarable on a routine permission", which MOD-019 paid for with a rota somebody is
+    turned away by.
+
+    **And it is what lets the interest be recorded again.** The uniqueness is partial on live
+    rows, so a lead who wanted PT, changed their mind and changed it back is a new row rather
+    than a 409 -- which the total key `0027` wrote would have refused for ever.
+    """
+    now = at or _now()
+    if interest not in pipeline.INTERESTS:
+        raise InvalidRequest("that_is_not_an_interest_this_build_records")
+    with tenant_scope(pool, tenant_id) as conn:
+        found = conn.execute(
+            "SELECT interest_id FROM plt01.crm_lead_interests"
+            " WHERE lead_id = %s AND interest = %s AND withdrawn_at IS NULL"
+            " FOR UPDATE",
+            (lead_id, interest),
+        ).fetchone()
+        if found is None:
+            raise NotFound("this_lead_does_not_hold_that_interest")
+        conn.execute(
+            "UPDATE plt01.crm_lead_interests SET withdrawn_at = %s, withdrawn_by = %s"
+            " WHERE interest_id = %s",
+            (now, actor_id, str(found[0])))
+    return {"lead_id": lead_id, "interest": interest, "withdrawn": True,
+            "withdrawn_at": now.isoformat(),
+            "it_can_be_recorded_again": (
+                "the uniqueness is partial on live rows, so asking for this again is a new "
+                "row rather than a refusal")}
+
+
+def _lost_reason(reason: str) -> str:
+    try:
+        return pipeline.check_lost_reason(reason)
+    except pipeline.PipelineError as e:
+        raise InvalidRequest(str(e)) from None
+
+
 def list_leads(
     pool: Pool, tenant_id: str, *, stage: str | None = None,
     owner_person_id: str | None = None, unowned: bool = False,
     going_cold: bool = False, limit: int = 50, at: datetime | None = None,
+    lost: bool | None = None,
 ) -> dict[str, Any]:
     """ADM-CRM-02's table and its three chips.
 
@@ -416,12 +580,23 @@ def list_leads(
         params.append(owner_person_id)
     if unowned:
         where.append("l.owner_person_id IS NULL")
+    # **Lost leads are out unless asked for, and that is the filter ADM-CRM-07 needs.** A lead
+    # who said no is not part of the pipeline ADM-CRM-01 draws -- the canvas has five columns
+    # and no sixth -- so the default list is the live one. `lost=true` is the other list, which
+    # is what a salesperson reviewing refusals and ADM-RPT-03's source effectiveness both want,
+    # and the two are a filter rather than two routes because they are one list of one thing.
+    if lost is not None:
+        where.append("l.lost_at IS NOT NULL" if lost else "l.lost_at IS NULL")
+    else:
+        where.append("l.lost_at IS NULL")
     with tenant_scope(pool, tenant_id) as conn:
         rows = conn.execute(
             "SELECT l.lead_id, l.person_id, l.stage, l.source_id, s.display_name,"
             " l.owner_person_id, l.next_action, l.next_action_on, l.created_at, l.version,"
             " (SELECT max(t.occurred_at) FROM plt01.crm_touchpoints t"
-            "   WHERE t.lead_id = l.lead_id)"
+            "   WHERE t.lead_id = l.lead_id),"
+            # Appended, because every index below is positional and mypy cannot see one move.
+            " l.lost_at, l.lost_reason, l.lost_detail"
             " FROM plt01.crm_leads l"
             " LEFT JOIN plt01.crm_lead_sources s ON s.source_id = l.source_id"
             f" WHERE {' AND '.join(where)}"
@@ -440,7 +615,8 @@ def list_leads(
         # stage is not something a `WHERE` can take.
         standing = commercial.membership_standing(
             conn, [str(r[1]) for r in rows], at=now.date())
-    leads = [_lead_row(r, now, standing) for r in rows]
+        leads = [_lead_row(r, now, standing, lost=(r[11], r[12], r[13]))
+                 for r in rows]
     if going_cold:
         leads = [row for row in leads if row["going_cold"]]
     return {
@@ -476,7 +652,11 @@ def read_lead(
             "SELECT l.lead_id, l.person_id, l.stage, l.source_id, s.display_name,"
             " l.owner_person_id, l.next_action, l.next_action_on, l.created_at, l.version,"
             " (SELECT max(t.occurred_at) FROM plt01.crm_touchpoints t"
-            "   WHERE t.lead_id = l.lead_id), l.stage_changed_at"
+            "   WHERE t.lead_id = l.lead_id), l.stage_changed_at,"
+            # Appended, because `stage_changed_at` already sits at 11 in this query and at
+            # nothing in the listing's -- which is why `_lead_row` takes the loss as an
+            # argument rather than reading an index.
+            " l.lost_at, l.lost_reason, l.lost_detail"
             " FROM plt01.crm_leads l"
             " LEFT JOIN plt01.crm_lead_sources s ON s.source_id = l.source_id"
             " WHERE l.lead_id = %s",
@@ -484,8 +664,13 @@ def read_lead(
         ).fetchone()
         if row is None:
             raise NotFound("lead_not_found")
+        # **Live interests only.** A withdrawn one stays in the table so that "was this lead
+        # ever interested in PT" is answerable, and a profile listing it as current would be
+        # the record and the state saying different things -- which is the reason the
+        # withdrawal is a column rather than a delete, undone by the read.
         interests = [str(r[0]) for r in conn.execute(
-            "SELECT interest FROM plt01.crm_lead_interests WHERE lead_id = %s",
+            "SELECT interest FROM plt01.crm_lead_interests"
+            " WHERE lead_id = %s AND withdrawn_at IS NULL",
             (lead_id,)).fetchall()]
         touchpoints = conn.execute(
             "SELECT touchpoint_id, kind, occurred_at, summary, recorded_at, recorded_by"
@@ -494,7 +679,7 @@ def read_lead(
             (lead_id, limit),
         ).fetchall()
         membership = _membership_of(conn, str(row[1]))
-    lead = _lead_row(row, now)
+    lead = _lead_row(row, now, lost=(row[12], row[13], row[14]))
     lead["stage_changed_at"] = row[11].isoformat()
     lead["interests"] = [i for i in pipeline.INTERESTS if i in interests]
     lead["board_stage"] = pipeline.board_stage(str(row[2]), membership)
@@ -551,6 +736,11 @@ def board(
     if owner_person_id is not None:
         where.append("l.owner_person_id = %s")
         params.append(owner_person_id)
+    # **A lost lead is off the board.** ADM-CRM-01 draws five columns and no sixth, and
+    # ADM-CRM-07 is a side sheet -- so a person who said no is not in the pipeline this read
+    # counts. Their refusal is on their own record and in ADM-RPT-03; leaving them in a column
+    # would make every chip a count of work nobody is doing.
+    where.append("l.lost_at IS NULL")
     with tenant_scope(pool, tenant_id) as conn:
         rows = conn.execute(
             "SELECT l.lead_id, l.person_id, l.stage, l.created_at,"
@@ -824,7 +1014,13 @@ def _record_interests(
         conn.execute(
             "INSERT INTO plt01.crm_lead_interests"
             " (tenant_id, lead_id, interest, recorded_by, correlation_id)"
-            " VALUES (%s, %s, %s, %s, %s) ON CONFLICT DO NOTHING",
+            # **The target is named**, because `ON CONFLICT DO NOTHING` with no target stays
+            # valid SQL when the rule it relies on changes and silently stops doing anything
+            # -- MOD-010's deduplication finding. The conflict that matters is the partial
+            # one: a second *live* row for the same interest.
+            " VALUES (%s, %s, %s, %s, %s)"
+            " ON CONFLICT (tenant_id, lead_id, interest) WHERE withdrawn_at IS NULL"
+            " DO NOTHING",
             (tenant_id, lead_id, interest, actor_id, correlation_id))
 
 
@@ -850,8 +1046,19 @@ def _membership_of(
 
 def _lead_row(
     r: Any, now: datetime, standing: dict[str, str] | None = None,
+    *, lost: tuple[datetime | None, str | None, str | None] = (None, None, None),
 ) -> dict[str, Any]:
+    """One lead, as every read of one returns it.
+
+    **The loss is an argument rather than an index, because three callers pass rows of three
+    shapes.** The first version read `r[11]` for `lost_at` -- which is the listing's own
+    column and is `stage_changed_at` in `read_lead`'s query, so a single read would have
+    reported the day the stage moved as the day the lead said no. Two timestamps, no crash,
+    and a wrong figure on the one screen that explains a refusal. That is MOD-018's
+    positional-read hazard, and the fix is not to guess.
+    """
     where_they_stand = (standing or {}).get(str(r[1]))
+    lost_at, lost_reason, lost_detail = lost
     member = (None if where_they_stand is None else pipeline.Membership(
         active=True, on_trial_product=where_they_stand == "trial"))
     return {
@@ -874,9 +1081,21 @@ def _lead_row(
             last_touch_at=r[10], created_at=r[8], now=now),
         # **A member is not a lead going cold**, which the board's own count already says: a
         # person who joined is not somebody nobody has rung.
+        # **A member is not a lead going cold and neither is a lost one.** A person who
+        # joined is not somebody nobody has rung, and a person who said no is not either --
+        # the reason is on the record. Counting a refusal here would put every one of them
+        # into the chip that exists to surface a lead somebody has forgotten.
         "going_cold": member is None and pipeline.is_going_cold(
-            last_touch_at=r[10], created_at=r[8], now=now),
+            last_touch_at=r[10], created_at=r[8], now=now, lost_at=lost_at),
+        "lost": lost_at is not None,
+        "lost_at": (None if lost_at is None else lost_at.isoformat()),
+        "lost_reason": lost_reason,
+        "lost_detail": lost_detail,
+        # Advisory, never a lock -- ADR-0010 D10. Reopening is always permitted; this says
+        # which lost leads are worth another try.
+        "recontactable": pipeline.is_recontactable(lost_at=lost_at, now=now),
     }
+
 
 
 def _check_name(error: errors.CheckViolation) -> str:
