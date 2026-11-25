@@ -62,6 +62,16 @@ PERMISSIONS: dict[str, Permission] = dict([
     _p("tenancy.location.write", "Create or change locations", "configuration", "financial"),
     # MOD-005, configuration and flags.
     _p("config.definition.read", "See configuration definitions", "data_access"),
+    # **Its own permission, because the point is that a front desk holds it.** ADR-0015.
+    # ADM-SET-07's conventions have to reach every rendered page, and the obvious reader --
+    # `config.definition.read`, already routine -- means "see every configuration key": granting
+    # that to a receptionist so a page can choose its digits is MOD-013's
+    # `GET /notifications/channels` finding, where "see notification templates" also bought what
+    # every message costs. This returns the offered languages, the numeral system and the
+    # month-name set and nothing else. A refused read falls back to Latin digits, which is what
+    # every page renders today, so the grant changes what somebody sees and never whether a page
+    # works.
+    _p("config.display.read", "See the tenant's languages and number formats", "data_access"),
     _p("config.definition.write", "Register configuration keys", "configuration"),
     _p("config.value.publish", "Publish a configuration value", "configuration", "financial"),
     _p("config.value.rollback", "Roll a configuration value back", "configuration", "financial"),

@@ -12,6 +12,9 @@ from __future__ import annotations
 import unittest
 import uuid
 
+from psycopg.types.json import Jsonb
+
+from app.db import tenant_scope
 from tests.support import GatedApiTestCase
 
 
@@ -30,22 +33,6 @@ class ConfigurationApiTests(GatedApiTestCase):
                 "published_by": str(uuid.uuid4()), "correlation_id": str(uuid.uuid4())}
         body.update(overrides)
         return self.client.post("/config/values", json=body, headers=self.headers(tenant_id))
-
-    def brand_and_location(self, tenant_id: str) -> tuple[str, str]:
-        head = self.headers(tenant_id)
-        org = self.client.post("/organizations",
-                               json={"legal_name": "Cfg ehf", "country_code": "IS"}, headers=head)
-        self.assertEqual(org.status_code, 201, org.text)
-        brand = self.client.post(
-            "/brands", json={"organization_id": org.json()["organization_id"],
-                             "brand_name": "Cfg City"}, headers=head)
-        self.assertEqual(brand.status_code, 201, brand.text)
-        location = self.client.post(
-            "/locations", json={"brand_id": brand.json()["brand_id"],
-                                "location_name": "Cfg Laugavegur",
-                                "timezone": "Atlantic/Reykjavik"}, headers=head)
-        self.assertEqual(location.status_code, 201, location.text)
-        return brand.json()["brand_id"], location.json()["location_id"]
 
     # ------------------------------------------------------------------ definitions
 
@@ -457,3 +444,158 @@ class ConfigurationApiTests(GatedApiTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DisplayConventionsTests(GatedApiTestCase):
+    """ADM-SET-07's read: the numeral system, the languages offered, and the two rules.
+
+    **The case that matters first is a tenant that has declared nothing**, because MOD-005's
+    definitions are rows and a rendered page cannot be made to depend on somebody having
+    registered a key. ADR-0015.
+    """
+
+    def display(self, tenant_id: str):
+        return self.client.get("/config/display", headers=self.headers(tenant_id))
+
+    def declare_numerals(self, tenant_id: str):
+        return self.client.post(
+            "/config/definitions",
+            json={"config_key": "localization.numerals", "value_type": "string",
+                  "default_value": "latn", "owner_module": "MOD-005",
+                  "validation": {"enum": ["latn", "arab"]}},
+            headers=self.headers(tenant_id))
+
+    def test_a_tenant_that_has_declared_nothing_gets_latin_digits_and_every_language(self):
+        """The default is what every page in this build renders today -- ADR-0015's D2.
+
+        A tenant provisioned five minutes ago has no `cfg_definitions` rows at all, and this
+        read is on the path of every rendered page: if it refused or raised for an unconfigured
+        tenant, adding the grant would break the product rather than localize it.
+        """
+        tenant_id = self.tenant()
+        got = self.display(tenant_id)
+        self.assertEqual(got.status_code, 200, got.text)
+        body = got.json()
+        self.assertEqual(body["numerals"], "latn")
+        self.assertEqual(body["languages_offered"], ["en", "ar"])
+        # And it says the values are defaults rather than decisions, so a surface cannot
+        # present "Latin" as a choice somebody made.
+        self.assertEqual(body["declared"], [])
+
+    def test_a_published_value_is_what_the_read_answers(self):
+        tenant_id = self.tenant()
+        self.assertEqual(self.declare_numerals(tenant_id).status_code, 201)
+        published = self.client.post(
+            "/config/values",
+            json={"config_key": "localization.numerals", "value": "arab",
+                  "scope_type": "tenant", "published_by": str(uuid.uuid4()),
+                  "correlation_id": str(uuid.uuid4())},
+            headers=self.headers(tenant_id))
+        self.assertEqual(published.status_code, 201, published.text)
+        body = self.display(tenant_id).json()
+        self.assertEqual(body["numerals"], "arab")
+        self.assertEqual(body["declared"], ["localization.numerals"])
+
+    def test_a_declared_key_with_no_published_value_answers_its_default(self):
+        """Declaring a key is not choosing a value, and the two are different facts.
+
+        `declared` carries the key, because somebody has decided this tenant has an opinion
+        about it; `numerals` carries the definition's own default until a value is published.
+        """
+        tenant_id = self.tenant()
+        self.assertEqual(self.declare_numerals(tenant_id).status_code, 201)
+        body = self.display(tenant_id).json()
+        self.assertEqual(body["numerals"], "latn")
+        self.assertEqual(body["declared"], ["localization.numerals"])
+
+    def test_the_money_rule_and_the_month_set_are_statements_not_settings(self):
+        """There is no key for either, and the read says so rather than implying a choice.
+
+        The canvas is explicit about the money half -- "Money keeps Latin digits with its code,
+        because that is the form on your invoices and JoFotara submissions" -- and states the
+        Levantine month set rather than drawing a control for it, which is ADR-0015's D5 and
+        CON-04's own shape for the week start.
+        """
+        body = self.display(self.tenant()).json()
+        self.assertIn("Latin digits", body["money_is_always_latin"])
+        self.assertEqual(body["month_names"], "levantine")
+        # Neither is in `declared`, because neither is a key.
+        self.assertEqual(body["declared"], [])
+
+    def test_a_value_outside_the_closed_set_cannot_reach_a_page(self):
+        """The guard exists for the writer that is *not* a route, so the case has to be one.
+
+        `validate_value` refuses anything outside `{latn, arab}` on publish, so this value
+        cannot be written through `/config/values` -- and this read is on the path of every
+        rendered page, so a value somebody wrote directly must not be able to take a tenant's
+        whole surface down. The sweep reported the fallback as uncaught until this existed,
+        which is the "a probe for a guard that exists for the writer the service is not has to
+        be that writer" rule in Python.
+        """
+        tenant_id = self.tenant()
+        self.assertEqual(self.declare_numerals(tenant_id).status_code, 201)
+        with tenant_scope(self._tenant_pool, tenant_id) as conn:
+            definition = conn.execute(
+                "SELECT definition_id FROM plt01.cfg_definitions"
+                " WHERE config_key = 'localization.numerals'").fetchone()
+            conn.execute(
+                "UPDATE plt01.cfg_definitions SET default_value = %s"
+                " WHERE definition_id = %s", (Jsonb("devanagari"), definition[0]))
+        body = self.display(tenant_id).json()
+        self.assertEqual(body["numerals"], "latn")
+
+    def test_a_language_with_no_catalogue_is_not_offered(self):
+        """A language a reader could select and then not read is worse than one fewer.
+
+        The registry's `enum` constrains a scalar and cannot reach inside a `json` array, so
+        this *is* publishable through the route -- which is why the filter is here rather than
+        left to validation.
+        """
+        tenant_id = self.tenant()
+        declared = self.client.post(
+            "/config/definitions",
+            json={"config_key": "localization.languages_offered", "value_type": "json",
+                  "default_value": ["en", "ar"], "owner_module": "MOD-005"},
+            headers=self.headers(tenant_id))
+        self.assertEqual(declared.status_code, 201, declared.text)
+        published = self.client.post(
+            "/config/values",
+            json={"config_key": "localization.languages_offered",
+                  "value": ["en", "fr", "ar"], "scope_type": "tenant",
+                  "published_by": str(uuid.uuid4()), "correlation_id": str(uuid.uuid4())},
+            headers=self.headers(tenant_id))
+        self.assertEqual(published.status_code, 201, published.text)
+        self.assertEqual(self.display(tenant_id).json()["languages_offered"], ["en", "ar"])
+
+    def test_a_brand_value_does_not_override_the_tenant_s_one_rule(self):
+        """"One rule per tenant, never mixed and never decided per component" -- the canvas.
+
+        A brand-scoped value is publishable, because `cfg_values` admits one for any key; this
+        read deliberately consults only the tenant scope, so the brand's value is stored and
+        ignored rather than quietly making one brand's pages differ from another's.
+        """
+        tenant_id = self.tenant()
+        self.assertEqual(self.declare_numerals(tenant_id).status_code, 201)
+        brand_id, _ = self.brand_and_location(tenant_id)
+        published = self.client.post(
+            "/config/values",
+            json={"config_key": "localization.numerals", "value": "arab",
+                  "scope_type": "brand", "brand_id": brand_id,
+                  "published_by": str(uuid.uuid4()), "correlation_id": str(uuid.uuid4())},
+            headers=self.headers(tenant_id))
+        self.assertEqual(published.status_code, 201, published.text)
+        self.assertEqual(self.display(tenant_id).json()["numerals"], "latn")
+
+    def test_two_tenants_do_not_see_each_other(self):
+        one, two = self.tenant(), self.tenant()
+        self.assertEqual(self.declare_numerals(one).status_code, 201)
+        published = self.client.post(
+            "/config/values",
+            json={"config_key": "localization.numerals", "value": "arab",
+                  "scope_type": "tenant", "published_by": str(uuid.uuid4()),
+                  "correlation_id": str(uuid.uuid4())},
+            headers=self.headers(one))
+        self.assertEqual(published.status_code, 201, published.text)
+        self.assertEqual(self.display(one).json()["numerals"], "arab")
+        self.assertEqual(self.display(two).json()["numerals"], "latn")
+        self.assertEqual(self.display(two).json()["declared"], [])

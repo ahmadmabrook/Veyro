@@ -55,6 +55,7 @@ from app.booking import service as booking
 from app.catalog import service as catalog
 from app.commercial import service as commercial
 from app.config import Settings, load_settings
+from app.configuration import display as config_display
 from app.configuration import service as config
 from app.crm import pipeline as crm_pipeline
 from app.crm import service as crm
@@ -3891,6 +3892,25 @@ def create_app(
             brand_id=optional_uuid(brand_id, "brand_id"),
             location_id=optional_uuid(location_id, "location_id"),
         )
+
+    @app.get("/config/display")
+    def display_conventions(tenant_id: TenantId, session: Session) -> dict[str, Any]:
+        """ADM-SET-07's conventions: the numeral system, the languages offered, and the rules.
+
+        **Its own route and its own permission, because the point is that a front desk holds
+        it** -- ADR-0015. `/config/resolved` above is gated on `config.definition.read`, which
+        means "see every configuration key": granting that to a receptionist so a page can
+        choose its digits is MOD-013's `GET /notifications/channels` finding one module over.
+        This returns two values and two statements and nothing else.
+
+        **A refused read is not an error for a caller**: a surface falls back to Latin digits,
+        which is what every page in this build renders today, so the grant changes what somebody
+        sees rather than whether a page works. That is why this is a read with a cheap
+        permission rather than an entry in `UNGATED` -- it has a tenant, and the fallback means
+        a missing grant cannot break anything.
+        """
+        permit(session, "config.display.read")
+        return config_display.display_conventions(tenant_pool, tenant_id)
 
     @app.post("/config/preview")
     def preview_value(tenant_id: TenantId, session: Session, body: PreviewBody) -> dict[str, Any]:

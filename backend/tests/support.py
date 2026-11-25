@@ -186,6 +186,25 @@ class GatedApiTestCase(unittest.TestCase):
         )
         return str(created["identity_id"]), str(session["token"])
 
+    # **Here rather than in a test file, because two classes needed it.** Copying it
+    # into the second was the duplication this build keeps finding, caught by counting
+    # the definitions a minute after making it: one fixture helper, one definition.
+    def brand_and_location(self, tenant_id: str) -> tuple[str, str]:
+        head = self.headers(tenant_id)
+        org = self.client.post("/organizations",
+                               json={"legal_name": "Cfg ehf", "country_code": "IS"}, headers=head)
+        self.assertEqual(org.status_code, 201, org.text)
+        brand = self.client.post(
+            "/brands", json={"organization_id": org.json()["organization_id"],
+                             "brand_name": "Cfg City"}, headers=head)
+        self.assertEqual(brand.status_code, 201, brand.text)
+        location = self.client.post(
+            "/locations", json={"brand_id": brand.json()["brand_id"],
+                                "location_name": "Cfg Laugavegur",
+                                "timezone": "Atlantic/Reykjavik"}, headers=head)
+        self.assertEqual(location.status_code, 201, location.text)
+        return brand.json()["brand_id"], location.json()["location_id"]
+
     def unprivileged(self, tenant_id: str) -> str:
         """A session in this tenant holding no role at all, for testing the gate itself."""
         return self.fresh_identity(tenant_id)[1]
