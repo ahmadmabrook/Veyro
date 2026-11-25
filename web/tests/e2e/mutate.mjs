@@ -42,6 +42,77 @@ const web = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
  * does not collect those files and so reported no failure rather than no test.
  */
 const MUTATIONS = [
+  // ------------------------------------------------- ADM-STF-03, invite someone
+  {
+    id: "invite-the-form-is-reachable-by-a-reader-who-could-step-up",
+    why: "`authz.assignment.write` is financial class, so `allowed` is false for every"
+      + " password-only session -- gating the form on it would hide the step-up the form"
+      + " itself offers, which is ADM-SCH-07's own finding one screen over",
+    file: "src/app/staff/invite/page.tsx",
+    from: "  const mayAsk = ![\"denied\", \"unreachable_level\"].includes(gateVerdict(mayInvite));",
+    to: "  const mayAsk = mayInvite.allowed;",
+    grep: "draws the canvas's three fields and no name",
+  },
+  {
+    id: "invite-the-address-field-refuses-in-the-form-not-in-the-browser",
+    why: "a native `required` or `type=email` refuses the submit itself, with the browser's"
+      + " own bubble in the browser's own language -- so `invite.emailNeeded`, which the"
+      + " design draws, becomes a branch nothing can render. ADM-MEM-10 paid for this once"
+      + " and the browser suite found it again here",
+    file: "src/app/staff/invite/invite-form.tsx",
+    from: "          id=\"invite-email\" name=\"email\" type=\"text\" inputMode=\"email\" dir=\"ltr\"\n"
+      + "          aria-required=\"true\"",
+    to: "          id=\"invite-email\" name=\"email\" type=\"email\" inputMode=\"email\" dir=\"ltr\"\n"
+      + "          required",
+    grep: "refuses an address that is not one, before anything is sent",
+  },
+  {
+    id: "invite-a-club-is-required-because-a-role-at-none-grants-nothing",
+    why: "`permissions_of` lets a broad assignment cover a narrow scope and never the"
+      + " reverse, so an assignment with no scope grants nothing at all -- the service's own"
+      + " refusal, and one the screen can see for itself",
+    file: "src/lib/invitations.ts",
+    from: "  if (!tenantWide && clubs.length === 0) missing.clubs = true;",
+    to: "  if (false) missing.clubs = true;",
+    grep: "asks for a club rather than inviting somebody into none",
+  },
+  {
+    id: "invite-the-step-up-is-offered-rather-than-the-refusal-printed",
+    why: "a reader refused for assurance can fix it and one refused for a permission cannot,"
+      + " so the offer is the half that matters -- sixteen marker sites in this app passed"
+      + " the wrong remedy for exactly this reason",
+    file: "src/app/staff/invite/invite-form.tsx",
+    from: "          {state.error === \"invite.needsStepUp\" ? (",
+    to: "          {false ? (",
+    grep: "the only hold left on a complete form is the step-up it offers",
+  },
+  {
+    id: "invite-a-pending-row-draws-the-address-the-link-went-to",
+    why: "the canvas's pending list is `yasmin@nadi.jo · 2d left`, and the address is the"
+      + " only thing identifying the row -- an invitation has no name and no profile",
+    file: "src/app/staff/invite/page.tsx",
+    from: "                    <span className=\"data\" dir=\"ltr\">{row.email}</span>",
+    to: "                    <span className=\"data\" dir=\"ltr\">{\"\"}</span>",
+    grep: "draws the address and nothing else in the who column",
+  },
+  {
+    id: "invite-the-waiting-count-is-the-pending-ones",
+    why: "an expired invitation is in the list and is not waiting -- the canvas draws"
+      + " `PENDING · 2` over rows one of which reads `expired`, so a count of the rows would"
+      + " be the members-list finding in a header",
+    file: "src/lib/invitations.ts",
+    from: "  return list.filter((one) => one.state === \"pending\").length;",
+    to: "  return list.length;",
+    // **The component layer, because the browser cannot reach the case.** Pointed at the
+    // browser spec first and it came back UNCAUGHT, correctly: the fixture's list holds one
+    // row and it is pending, so a count of the rows and a count of the waiting ones agree.
+    // The row that separates them is an *expired* invitation, and nothing can write one --
+    // `expires_at` is `now() + make_interval(days => N)` with a one-day floor, deliberately,
+    // so that the window's two ends come from one clock. A hand-built row is the only place
+    // the distinction exists, which is where its test is.
+    runner: "vitest",
+    grep: "counts the waiting ones and keeps the expired ones on screen",
+  },
   // ------------------------------------------------- ADM-SCH-07, cancel a class
   {
     id: "cancel-class-the-sheet-is-reachable-by-a-reader-who-could-step-up",

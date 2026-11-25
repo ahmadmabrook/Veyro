@@ -186,6 +186,9 @@ const surfaces: [string, string][] = [
   // shape most likely to force a minimum width on a cell.
   ["the staff list", "/staff"],
   ["a staff record", `/staff/${creds.staffWorkingPersonId}`],
+  // A form of three fields over a grid of four, which is the pair most likely to force a
+  // width: the chips wrap and the table drops, and only one of those is measurable here.
+  ["inviting someone", "/staff/invite"],
   ["your account", "/account"],
 ];
 

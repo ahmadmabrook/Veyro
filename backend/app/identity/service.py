@@ -386,8 +386,8 @@ def _rehash_if_weak(conn: Connection[Any], tenant_id: str, identity_id: str,
 
 # --------------------------------------------------------------------------- identities
 
-def register_identity(
-    pool: Pool,
+def register_identity_on(
+    conn: Connection[Any],
     tenant_id: str,
     *,
     display_name: str,
@@ -402,6 +402,13 @@ def register_identity(
     `person_id` links this identity to one in another tenant, which is how one human holds roles
     in several tenants without being duplicated. It is a bare key with no table behind it: see the
     migration for why a foreign key there would secure nothing.
+
+    **In the caller's transaction**, which ADM-STF-03 is why (ADR-0017 D2): accepting a staff
+    invitation creates the identity *and* its role assignments, and an identity created with the
+    assignments rolled back is a login with no permissions that the retry cannot repair -- the
+    identifier is taken by then, so the second attempt answers
+    `identifier_already_registered`. Both tables are in `iam` under one role, so one
+    transaction is available. `register_identity` is the pool-taking wrapper.
     """
     _require_uuid(correlation_id, "correlation_id")
     if not display_name.strip():
@@ -414,37 +421,54 @@ def register_identity(
     if person_id is not None:
         _require_uuid(person_id, "person_id")
 
-    with tenant_scope(pool, tenant_id) as conn:
-        columns = "tenant_id, email_normalized, phone_normalized, display_name"
-        values: tuple[Any, ...] = (tenant_id, email_normalized, phone_normalized, display_name)
-        if person_id is not None:
-            columns += ", person_id"
-            values += (person_id,)
-        try:
-            row = conn.execute(
-                f"INSERT INTO iam.identities ({columns})"  # noqa: S608 - fixed column names
-                f" VALUES ({', '.join(['%s'] * len(values))})"
-                f" RETURNING identity_id, person_id",
-                values,
-            ).fetchone()
-        except errors.UniqueViolation:
-            # Raised inside the block on purpose: nothing about a rejected registration should
-            # survive it.
-            raise Conflict("identifier_already_registered") from None
-        except errors.ForeignKeyViolation:
-            raise NotFound("tenant_not_found") from None
-        except errors.CheckViolation:
-            raise InvalidRequest("bad_identity") from None
-        assert row is not None
-        identity_id, created_person = str(row[0]), str(row[1])
+    columns = "tenant_id, email_normalized, phone_normalized, display_name"
+    values: tuple[Any, ...] = (tenant_id, email_normalized, phone_normalized, display_name)
+    if person_id is not None:
+        columns += ", person_id"
+        values += (person_id,)
+    try:
+        row = conn.execute(
+            f"INSERT INTO iam.identities ({columns})"  # noqa: S608 - fixed column names
+            f" VALUES ({', '.join(['%s'] * len(values))})"
+            f" RETURNING identity_id, person_id",
+            values,
+        ).fetchone()
+    except errors.UniqueViolation:
+        # Raised inside the block on purpose: nothing about a rejected registration should
+        # survive it.
+        raise Conflict("identifier_already_registered") from None
+    except errors.ForeignKeyViolation:
+        raise NotFound("tenant_not_found") from None
+    except errors.CheckViolation:
+        raise InvalidRequest("bad_identity") from None
+    assert row is not None
+    identity_id, created_person = str(row[0]), str(row[1])
 
-        if hashed is not None:
-            _store_credential(conn, tenant_id, identity_id, PASSWORD, hashed)
-        _event(conn, tenant_id, kind="identity.created", outcome="succeeded",
-               identity_id=identity_id, correlation_id=correlation_id)
+    if hashed is not None:
+        _store_credential(conn, tenant_id, identity_id, PASSWORD, hashed)
+    _event(conn, tenant_id, kind="identity.created", outcome="succeeded",
+           identity_id=identity_id, correlation_id=correlation_id)
     return {"identity_id": identity_id, "person_id": created_person,
             "email": email_normalized, "phone": phone_normalized,
             "display_name": display_name, "has_password": hashed is not None}
+
+
+def register_identity(
+    pool: Pool,
+    tenant_id: str,
+    *,
+    display_name: str,
+    correlation_id: str,
+    email: str | None = None,
+    phone: str | None = None,
+    password: str | None = None,
+    person_id: str | None = None,
+) -> dict[str, Any]:
+    """`register_identity_on` in a transaction of its own."""
+    with tenant_scope(pool, tenant_id) as conn:
+        return register_identity_on(
+            conn, tenant_id, display_name=display_name, correlation_id=correlation_id,
+            email=email, phone=phone, password=password, person_id=person_id)
 
 
 def _require_identity(conn: Connection[Any], identity_id: str) -> tuple[Any, ...]:

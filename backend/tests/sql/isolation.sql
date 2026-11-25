@@ -1117,6 +1117,68 @@ BEGIN
           AND pg_get_userbyid(relowner) <> 'veyro_cp_migrator') <> 0 THEN
         RAISE EXCEPTION 'CHECK 28 FAILED: an iam table is not owned by the migrator';
     END IF;
+    -- **No DELETE, no TRUNCATE and no REFERENCES, on any table in the schema.** `CLAUDE.md`
+    -- states this absolutely -- "`veyro_iam_app` may not hold DELETE on anything, because
+    -- revocation in `iam` is a status change that leaves evidence" -- and nothing in this
+    -- file read it: ADM-STF-03's sweep granted DELETE on `iam.invitations` and all 116 checks
+    -- passed. That is the prefix-free-sweep finding this repository already records for
+    -- `plt01` twice, in the plane where the rows are credentials and an audit chain.
+    --
+    -- Swept from the catalogue rather than listed, for the reason the RLS sweep above gives:
+    -- a per-table list has to be edited when a module adds a table, and that edit is the
+    -- moment an unprotected one slips through.
+    --
+    -- **And the absolute claim turned out to be false, which is what the sweep is for.**
+    -- `iam.role_permissions` holds DELETE and has since MOD-008 was built, deliberately and
+    -- with the reason in `0002`: "an ungranted permission is an absence, not a revoked row,
+    -- and keeping tombstones here would make 'what can this role do' a query over history
+    -- rather than over state. The audit log records the removal." So the grant is right and
+    -- the sentence in `CLAUDE.md` was wrong -- a doc claiming a control it does not have,
+    -- found by writing the control. One exception, named here, and adding a second is meant
+    -- to be uncomfortable: every other table in this plane records a withdrawal rather than
+    -- removing a row.
+    IF (SELECT count(*) FROM pg_class c
+        WHERE c.relnamespace = 'iam'::regnamespace AND c.relkind IN ('r', 'p')
+          AND c.relname <> 'role_permissions'
+          AND (has_table_privilege('veyro_iam_app', c.oid, 'DELETE')
+               OR has_table_privilege('veyro_iam_app', c.oid, 'TRUNCATE')
+               OR has_table_privilege('veyro_iam_app', c.oid, 'REFERENCES'))) <> 0 THEN
+        RAISE EXCEPTION
+            'CHECK 28 FAILED: veyro_iam_app holds DELETE, TRUNCATE or REFERENCES on: %',
+            (SELECT string_agg(relname, ', ') FROM pg_class c
+             WHERE c.relnamespace = 'iam'::regnamespace AND c.relkind IN ('r', 'p')
+               AND c.relname <> 'role_permissions'
+               AND (has_table_privilege('veyro_iam_app', c.oid, 'DELETE')
+                    OR has_table_privilege('veyro_iam_app', c.oid, 'TRUNCATE')
+                    OR has_table_privilege('veyro_iam_app', c.oid, 'REFERENCES')));
+    END IF;
+    -- **The exception is asserted to be reachable**, so a sweep that quietly stopped covering
+    -- the plane would fail here rather than passing vacuously: the day `role_permissions`
+    -- becomes append-only, this line is what brings somebody to delete the exemption.
+    IF NOT has_table_privilege('veyro_iam_app', 'iam.role_permissions', 'DELETE') THEN
+        RAISE EXCEPTION
+            'CHECK 28 FAILED: role_permissions no longer holds DELETE, so the exemption above '
+            'is stale -- delete it';
+    END IF;
+    -- And nothing in `iam` is readable or writable by PUBLIC, at the table or the column
+    -- level: `pg_class.relacl` holds table grants only, which is why the column form is asked
+    -- separately -- the hole MOD-021's review found one plane over.
+    IF (SELECT count(*) FROM pg_class c
+        WHERE c.relnamespace = 'iam'::regnamespace AND c.relkind IN ('r', 'p')
+          AND (has_table_privilege('public', c.oid, 'SELECT')
+               OR has_table_privilege('public', c.oid, 'INSERT')
+               OR has_table_privilege('public', c.oid, 'UPDATE'))) <> 0 THEN
+        RAISE EXCEPTION 'CHECK 28 FAILED: PUBLIC holds a privilege on an iam table';
+    END IF;
+    IF (SELECT count(*) FROM pg_attribute a
+        JOIN pg_class c ON c.oid = a.attrelid
+        WHERE c.relnamespace = 'iam'::regnamespace AND c.relkind IN ('r', 'p')
+          AND a.attnum > 0 AND NOT a.attisdropped
+          AND (has_column_privilege('public', c.oid, a.attnum, 'SELECT')
+               OR has_column_privilege('public', c.oid, a.attnum, 'INSERT')
+               OR has_column_privilege('public', c.oid, a.attnum, 'UPDATE'))) <> 0 THEN
+        RAISE EXCEPTION 'CHECK 28 FAILED: PUBLIC holds a column privilege in iam';
+    END IF;
 END $$;
 ROLLBACK;
 
@@ -51737,4 +51799,540 @@ BEGIN
 END $$;
 ROLLBACK;
 
-\echo 'tenant isolation: 115/115 checks passed'
+-- ========================================================= CHECK 116 (MOD-008)
+--
+-- **ADM-STF-03's invitation, one case per rule.** ADR-0017. `0007` adds the first table in
+-- `iam` a route can reach a CHECK through, so these are its only behavioural evidence: the
+-- module's own checks 30-32 pin policies and privileges and no constraint set, which is the
+-- `iam`-plane gap `CLAUDE.md` records.
+--
+-- Every case names the constraint that refused it and records a different one as a
+-- *confusion*, so a sibling answering fails on a clean database rather than at the next
+-- sweep -- the trap this repository has shipped in five modules.
+--
+-- **Two permissions first**, because no number of refusals can see a rule tightened until an
+-- ordinary invitation is unwritable: the canvas's own row, and the accept that settles it.
+BEGIN;
+SET LOCAL ROLE veyro_iam_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+DECLARE
+    probe integer := 0;
+    offender text;
+    state text;
+    confused text[] := ARRAY[]::text[];
+    tenant constant uuid := '11111111-1111-4111-8111-111111111111';
+    inviter constant uuid := 'eeeeeeee-0000-4000-8000-000000000002';
+    joiner constant uuid := 'eeeeeeee-0000-4000-8000-00000000000a';
+    sales constant uuid := 'ffffffff-0000-4000-8000-000000000001';
+    live constant uuid := 'aaaaaaaa-0007-4000-8000-000000000001';
+    spare constant uuid := 'aaaaaaaa-0007-4000-8000-000000000002';
+    digest_a constant bytea := decode(md5('a') || md5('b'), 'hex');
+    digest_b constant bytea := decode(md5('c') || md5('d'), 'hex');
+    digest_c constant bytea := decode(md5('e') || md5('f'), 'hex');
+BEGIN
+    -- 1. The permission: the canvas's own invitation, seven days out.
+    BEGIN
+        INSERT INTO iam.invitations
+            (tenant_id, invitation_id, email_normalized, role_id, token_hash, expires_at,
+             created_by, correlation_id)
+        VALUES (tenant, live, 'kareem@nadi.jo', sales, digest_a, now() + interval '7 days',
+                inviter, inviter);
+        INSERT INTO iam.invitation_scopes
+            (tenant_id, invitation_id, scope_type)
+        VALUES (tenant, live, 'tenant');
+        probe := probe + 1;
+    EXCEPTION
+        WHEN others THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME, state = RETURNED_SQLSTATE;
+            confused := array_append(
+                confused, 'an ordinary invitation was refused by '
+                || coalesce(nullif(offender, ''), 'nothing named') || ' sqlstate ' || state);
+    END;
+
+    -- 2. And the accept, which is the one update the grant admits.
+    BEGIN
+        UPDATE iam.invitations
+        SET accepted_at = now(), accepted_identity_id = joiner
+        WHERE invitation_id = live;
+        probe := probe + 1;
+    EXCEPTION
+        WHEN others THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME, state = RETURNED_SQLSTATE;
+            confused := array_append(
+                confused, 'an ordinary accept was refused by '
+                || coalesce(nullif(offender, ''), 'nothing named') || ' sqlstate ' || state);
+    END;
+
+    -- 3. Accepted once, and by whom is recorded once. A CHECK cannot see `OLD`.
+    BEGIN
+        UPDATE iam.invitations
+        SET accepted_identity_id = inviter WHERE invitation_id = live;
+        RAISE EXCEPTION 'CHECK 116 FAILED: an acceptance was re-attributed';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 116 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+        WHEN others THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME, state = RETURNED_SQLSTATE;
+            confused := array_append(
+                confused, 'the re-attributed acceptance answered by '
+                || coalesce(nullif(offender, ''), 'nothing named') || ' sqlstate ' || state);
+    END;
+
+    -- 4. And not both outcomes: a row saying accepted *and* withdrawn is one nobody can read.
+    BEGIN
+        UPDATE iam.invitations
+        SET revoked_at = now(), revoked_by = inviter, revoke_reason = 'changed our mind'
+        WHERE invitation_id = live;
+        RAISE EXCEPTION 'CHECK 116 FAILED: an accepted invitation was also withdrawn';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'invitations_one_outcome' THEN probe := probe + 1;
+            ELSE confused := array_append(
+                confused, 'the double outcome answered by ' || offender); END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 116 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'the double outcome raised ' || SQLERRM);
+    END;
+
+    -- 5. A second live invitation to the same address, which is the whole of D5: whichever
+    -- link they click would decide what they can do.
+    BEGIN
+        INSERT INTO iam.invitations
+            (tenant_id, invitation_id, email_normalized, role_id, token_hash, expires_at,
+             created_by, correlation_id)
+        VALUES (tenant, spare, 'yasmin@nadi.jo', sales, digest_b, now() + interval '7 days',
+                inviter, inviter);
+        INSERT INTO iam.invitations
+            (tenant_id, email_normalized, role_id, token_hash, expires_at, created_by,
+             correlation_id)
+        VALUES (tenant, 'yasmin@nadi.jo', sales, digest_c, now() + interval '7 days',
+                inviter, inviter);
+        RAISE EXCEPTION 'CHECK 116 FAILED: two live invitations to one address';
+    EXCEPTION
+        WHEN unique_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'invitations_one_live_per_email' THEN probe := probe + 1;
+            ELSE confused := array_append(
+                confused, 'the repeated address answered by ' || offender); END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 116 FAILED%' THEN RAISE; END IF;
+            confused := array_append(confused, 'the repeated address raised ' || SQLERRM);
+    END;
+
+    -- 6. And a withdrawn one frees the slot, which only a case the index must *admit* can
+    -- see: the resend revokes and inserts in one transaction (D4), so a drop-only case would
+    -- pass with the whole partial clause removed.
+    -- **Its own row, because case 5 rolled back and took the one it inserted with it.** A
+    -- probe that depends on a sibling's committed state depends on that sibling passing --
+    -- the trap this repository records for MOD-017's own entitlement block, hit again here.
+    BEGIN
+        INSERT INTO iam.invitations
+            (tenant_id, invitation_id, email_normalized, role_id, token_hash, expires_at,
+             created_by, correlation_id)
+        VALUES (tenant, spare, 'yasmin@nadi.jo', sales, digest_b, now() + interval '7 days',
+                inviter, inviter);
+        UPDATE iam.invitations
+        SET revoked_at = now(), revoked_by = inviter,
+            revoke_reason = 'resent: a new link was issued'
+        WHERE invitation_id = spare;
+        INSERT INTO iam.invitations
+            (tenant_id, email_normalized, role_id, token_hash, expires_at,
+             supersedes_invitation_id, created_by, correlation_id)
+        VALUES (tenant, 'yasmin@nadi.jo', sales, digest_c, now() + interval '7 days', spare,
+                inviter, inviter);
+        probe := probe + 1;
+    EXCEPTION
+        WHEN others THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME, state = RETURNED_SQLSTATE;
+            confused := array_append(
+                confused, 'a resend after a withdrawal was refused by '
+                || coalesce(nullif(offender, ''), 'nothing named') || ' sqlstate ' || state);
+    END;
+
+    -- 7. A withdrawal with no stated reason. **The NULL case, not a blank one**: the
+    -- `coalesce` is what this proves, and every blank-reason case in this build passed with
+    -- it gone until MOD-014's sweep found that.
+    BEGIN
+        INSERT INTO iam.invitations
+            (tenant_id, email_normalized, role_id, token_hash, expires_at, revoked_at,
+             revoked_by, created_by, correlation_id)
+        VALUES (tenant, 'omar.s@nadi.jo', sales, decode(md5('g') || md5('h'), 'hex'),
+                now() + interval '7 days', now(), inviter, inviter, inviter);
+        RAISE EXCEPTION 'CHECK 116 FAILED: a withdrawal stating no reason at all';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'invitations_revocation_attributed' THEN probe := probe + 1;
+            ELSE confused := array_append(
+                confused, 'the unreasoned withdrawal answered by ' || offender); END IF;
+    END;
+
+    -- 8. And one of a single tab, which proves the `~ '[^[:space:]]'` form rather than the
+    -- `length(btrim(...))` one this repository banned across 122 constraints.
+    BEGIN
+        INSERT INTO iam.invitations
+            (tenant_id, email_normalized, role_id, token_hash, expires_at, revoked_at,
+             revoked_by, revoke_reason, created_by, correlation_id)
+        VALUES (tenant, 'omar.s@nadi.jo', sales, decode(md5('i') || md5('j'), 'hex'),
+                now() + interval '7 days', now(), inviter, E'\t', inviter, inviter);
+        RAISE EXCEPTION 'CHECK 116 FAILED: a withdrawal reason of one tab';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'invitations_revocation_attributed' THEN probe := probe + 1;
+            ELSE confused := array_append(
+                confused, 'the whitespace reason answered by ' || offender); END IF;
+    END;
+
+    -- 9. A window past the ceiling (D8): a year-long invitation is a permanent back door
+    -- with a friendly name.
+    BEGIN
+        INSERT INTO iam.invitations
+            (tenant_id, email_normalized, role_id, token_hash, expires_at, created_by,
+             correlation_id)
+        VALUES (tenant, 'late@nadi.jo', sales, decode(md5('k') || md5('l'), 'hex'),
+                now() + interval '31 days', inviter, inviter);
+        RAISE EXCEPTION 'CHECK 116 FAILED: an invitation lasting a month and a day';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'invitations_window' THEN probe := probe + 1;
+            ELSE confused := array_append(
+                confused, 'the long window answered by ' || offender); END IF;
+    END;
+
+    -- 10. And one that has already closed, which is the other side of the same rule.
+    BEGIN
+        INSERT INTO iam.invitations
+            (tenant_id, email_normalized, role_id, token_hash, expires_at, created_by,
+             correlation_id)
+        VALUES (tenant, 'past@nadi.jo', sales, decode(md5('m') || md5('n'), 'hex'),
+                now() - interval '1 day', inviter, inviter);
+        RAISE EXCEPTION 'CHECK 116 FAILED: an invitation that expired before it existed';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'invitations_window' THEN probe := probe + 1;
+            ELSE confused := array_append(
+                confused, 'the closed window answered by ' || offender); END IF;
+    END;
+
+    -- 11. A token that is not a 32-byte digest, which is what makes "only the digest is
+    -- here" a control rather than a naming convention -- MOD-012's `vault_ref` lesson.
+    BEGIN
+        INSERT INTO iam.invitations
+            (tenant_id, email_normalized, role_id, token_hash, expires_at, created_by,
+             correlation_id)
+        VALUES (tenant, 'short@nadi.jo', sales, decode('abcd', 'hex'),
+                now() + interval '7 days', inviter, inviter);
+        RAISE EXCEPTION 'CHECK 116 FAILED: a token hash that is not a digest';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'invitations_token_hash_length' THEN probe := probe + 1;
+            ELSE confused := array_append(
+                confused, 'the short digest answered by ' || offender); END IF;
+    END;
+
+    -- 12. An address that is not one, so the one-live index means "this person".
+    BEGIN
+        INSERT INTO iam.invitations
+            (tenant_id, email_normalized, role_id, token_hash, expires_at, created_by,
+             correlation_id)
+        VALUES (tenant, 'not an address', sales, decode(md5('o') || md5('p'), 'hex'),
+                now() + interval '7 days', inviter, inviter);
+        RAISE EXCEPTION 'CHECK 116 FAILED: an invitation to something that is not an address';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'invitations_email_shape' THEN probe := probe + 1;
+            ELSE confused := array_append(
+                confused, 'the bad address answered by ' || offender); END IF;
+    END;
+
+    -- 13. A club shape `role_assignments` would refuse, because these rows become those rows.
+    BEGIN
+        INSERT INTO iam.invitation_scopes
+            (tenant_id, invitation_id, scope_type, location_id)
+        VALUES (tenant, live, 'tenant', 'cccccccc-0000-4000-8000-000000000001');
+        RAISE EXCEPTION 'CHECK 116 FAILED: a tenant-wide scope naming a club';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'invitation_scopes_shape' THEN probe := probe + 1;
+            ELSE confused := array_append(
+                confused, 'the bad scope answered by ' || offender); END IF;
+        WHEN foreign_key_violation THEN
+            RAISE EXCEPTION
+                'CHECK 116 FAILED: a tenant-wide scope naming a club was refused by the '
+                'foreign key, not the shape rule';
+    END;
+
+    -- 14. And the same club twice on one invitation, which the accept would turn into two
+    -- assignments the second of which `role_assignments` refuses.
+    BEGIN
+        INSERT INTO iam.invitation_scopes (tenant_id, invitation_id, scope_type)
+        VALUES (tenant, live, 'tenant');
+        RAISE EXCEPTION 'CHECK 116 FAILED: one club named twice on one invitation';
+    EXCEPTION
+        WHEN unique_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'invitation_scopes_one_per_scope' THEN probe := probe + 1;
+            ELSE confused := array_append(
+                confused, 'the repeated club answered by ' || offender); END IF;
+    END;
+
+    -- 15 to 16. The trigger's fourth branch: the link, the role and the window are what the
+    -- invitation *is*, and a resend is a new row rather than a rewritten one (D4). The grant
+    -- refuses these columns too, so the trigger's own refusal is probed as the owner in 116b
+    -- -- here it is the *grant* that answers, which is the stronger control. **The address is
+    -- deliberately not among them**: `0007` grants it so MOD-009's erasure can clear it on a
+    -- settled row, and what holds it still while the link is alive is the trigger alone,
+    -- which is 116b's third and sixth probes.
+    BEGIN
+        UPDATE iam.invitations SET expires_at = now() + interval '20 days'
+        WHERE invitation_id = live;
+        RAISE EXCEPTION 'CHECK 116 FAILED: an expiry was moved by the service role';
+    EXCEPTION
+        WHEN insufficient_privilege THEN probe := probe + 1;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 116 FAILED%' THEN RAISE; END IF;
+            confused := array_append(
+                confused, 'the moved expiry was refused by the trigger rather than the grant');
+    END;
+    BEGIN
+        UPDATE iam.invitations SET token_hash = digest_b WHERE invitation_id = live;
+        RAISE EXCEPTION 'CHECK 116 FAILED: a token was replaced by the service role';
+    EXCEPTION
+        WHEN insufficient_privilege THEN probe := probe + 1;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 116 FAILED%' THEN RAISE; END IF;
+            confused := array_append(
+                confused, 'the replaced token was refused by the trigger rather than the '
+                'grant');
+    END;
+
+    IF array_length(confused, 1) IS NOT NULL THEN
+        RAISE EXCEPTION 'CHECK 116 FAILED: %', array_to_string(confused, '; ');
+    END IF;
+    IF probe <> 16 THEN
+        RAISE EXCEPTION
+            'CHECK 116 FAILED: % of 16 cases ran -- a rule with no isolating case is a rule '
+            'nobody has tested', probe;
+    END IF;
+END $$;
+ROLLBACK;
+
+-- ---------------------------------- 116b. the trigger, for the writer the grant is not
+-- **The five branches, as the table owner.** Three of the columns the trigger freezes carry no
+-- UPDATE grant at all, so under `veyro_iam_app` the privilege layer answers first -- which
+-- check 116 proves and which says nothing about the trigger. This is MOD-020's own arrangement
+-- in 97c and MOD-026's in 114, and for the same reason: the grant is the stronger control and
+-- the trigger is what holds for a writer that is not this service.
+--
+-- **And one of the five is a permission**, which is the only thing that can see the address
+-- branch tightened until an erasure cannot reach a settled row. The address is the one column
+-- here where the trigger is not a second line of defence but the whole of it.
+BEGIN;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+DECLARE
+    probe integer := 0;
+    tenant constant uuid := '11111111-1111-4111-8111-111111111111';
+    inviter constant uuid := 'eeeeeeee-0000-4000-8000-000000000002';
+    joiner constant uuid := 'eeeeeeee-0000-4000-8000-00000000000a';
+    sales constant uuid := 'ffffffff-0000-4000-8000-000000000001';
+    one constant uuid := 'aaaaaaaa-0007-4000-8000-00000000000a';
+    state text;
+BEGIN
+    INSERT INTO iam.invitations
+        (tenant_id, invitation_id, email_normalized, role_id, token_hash, expires_at,
+         created_by, correlation_id)
+    VALUES (tenant, one, 'owner@nadi.jo', sales, decode(md5('q') || md5('r'), 'hex'),
+            now() + interval '7 days', inviter, inviter);
+
+    -- 1. The link.
+    BEGIN
+        UPDATE iam.invitations SET token_hash = decode(md5('s') || md5('t'), 'hex')
+        WHERE invitation_id = one;
+        RAISE EXCEPTION 'CHECK 116 FAILED: the owner replaced an invitation''s link';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 116 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+    -- 2. The window.
+    BEGIN
+        UPDATE iam.invitations SET expires_at = now() + interval '20 days'
+        WHERE invitation_id = one;
+        RAISE EXCEPTION 'CHECK 116 FAILED: the owner moved an invitation''s window';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 116 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+    -- 3. The address, while the link is alive. This is the branch that keeps a bearer
+    -- credential from being redirected, and it is the whole control rather than half of one:
+    -- the column carries an UPDATE grant so that an erasure can reach a settled row.
+    BEGIN
+        UPDATE iam.invitations SET email_normalized = 'somebody.else@nadi.jo'
+        WHERE invitation_id = one;
+        RAISE EXCEPTION 'CHECK 116 FAILED: the owner re-pointed a live invitation''s address';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 116 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+    -- 4. Accepted once, and by whom recorded once.
+    BEGIN
+        UPDATE iam.invitations
+        SET accepted_at = now(), accepted_identity_id = joiner WHERE invitation_id = one;
+        UPDATE iam.invitations SET accepted_at = now() + interval '1 hour'
+        WHERE invitation_id = one;
+        RAISE EXCEPTION 'CHECK 116 FAILED: the owner re-dated an acceptance';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 116 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+    -- 5. And the withdrawal branch, which nothing above reaches. **Its own row**, because
+    -- probe 4 rolled back and took its acceptance with it -- the same
+    -- depends-on-a-sibling's-committed-state trap, one block in.
+    BEGIN
+        INSERT INTO iam.invitations
+            (tenant_id, invitation_id, email_normalized, role_id, token_hash, expires_at,
+             created_by, correlation_id)
+        VALUES (tenant, 'aaaaaaaa-0007-4000-8000-00000000000b', 'gone@nadi.jo', sales,
+                decode(md5('u') || md5('v'), 'hex'), now() + interval '7 days', inviter,
+                inviter);
+        UPDATE iam.invitations
+        SET revoked_at = now(), revoked_by = inviter, revoke_reason = 'took another job'
+        WHERE invitation_id = 'aaaaaaaa-0007-4000-8000-00000000000b';
+        UPDATE iam.invitations SET revoke_reason = 'something else'
+        WHERE invitation_id = 'aaaaaaaa-0007-4000-8000-00000000000b';
+        RAISE EXCEPTION 'CHECK 116 FAILED: the owner rewrote why an invitation was withdrawn';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 116 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+
+    -- 6. **The permission**, and it is the one case the five refusals cannot produce: a
+    -- settled invitation's address *may* move, because that is how MOD-009's erasure clears
+    -- the copy of a staff member's email this row holds in the clear. Tighten the branch
+    -- above to "the address never moves" and every refusal probe still passes while the
+    -- erasure the registry promises fails at run time. Its own row again, for probe 5's
+    -- reason.
+    BEGIN
+        INSERT INTO iam.invitations
+            (tenant_id, invitation_id, email_normalized, role_id, token_hash, expires_at,
+             created_by, correlation_id, accepted_at, accepted_identity_id)
+        VALUES (tenant, 'aaaaaaaa-0007-4000-8000-00000000000c', 'joined@nadi.jo', sales,
+                decode(md5('w') || md5('x'), 'hex'), now() + interval '7 days', inviter,
+                inviter, now(), joiner);
+        UPDATE iam.invitations
+        SET email_normalized = 'erased-' || invitation_id::text || '@erased.invalid'
+        WHERE invitation_id = 'aaaaaaaa-0007-4000-8000-00000000000c';
+        probe := probe + 1;
+    EXCEPTION
+        WHEN others THEN
+            GET STACKED DIAGNOSTICS state = RETURNED_SQLSTATE;
+            RAISE EXCEPTION
+                'CHECK 116 FAILED: an accepted invitation''s address could not be erased (%): '
+                '%', state, SQLERRM;
+    END;
+
+    -- The trigger function's own properties, which `md5(prosrc)` cannot see.
+    IF (SELECT count(*) FROM pg_proc p
+         WHERE p.pronamespace = 'iam'::regnamespace
+           AND p.proname = 'invitation_is_settled_once'
+           AND 'search_path=pg_catalog, public' = ANY (coalesce(p.proconfig, '{}'))) <> 1 THEN
+        RAISE EXCEPTION 'CHECK 116 FAILED: the trigger function has no pinned search_path';
+    END IF;
+    IF (SELECT bool_or(p.prosecdef OR has_function_privilege('public', p.oid, 'EXECUTE'))
+          FROM pg_proc p
+         WHERE p.pronamespace = 'iam'::regnamespace
+           AND p.proname = 'invitation_is_settled_once') THEN
+        RAISE EXCEPTION
+            'CHECK 116 FAILED: the trigger function is SECURITY DEFINER or PUBLIC-executable';
+    END IF;
+    IF (SELECT tgenabled FROM pg_trigger
+         WHERE tgrelid = 'iam.invitations'::regclass
+           AND tgname = 'invitations_settled_once') <> 'O' THEN
+        RAISE EXCEPTION 'CHECK 116 FAILED: the trigger is disabled';
+    END IF;
+
+    IF probe <> 6 THEN
+        RAISE EXCEPTION
+            'CHECK 116 FAILED: the settled-once trigger answered % of 6 cases', probe;
+    END IF;
+END $$;
+ROLLBACK;
+
+-- ---------------------------------- 116c. the columns and the grants, compared as sets
+-- **Two absences and one widening, and none of the three has any other evidence.** MOD-012's
+-- rule, because in both places the control is an *absence* and an absence is exactly what a
+-- later migration adds back:
+--
+--   * there is **no column a token could live in**. `token_hash` is the digest and the
+--     plaintext exists once, in the response that minted it, which is `iam.sessions`' shape --
+--     so a `token`, `link` or `url` column here would make the whole of D3 a convention.
+--   * there is **no name**. The canvas collects an address, a role and the clubs, and a
+--     `display_name` was in the first draft of this table until the canvas was read against
+--     it -- a copy of somebody's name in the plane whose own authentication log deliberately
+--     records none. Nothing else in this suite would notice it coming back.
+--   * and the **column-scoped UPDATE grant is compared as a set**, because MOD-010's review
+--     showed ten grant-widenings passing 43/43 against a hand-written list of names. The
+--     address is in it for exactly one writer (MOD-009's erasure) and the trigger is what
+--     bounds that; adding the link, the role or the window to it would make the trigger the
+--     only control over what an invitation *is*.
+BEGIN;
+DO $$
+DECLARE
+    want_columns constant text[] := ARRAY[
+        'accepted_at', 'accepted_identity_id', 'correlation_id', 'created_at', 'created_by',
+        'email_normalized', 'expires_at', 'invitation_id', 'revoke_reason', 'revoked_at',
+        'revoked_by', 'role_id', 'supersedes_invitation_id', 'tenant_id', 'token_hash'];
+    want_grant constant text[] := ARRAY[
+        'accepted_at', 'accepted_identity_id', 'email_normalized', 'revoke_reason',
+        'revoked_at', 'revoked_by'];
+    got text[];
+BEGIN
+    SELECT array_agg(a.attname ORDER BY a.attname) INTO got
+      FROM pg_attribute a
+     WHERE a.attrelid = 'iam.invitations'::regclass AND a.attnum > 0 AND NOT a.attisdropped;
+    IF got <> want_columns THEN
+        RAISE EXCEPTION
+            'CHECK 116 FAILED: iam.invitations carries % and the pin says %',
+            array_to_string(got, ', '), array_to_string(want_columns, ', ');
+    END IF;
+
+    SELECT array_agg(a.attname ORDER BY a.attname) INTO got
+      FROM pg_attribute a
+     WHERE a.attrelid = 'iam.invitations'::regclass AND a.attnum > 0 AND NOT a.attisdropped
+       AND has_column_privilege('veyro_iam_app', a.attrelid, a.attname, 'UPDATE');
+    IF got <> want_grant THEN
+        RAISE EXCEPTION
+            'CHECK 116 FAILED: veyro_iam_app may update % on iam.invitations and the pin '
+            'says %', array_to_string(got, ', '), array_to_string(want_grant, ', ');
+    END IF;
+
+    -- The scopes are insert-only: an invitation whose clubs could change after it was sent is
+    -- a link whose meaning moved under the person holding it.
+    SELECT array_agg(a.attname ORDER BY a.attname) INTO got
+      FROM pg_attribute a
+     WHERE a.attrelid = 'iam.invitation_scopes'::regclass AND a.attnum > 0
+       AND NOT a.attisdropped
+       AND has_column_privilege('veyro_iam_app', a.attrelid, a.attname, 'UPDATE');
+    IF got IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 116 FAILED: an invitation''s clubs became editable (%)',
+            array_to_string(got, ', ');
+    END IF;
+END $$;
+ROLLBACK;
+
+\echo 'tenant isolation: 116/116 checks passed'

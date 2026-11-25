@@ -620,6 +620,14 @@ WRITE_ROUTES = [
      {"replacement_resource_id": _ID, "reason": "sweep", **_CORR}),
     ("post", f"/scheduling/sessions/{_ID}/cancel",
      {"cancellation_reason": "weather", "reason": "sweep", **_CORR}),
+    # ADM-STF-03. The accept is in `UNGATED` and so is not swept here; these four are the
+    # ordinary gated path, and the body carries no name because the invitation holds none.
+    ("post", "/authz/invitations",
+     {"email": "sweep@example.test", "role_key": "sweep",
+      "scopes": [{"scope_type": "tenant"}], **_CORR}),
+    ("get", f"/authz/invitations?correlation_id={_CORR['correlation_id']}", None),
+    ("post", f"/authz/invitations/{_ID}/resend", {**_CORR}),
+    ("post", f"/authz/invitations/{_ID}/revoke", {"reason": "sweep", **_CORR}),
     # ADM-SCH-07. **Both remedies, because the route charges a different permission for
     # each** (ADR-0016 D12): sweeping only one would leave the other's financial
     # permission unproved on the path that uses it.
@@ -987,6 +995,15 @@ class GateCoverageTests(unittest.TestCase):
             "the platform plane is not authenticated",
         ("POST", "/platform/integrations/{definition_key}/{version}/{action}"):
             "the platform plane is not authenticated",
+        # **ADM-STF-03's accept, and the token is the authentication** (ADR-0017 D9). An
+        # invitee has no identity yet, by definition, so there is no session for a gate to
+        # read -- and the invitation is a 32-byte bearer credential whose digest is all the
+        # table holds. What bounds it: a rate limit keyed on the tenant (the token cannot be
+        # the key for the same reason), one live invitation per address, a window of at most
+        # thirty days, and the escalation rule re-checked against the *inviter* at accept, so
+        # a link outliving its author's own grant is refused rather than honoured.
+        ("POST", "/authz/invitations/accept"):
+            "an invitee has no identity; the invitation token is the authentication",
         # How a caller gets a session in the first place. A gate in front of these would mean
         # needing a session to get a session.
         ("POST", "/auth/login"): "authentication",

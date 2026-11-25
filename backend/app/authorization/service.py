@@ -32,6 +32,7 @@ from app.authorization import approval as approvals
 from app.authorization import audit
 from app.authorization import decision as authz
 from app.authorization import gate as gating
+from app.authorization import invitation as invitations
 from app.authorization.catalog import (
     PERMISSIONS,
     CatalogError,
@@ -40,6 +41,8 @@ from app.authorization.catalog import (
 )
 from app.db import Pool, tenant_scope
 from app.errors import Conflict, InvalidRequest, NotFound, ServiceError
+from app.identity import secrets
+from app.identity.service import normalize_email, register_identity_on
 from app.tenancy import service as tenancy
 
 _UUID = re.compile(
@@ -67,6 +70,17 @@ def _require_uuid(value: str, field: str) -> str:
     if not _UUID.fullmatch(value.lower()):
         raise InvalidRequest(f"bad_{field}")
     return value.lower()
+
+
+def _check_name(error: errors.CheckViolation) -> str:
+    """The constraint that refused a row, so a 422 names the rule rather than the table.
+
+    Every other module in this build has this; MOD-008 had no route that could reach a CHECK
+    until ADM-STF-03's invitation, which carries a window, an email shape and two attribution
+    rules a caller can trip.
+    """
+    detail = str(getattr(error, "diag", None) and error.diag.constraint_name or "")
+    return detail or "invalid_request"
 
 
 def _settled(outcome: tuple[dict[str, Any], ServiceError | None]) -> dict[str, Any]:
@@ -449,14 +463,38 @@ def assign_role(
     if scope_type == "tenant" and (brand_id or location_id):
         raise InvalidRequest("tenant_scope_takes_no_target")
 
-    target = authz.Scope(scope_type=scope_type, brand_id=brand_id, location_id=location_id)
     with tenant_scope(pool, tenant_id) as conn:
-        outcome = _assign_in_tx(
+        outcome = assign_role_on(
             conn, tenant_id, identity_id=identity_id, role_key=role_key,
             granted_by=granted_by, correlation_id=correlation_id, scope_type=scope_type,
-            brand_id=brand_id, location_id=location_id, expires_at=expires_at, target=target,
-        )
+            brand_id=brand_id, location_id=location_id, expires_at=expires_at)
     return _settled(outcome)
+
+
+def assign_role_on(
+    conn: Connection[Any], tenant_id: str, *, identity_id: str, role_key: str,
+    granted_by: str, correlation_id: str, scope_type: str = "tenant",
+    brand_id: str | None = None, location_id: str | None = None,
+    expires_at: datetime | None = None,
+) -> tuple[dict[str, Any], ServiceError | None]:
+    """GrantRole **in the caller's transaction**, returning the outcome and its refusal.
+
+    **It returns the error rather than raising it**, which is this module's standing rule:
+    `tenant_scope` rolls back when the block raises, so a denial written to the audit chain and
+    then thrown away is an attempted escalation nobody can see. `_settled` is what raises it,
+    outside the transaction.
+
+    **This form exists for ADM-STF-03** (ADR-0017 D2): accepting a staff invitation creates an
+    identity and one assignment per club it names, and the whole thing has to commit together.
+    It is also what makes D10 cheap -- the escalation check is the one `_assign_in_tx` already
+    performs, asked again at accept time against the *inviter*, so a week-old invitation whose
+    author can no longer grant that role is refused by the rule rather than by a new mechanism.
+    """
+    target = authz.Scope(scope_type=scope_type, brand_id=brand_id, location_id=location_id)
+    return _assign_in_tx(
+        conn, tenant_id, identity_id=identity_id, role_key=role_key,
+        granted_by=granted_by, correlation_id=correlation_id, scope_type=scope_type,
+        brand_id=brand_id, location_id=location_id, expires_at=expires_at, target=target)
 
 
 def _assign_in_tx(
@@ -1602,3 +1640,459 @@ def complete_access_review(
                       actor_identity_id=actor_identity_id, resource_type="access_review",
                       resource_id=review_id, detail={"title": row[0]})
     return {"review_id": review_id, "state": "completed"}
+
+
+# ------------------------------------------------------- ADM-STF-03: invitations
+
+def _invitation_row(conn: Connection[Any], invitation_id: str) -> dict[str, Any]:
+    row = conn.execute(
+        "SELECT i.invitation_id, i.email_normalized, i.role_id, r.role_key,"
+        " i.expires_at, i.created_by, i.accepted_at, i.revoked_at"
+        " FROM iam.invitations i JOIN iam.roles r ON r.role_id = i.role_id"
+        " WHERE i.invitation_id = %s",
+        (invitation_id,),
+    ).fetchone()
+    if row is None:
+        raise NotFound("invitation_not_found")
+    return {"invitation_id": str(row[0]), "email": str(row[1]),
+            "role_id": str(row[2]), "role_key": str(row[3]), "expires_at": row[4],
+            "created_by": str(row[5]), "accepted_at": row[6], "revoked_at": row[7]}
+
+
+def _invitation_scopes(
+    conn: Connection[Any], invitation_id: str,
+) -> list[invitations.Scope]:
+    rows = conn.execute(
+        "SELECT scope_type, brand_id, location_id FROM iam.invitation_scopes"
+        " WHERE invitation_id = %s ORDER BY scope_type, brand_id, location_id",
+        (invitation_id,),
+    ).fetchall()
+    return [invitations.Scope(
+        scope_type=str(r[0]),
+        brand_id=None if r[1] is None else str(r[1]),
+        location_id=None if r[2] is None else str(r[2])) for r in rows]
+
+
+def _write_invitation(
+    conn: Connection[Any], tenant_id: str, *, email: str, role_id: str,
+    scopes: list[invitations.Scope], days: int, actor_id: str, correlation_id: str,
+    supersedes: str | None,
+) -> dict[str, Any]:
+    """The row, its clubs and its token, in the caller's transaction.
+
+    **It takes no instant**, because the window's ends are both the database's: `created_at`
+    defaults to `now()` and `expires_at` is computed from it, so nothing here can hand the
+    constraint a value from another clock.
+    """
+    minted = secrets.mint_session_token()
+    try:
+        row = conn.execute(
+            """
+            INSERT INTO iam.invitations
+                (tenant_id, email_normalized, role_id, token_hash,
+                 expires_at, supersedes_invitation_id, created_by, correlation_id)
+            VALUES (%s, %s, %s, %s,
+                    now() + make_interval(days => %s), %s, %s, %s)
+            RETURNING invitation_id, created_at, expires_at
+            """,
+            (tenant_id, email, role_id, minted.digest,
+             invitations.check_window(days), supersedes, actor_id, correlation_id),
+        ).fetchone()
+    except errors.UniqueViolation:
+        raise Conflict("this_address_already_has_a_live_invitation") from None
+    except errors.ForeignKeyViolation:
+        raise NotFound("role_or_inviter_not_found") from None
+    except errors.CheckViolation as e:
+        raise InvalidRequest(_check_name(e)) from None
+    assert row is not None
+    invitation_id = str(row[0])
+    for scope in scopes:
+        try:
+            conn.execute(
+                "INSERT INTO iam.invitation_scopes"
+                " (tenant_id, invitation_id, scope_type, brand_id, location_id)"
+                " VALUES (%s, %s, %s, %s, %s)",
+                (tenant_id, invitation_id, scope.scope_type, scope.brand_id,
+                 scope.location_id))
+        except errors.ForeignKeyViolation:
+            raise NotFound("brand_or_location_not_found") from None
+        except errors.CheckViolation as e:
+            raise InvalidRequest(_check_name(e)) from None
+    return {"invitation_id": invitation_id, "token": minted.token,
+            # **The row's own value**, not a second computation of it: the window is bounded
+            # against `created_at`, so an expiry computed from this process's clock and
+            # compared against the database's is two clocks deciding one fact -- which refused
+            # the thirty-day ceiling the band admits.
+            "expires_at": row[2].isoformat(),
+            "created_at": row[1].isoformat()}
+
+
+def invite_staff(
+    pool: Pool, tenant_id: str, *, email: str, role_key: str,
+    scopes: list[invitations.Scope], actor_id: str, correlation_id: str,
+    days: int = invitations.EXPIRY_DAYS,
+) -> dict[str, Any]:
+    """Invite somebody to join this tenant with a role at named clubs. ADM-STF-03, ADR-0017.
+
+    **The escalation rule is checked here and again at accept** (D10). Here, so an inviter is
+    told at once rather than after somebody has clicked a link; again at accept, because a week
+    is long enough for the inviter's own grant to be revoked and an invitation is otherwise a
+    way to hand out a permission its author no longer holds. "A control consulted once is a
+    control with a window", which is MOD-009's legal-hold defect in four modules' clothes.
+
+    **The link is returned once and never stored** (D3). Only its digest is in the table, which
+    is `iam.sessions`' own shape -- so this response is the only time the plaintext exists, and
+    the resend below necessarily mints a new one.
+
+    **Nothing is sent.** MOD-013 authors a message and has no dispatcher, so the caller gets
+    the link and the seam is named rather than implied.
+    """
+    _require_uuid(correlation_id, "correlation_id")
+    try:
+        invitations.check_scopes(scopes)
+    except invitations.InvitationError as e:
+        raise InvalidRequest(str(e)) from None
+    normalized = normalize_email(email)
+
+    with tenant_scope(pool, tenant_id) as conn:
+        role = conn.execute("SELECT role_id FROM iam.roles WHERE role_key = %s",
+                            (role_key,)).fetchone()
+        if role is None:
+            raise NotFound("role_not_found")
+        taken = conn.execute(
+            "SELECT 1 FROM iam.identities WHERE email_normalized = %s", (normalized,),
+        ).fetchone()
+        if taken is not None:
+            # **Refused rather than silently granting a role to whoever holds that address.**
+            # An identity already exists, so this is a role assignment rather than an
+            # invitation -- `assign_role` is that act and it names the identity, which is the
+            # distinction a caller would otherwise be making by accident.
+            raise Conflict("this_address_already_has_an_identity")
+        refusal = _invitation_escalation(
+            conn, tenant_id, role_id=str(role[0]), role_key=role_key, scopes=scopes,
+            granted_by=actor_id, correlation_id=correlation_id)
+        if refusal is not None:
+            outcome: tuple[dict[str, Any], ServiceError | None] = ({}, refusal)
+        else:
+            written = _write_invitation(
+                conn, tenant_id, email=normalized,
+                role_id=str(role[0]), scopes=scopes, days=days, actor_id=actor_id,
+                correlation_id=correlation_id, supersedes=None)
+            _append_audit(
+                conn, tenant_id, category="access", action="authz.assignment.write",
+                outcome="recorded", correlation_id=correlation_id,
+                actor_identity_id=actor_id, resource_type="invitation",
+                resource_id=written["invitation_id"],
+                detail={"role_key": role_key, "scopes": len(scopes),
+                        "expires_at": written["expires_at"]})
+            outcome = (written, None)
+    settled = _settled(outcome)
+    return {**settled, "email": normalized,
+            "role_key": role_key, "scopes": [s.key for s in scopes],
+            "sent": False,
+            "note": ("nobody has been emailed: MOD-013 authors a message and has no "
+                     "dispatcher, so the link is returned here once and never stored")}
+
+
+def _invitation_escalation(
+    conn: Connection[Any], tenant_id: str, *, role_id: str, role_key: str,
+    scopes: list[invitations.Scope], granted_by: str, correlation_id: str,
+) -> ServiceError | None:
+    """Whether this actor may hand out this role at these clubs, or why not.
+
+    **The same rule `_assign_in_tx` applies, asked before anything is written.** A grantor may
+    only grant permissions they themselves hold, at a scope they themselves cover -- and an
+    invitation that skipped the check would be `authz.assignment.write` made unbounded by
+    putting a week between the grant and its effect.
+    """
+    wanted = {
+        r[0] for r in conn.execute(
+            "SELECT permission FROM iam.role_permissions WHERE role_id = %s", (role_id,),
+        ).fetchall()
+    }
+    assignments = _load_assignments(conn, granted_by)
+    for scope in scopes:
+        target = authz.Scope(scope_type=scope.scope_type, brand_id=scope.brand_id,
+                             location_id=scope.location_id)
+        held = authz.permissions_of(assignments, now=_now(), scope=target)
+        missing = sorted(wanted - held)
+        if missing:
+            _append_audit(
+                conn, tenant_id, category="access", action="authz.assignment.write",
+                outcome="denied", correlation_id=correlation_id,
+                actor_identity_id=granted_by, resource_type="role", resource_id=role_id,
+                detail={"reason": "escalation", "role_key": role_key,
+                        "scope_type": scope.scope_type, "not_held": missing})
+            return Forbidden("cannot_grant_what_you_do_not_hold")
+    return None
+
+
+def list_invitations(
+    pool: Pool, tenant_id: str, *, include_settled: bool = False,
+    limit: int = 100, at: datetime | None = None,
+) -> dict[str, Any]:
+    """The canvas's "PENDING · 2", and optionally what has already been settled.
+
+    **The state is derived, not read** (ADR-0017 D6): pending is not accepted, not revoked and
+    not past the window, and "2d left" is arithmetic over the row. A stored flag would be a
+    live link the product calls dead, or the reverse.
+
+    **Bounded, and the clubs come back with each row.** An unbounded read of every invitation a
+    tenant has ever written is a list of every address somebody tried to hire, which is
+    MOD-007's own reason for bounding its session listing.
+    """
+    if limit < 1 or limit > 500:
+        raise InvalidRequest("bad_limit")
+    moment = at or _now()
+    where = "" if include_settled else (
+        " WHERE i.accepted_at IS NULL AND i.revoked_at IS NULL")
+    with tenant_scope(pool, tenant_id) as conn:
+        rows = conn.execute(
+            "SELECT i.invitation_id, i.email_normalized, r.role_key,"
+            " r.display_name, i.expires_at, i.created_at, i.created_by, i.accepted_at,"
+            " i.revoked_at, i.revoke_reason, i.supersedes_invitation_id"
+            " FROM iam.invitations i JOIN iam.roles r ON r.role_id = i.role_id"
+            + where
+            + " ORDER BY i.created_at DESC LIMIT %s",
+            (limit,),
+        ).fetchall()
+        scopes = {
+            str(r[0]): [] for r in rows
+        }  # type: dict[str, list[dict[str, Any]]]
+        if rows:
+            for scope in conn.execute(
+                "SELECT invitation_id, scope_type, brand_id, location_id"
+                " FROM iam.invitation_scopes WHERE invitation_id = ANY(%s)"
+                " ORDER BY scope_type, brand_id, location_id",
+                ([str(r[0]) for r in rows],),
+            ).fetchall():
+                scopes[str(scope[0])].append({
+                    "scope_type": str(scope[1]),
+                    "brand_id": None if scope[2] is None else str(scope[2]),
+                    "location_id": None if scope[3] is None else str(scope[3])})
+    out = []
+    for row in rows:
+        state = invitations.state(
+            accepted_at=row[7], revoked_at=row[8], expires_at=row[4], at=moment)
+        out.append({
+            "invitation_id": str(row[0]), "email": str(row[1]),
+            "role_key": str(row[2]),
+            "role_name": str(row[3]), "expires_at": row[4].isoformat(),
+            "created_at": row[5].isoformat(), "created_by": str(row[6]),
+            "state": state,
+            "days_left": invitations.days_left(row[4], moment) if state == "pending" else 0,
+            "accepted_at": None if row[7] is None else row[7].isoformat(),
+            "revoked_at": None if row[8] is None else row[8].isoformat(),
+            "revoke_reason": None if row[9] is None else str(row[9]),
+            "supersedes_invitation_id": None if row[10] is None else str(row[10]),
+            "scopes": scopes[str(row[0])],
+        })
+    return {"invitations": out, "count": len(out), "as_of": moment.isoformat(),
+            "sent": False,
+            "pending_is_derived": (
+                "pending is not accepted, not withdrawn and not past its window; nothing "
+                "stores a state and nothing sweeps one")}
+
+
+def revoke_invitation(
+    pool: Pool, tenant_id: str, invitation_id: str, *, reason: str, actor_id: str,
+    correlation_id: str, at: datetime | None = None,
+) -> dict[str, Any]:
+    """Withdraw an invitation that has not been accepted.
+
+    **A reason, because the row is the only record there is.** `veyro_iam_app` holds nothing
+    outside `iam` and MOD-008 audits denials rather than allowed acts, so "who stopped this and
+    why" is answerable from this row or from nowhere -- MOD-009's rule, which is why the
+    constraint demands it rather than trusting the caller.
+    """
+    _require_uuid(correlation_id, "correlation_id")
+    if not reason.strip():
+        raise InvalidRequest("a_withdrawal_states_why")
+    moment = at or _now()
+    with tenant_scope(pool, tenant_id) as conn:
+        current = _invitation_row(conn, invitation_id)
+        if current["accepted_at"] is not None:
+            raise Conflict("this_invitation_has_been_accepted")
+        if current["revoked_at"] is not None:
+            # Idempotent to the caller: a client whose request timed out after the commit is
+            # told what happened rather than that the work failed.
+            return {"invitation_id": invitation_id, "state": "revoked", "repeated": True}
+        conn.execute(
+            "UPDATE iam.invitations SET revoked_at = %s, revoked_by = %s,"
+            " revoke_reason = %s WHERE invitation_id = %s AND revoked_at IS NULL",
+            (moment, actor_id, reason.strip(), invitation_id))
+        _append_audit(
+            conn, tenant_id, category="access", action="authz.assignment.write",
+            outcome="recorded", correlation_id=correlation_id, actor_identity_id=actor_id,
+            resource_type="invitation", resource_id=invitation_id,
+            detail={"withdrawn": True, "reason": reason.strip()})
+    return {"invitation_id": invitation_id, "state": "revoked", "repeated": False}
+
+
+def resend_invitation(
+    pool: Pool, tenant_id: str, invitation_id: str, *, actor_id: str, correlation_id: str,
+    days: int = invitations.EXPIRY_DAYS, at: datetime | None = None,
+) -> dict[str, Any]:
+    """Issue a fresh link for an invitation that has not been accepted. ADR-0017 D4.
+
+    **A new invitation superseding the old, not a rewritten expiry.** It cannot be the same
+    link: only the digest is stored, so the plaintext is gone -- and a design that moved
+    `expires_at` on the existing row would rewrite when a link was valid. The old row is
+    revoked with its reason and the new one names what it replaces, which is MOD-021's
+    certificate rotation and MOD-017's agreement supersession.
+
+    **The escalation rule is re-checked**, because the resend is a fresh grant of the same role
+    by whoever pressed the button -- and that may not be the person who invited them.
+    """
+    _require_uuid(correlation_id, "correlation_id")
+    moment = at or _now()
+    with tenant_scope(pool, tenant_id) as conn:
+        current = _invitation_row(conn, invitation_id)
+        if current["accepted_at"] is not None:
+            raise Conflict("this_invitation_has_been_accepted")
+        scopes = _invitation_scopes(conn, invitation_id)
+        refusal = _invitation_escalation(
+            conn, tenant_id, role_id=current["role_id"], role_key=current["role_key"],
+            scopes=scopes, granted_by=actor_id, correlation_id=correlation_id)
+        if refusal is not None:
+            outcome: tuple[dict[str, Any], ServiceError | None] = ({}, refusal)
+        else:
+            if current["revoked_at"] is None:
+                conn.execute(
+                    "UPDATE iam.invitations SET revoked_at = %s, revoked_by = %s,"
+                    " revoke_reason = %s WHERE invitation_id = %s AND revoked_at IS NULL",
+                    (moment, actor_id, "resent: a new link was issued", invitation_id))
+            written = _write_invitation(
+                conn, tenant_id, email=current["email"], role_id=current["role_id"],
+                scopes=scopes, days=days, actor_id=actor_id,
+                correlation_id=correlation_id, supersedes=invitation_id)
+            _append_audit(
+                conn, tenant_id, category="access", action="authz.assignment.write",
+                outcome="recorded", correlation_id=correlation_id,
+                actor_identity_id=actor_id, resource_type="invitation",
+                resource_id=written["invitation_id"],
+                detail={"resent": True, "replaces": invitation_id,
+                        "role_key": current["role_key"]})
+            outcome = (written, None)
+    settled = _settled(outcome)
+    return {**settled, "email": current["email"], "role_key": current["role_key"],
+            "replaces_invitation_id": invitation_id, "sent": False}
+
+
+def accept_invitation(
+    pool: Pool, tenant_id: str, *, token: str, password: str, display_name: str,
+    correlation_id: str, at: datetime | None = None,
+) -> dict[str, Any]:
+    """Join a tenant on an invitation: the identity and its assignments, in one act.
+
+    **Unauthenticated by construction, which is the point** (ADR-0017 D9): an invitee has no
+    identity yet, so the token *is* the authentication. The route is rate-limited for that
+    reason and every refusal answers the same way, because telling a holder of a wrong token
+    whether an address is invited is an oracle about who a tenant is hiring.
+
+    **One transaction** (D2). The identity, its password and one assignment per club commit
+    together: an identity created with the assignments rolled back is a login with no
+    permissions that the retry cannot repair, because the address is taken by then.
+
+    **The escalation rule is asked again, against the inviter** (D10). A week is long enough
+    for the inviter's own grant to be revoked, and an invitation is otherwise a way to hand out
+    a permission its author no longer holds. The invitee holds nothing yet, so the question is
+    about the person who invited them -- and the refusal is the one `_assign_in_tx` already
+    gives, which is what makes this a re-reading of an existing rule rather than a new one.
+    """
+    _require_uuid(correlation_id, "correlation_id")
+    # **No blank-name check here, and the sweep is why.** One was written and came back
+    # uncaught: `register_identity_on` refuses a whitespace-only display name, the whole
+    # accept is one transaction, and the route's own body bounds the length -- so a guard
+    # here could change neither the answer nor what was written. That is the judgement this
+    # build already records for a constraint subsumed by a sibling: delete it and say where
+    # the refusal comes from, rather than keeping a second rule two callers could disagree
+    # about. What the test asserts is the property either way -- a blank name leaves no
+    # login and the link still works.
+    moment = at or _now()
+    digest = secrets.digest_token(token)
+    with tenant_scope(pool, tenant_id) as conn:
+        row = conn.execute(
+            "SELECT invitation_id, email_normalized, role_id, expires_at,"
+            " created_by, accepted_at, revoked_at FROM iam.invitations"
+            " WHERE token_hash = %s",
+            (digest,),
+        ).fetchone()
+        if row is None:
+            raise NotFound("invitation_not_found")
+        invitation_id = str(row[0])
+        state = invitations.state(
+            accepted_at=row[5], revoked_at=row[6], expires_at=row[3], at=moment)
+        if state != "pending":
+            raise Conflict(f"this_invitation_is_{state}")
+        role = conn.execute("SELECT role_key FROM iam.roles WHERE role_id = %s",
+                            (str(row[2]),)).fetchone()
+        assert role is not None
+        scopes = _invitation_scopes(conn, invitation_id)
+        # **The escalation check comes before anything is written, and that ordering is the
+        # defect this slice shipped and its own test found.** The first version created the
+        # identity and *then* asked, returning the refusal so the audit denial would survive
+        # the commit -- which committed the identity with it: a refused invitation left the
+        # invitee a working login with no role at all, permanently, since the address is then
+        # taken. "A control that commits anything before it refuses is not a control", which
+        # is MOD-007's rule and MOD-009's `fulfil_dsar` finding, and the remedy for "the
+        # denial must survive" is never "commit everything else too".
+        refusal = _invitation_escalation(
+            conn, tenant_id, role_id=str(row[2]), role_key=str(role[0]), scopes=scopes,
+            granted_by=str(row[4]), correlation_id=correlation_id)
+        if refusal is not None:
+            # **Set and fall out of the block, never `return _settled(...)` inside it.** That
+            # expression raises *before* the `with` exits, so `tenant_scope` rolls back and
+            # takes the denial the check just wrote with it -- which is MOD-008's own standing
+            # rule ("anywhere `_append_audit` precedes a refusal, return the error and raise
+            # it outside") broken in the most literal way. The first version did exactly that
+            # and the audit log held six entries and none of them this one; the assertion that
+            # found it exists because a mutation came back uncaught.
+            denied = refusal
+        else:
+            denied = None
+            # **The name is the invitee's own, typed where they set their password** (D11).
+            # The canvas collects an address, a role and the clubs and no name at all, so
+            # there is none on the row to fall back to -- which is the better shape as well:
+            # a person's own name is theirs to give, and a copy of it in `iam.invitations`
+            # would be a column this build invented and an erasure would have to reach.
+            identity = register_identity_on(
+                conn, tenant_id, display_name=display_name.strip(),
+                correlation_id=correlation_id, email=str(row[1]), password=password)
+            assignments: list[dict[str, Any]] = []
+            for scope in scopes:
+                granted, error = assign_role_on(
+                    conn, tenant_id, identity_id=identity["identity_id"],
+                    role_key=str(role[0]), granted_by=str(row[4]),
+                    correlation_id=correlation_id, scope_type=scope.scope_type,
+                    brand_id=scope.brand_id, location_id=scope.location_id)
+                if error is not None:
+                    # **Raised inside the block on purpose.** `assign_role_on` applies the
+                    # same rule the check above just passed, against the same snapshot, so
+                    # reaching here means something else refused -- and the only correct
+                    # outcome then is that nothing happened. The audit row it wrote goes with
+                    # the rollback, which is the right trade: the denial that matters was
+                    # recorded above, and a half-made login is the one state this command must
+                    # not leave.
+                    raise error
+                assignments.append(granted)
+            conn.execute(
+                "UPDATE iam.invitations SET accepted_at = %s, accepted_identity_id = %s"
+                " WHERE invitation_id = %s AND accepted_at IS NULL",
+                (moment, identity["identity_id"], invitation_id))
+            _append_audit(
+                conn, tenant_id, category="access", action="role.assigned",
+                outcome="recorded", correlation_id=correlation_id,
+                actor_identity_id=str(row[4]), resource_type="invitation",
+                resource_id=invitation_id,
+                detail={"accepted_by": identity["identity_id"], "role_key": str(role[0]),
+                        "scopes": len(assignments)})
+    if denied is not None:
+        raise denied
+    return {
+        "invitation_id": invitation_id,
+        "identity_id": identity["identity_id"],
+        "person_id": identity["person_id"],
+        "email": str(row[1]), "role_key": str(role[0]),
+        "assignments": assignments,
+    }

@@ -301,11 +301,11 @@ const BACKLOG = {
   // The NEVER block is rendered rather than stored, which the canvas says outright: "it is
   // the floor beneath every dunning policy". Two of its four rules are properties of this
   // build rather than intentions and the screen says which.
-  "ADM-STF-03": "work: MOD-007's registration is open, so there is no invitation in this "
-    + "build at all -- no table, no token, no expiry, and nothing that accepts one. The role "
-    + "and the clubs the canvas picks are MOD-008's assignment with its scope, which exists; "
-    + "the record, its seven-day expiry and the accept are what has to be written, and "
-    + "MOD-013's dispatcher is the seam the send at the end stops at",
+  // **ADM-STF-03 was here and is built.** `/staff/invite` is the screen and ADR-0017 is
+  // the record: the invitation, its clubs, its seven-day link and the accept that creates
+  // the identity with its role. The escalation rule is checked at both ends, because a
+  // week outlives a grant. What it cannot do is send the link, which is MOD-013's
+  // dispatcher -- stated on the screen beside the link itself.
   "ADM-RPT-05": "work: MOD-009 and MOD-008. The gate is a written reason recorded and "
     + "visible to the tenant, an option to leave contact details out, and a step-up before "
     + "the file is produced -- and nothing here exports anything, so the gate has nothing to "

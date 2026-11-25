@@ -1175,14 +1175,21 @@ class VisitTests(AccessApiTestCase):
         invoice is the day somebody most often trains before a renewal.
         """
         floor = self.floor()
-        now = datetime.now(UTC)
-        today = now.astimezone(self.CLUB).date()
-        # **Never a time of day computed from a date.** `datetime.combine(today, 09:00)` is
-        # in the future for the first nine hours of every UTC day, and the event route
-        # refuses a future instant -- a green that depends on when the suite is run, which
-        # this repository has paid for in three other shapes.
+        # **One reference instant for both ends**, and this is the fourth shape of the
+        # date-frame flake this file has paid for. `today` came from `now` while the entries
+        # were seeded five minutes earlier, so for the five minutes after the club's own
+        # midnight the window opened on a day *after* the older entry's -- the newest landed
+        # on yesterday, the oldest on the day before `since`, and the count came back one
+        # short. Not the runner's zone and not UTC: the window and the rows were anchored on
+        # two instants that straddle the boundary the service buckets in.
+        #
+        # **Never a time of day computed from a date**, either. `datetime.combine(today,
+        # 09:00)` is in the future for the first nine hours of every UTC day, and the event
+        # route refuses a future instant.
+        ref = datetime.now(UTC) - timedelta(minutes=5)
+        today = ref.astimezone(self.CLUB).date()
         for back in (6, 0):
-            self.entry(floor, when=now - timedelta(days=back, minutes=5))
+            self.entry(floor, when=ref - timedelta(days=back))
         body = self.window(
             floor, (today - timedelta(days=6)).isoformat(), today.isoformat())
         self.assertEqual(body["entries"], 2, body)
@@ -1798,10 +1805,19 @@ class AttendanceReportTests(AccessApiTestCase):
                          ["days_counted"])
 
     def test_today_is_outside_the_window_because_it_has_not_finished(self):
-        """An evening hour compared against a morning is a cliff made of the clock."""
+        """An evening hour compared against a morning is a cliff made of the clock.
+
+        **Half way between the club's midnight and now, which is today at every minute of
+        the day.** Seeding at `now_local - 5 minutes` crosses the club's own midnight for the
+        first five minutes of every local day, and the entry then falls on the *last complete*
+        day -- the one this read counts -- so the assertion reads as the window including
+        today when nothing is wrong with the window. The same two-instants-one-boundary
+        defect `VisitTests.test_the_window_includes_both_of_its_ends` carries.
+        """
         floor = self.floor()
         now_local = (datetime.now(UTC) + self.AMMAN).replace(tzinfo=None)
-        self.entry_at(floor, now_local - timedelta(minutes=5))
+        midnight = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
+        self.entry_at(floor, midnight + (now_local - midnight) / 2)
         body = self.report(floor)
         self.assertEqual(0, body["entries"])
         self.assertEqual(self.last_complete_local_day().date().isoformat(),
@@ -2029,6 +2045,59 @@ class AttendanceReportTests(AccessApiTestCase):
         body = json.dumps(self.report(floor))
         for leaked in ("person_id", "credential_id", "credential_digest", "Jane"):
             self.assertNotIn(leaked, body)
+
+
+class DateAnchorTests(unittest.TestCase):
+    """The arithmetic behind two fixes, swept over every minute of a day.
+
+    **The fourth shape of this file's date-frame flake, and the first that is not about which
+    *zone* a date comes from.** Both of these tests anchored their window on one instant and
+    the rows they seeded on another a few minutes earlier -- which agrees for all but a few
+    minutes a day, and disagrees exactly when the two straddle the club's own midnight. So
+    `test_the_window_includes_both_of_its_ends` counted one entry of two and
+    `test_today_is_outside_the_window_because_it_has_not_finished` counted one of none, both
+    against a service that was right.
+
+    **A green run proves nothing about either**, because the window is five minutes wide; and
+    unlike the zone flake there is nothing structural to look for -- "two instants that differ
+    by an offset which can cross midnight" is not a shape a reader or an `ast` sweep can spot.
+    What *can* be proved is the arithmetic, exhaustively, which is stronger than waiting for
+    the boundary: 1,440 minutes, every one of them.
+    """
+
+    CLUB = ZoneInfo("Asia/Amman")
+
+    def test_one_reference_instant_puts_both_ends_of_a_window_inside_it(self):
+        """`VisitTests`' shape: seed at `ref` and `ref - 6 days`, bound by `ref`'s own date."""
+        base = datetime(2026, 6, 15, tzinfo=UTC)
+        for minute in range(24 * 60):
+            now = base + timedelta(minutes=minute)
+            ref = now - timedelta(minutes=5)
+            today = ref.astimezone(self.CLUB).date()
+            since = today - timedelta(days=6)
+            for back in (6, 0):
+                seeded = (ref - timedelta(days=back)).astimezone(self.CLUB).date()
+                self.assertTrue(
+                    since <= seeded <= today,
+                    f"at {now:%H:%M} UTC the entry {back} days back fell on {seeded}, "
+                    f"outside {since}..{today}")
+
+    def test_half_way_to_midnight_is_in_the_past_and_is_still_today(self):
+        """`AttendanceReportTests`' shape: an instant that must be inside today's local day.
+
+        Both halves matter. In the future and the event route refuses it; on yesterday and it
+        lands on the last complete day, which is the day the report counts -- so the test
+        asserting today is excluded fails against a correct report.
+        """
+        base = datetime(2026, 6, 15, tzinfo=UTC)
+        for minute in range(24 * 60):
+            now_local = (base + timedelta(minutes=minute, hours=3)).replace(tzinfo=None)
+            midnight = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
+            chosen = midnight + (now_local - midnight) / 2
+            self.assertGreaterEqual(chosen, midnight)
+            self.assertLessEqual(chosen, now_local, f"at {now_local} the instant is ahead")
+            self.assertEqual(chosen.date(), now_local.date(),
+                             f"at {now_local} the instant fell on {chosen.date()}")
 
 
 class VisitDateFrameTests(unittest.TestCase):

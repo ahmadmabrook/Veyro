@@ -1025,6 +1025,12 @@ _CLEAR_SQL: dict[tuple[str, str], str] = {
     ("passkeys", "aaguid"): "NULL",
     ("passkeys", "label"): "NULL",
     ("challenges", "nonce_hash"): "sha256(challenge_id::text::bytea)",
+    # MOD-008's invitation. `invitations_email_shape` requires something that looks like an
+    # address, so this is a per-row tombstone that still parses as one rather than a NULL --
+    # the column is NOT NULL, and the shape check is what makes "an address was invited here"
+    # readable without saying whose. `.invalid` is the reserved TLD, so it can never be a
+    # real mailbox, and the invitation id keeps it unique per row.
+    ("invitations", "email_normalized"): "'erased-' || invitation_id::text || '@erased.invalid'",
     # MOD-014, in `plt01` rather than `iam`. **The first entries in this table outside the
     # identity plane**, reached through `ppl_identity_links` because a DSAR names an identity
     # and these tables are keyed on a person.

@@ -202,6 +202,28 @@ SUBJECT_COLUMNS: tuple[Reachability, ...] = (
                  "never swept today, so these rows outlive the login that created them",
                  clears=("nonce_hash",)),
 
+    # MOD-008 / ADM-STF-03's invitation. **The address is cleared and the registry is why.**
+    # This row holds a staff member's email in the clear -- because the canvas's pending list
+    # draws `yasmin@nadi.jo` rather than a person -- and `iam.identities.email_normalized`,
+    # the authoritative copy, is cleared three entries up. Declared `unreachable` it would
+    # have made an invitation the most reachable copy of an erased person's address in the
+    # build, in the one plane where erasure works at all; so `0007` grants the column and a
+    # trigger refuses the write while the invitation is live, which is what keeps a bearer
+    # credential from being redirected. Located by the identity it became, because that is
+    # the only column here a DSAR can match: an invitation nobody accepted names no identity,
+    # so it is not reachable and the run records it as such rather than as `done / 0`.
+    Reachability("iam", "invitations", "accepted_identity_id", "anonymize",
+                 "the invitation holds the address in the clear, which the canvas's pending "
+                 "list draws, so an erasure that stopped at iam.identities would leave the "
+                 "most reachable copy of it here. The tombstone keeps the row's shape: the "
+                 "address constraint admits it and the one-live index does not apply to a "
+                 "settled invitation",
+                 clears=("email_normalized",)),
+    Reachability("iam", "invitations", "created_by", "covered",
+                 "the inviter is a subject, and is erased through their own identity row"),
+    Reachability("iam", "invitations", "revoked_by", "covered",
+                 "whoever withdrew the invitation is a subject, erased through their own row"),
+
     # Covered by the identity row: these name the subject and hold nothing else about them.
     Reachability("iam", "role_assignments", "identity_id", "covered",
                  "after erasure this says an anonymous identity held a role, which is what a "

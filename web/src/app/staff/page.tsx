@@ -92,7 +92,7 @@ export default async function StaffPage({
 
   if (!(await currentSession())) redirect("/login?next=/staff");
 
-  const [mayStaff, mayRoles, mayLogins, maySites, mayNames] = await gateAll([
+  const [mayStaff, mayRoles, mayLogins, maySites, mayNames, mayInvite] = await gateAll([
     "people.person.read",
     "authz.role.read",
     "identity.identity.read",
@@ -104,6 +104,11 @@ export default async function StaffPage({
     // question about the same session, and `/authz/checks` exists so a page costs one round
     // trip rather than five.
     "member.identity.read",
+    // **ADM-STF-03's own control**, which this header rendered none of: the canvas draws an
+    // "Invite someone" card beside this list and the way into it has to be here. A route
+    // nothing links to is a route nobody finds -- ADM-MEM-05 specified a button and rendered
+    // none, and this app shipped that for as long as that screen existed.
+    "authz.assignment.write",
   ] as const);
 
   // **The raw answer, because this page filters** -- ADR-0014, and the only page in this app
@@ -188,6 +193,7 @@ export default async function StaffPage({
           <span className="data" dir="ltr">{utcStamp(new Date().toISOString())}</span>
         </>
       }
+      invite={!["denied", "unreachable_level"].includes(gateVerdict(mayInvite))}
     >
       {/* **The canvas's chip row, as links.** The same decision the members list makes: a
           filter that works without JavaScript, with the state in the URL so a filtered list
@@ -484,13 +490,26 @@ function SeenCell({
 }
 
 function Shell({
-  locale, children, figures,
-}: { locale: Locale; children: React.ReactNode; figures?: React.ReactNode }) {
+  locale, children, figures, invite,
+}: {
+  locale: Locale;
+  children: React.ReactNode;
+  figures?: React.ReactNode;
+  /** The way into ADM-STF-03, absent where the gate refuses outright. */
+  invite?: boolean;
+}) {
   return (
     <div className="stack">
       <PageHeader
         title={t(locale, "staff.heading")}
         {...(figures ? { figures } : {})}
+        {...(invite ? {
+          actions: (
+            <Link href="/staff/invite" className="ds-panel-action">
+              {t(locale, "invite.open")}
+            </Link>
+          ),
+        } : {})}
       />
       {children}
     </div>

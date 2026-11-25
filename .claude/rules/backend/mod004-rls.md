@@ -33,11 +33,13 @@ through an ADR so the lint, the migrations and the pool configuration keep agree
 ## Verification evidence
 
 `backend/tests/sql/isolation.sql` is the live half, run by `backend/scripts/verify_db.sh` and by
-CI. It carries 114 checks covering every track's tables -- MOD-004's hierarchy, MOD-005's `cfg_`,
-MOD-015's `bil_`, MOD-007's and MOD-008's `iam`, MOD-009's `sec_`, MOD-010's `evt_`,
+CI. It carries 116 checks covering every track's tables -- MOD-004's hierarchy, MOD-005's `cfg_`,
+MOD-015's `bil_`, MOD-007's and MOD-008's `iam` (including ADM-STF-03's invitations),
+MOD-009's `sec_`, MOD-010's `evt_`,
 MOD-011's `ops_`, MOD-012's `int_`, MOD-013's `ntf_`, MOD-014's `ppl_`, MOD-016's `cat_`,
 MOD-017's `mem_` and `fin_`, MOD-018's `led_`, MOD-019's `sch_`, MOD-020's `bkg_` and
-MOD-021's `dev_`, MOD-022's `acc_` and MOD-026's `tsk_` -- and **every one has been
+MOD-021's `dev_`, MOD-022's `acc_`, MOD-026's `tsk_` and MOD-027's `crm_` -- and **every one has
+been
 run against a deliberate mutation of the protection it guards and shown to fail**:
 
 ```bash
@@ -3663,3 +3665,85 @@ guard the route's own body subsumes, which is real for the writer that is *not* 
 needed a service-level case. The third one also found a defect: `CollectionsError` is a
 `ValueError`, so letting it out of a service would be a 500 from a refusal -- MOD-018's
 `month_bounds` finding, and the reason the fix is `InvalidRequest` rather than a narrower test.
+
+
+**A window anchored on one instant and its rows on another straddles the club's midnight, and
+that is a fourth shape of this file's date-frame flake.** The three already here are all about
+which *zone* a date is computed in. This one is not: `VisitTests.test_the_window_includes_both
+_of_its_ends` took `today` from `now` and seeded entries at `now - 5 minutes`, so for the five
+minutes after the club's own midnight the window opened a day after the older entry's date --
+the newest row landed on yesterday, the oldest fell outside `since`, and the count came back one
+short against a service that was right. `AttendanceReportTests.test_today_is_outside_the_window
+_because_it_has_not_finished` had the same defect pointed the other way: the entry crossed back
+into the *last complete* day, which that read counts, so the assertion that today is excluded
+failed. Both turned `main` red at 21:12 UTC.
+
+**Neither is visible to `VisitDateFrameTests`, and nothing static can see them**: "two instants
+that differ by an offset which can cross midnight" is not a shape a reader or an `ast` sweep can
+spot, and both tests were already careful about the zone. What *can* be proved is the arithmetic,
+exhaustively, which is stronger than waiting for the boundary -- `DateAnchorTests` sweeps all
+1,440 minutes of a day and asserts that one reference instant puts both ends of a window inside
+it, and that half way between the club's midnight and now is in the past and still today. Two
+mutations put the old anchors back and both are caught. **The remedy in a fixture is one
+reference instant**: derive the window's bounds from the same moment the rows are seeded at,
+never from `now` when the rows are at `now - something`.
+
+**`VEYRO_API_ORIGIN` has to reach the test process, not only `webServer.env`.** The Playwright
+config passes it to the server it starts; locally `reuseExistingServer` means that block does
+nothing, and the specs' own `request.post(`${API}/identities`)` reads the variable from their
+own environment, defaulting to port 8000. Running the suite against a backend on 8001 with only
+`VEYRO_WEB_ORIGIN` set produced **33 failures in twelve spec files**, every one of them a real
+test against a correct product. The tell is sharp and worth knowing: `ECONNREFUSED 127.0.0.1:
+8000` inside a *setup* helper, failing in about 100ms rather than at an `expect` timeout, in
+every spec that provisions its own subject. This is the recorded "a backend started by hand is
+not the backend the browser suite is written against" one layer over -- there it was the request
+budget, here it is the address -- and the rule is the same: read the harness's own env block and
+match every variable in it.
+
+**MOD-009's registry can force a grant to be *widened*, and the honest answer is a grant plus a
+trigger.** The usual direction is a new column the sweep refuses until somebody declares it.
+MOD-008's invitation produced the other one: `iam.invitations.email_normalized` holds a staff
+member's address in the clear -- because the canvas's pending list draws it -- and the sweep
+matches column *names*, so only a hand-written declaration catches it at all. Declared
+`unreachable`, which the first draft's grants and trigger made true, the row would have outlived
+the identity it is the second copy of, because `iam.identities.email_normalized` *is* cleared by
+an erasure: an invitation would then be the most reachable copy of an erased person's address in
+the build, in the one plane where erasure works. So the column carries an UPDATE grant for one
+writer and a trigger refuses the write while the invitation is live, which keeps a bearer
+credential from being redirected -- and the two conditions line up exactly, since a DSAR names
+an identity and the only invitation an identity matches is one it accepted, which is settled by
+definition. **The probe for that pair is a permission**, because tightening the branch back to
+"the address never moves" leaves every refusal probe passing while the erasure the registry
+promises fails at run time.
+
+**An absolute claim about a plane needs its exception named and pinned, or the sweep that
+enforces it cannot be written.** `CLAUDE.md` says `veyro_iam_app` "may not hold DELETE on
+anything, because revocation in `iam` is a status change that leaves evidence" -- and widening
+CHECK 28 to sweep the whole plane for it found the statement false: `iam.role_permissions`
+legitimately holds DELETE, reasoned in `0002`, because editing a role's permission list is a
+replacement rather than a status change (a permission is a fact about the software, not evidence
+about a person). The check carries one named exception **plus a pin that the exception is still
+reachable**, so the next table cannot be added to it quietly and a `0002` that stopped granting
+it fails too. A ban with no sweep behind it is a sentence; a sweep with an unpinned exception
+list is a ban somebody can widen.
+
+**A surface guard for a row the read never returns is the unreachable-branch trap wearing a
+control's clothes.** `PendingActions` carried a `settled` prop and an em-dash branch, written
+from FD-06's rule that a button answering 409 is worse than its absence -- and
+`listInvitations` asks the route for what is *waiting*, so an accepted or withdrawn invitation
+is never on that screen. The branch could not render. Deleted rather than tested harder, with
+the rule it restated left where it actually lives (the route's own filter); the browser suite
+is what found it, by a fixture seeding a withdrawn invitation and the row not appearing. **Ask
+of any guard against a state what read would return that state** -- and when the answer is
+"none of them", the guard is a comment.
+
+**A mutation that cannot be caught at one layer sometimes belongs at another rather than being
+deleted.** The browser mutation for "the waiting count is the pending ones" came back UNCAUGHT
+and was right to: the fixture's list holds one row and it is pending, so a count of the rows and
+a count of the waiting ones agree, and the row that separates them is an *expired* invitation --
+which nothing can write, because `expires_at` is `now() + make_interval(days => N)` with a
+one-day floor so the window's two ends come from one clock. A hand-built row is the only place
+that distinction exists, so the mutation moved to the component runner and is caught there. That
+is a fifth reading of an uncaught mutation, beside guard-subsumed, case-missing,
+assertion-cannot-see-it and exists-for-a-writer-the-service-is-not: **the case exists and the
+layer is wrong.**

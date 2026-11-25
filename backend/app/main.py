@@ -49,6 +49,7 @@ from app.access import service as access
 from app.authorization import catalog as authz_catalog
 from app.authorization import decision as authz_decision
 from app.authorization import gate as authz_gate
+from app.authorization import invitation
 from app.authorization import service as authz
 from app.billing import service as billing
 from app.booking import cancellation as booking_cancellation
@@ -492,6 +493,56 @@ class AssignRoleBody(BaseModel):
     brand_id: str | None = None
     location_id: str | None = None
     expires_at: datetime | None = None
+
+
+class InvitationScopeBody(BaseModel):
+    """One club an invitation is for, in `role_assignments`' own three shapes."""
+
+    scope_type: Literal["tenant", "brand", "location"] = "location"
+    brand_id: str | None = None
+    location_id: str | None = None
+
+
+class InviteStaffBody(BaseModel):
+    """ADM-STF-03. The canvas's three fields plus the window it states.
+
+    **No name**, because the canvas collects none: the form is an address, a role and the
+    clubs, and the pending list draws `yasmin@nadi.jo` rather than a person. The identity's
+    display name is the invitee's own, typed where they set their password.
+    """
+
+    email: str = Field(min_length=3, max_length=320)
+    role_key: str = Field(min_length=1, max_length=64)
+    #: "Khalda, Sweifieh" is two. Bounded here as well as in the decision layer, because an
+    #: unbounded list reaches the service as work rather than as a refusal.
+    scopes: list[InvitationScopeBody] = Field(min_length=1, max_length=25)
+    #: "The link expires in 7 days", and the band is the decision module's.
+    days: int = Field(default=7, ge=1, le=30)
+    correlation_id: str
+
+
+class AcceptInvitationBody(BaseModel):
+    """**No tenant field and no email field**: the token names the invitation, and the address
+    is on the row. A body that took either would let a holder of one tenant's token try it
+    against another, or set a password on an address they were not invited at."""
+
+    token: str = Field(min_length=20, max_length=200)
+    password: str = Field(min_length=1, max_length=400)
+    #: Required, because the invitation carries no name to fall back to: the canvas collects
+    #: an address, a role and the clubs, and this is the one place the person themselves is
+    #: present to say what they are called.
+    display_name: str = Field(min_length=1, max_length=200)
+    correlation_id: str
+
+
+class RevokeInvitationBody(BaseModel):
+    reason: str = Field(min_length=1, max_length=500)
+    correlation_id: str
+
+
+class ResendInvitationBody(BaseModel):
+    days: int = Field(default=7, ge=1, le=30)
+    correlation_id: str
 
 
 class AuthzPolicyBody(BaseModel):
@@ -4689,6 +4740,89 @@ def create_app(
             location_id=optional_uuid(body.location_id, "location_id"),
             expires_at=body.expires_at,
         )
+
+    @app.post("/authz/invitations", status_code=201)
+    def invite_staff(
+        tenant_id: TenantId, session: Session, body: InviteStaffBody
+    ) -> dict[str, Any]:
+        """Invite somebody to join with a role at named clubs. ADM-STF-03, ADR-0017.
+
+        **`authz.assignment.write` and nothing more**, because that is exactly what this is: a
+        role granted to somebody, with a week between the grant and its effect. What bounds it
+        is the escalation rule -- a grantor may only grant what they hold, at a scope they
+        cover -- which is checked here and again at accept (D10).
+        """
+        permit(session, "authz.assignment.write", body.correlation_id)
+        try:
+            scopes = [
+                invitation.Scope(
+                    scope_type=scope.scope_type,
+                    brand_id=optional_uuid(scope.brand_id, "brand_id"),
+                    location_id=optional_uuid(scope.location_id, "location_id"))
+                for scope in body.scopes]
+        except invitation.InvitationError as error:
+            raise InvalidRequest(str(error)) from None
+        return authz.invite_staff(
+            identity_pool, tenant_id, email=body.email,
+            role_key=body.role_key, scopes=scopes, days=body.days,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id)
+
+    @app.get("/authz/invitations")
+    def list_invitations(
+        tenant_id: TenantId, session: Session, correlation_id: str,
+        include_settled: bool = False, limit: int = 100,
+    ) -> dict[str, Any]:
+        """The canvas's "PENDING · 2", and what has been settled if asked for.
+
+        Gated on `authz.role.read`, which is what `GET /authz/assignments/{id}` already
+        charges: an invitation is a pending assignment, and a read behind the write permission
+        would be a read nobody does.
+        """
+        permit(session, "authz.role.read", correlation_id)
+        return authz.list_invitations(
+            identity_pool, tenant_id, include_settled=include_settled, limit=limit)
+
+    @app.post("/authz/invitations/{invitation_id}/resend")
+    def resend_invitation(
+        tenant_id: TenantId, session: Session, invitation_id: str,
+        body: ResendInvitationBody,
+    ) -> dict[str, Any]:
+        """A fresh link, as a new invitation superseding the old. ADR-0017 D4."""
+        permit(session, "authz.assignment.write", body.correlation_id)
+        return authz.resend_invitation(
+            identity_pool, tenant_id, require_uuid(invitation_id, "invitation_id"),
+            days=body.days, actor_id=session["identity_id"],
+            correlation_id=body.correlation_id)
+
+    @app.post("/authz/invitations/{invitation_id}/revoke")
+    def revoke_invitation(
+        tenant_id: TenantId, session: Session, invitation_id: str,
+        body: RevokeInvitationBody,
+    ) -> dict[str, Any]:
+        """Withdraw an invitation nobody has accepted, with a reason the row keeps."""
+        permit(session, "authz.assignment.write", body.correlation_id)
+        return authz.revoke_invitation(
+            identity_pool, tenant_id, require_uuid(invitation_id, "invitation_id"),
+            reason=body.reason, actor_id=session["identity_id"],
+            correlation_id=body.correlation_id)
+
+    @app.post("/authz/invitations/accept", status_code=201)
+    def accept_invitation(
+        tenant_id: TenantId, body: AcceptInvitationBody
+    ) -> dict[str, Any]:
+        """Join a tenant on an invitation. ADM-STF-03, ADR-0017 D9.
+
+        **Deliberately ungated**, and in `UNGATED` with this reason: an invitee has no identity
+        yet, so there is no session to gate on and the token *is* the authentication. It is
+        rate-limited per tenant, because the token cannot be the limiter's key for the same
+        reason, and every refusal answers alike -- telling a holder of a wrong token whether an
+        address is invited is an oracle about who a tenant is hiring.
+        """
+        rate_limit(limit_key="authz.invitation.accept", tenant_id=tenant_id,
+                   subject=tenant_id)
+        return authz.accept_invitation(
+            identity_pool, tenant_id, token=body.token, password=body.password,
+            display_name=body.display_name, correlation_id=body.correlation_id)
 
     @app.get("/authz/assignments/{identity_id}")
     def get_assignments(

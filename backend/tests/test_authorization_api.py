@@ -1066,3 +1066,454 @@ class IsolationTests(AuthorizationTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class InvitationApiTests(AuthorizationTestCase):
+    """ADM-STF-03 over HTTP. ADR-0017.
+
+    **The layer that matters.** A service test proves the decisions; what only an HTTP test
+    reaches is the route's own escalation refusal, the ungated accept, the rate limit and the
+    turning of a bad scope into a 422 rather than a 500.
+    """
+
+    def _role(self, tenant_id: str, token: str, *, key: str,
+              permissions: list[str] | None = None) -> str:
+        created = self.client.post("/authz/roles", json={
+            "role_key": key, "display_name": key.title(),
+            "permissions": permissions if permissions is not None else ["people.person.read"],
+            **self.correlation()}, headers=self.headers(tenant_id, token))
+        self.assertEqual(created.status_code, 201, created.text)
+        return key
+
+    def _invite(self, tenant_id: str, token: str, **body: object) -> object:
+        return self.client.post("/authz/invitations", json={
+            "email": f"invitee-{uuid.uuid4().hex[:8]}@nadi.test",
+            "role_key": "sales",
+            "scopes": [{"scope_type": "tenant"}], **body, **self.correlation()},
+            headers=self.headers(tenant_id, token))
+
+    def test_an_invitation_returns_its_link_once_and_sends_nothing(self) -> None:
+        tenant_id, _, token = self.admin()
+        self._role(tenant_id, token, key="sales")
+        made = self._invite(tenant_id, token)
+        self.assertEqual(made.status_code, 201, made.text)
+        body = made.json()
+        self.assertGreater(len(body["token"]), 20)
+        self.assertFalse(body["sent"])
+        self.assertIn("dispatcher", body["note"])
+        # And the listing never carries it back: only the digest is stored.
+        listed = self.client.get(
+            "/authz/invitations", params=self.correlation(),
+            headers=self.headers(tenant_id, token))
+        self.assertEqual(listed.status_code, 200, listed.text)
+        self.assertNotIn("token", listed.text)
+
+    def test_the_pending_list_is_the_canvas_two_rows(self) -> None:
+        """"PENDING · 2" with "2d left" and "expired" — the state and the countdown are both
+        derived, so nothing stores either."""
+        tenant_id, _, token = self.admin()
+        self._role(tenant_id, token, key="sales")
+        self.assertEqual(self._invite(tenant_id, token, days=3).status_code, 201)
+        self.assertEqual(self._invite(tenant_id, token, days=7).status_code, 201)
+        listed = self.client.get(
+            "/authz/invitations", params=self.correlation(),
+            headers=self.headers(tenant_id, token)).json()
+        self.assertEqual(listed["count"], 2, listed)
+        self.assertEqual({row["state"] for row in listed["invitations"]}, {"pending"})
+        self.assertEqual(
+            sorted(row["days_left"] for row in listed["invitations"]), [3, 7], listed)
+        # **The claim, not a word in it.** `assertIn("opening", ...)` is this build's own
+        # recorded trap: a word both the true and the false sentence contain holds a
+        # falsehood on a screen for a module.
+        self.assertIn("nothing stores a state", listed["pending_is_derived"])
+
+    def test_the_canvas_two_clubs_become_two_assignments(self) -> None:
+        tenant_id, inviter, token = self.admin()
+        self._role(tenant_id, token, key="sales")
+        owner = self.headers(tenant_id, token)
+        org = self.client.post("/organizations", json={
+            "legal_name": "Nadi Ltd", "country_code": "JO", **self.correlation()},
+            headers=owner)
+        brand = self.client.post("/brands", json={
+            "organization_id": org.json()["organization_id"], "brand_name": "Nadi"},
+            headers=owner)
+        clubs = [
+            self.client.post("/locations", json={
+                "brand_id": brand.json()["brand_id"], "location_name": name,
+                "timezone": "Asia/Amman"}, headers=owner).json()["location_id"]
+            for name in ("Khalda", "Sweifieh")]
+        made = self._invite(tenant_id, token, scopes=[
+            {"scope_type": "location", "location_id": clubs[0]},
+            {"scope_type": "location", "location_id": clubs[1]},
+        ])
+        self.assertEqual(made.status_code, 201, made.text)
+        accepted = self.client.post("/authz/invitations/accept", json={
+            "display_name": "Kareem Haddad",
+            "token": made.json()["token"], "password": "a-long-enough-password",
+            **self.correlation()}, headers=self.headers(tenant_id))
+        self.assertEqual(accepted.status_code, 201, accepted.text)
+        self.assertEqual(len(accepted.json()["assignments"]), 2, accepted.text)
+        self.assertEqual(
+            sorted(a["location_id"] for a in accepted.json()["assignments"]),
+            sorted(clubs))
+        self.assertNotEqual(accepted.json()["identity_id"], inviter)
+
+    def test_accepting_creates_a_login_that_works(self) -> None:
+        tenant_id, _, token = self.admin()
+        self._role(tenant_id, token, key="sales")
+        made = self._invite(tenant_id, token)
+        email = made.json()["email"]
+        accepted = self.client.post("/authz/invitations/accept", json={
+            "display_name": "Kareem Haddad",
+            "token": made.json()["token"], "password": "another-long-password",
+            **self.correlation()}, headers=self.headers(tenant_id))
+        self.assertEqual(accepted.status_code, 201, accepted.text)
+        login = self.client.post("/auth/login", json={
+            "identifier": email, "password": "another-long-password",
+            "device_fingerprint": "invitee-device", **self.correlation()},
+            headers=self.headers(tenant_id))
+        self.assertTrue(login.json().get("authenticated"), login.text)
+
+    def test_an_invitee_says_what_they_are_called_and_a_blank_leaves_no_login(self) -> None:
+        """The invitation carries no name (D11), so this is the only place one comes from.
+
+        **The body's `min_length` is not the control**, which is why this sends whitespace: a
+        single space is one character and reaches the service, and what must not happen is an
+        identity on that address with a blank name -- after which the address is taken and the
+        invitee cannot try again. So the refusal is asserted *and* the token is shown to still
+        work, which is the half a 422 alone would not prove.
+        """
+        tenant_id, _, token = self.admin()
+        self._role(tenant_id, token, key="sales")
+        made = self._invite(tenant_id, token)
+        link = made.json()["token"]
+        refused = self.client.post("/authz/invitations/accept", json={
+            "display_name": "   ", "token": link, "password": "a-long-enough-password",
+            **self.correlation()}, headers=self.headers(tenant_id))
+        self.assertEqual(refused.status_code, 422, refused.text)
+        # Nothing was written, so the link is still good.
+        accepted = self.client.post("/authz/invitations/accept", json={
+            "display_name": "Kareem Haddad", "token": link,
+            "password": "a-long-enough-password",
+            **self.correlation()}, headers=self.headers(tenant_id))
+        self.assertEqual(accepted.status_code, 201, accepted.text)
+
+    def test_an_accepted_invitation_cannot_be_accepted_again(self) -> None:
+        tenant_id, _, token = self.admin()
+        self._role(tenant_id, token, key="sales")
+        made = self._invite(tenant_id, token)
+        link = made.json()["token"]
+        first = self.client.post("/authz/invitations/accept", json={
+            "display_name": "Kareem Haddad",
+            "token": link, "password": "another-long-password", **self.correlation()},
+            headers=self.headers(tenant_id))
+        self.assertEqual(first.status_code, 201, first.text)
+        again = self.client.post("/authz/invitations/accept", json={
+            "display_name": "Kareem Haddad",
+            "token": link, "password": "yet-another-long-password", **self.correlation()},
+            headers=self.headers(tenant_id))
+        self.assertEqual(again.status_code, 409, again.text)
+        self.assertEqual(again.json()["error"], "this_invitation_is_accepted")
+
+    def test_a_withdrawn_invitation_stops_working(self) -> None:
+        tenant_id, _, token = self.admin()
+        self._role(tenant_id, token, key="sales")
+        made = self._invite(tenant_id, token)
+        gone = self.client.post(
+            f"/authz/invitations/{made.json()['invitation_id']}/revoke",
+            json={"reason": "they took another job", **self.correlation()},
+            headers=self.headers(tenant_id, token))
+        self.assertEqual(gone.status_code, 200, gone.text)
+        refused = self.client.post("/authz/invitations/accept", json={
+            "display_name": "Kareem Haddad",
+            "token": made.json()["token"], "password": "another-long-password",
+            **self.correlation()}, headers=self.headers(tenant_id))
+        self.assertEqual(refused.status_code, 409, refused.text)
+        self.assertEqual(refused.json()["error"], "this_invitation_is_revoked")
+
+    def test_a_withdrawal_states_why_and_the_row_keeps_it(self) -> None:
+        """`veyro_iam_app` holds nothing outside `iam` and MOD-008 audits denials rather than
+        allowed acts, so the row is the only record there is."""
+        tenant_id, _, token = self.admin()
+        self._role(tenant_id, token, key="sales")
+        made = self._invite(tenant_id, token)
+        blank = self.client.post(
+            f"/authz/invitations/{made.json()['invitation_id']}/revoke",
+            json={"reason": "   ", **self.correlation()},
+            headers=self.headers(tenant_id, token))
+        self.assertEqual(blank.status_code, 422, blank.text)
+        self.client.post(
+            f"/authz/invitations/{made.json()['invitation_id']}/revoke",
+            json={"reason": "they took another job", **self.correlation()},
+            headers=self.headers(tenant_id, token))
+        listed = self.client.get(
+            "/authz/invitations", params={"include_settled": True, **self.correlation()},
+            headers=self.headers(tenant_id, token)).json()
+        row = next(r for r in listed["invitations"]
+                   if r["invitation_id"] == made.json()["invitation_id"])
+        self.assertEqual(row["state"], "revoked")
+        self.assertEqual(row["revoke_reason"], "they took another job")
+
+    def test_a_resend_is_a_new_invitation_and_the_old_link_dies(self) -> None:
+        """ADR-0017 D4. It cannot be the same link — only the digest is stored — so a resend
+        mints a new one, and a design that moved the expiry would rewrite when a link was
+        valid."""
+        tenant_id, _, token = self.admin()
+        self._role(tenant_id, token, key="sales")
+        made = self._invite(tenant_id, token)
+        again = self.client.post(
+            f"/authz/invitations/{made.json()['invitation_id']}/resend",
+            json=self.correlation(), headers=self.headers(tenant_id, token))
+        self.assertEqual(again.status_code, 200, again.text)
+        self.assertNotEqual(again.json()["token"], made.json()["token"])
+        self.assertNotEqual(
+            again.json()["invitation_id"], made.json()["invitation_id"])
+        self.assertEqual(
+            again.json()["replaces_invitation_id"], made.json()["invitation_id"])
+        # The old link is dead, and the new one works.
+        dead = self.client.post("/authz/invitations/accept", json={
+            "display_name": "Kareem Haddad",
+            "token": made.json()["token"], "password": "another-long-password",
+            **self.correlation()}, headers=self.headers(tenant_id))
+        self.assertEqual(dead.status_code, 409, dead.text)
+        live = self.client.post("/authz/invitations/accept", json={
+            "display_name": "Kareem Haddad",
+            "token": again.json()["token"], "password": "another-long-password",
+            **self.correlation()}, headers=self.headers(tenant_id))
+        self.assertEqual(live.status_code, 201, live.text)
+
+    def test_one_live_invitation_per_address(self) -> None:
+        """Two live invitations with different roles for one person means whichever link they
+        click decides what they can do."""
+        tenant_id, _, token = self.admin()
+        self._role(tenant_id, token, key="sales")
+        self._role(tenant_id, token, key="manager")
+        email = f"twice-{uuid.uuid4().hex[:8]}@nadi.test"
+        first = self._invite(tenant_id, token, email=email)
+        self.assertEqual(first.status_code, 201, first.text)
+        second = self._invite(tenant_id, token, email=email, role_key="manager")
+        self.assertEqual(second.status_code, 409, second.text)
+        self.assertEqual(
+            second.json()["error"], "this_address_already_has_a_live_invitation")
+
+    def test_an_address_that_already_has_an_identity_is_refused(self) -> None:
+        """An identity exists, so this is a role assignment rather than an invitation — and
+        `assign_role` is that act, which names the identity.
+
+        **The first version of this test invited a *different* address and asserted 201**,
+        which proves nothing about the rule it names: a test that does not exercise the
+        refusal is the vacuous-evidence shape this build keeps finding, written by hand.
+        """
+        tenant_id, _, token = self.admin()
+        self._role(tenant_id, token, key="sales")
+        _, existing_email, _ = self.person(tenant_id, fingerprint="existing-device")
+        refused = self._invite(tenant_id, token, email=existing_email)
+        self.assertEqual(refused.status_code, 409, refused.text)
+        self.assertEqual(
+            refused.json()["error"], "this_address_already_has_an_identity")
+
+    def test_an_accepted_invitation_cannot_be_withdrawn(self) -> None:
+        """`invitations_one_outcome` refuses the row, and the service refuses before it: a
+        joined member's access is taken back by `revoke_assignment`, which leaves evidence of
+        its own, rather than by rewriting the invitation they came in on."""
+        tenant_id, _, token = self.admin()
+        self._role(tenant_id, token, key="sales")
+        made = self._invite(tenant_id, token)
+        accepted = self.client.post("/authz/invitations/accept", json={
+            "display_name": "Kareem Haddad",
+            "token": made.json()["token"], "password": "another-long-password",
+            **self.correlation()}, headers=self.headers(tenant_id))
+        self.assertEqual(accepted.status_code, 201, accepted.text)
+        refused = self.client.post(
+            f"/authz/invitations/{made.json()['invitation_id']}/revoke",
+            json={"reason": "too late", **self.correlation()},
+            headers=self.headers(tenant_id, token))
+        self.assertEqual(refused.status_code, 409, refused.text)
+        self.assertEqual(
+            refused.json()["error"], "this_invitation_has_been_accepted")
+
+    def test_a_resend_of_an_accepted_invitation_is_refused(self) -> None:
+        tenant_id, _, token = self.admin()
+        self._role(tenant_id, token, key="sales")
+        made = self._invite(tenant_id, token)
+        self.client.post("/authz/invitations/accept", json={
+            "display_name": "Kareem Haddad",
+            "token": made.json()["token"], "password": "another-long-password",
+            **self.correlation()}, headers=self.headers(tenant_id))
+        refused = self.client.post(
+            f"/authz/invitations/{made.json()['invitation_id']}/resend",
+            json=self.correlation(), headers=self.headers(tenant_id, token))
+        self.assertEqual(refused.status_code, 409, refused.text)
+
+    def test_an_inviter_cannot_hand_out_a_role_they_do_not_hold(self) -> None:
+        """MOD-008's own rule, which an invitation would otherwise make unbounded by putting a
+        week between the grant and its effect."""
+        tenant_id, _, owner_token = self.admin()
+        self._role(tenant_id, owner_token, key="refunder",
+                   permissions=["finance.refund.approve"])
+        self._role(tenant_id, owner_token, key="clerk",
+                   permissions=["authz.assignment.write", "authz.role.read"])
+        clerk_id, _, clerk_token = self.person(tenant_id, fingerprint="clerk-device")
+        granted = self.client.post("/authz/assignments", json={
+            "identity_id": clerk_id, "role_key": "clerk", **self.correlation()},
+            headers=self.headers(tenant_id, owner_token))
+        self.assertEqual(granted.status_code, 201, granted.text)
+        clerk_elevated = self.elevated(tenant_id, clerk_id, clerk_token)
+        refused = self._invite(tenant_id, clerk_elevated, role_key="refunder")
+        self.assertEqual(refused.status_code, 403, refused.text)
+        self.assertEqual(refused.json()["error"], "cannot_grant_what_you_do_not_hold")
+
+    def test_a_scope_shape_the_assignment_would_refuse_is_a_422(self) -> None:
+        """The shape `role_assignments_scope_shape` admits, refused at the boundary: a scope
+        this module took and that constraint rejected would be an invitation nobody could
+        accept."""
+        tenant_id, _, token = self.admin()
+        self._role(tenant_id, token, key="sales")
+        for scopes in (
+            [{"scope_type": "location"}],
+            [{"scope_type": "brand"}],
+            [{"scope_type": "tenant", "location_id": str(uuid.uuid4())}],
+            [{"scope_type": "tenant"}, {"scope_type": "location",
+                                        "location_id": str(uuid.uuid4())}],
+        ):
+            refused = self._invite(tenant_id, token, scopes=scopes)
+            self.assertEqual(refused.status_code, 422, f"{scopes}: {refused.text}")
+
+    def test_a_malformed_location_is_refused_at_the_boundary(self) -> None:
+        tenant_id, _, token = self.admin()
+        self._role(tenant_id, token, key="sales")
+        refused = self._invite(tenant_id, token, scopes=[
+            {"scope_type": "location", "location_id": "not-a-uuid"}])
+        self.assertEqual(refused.status_code, 422, refused.text)
+
+    def test_the_window_is_bounded_at_the_request(self) -> None:
+        tenant_id, _, token = self.admin()
+        self._role(tenant_id, token, key="sales")
+        self.assertEqual(self._invite(tenant_id, token, days=0).status_code, 422)
+        self.assertEqual(self._invite(tenant_id, token, days=31).status_code, 422)
+        self.assertEqual(self._invite(tenant_id, token, days=30).status_code, 201)
+
+    def test_an_unknown_token_answers_the_same_as_a_wrong_one(self) -> None:
+        """Telling a holder of a wrong token whether an address is invited is an oracle about
+        who a tenant is hiring."""
+        tenant_id, _, _ = self.admin()
+        refused = self.client.post("/authz/invitations/accept", json={
+            "display_name": "Kareem Haddad",
+            "token": "x" * 40, "password": "another-long-password", **self.correlation()},
+            headers=self.headers(tenant_id))
+        self.assertEqual(refused.status_code, 404, refused.text)
+        self.assertEqual(refused.json()["error"], "invitation_not_found")
+
+    def test_the_accept_needs_no_session(self) -> None:
+        """ADR-0017 D9: an invitee has no identity, so the token is the authentication. In
+        `UNGATED` with that reason, which `GateCoverageTests` is what makes uncomfortable."""
+        tenant_id, _, token = self.admin()
+        self._role(tenant_id, token, key="sales")
+        made = self._invite(tenant_id, token)
+        # No `Authorization` header at all.
+        accepted = self.client.post("/authz/invitations/accept", json={
+            "display_name": "Kareem Haddad",
+            "token": made.json()["token"], "password": "another-long-password",
+            **self.correlation()}, headers={"X-Veyro-Tenant": tenant_id})
+        self.assertEqual(accepted.status_code, 201, accepted.text)
+
+    def test_inviting_needs_the_permission_that_grants_a_role(self) -> None:
+        tenant_id = self.tenant()
+        identity_id, _, token = self.person(tenant_id)
+        refused = self.client.post("/authz/invitations", json={
+            "email": "nobody@nadi.test", "display_name": "Nobody", "role_key": "sales",
+            "scopes": [{"scope_type": "tenant"}], **self.correlation()},
+            headers=self.headers(tenant_id, token))
+        self.assertEqual(refused.status_code, 403, refused.text)
+        self.assertNotEqual(identity_id, "")
+
+    def test_an_invitation_its_author_can_no_longer_grant_is_refused(self) -> None:
+        """**ADR-0017 D10, and the finding this slice turns on.** A week is long enough for
+        the inviter's own grant to be revoked, and an invitation is otherwise a way to hand out
+        a permission its author no longer holds -- "a control consulted once is a control with
+        a window", which is MOD-009's legal-hold defect in four modules' clothes.
+
+        The question at accept is about the *inviter*, because the invitee holds nothing yet;
+        and the refusal is the one `_assign_in_tx` already gives, which is what makes this a
+        re-reading of an existing rule rather than a new mechanism.
+        """
+        tenant_id, _, owner_token = self.admin()
+        self._role(tenant_id, owner_token, key="refunder",
+                   permissions=["finance.refund.approve"])
+        self._role(tenant_id, owner_token, key="manager",
+                   permissions=["finance.refund.approve", "authz.assignment.write",
+                                "authz.role.read"])
+        clerk_id, _, clerk_token = self.person(tenant_id, fingerprint="manager-device")
+        granted = self.client.post("/authz/assignments", json={
+            "identity_id": clerk_id, "role_key": "manager", **self.correlation()},
+            headers=self.headers(tenant_id, owner_token))
+        self.assertEqual(granted.status_code, 201, granted.text)
+        clerk = self.elevated(tenant_id, clerk_id, clerk_token)
+
+        email = f"later-{uuid.uuid4().hex[:8]}@nadi.test"
+        made = self._invite(tenant_id, clerk, email=email, role_key="refunder")
+        self.assertEqual(made.status_code, 201, made.text)
+
+        # The clerk's own grant goes, which is the ordinary thing that happens in a week.
+        revoked = self.client.post(
+            f"/authz/assignments/{granted.json()['assignment_id']}/revoke",
+            json={"reason": "left the company", **self.correlation()},
+            headers=self.headers(tenant_id, owner_token))
+        self.assertEqual(revoked.status_code, 200, revoked.text)
+
+        refused = self.client.post("/authz/invitations/accept", json={
+            "display_name": "Kareem Haddad",
+            "token": made.json()["token"], "password": "another-long-password",
+            **self.correlation()}, headers=self.headers(tenant_id))
+        self.assertEqual(refused.status_code, 403, refused.text)
+        self.assertEqual(refused.json()["error"], "cannot_grant_what_you_do_not_hold")
+
+        # **And no half-made login is left behind.** This is the ordering: the check comes
+        # before anything is written, so there is nothing to roll back.
+        login = self.client.post("/auth/login", json={
+            "identifier": email, "password": "another-long-password",
+            "device_fingerprint": "nobody", **self.correlation()},
+            headers=self.headers(tenant_id))
+        self.assertFalse(login.json().get("authenticated"), login.text)
+
+        # **And the denial outlived the refusal**, which is the pre-check's *unique*
+        # contribution and had no assertion until the sweep said so: with only the raise
+        # inside the transaction, the identity is rolled back and so is the audit row -- so an
+        # attempted escalation at accept time would leave no record at all. MOD-008's own rule
+        # is that the denial has to survive, and this is what proves it does.
+        audit = self.client.get("/authz/audit", params={
+            "category": "access", **self.correlation()},
+            headers=self.headers(tenant_id, owner_token))
+        self.assertEqual(audit.status_code, 200, audit.text)
+        denials = [
+            row for row in audit.json()
+            if row["outcome"] == "denied"
+            and (row.get("detail") or {}).get("reason") == "escalation"]
+        self.assertTrue(denials, audit.text)
+        self.assertIn(
+            "finance.refund.approve",
+            (denials[0].get("detail") or {}).get("not_held", []), denials[0])
+
+    def test_an_invitation_past_its_window_reads_as_expired_with_nothing_having_run(
+        self,
+    ) -> None:
+        """ADR-0017 D6. There is no sweep and no flag: the state is three facts about the row,
+        asked from whatever moment the reader is at."""
+        from datetime import UTC, datetime, timedelta
+
+        from app.authorization import service as authz_service
+        tenant_id, _, token = self.admin()
+        self._role(tenant_id, token, key="sales")
+        made = self._invite(tenant_id, token, days=1)
+        self.assertEqual(made.status_code, 201, made.text)
+        now = authz_service.list_invitations(self._identity_pool, tenant_id)
+        self.assertEqual(now["invitations"][0]["state"], "pending")
+        later = authz_service.list_invitations(
+            self._identity_pool, tenant_id,
+            at=datetime.now(UTC) + timedelta(days=2))
+        self.assertEqual(later["invitations"][0]["state"], "expired")
+        self.assertEqual(later["invitations"][0]["days_left"], 0)
+        # Nothing was written in between: the same row, read from a later moment.
+        self.assertEqual(
+            later["invitations"][0]["invitation_id"],
+            now["invitations"][0]["invitation_id"])

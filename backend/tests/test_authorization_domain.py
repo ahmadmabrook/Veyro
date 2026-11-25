@@ -9,7 +9,7 @@ import pathlib
 import unittest
 from datetime import UTC, datetime, timedelta
 
-from app.authorization import approval, audit, gate
+from app.authorization import approval, audit, gate, invitation
 from app.authorization import decision as authz
 from app.authorization.catalog import (
     PERMISSIONS,
@@ -19,6 +19,7 @@ from app.authorization.catalog import (
     classify_field,
     require_permission,
 )
+from app.identity import secrets
 
 NOW = datetime(2026, 11, 13, 12, 0, tzinfo=UTC)
 TENANT = "11111111-1111-4111-8111-111111111111"
@@ -910,3 +911,137 @@ class ApprovalStageTests(unittest.TestCase):
         migration = (pathlib.Path(__file__).resolve().parent.parent
                      / "migrations" / "product" / "0006_approval_stages.sql").read_text()
         self.assertIn(f"ordinal BETWEEN 1 AND {approval.MAX_STAGES}", migration)
+
+
+class InvitationTests(unittest.TestCase):
+    """ADM-STF-03's decisions, with no database. ADR-0017."""
+
+    def test_the_canvas_window_is_the_default(self) -> None:
+        """"The link expires in 7 days"."""
+        self.assertEqual(invitation.EXPIRY_DAYS, 7)
+        self.assertEqual(invitation.check_window(invitation.EXPIRY_DAYS), 7)
+
+    def test_the_window_is_bounded_at_both_ends(self) -> None:
+        """The ceiling is the interesting half: a year-long invitation is a permanent back
+        door with a friendly name.
+
+        **The band is the decision and the instant is the database's.** The first version of
+        this returned `at + days` and the constraint bounded it against a `created_at` the
+        database generates -- two clocks deciding one fact, which refused exactly the
+        thirty-day ceiling this admits the moment the container's `now()` ran a millisecond
+        behind the host's.
+        """
+        with self.assertRaises(invitation.InvitationError):
+            invitation.check_window(0)
+        with self.assertRaises(invitation.InvitationError):
+            invitation.check_window(31)
+        self.assertEqual(invitation.check_window(30), 30)
+        self.assertEqual(invitation.check_window(1), 1)
+
+    def test_a_scope_is_one_of_three_shapes(self) -> None:
+        self.assertEqual(invitation.Scope("tenant").key, ("tenant", None, None))
+        self.assertEqual(
+            invitation.Scope("location", location_id="l1").key, ("location", None, "l1"))
+        with self.assertRaises(invitation.InvitationError):
+            invitation.Scope("club", location_id="l1")
+
+    def test_a_scope_names_exactly_what_its_kind_needs(self) -> None:
+        """The shape `role_assignments_scope_shape` admits, because these rows become those
+        rows: a scope this module admitted and that constraint refused would be an invitation
+        nobody could accept."""
+        for bad in (
+            {"scope_type": "tenant", "brand_id": "b1"},
+            {"scope_type": "tenant", "location_id": "l1"},
+            {"scope_type": "brand"},
+            {"scope_type": "brand", "brand_id": "b1", "location_id": "l1"},
+            {"scope_type": "location"},
+            {"scope_type": "location", "brand_id": "b1", "location_id": "l1"},
+        ):
+            with self.assertRaises(invitation.InvitationError, msg=str(bad)):
+                invitation.Scope(**bad)  # type: ignore[arg-type]
+
+    def test_an_invitation_names_at_least_one_club(self) -> None:
+        """"No scope" is not "everywhere": `permissions_of` lets a broad assignment cover a
+        narrow scope and never the reverse, so an assignment with no scope grants nothing."""
+        with self.assertRaises(invitation.InvitationError):
+            invitation.check_scopes([])
+
+    def test_the_canvas_two_clubs(self) -> None:
+        """"Khalda, Sweifieh" is two location scopes on one invitation."""
+        invitation.check_scopes([
+            invitation.Scope("location", location_id="khalda"),
+            invitation.Scope("location", location_id="sweifieh"),
+        ])
+
+    def test_a_club_named_twice_is_refused(self) -> None:
+        """The accept writes one assignment per row, and `role_assignments` has its own live
+        uniqueness: a repeated club would make the second insert refuse an invitation the
+        first had already half-accepted."""
+        with self.assertRaises(invitation.InvitationError):
+            invitation.check_scopes([
+                invitation.Scope("location", location_id="khalda"),
+                invitation.Scope("location", location_id="khalda"),
+            ])
+
+    def test_a_tenant_wide_invitation_is_not_combined_with_a_club(self) -> None:
+        with self.assertRaises(invitation.InvitationError):
+            invitation.check_scopes([
+                invitation.Scope("tenant"),
+                invitation.Scope("location", location_id="khalda"),
+            ])
+        invitation.check_scopes([invitation.Scope("tenant")])
+
+    def test_the_club_list_is_bounded(self) -> None:
+        """A list a caller controls is a list a caller can make expensive: the accept writes
+        one assignment per row in one transaction."""
+        with self.assertRaises(invitation.InvitationError):
+            invitation.check_scopes([
+                invitation.Scope("location", location_id=f"l{n}")
+                for n in range(invitation.MAX_SCOPES + 1)])
+
+    def test_a_settled_outcome_outranks_the_clock(self) -> None:
+        """An invitation accepted on Monday is accepted for ever; reporting it as expired a
+        week later would make the pending list disagree with the identity that exists."""
+        gone = datetime(2026, 11, 1, tzinfo=UTC)
+        now = datetime(2026, 11, 25, tzinfo=UTC)
+        self.assertEqual(invitation.state(
+            accepted_at=gone, revoked_at=None, expires_at=gone, at=now), "accepted")
+        self.assertEqual(invitation.state(
+            accepted_at=None, revoked_at=gone, expires_at=gone, at=now), "revoked")
+        self.assertEqual(invitation.state(
+            accepted_at=None, revoked_at=None, expires_at=gone, at=now), "expired")
+        self.assertEqual(invitation.state(
+            accepted_at=None, revoked_at=None,
+            expires_at=datetime(2026, 12, 1, tzinfo=UTC), at=now), "pending")
+
+    def test_every_state_is_from_the_declared_set(self) -> None:
+        now = datetime(2026, 11, 25, tzinfo=UTC)
+        for args in (
+            {"accepted_at": now, "revoked_at": None},
+            {"accepted_at": None, "revoked_at": now},
+            {"accepted_at": None, "revoked_at": None},
+        ):
+            self.assertIn(
+                invitation.state(expires_at=now, at=now, **args),  # type: ignore[arg-type]
+                invitation.STATES)
+
+    def test_the_days_left_the_canvas_shows(self) -> None:
+        """"2d left", rounded up: an invitation with eighteen hours left is one somebody still
+        has a day to use, and "0d left" on a working link makes a reader resend it."""
+        now = datetime(2026, 11, 25, 12, 0, tzinfo=UTC)
+        self.assertEqual(
+            invitation.days_left(datetime(2026, 11, 27, 12, 0, tzinfo=UTC), now), 2)
+        self.assertEqual(
+            invitation.days_left(datetime(2026, 11, 26, 6, 0, tzinfo=UTC), now), 1)
+        self.assertEqual(
+            invitation.days_left(datetime(2026, 11, 25, 12, 0, tzinfo=UTC), now), 0)
+        self.assertEqual(
+            invitation.days_left(datetime(2026, 11, 20, 12, 0, tzinfo=UTC), now), 0)
+
+    def test_a_token_is_minted_by_the_identity_module(self) -> None:
+        """One token path in this repository, not two: an invitation is a bearer credential
+        that creates an identity with a role, and MOD-007 already has the one that is right."""
+        minted = secrets.mint_session_token()
+        self.assertEqual(len(minted.digest), 32)
+        self.assertTrue(secrets.tokens_match(minted.token, minted.digest))
+        self.assertFalse(secrets.tokens_match(minted.token + "x", minted.digest))

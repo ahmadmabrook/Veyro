@@ -48,6 +48,11 @@ BUDGETS: dict[str, int] = {
     "auth.login": 30,
     # Recovery and step-up, keyed by identity. Lower, because each one costs a scrypt.
     "auth.recover": 10,
+    # **ADM-STF-03's accept, keyed by the tenant** rather than by the token: an invitee has no
+    # identity yet, so the token *is* the authentication and there is nothing else to key on.
+    # Ten a minute, because each attempt costs a scrypt for the password it sets and because
+    # guessing a 32-byte token is not the threat -- volume against the process is.
+    "authz.invitation.accept": 10,
     # Everything behind the gate, keyed by identity. Generous: this is noisy-neighbour
     # protection, not a product limit, and a limit that trips during ordinary use is a limit
     # somebody will raise to infinity rather than investigate.

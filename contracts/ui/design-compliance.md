@@ -326,6 +326,7 @@ corresponds to them. The others map loosely:
 | `/desk/classes/{id}` | FD-06 Class check-in | **built from the canvas, and the first Front Desk screen** — Touch density, the roster composed with MOD-014's batched names, the only working write form here that is not behind a step-up; the automatic release and the waitlist notification the canvas promises are named as absent |
 | `/schedule/{id}` | ADM-SCH-02 Class detail and roster | **rebuilt** — the band, four MetricCells, the roster; the three actions are stepped-up writes with no form |
 | `/schedule/{id}?cancel=1` | ADM-SCH-07 Cancel a class · 18 people affected | **built from the canvas** — a sheet over the class, so the roster and the resources stay visible while a manager decides; the remedy is required and the consequence is the server's, re-read whenever the choice changes; the message is one preview of a message each member gets in their own language. "Find a coach instead" names what is missing rather than being a dead control, and the notification is named as the one thing this screen cannot do |
+| `/staff/invite` | ADM-STF-03 Invite someone | **built from the canvas, and the first path in this build that creates an identity with a role** — the escalation rule is checked when the invitation is written and again when it is accepted, because a week outlives a grant; the link is shown once, on the screen, because nothing sends it; the canvas's "No financial administration" is derived from the catalogue's own `action_class` rather than typed, and the pending list's states are three facts about the row read now |
 | `/payments` | ADM-PAY-01 Payments ledger | **built from the canvas** — four kinds on one axis, signed; refund and export are named as absent |
 | `/payments/cash` | ADM-PAY-09 Cash reconciliation · shift close | **built from the canvas** — the expected figure before the count, over a read that did not exist; the co-sign and the tolerance are named as absent, the second being stricter here than drawn |
 | `/payments/dunning` | ADM-PAY-06 Dunning rules · owner & accountant | **built from the canvas, and reading it against the code first changed what the work was** — of the five settings it draws, two have readers and three configure machinery this build does not have, so those three are named with what each waits on rather than given controls. Sentence form through `Field`'s decorative prefix and suffix, the journey rendered from `collections.stages` rather than described, and the NEVER block rendered as the floor the canvas says it is — with the two of four rules that are structural marked apart from the two that are intentions |
@@ -1670,11 +1671,14 @@ set and the act could not be recorded at all without being named there. Four dec
 
 ### Three deliberate deviations
 
-- **No `[Invite]` button and no third chip.** There is no invitation in this build at all: no
-  table, no token, no expiry, nothing that sends. A chip reading `Invited · 0` would say nobody
-  has been invited rather than that nothing can invite anybody — and a button answering 403 is
-  worse than its absence. ADM-STF-03 is unbuilt rather than empty. The third chip rendered
-  instead is `Suspended`, which is a real state of the table and which the design has none for.
+- **The `[Invite]` control is drawn and there is still no third chip.** ADM-STF-03 is built,
+  so the first half of this deviation is gone — and it was a *sentence the screen returned to a
+  reader*, which is the shape this file keeps finding: "there is no invitation in this build at
+  all" was rendered on the staff list for as long as it took to build one, and two browser
+  tests were holding it there. The chip is a different judgement and is unchanged: `Invited · 0`
+  would say nobody has been invited rather than pointing at the list that holds them, which is
+  on the invite screen. The third chip rendered instead is `Suspended`, which is a real state of
+  the table and which the design has none for.
 - **The amber box is a different finding.** No table here holds a coach certification or its
   expiry, so the design's thirty-day warning has nothing to read. What is drawn in its place is
   the finding the design's *own footnote* names, with real data behind it: *N people whose
@@ -3298,3 +3302,80 @@ Five things on it are decisions rather than rendering:
 nothing: MOD-013 authors a message and has no dispatcher, and before that the member's address
 is `member.contact.read`'s question rather than a scheduling caller's. The canvas calls the
 notification the action, and that half is named on the confirmation rather than implied.
+
+
+## ADM-STF-03 — invite someone, and the week that outlives a grant
+
+**Two of its decisions came from reading the drawing after the code existed.** The form had a
+`Name` field, the table had a `display_name` column, and the canvas has neither — its three
+fields are `EMAIL · ROLE · CLUBS` and its pending list draws `yasmin@nadi.jo · 2d left` rather
+than a person. So a field this app invented was holding a copy of somebody's name in the plane
+whose own authentication log deliberately records none, and the identity's name is the
+invitee's own now, typed where they set their password. That removal then made MOD-009's
+registry ask the harder question about the address, which is ADR-0017 D12.
+
+**This is the first path in the build that creates an identity with a role.** ADR-0017 is the
+record. `POST /identities` is open — MOD-007's own standing gap — so until now somebody joined
+a tenant by being registered by whoever held its uuid and then granted a role in a second act;
+the invitation is one act with a link at the end. It does **not** close open registration, and
+that is stated rather than implied: there are now two paths and one of them grants a role.
+
+Seven things on the screen are decisions rather than rendering, and the first two were found
+by reading the canvas against what had been written:
+
+- **The canvas's sentence is three facts, and two of them are derived.** "The link expires in 7
+  days. Sales can see leads and members at those two clubs, sell memberships, and take
+  payments. No financial administration." The window is the server's default, the clubs are the
+  form's own answer, and **"no financial administration" is the catalogue's `action_class`** —
+  a checkable claim about the role rather than a sentence somebody typed. The middle part is the
+  role's own `description`, which `iam.roles` carries and `create_role` writes; where a tenant
+  has written none, the permission count is the honest substitute rather than an invented
+  summary.
+- **The link is rendered in place and said to be shown once.** Only its digest is stored, so
+  this is the one moment the plaintext exists — the account page's recovery codes exactly, and
+  for the same reason: carrying it through a redirect would mean writing a bearer credential
+  into a query string or a cookie to survive one.
+- **Named clubs and the whole tenant are one choice, not two fields.** The service refuses the
+  pair — the wider scope already covers the narrower — so the form offers one or the other
+  rather than letting a reader build something the server rejects, and the tenant-wide option
+  says what it means.
+- **No name field, which is the canvas read against the code.** Three fields, and the pending
+  list's who column is the address alone. A name here would be one the design does not collect
+  and a second copy of it in `iam`; the invitee gives their own at accept.
+- **The address field refuses in the form, not in the browser.** `aria-required` and
+  `type="text"`, because a native `required` or `type="email"` refuses the submit itself with
+  the browser's own bubble in the browser's own language — so `invite.emailNeeded`, which the
+  design draws, becomes a branch nothing can render. ADM-MEM-10 paid for this once and the
+  browser suite found it again here, which is why both screens now carry the same shape.
+- **The pending list's states are derived and the screen says so.** Waiting, expired, accepted
+  and withdrawn are three facts about the row read at the moment somebody asks; "2d left" is
+  arithmetic. Nothing stores a state and nothing sweeps one.
+- **A settled row is not in the list, so there was nothing to guard against.** This bullet
+  read "a settled row has no controls" and cited FD-06's rule, over a guard the browser suite
+  showed could not render: `listInvitations` asks the route for what is *waiting*, so an
+  accepted or withdrawn invitation is not on this screen at all. The guard is deleted and the
+  rule it restated lives in the route's own filter. An **expired** invitation is not settled —
+  it still holds its address and a fresh link is the remedy — so both controls are offered on
+  it, which is what the canvas draws beside `omar.s@nadi.jo`. The route carries
+  `include_settled` for a reader this design does not draw.
+
+**And the way in is on the staff list**, whose header rendered nothing there: the canvas draws
+the invite card beside ADM-STF-01, and a route nothing links to is a route nobody finds. Shown
+by the gate's verdict rather than by `allowed`, because `authz.assignment.write` is financial
+class and gating the form on `allowed` would hide the step-up the form itself offers —
+ADM-SCH-07 paid for that one.
+
+**What the screen cannot do is send it.** MOD-013 authors a message and has no dispatcher, so
+the link has to reach the invitee another way, which the page states twice: once beside the link
+and once under the pending list.
+
+**Proven: 18 component tests, 16 browser tests and 6 browser mutations, all caught** — plus the
+backend's own 22 HTTP tests, 13 domain tests, 18 behaviour mutations and 32 schema mutations.
+Three of those numbers moved because the browser layer found something the others could not: the
+address field's native refusal, the dead settled-row guard, and a resend the fixture expected on
+a withdrawn row that correctly is not there. And one browser mutation had to move layers rather
+than be deleted — a count of the rows and a count of the waiting ones agree whenever the list
+holds one pending row, and the row that separates them is an *expired* invitation, which nothing
+can write: `expires_at` is `now() + make_interval(days => N)` with a one-day floor, so the
+window's two ends come from one clock. Its case is a hand-built row in the component suite,
+which is the only place that distinction exists.

@@ -3185,6 +3185,40 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
     },
   });
 
+  // ------------------------------------------------- ADM-STF-03: two invitations waiting
+  //
+  // **Three of the four states have a fixture and the fourth cannot have one.** The canvas
+  // draws `yasmin@nadi.jo · 2d left` beside `omar.s@nadi.jo · expired`, and an *expired*
+  // invitation is unwritable through any route: `expires_at` is `now() + make_interval(days
+  // => N)` with a one-day floor, deliberately, so that the window's ends come from one clock.
+  // So the browser gets a pending one and a withdrawn one -- both reachable, both drawn with
+  // a Resend beside them -- and `tests/component/invitations.test.tsx` proves all four words.
+  // A list with one row of one kind demonstrates nothing, which is this suite's own rule.
+  const invited = await call("/authz/invitations", {
+    method: "POST", ...as(token),
+    body: {
+      email: `yasmin-${Date.now()}@nadi.test`,
+      role_key: deskRole.role_key,
+      scopes: [{ scope_type: "location", location_id: location.location_id }],
+      days: 7,
+      correlation_id: cid(),
+    },
+  });
+  const withdrawn = await call("/authz/invitations", {
+    method: "POST", ...as(token),
+    body: {
+      email: `omar-${Date.now()}@nadi.test`,
+      role_key: deskRole.role_key,
+      scopes: [{ scope_type: "tenant" }],
+      days: 7,
+      correlation_id: cid(),
+    },
+  });
+  await call(`/authz/invitations/${withdrawn.invitation_id}/revoke`, {
+    method: "POST", ...as(token),
+    body: { reason: "took another job", correlation_id: cid() },
+  });
+
   // Last, so it sees everything above. The timeline, the dispatched outbox and the sweeps on
   // the operations board are all these ticks' work.
   //
@@ -3202,6 +3236,8 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
   }
 
   return {
+    invitedEmail: invited.email,
+    withdrawnEmail: withdrawn.email,
     templateId: template.template_id,
     sessionsGenerated: generated.created,
     firstSessionId: substituted,
@@ -3346,6 +3382,8 @@ if (invokedDirectly) {
       `VEYRO_E2E_READER_EMAIL=${fixture.publisherEmail}`,
       `VEYRO_E2E_READER_PASSWORD=${fixture.publisherPassword}`,
       `VEYRO_E2E_DESK_EMAIL=${fixture.deskEmail}`,
+      `VEYRO_E2E_INVITED_EMAIL=${fixture.invitedEmail}`,
+      `VEYRO_E2E_WITHDRAWN_EMAIL=${fixture.withdrawnEmail}`,
       `VEYRO_E2E_CLUB_EMAIL=${fixture.clubEmail}`,
       `VEYRO_E2E_CLUB_PASSWORD=${fixture.clubPassword}`,
       `VEYRO_E2E_DESK_PASSWORD=${fixture.deskPassword}`,

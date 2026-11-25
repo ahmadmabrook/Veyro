@@ -117,19 +117,42 @@ test.describe("the staff list", () => {
     await expect(grid.getByRole("row").filter({ hasText: "Reception" })).toHaveCount(0);
   });
 
-  test("draws no Invite button and says why", async ({ page }) => {
-    await expect(page.getByRole("button", { name: /^Invite/i })).toHaveCount(0);
-    await expect(page.getByRole("link", { name: /^Invite/i })).toHaveCount(0);
+  // **Both of these asserted a gap that has closed**, which is the rule this repository
+  // records working: ADM-STF-03 is built, so "no invitation in this build" is a sentence the
+  // product was *returning to a reader* and two tests were holding on the screen. The
+  // question each time is whether the test asserted the finding or a consequence of it.
+  //
+  // The finding here was never "there is no button": it was that a control the design draws
+  // must not be a dead one. So these assert the control exists and leads where it says, and
+  // that the old sentence is **gone** -- an assertion on the new wording alone would not
+  // notice a revert, which is the direction the last one of these came from.
+  test("draws the Invite control the design puts in its header", async ({ page }) => {
+    const invite = page.getByRole("link", { name: /^Invite someone/i });
+    await expect(invite).toBeVisible();
+    await expect(invite).toHaveAttribute("href", "/staff/invite");
     const notYet = page.locator("section").filter({ hasText: "What this screen cannot do" });
-    await expect(notYet).toContainText("no invitation in this build");
+    await expect(notYet).not.toContainText("no invitation in this build");
+    await expect(notYet).toContainText("Inviting works and sending does not");
     await expect(notYet).toContainText("Certifications");
-    // And the design's club-scoping sentence, which is not true here.
-    await expect(notYet).toContainText("Not true here");
   });
 
-  test("the chip row carries no Invited chip, because nothing can invite", async ({ page }) => {
+  test("the chip row still carries no Invited chip, and for its own reason", async ({
+    page,
+  }) => {
+    // Unchanged by ADM-STF-03 and not for the reason the old note gave: a chip reading
+    // `Invited · 0` would say nobody has been invited rather than pointing at the list that
+    // holds them, which is on the invite screen.
     const bar = page.getByRole("navigation", { name: /Filter the team/ });
     await expect(bar.getByRole("link", { name: /Invited/ })).toHaveCount(0);
+  });
+
+  test("the club-scoping sentence says it is true here, because it is", async ({ page }) => {
+    // ADR-0014: the gate answers *where*, and `GET /staff` is the one route that acts on it.
+    // The old sentence said every check resolves tenant-wide, which stopped being true the
+    // hour that landed -- false, and rendered, on the screen the ADR was built for.
+    const notYet = page.locator("section").filter({ hasText: "What this screen cannot do" });
+    await expect(notYet).not.toContainText("Not true here");
+    await expect(notYet).toContainText("True here, and on this screen only");
   });
 
   test("a reader who cannot see logins is told so rather than told it is clean", async ({

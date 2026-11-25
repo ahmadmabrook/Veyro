@@ -115,6 +115,9 @@ export type Fixture = {
    * be both, which is why there are three.
    */
   deskEmail: string;
+  /** ADM-STF-03: a pending invitation and a withdrawn one, both drawn in the list. */
+  invitedEmail: string;
+  withdrawnEmail: string;
   /** ADR-0014: a location-scoped session, the first this build can answer. */
   clubEmail: string;
   clubPassword: string;
@@ -236,6 +239,8 @@ export function fixture(): Fixture {
     "VEYRO_E2E_STAFF_OFFBOARDED_PERSON_ID",
     "VEYRO_E2E_STAFF_NO_LOGIN_PERSON_ID",
     "VEYRO_E2E_STAFF_NEVER_SIGNED_IN_PERSON_ID",
+    "VEYRO_E2E_INVITED_EMAIL",
+    "VEYRO_E2E_WITHDRAWN_EMAIL",
   ] as const;
   for (const key of required) {
     if (!env[key]) throw new Error(`${key} missing from ${FILENAME} -- re-run fixture.mjs`);
@@ -295,6 +300,8 @@ export function fixture(): Fixture {
     readerEmail: env.VEYRO_E2E_READER_EMAIL!,
     readerPassword: env.VEYRO_E2E_READER_PASSWORD!,
     deskEmail: env.VEYRO_E2E_DESK_EMAIL!,
+    invitedEmail: env.VEYRO_E2E_INVITED_EMAIL!,
+    withdrawnEmail: env.VEYRO_E2E_WITHDRAWN_EMAIL!,
     clubEmail: env.VEYRO_E2E_CLUB_EMAIL!,
     clubPassword: env.VEYRO_E2E_CLUB_PASSWORD!,
     deskPassword: env.VEYRO_E2E_DESK_PASSWORD!,

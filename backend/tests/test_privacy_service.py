@@ -16,6 +16,8 @@ import unittest
 import uuid
 from datetime import UTC, datetime, timedelta
 
+from app.authorization import invitation as authz_invitation
+from app.authorization import service as authz
 from app.db import tenant_scope
 from app.errors import Conflict, InvalidRequest
 from app.identity import service as identity
@@ -383,6 +385,67 @@ class DsarWorkflowTests(PrivacyServiceTestCase):
         self.assertTrue(all(f.startswith("erased:")
                             for f in self.device_fingerprints(tenant_id, subject)))
 
+    def test_an_erasure_clears_the_address_the_invitation_was_sent_to(self):
+        """MOD-008's invitation holds a staff member's email in the clear, so an erasure that
+        stopped at `iam.identities` would leave the most reachable copy of it behind.
+
+        **The registry is what found this.** `0007` is in the one plane the executor reaches,
+        and the sweep matches column *names* -- so `email_normalized` on a new table is
+        invisible to it and only a hand-written declaration catches it. Declared
+        `unreachable`, the row would have outlived the identity it was the second copy of.
+
+        What the tombstone has to satisfy is the row's own shape: the address CHECK admits
+        something that still parses as one, and the one-live index does not apply to a
+        settled invitation -- so "an address was invited here" stays readable without saying
+        whose.
+        """
+        tenant_id = self.tenant()
+        inviter = self.owner_identity(tenant_id)
+        email = f"hire-{uuid.uuid4().hex[:10]}@acme.test"
+        made = authz.invite_staff(
+            self._identity_pool, tenant_id, email=email, role_key="tenant_admin",
+            scopes=[authz_invitation.Scope(scope_type="tenant")],
+            actor_id=inviter, correlation_id=str(uuid.uuid4()))
+        joined = authz.accept_invitation(
+            self._identity_pool, tenant_id, token=str(made["token"]),
+            password=self.PASSWORD, display_name="New Hire",
+            correlation_id=str(uuid.uuid4()))
+        subject = str(joined["identity_id"])
+        self.assertEqual(self.invitation_address(tenant_id, subject), email.lower())
+
+        request_id = self.open_deletion(tenant_id, subject)
+        self.advance_to_ready(tenant_id, request_id)
+        privacy.fulfil_dsar(self._tenant_pool, tenant_id, request_id=request_id,
+                            identity_pool=self._identity_pool)
+
+        after = self.invitation_address(tenant_id, subject)
+        self.assertNotEqual(after, email.lower())
+        self.assertTrue(after.startswith("erased-"), after)
+        self.assertTrue(after.endswith("@erased.invalid"), after)
+
+    def test_a_live_invitation_keeps_its_address_because_the_link_was_sent_there(self):
+        """The other side of the same grant, and the reason the trigger exists.
+
+        An invitation is a bearer credential that creates an identity with a role, and the
+        address is where the link went -- so a writable address on a *live* row is a way to
+        redirect somebody else's grant. Nothing in the service writes it; what refuses is the
+        trigger, which is the whole control here rather than half of one.
+        """
+        tenant_id = self.tenant()
+        inviter = self.owner_identity(tenant_id)
+        email = f"pending-{uuid.uuid4().hex[:10]}@acme.test"
+        authz.invite_staff(
+            self._identity_pool, tenant_id, email=email, role_key="tenant_admin",
+            scopes=[authz_invitation.Scope(scope_type="tenant")],
+            actor_id=inviter, correlation_id=str(uuid.uuid4()))
+        with self.assertRaises(Exception) as caught:
+            with tenant_scope(self._identity_pool, tenant_id) as conn:
+                conn.execute(
+                    "UPDATE iam.invitations SET email_normalized = %s"
+                    " WHERE email_normalized = %s",
+                    ("somebody.else@acme.test", email.lower()))
+        self.assertIn("still live", str(caught.exception))
+
     def test_the_erased_subject_can_no_longer_authenticate(self):
         """The erasure is not cosmetic: the credential it overwrote was a working one."""
         tenant_id = self.tenant()
@@ -505,6 +568,16 @@ class DsarWorkflowTests(PrivacyServiceTestCase):
         assert row is not None
         return {"email_normalized": row[0], "phone_normalized": row[1],
                 "display_name": row[2], "person_id": str(row[3])}
+
+    def invitation_address(self, tenant_id: str, identity_id: str) -> str:
+        with tenant_scope(self._identity_pool, tenant_id) as conn:
+            row = conn.execute(
+                "SELECT email_normalized FROM iam.invitations"
+                " WHERE accepted_identity_id = %s",
+                (identity_id,),
+            ).fetchone()
+        assert row is not None
+        return str(row[0])
 
     def credential_digests(self, tenant_id: str, identity_id: str) -> set[str]:
         with tenant_scope(self._identity_pool, tenant_id) as conn:

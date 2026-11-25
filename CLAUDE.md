@@ -271,7 +271,14 @@ nothing on the tenant registry; `veyro_cp_platform` holds the registry and nothi
 mistake in a configuration or billing query cannot read a credential hash. **No role is a member
 of any other — never write `GRANT <role> TO <role>`.** No runtime role may hold `TRUNCATE` or
 `REFERENCES`; `veyro_cp_app` may not hold `DELETE`; and `veyro_iam_app` may not hold `DELETE` on
-anything, because revocation in `iam` is a status change that leaves evidence.
+anything that is evidence about a person, because revocation in `iam` is a status change that
+leaves a trail. **That sentence said "anything" until a sweep was written for it**, and the
+sweep found it false: `iam.role_permissions` legitimately holds DELETE, reasoned in `0002`,
+because editing a role's permission list is a *replacement* rather than a status change -- a
+permission is a fact about what the software can do, not a record of what somebody did. CHECK 28
+carries that one exception by name plus a pin that it is still reachable, so a second cannot be
+added quietly and a `0002` that stopped granting it fails too. A ban with no sweep behind it is
+a sentence, and this one was wrong for as long as it had none.
 
 **Negative tests must actually fail closed.** A test that still passes when you remove the
 protection is not evidence. Every isolation check in `backend/tests/sql/isolation.sql` has been run
@@ -675,7 +682,8 @@ Known gaps, deliberate:
 - **`iam.challenges` is never swept.** One row per `/auth/require/*` call and per challenged
   login, with no DELETE grant by design. Harmless at this size, and a worker runtime now
   exists -- which is exactly what makes the point: a job here would run and delete nothing,
-  because no role holds DELETE on anything in `iam`. It wants the grant decision, not a job.
+  because no role holds DELETE on anything in `iam` a sweep would admit -- the one exception is
+  `role_permissions`, which is not a challenge. It wants the grant decision, not a job.
 - **Metering cuts both ways.** Now that the re-authentication paths count failures, somebody
   holding a stolen session token can lock the victim out of their own login with five wrong
   passwords at `/auth/step-up`, and lock their recovery budget with five wrong codes. That is the
@@ -825,7 +833,7 @@ Known gaps, deliberate:
   or a recovery code. Signing in afresh is the only route to level 3.
 
 **MOD-008 (IAM-03 authorization, roles, approvals and audit) — implemented, and reviewed.**
-Eleven more tables in `iam`. Working: roles with explicit permission lists, assignments scoped to
+Thirteen more tables in `iam`. Working: roles with explicit permission lists, assignments scoped to
 tenant, brand or location and optionally expiring, allow/deny/mask policies, a permission
 simulator, approvals with thresholds and separation of duties, access reviews, and a hash-chained
 audit log. Proven: isolation checks 30-32, each mutation-tested (13 breaks); 7 tamper tests
@@ -931,6 +939,114 @@ believing the caller.** Worth carrying forward as rules:
   (`on_behalf_of`, the field recording an agent acting as a member) was editable undetected, and
   a column implying a control nobody implemented (`delegated_from`, approval-policy scope) is
   worse than no column. Both are gone or covered.
+
+**A staff invitation — implemented, with its screen, and it is the first path in this build
+that creates an identity with a role.** ADR-0017. Two tables in `iam`, a decision module, five
+routes and `/staff/invite`. `POST /identities` is open -- MOD-007's own standing gap -- so
+until now somebody joined a tenant by being registered by whoever held its uuid and then
+granted a role in a second act; this is one act with a seven-day link at the end of it, and it
+does **not** close open registration, which is stated rather than implied. Proven: isolation
+checks 116, 116b and 116c -- 16 constraint cases each naming the constraint that refused it,
+six trigger probes of which one is a *permission*, and a column-and-grant pin -- 32 schema
+mutations and 18 behaviour mutations, all caught; 13 domain tests with no database; 22 HTTP
+tests; 18 component tests, 16 browser tests and 6 browser mutations.
+
+**The invitation is MOD-008's and not MOD-007's**, because the control that must not be
+bypassed is "a grantor may only grant permissions they themselves hold, at a scope they
+themselves cover" -- the rule a review found a clerk escalating through. The identity creation
+it ends in is MOD-007's and is called on this transaction's connection, so the identity, its
+password and one assignment per club commit together: an identity created with the assignments
+rolled back is a login with no permissions that the retry cannot repair, because the address is
+taken by then.
+
+Six decisions carry it, and three are refusals:
+
+- **The escalation rule is checked at the invite and again at the accept**, and that is the
+  finding the slice turns on. A week is long enough for the inviter's own grant to be revoked,
+  so an invitation whose role was legitimate on Monday would hand out a permission its author
+  no longer holds on Friday -- "a control consulted once is a control with a window", which is
+  MOD-009's legal-hold defect for the fifth time. The check at accept asks about the *inviter*,
+  because the invitee holds nothing yet.
+- **The token is a digest and nothing here can hold the link**, which is `iam.sessions`' shape.
+  The consequence is that a resend cannot be the same link -- the plaintext is gone -- so a
+  resend is a *new* invitation superseding the old rather than a rewritten expiry. Nothing
+  about when a link was valid is edited.
+- **No status column.** Pending is derived -- not accepted, not revoked, not past `expires_at`
+  -- so "2d left" is arithmetic over the row and there is no counter to go stale. A stored
+  `expired` flag would be a live link the product calls dead, or the reverse. CHECK 116 bans
+  the countdown column names for the same reason MOD-026's does.
+- **No name, because the canvas collects none** (D11). ADM-STF-03's form is `EMAIL · ROLE ·
+  CLUBS` and its pending list draws `yasmin@nadi.jo` rather than a person -- and the first
+  draft of this slice carried a `display_name` column, a form field, two message keys and a
+  second line in every row. A field the design does not draw, holding a copy of somebody's
+  name in the plane whose own authentication log deliberately records none: `iam.auth_events`
+  has an identity id and no identifier, and says in its comment why. The identity's display
+  name is the invitee's own now, typed where they set their password.
+- **The address is immutable while the link is alive and erasable once it is settled** (D12),
+  and **MOD-009's registry is what forced the question**. The reachability sweep matches column
+  *names*, so `email_normalized` on a new table is invisible to it and only a hand-written
+  declaration catches it -- and declared `unreachable`, which the first draft's grants and
+  trigger made true, the row would have outlived the identity it is the second copy of, because
+  `iam.identities.email_normalized` *is* cleared. An invitation would then be the most
+  reachable copy of an erased person's address in the build, in the one plane where erasure
+  works at all. So the column carries an UPDATE grant for one writer and the trigger refuses
+  the write while the invitation is live, which is what keeps a bearer credential from being
+  redirected -- and the two conditions line up exactly, because a DSAR names an identity and
+  the only invitation an identity matches is one it accepted. **An invitation nobody accepted
+  is therefore unreachable**, recorded with that reason rather than as `done / 0`.
+- **One live invitation per address, by partial unique index**, so a second invitation to
+  somebody who already has one is refused rather than leaving two links a desk cannot tell
+  apart; and an address that already has an identity is refused outright, because that is a
+  role assignment rather than an invitation and `assign_role` is that act.
+
+Things worth knowing before extending it:
+
+- **The accept checks before it writes, and that ordering is the defect this slice shipped.**
+  The first version created the identity and *then* asked whether the inviter could still grant
+  the role, returning the refusal so the audit denial would survive the commit -- which
+  committed the identity with it: a refused invitation left the invitee a working login with no
+  role at all, permanently, since the address is taken by then. "A control that commits
+  anything before it refuses is not a control", and the remedy for "the denial must survive" is
+  never "commit everything else too". Its own test found it.
+- **And then `return _settled(...)` inside the `with tenant_scope(...)` block** raised before
+  the block exited, so the rollback took the denial the check had just written -- MOD-008's own
+  standing rule broken in the most literal way. The audit log held six entries and none of them
+  that one; the assertion that found it exists because a mutation came back uncaught.
+- **There is no blank-name guard in `accept_invitation`**, and the sweep is why: one was
+  written and came back UNCAUGHT, because `register_identity_on` refuses a whitespace-only
+  display name inside the same transaction. Deleted rather than tested harder, which is this
+  build's judgement for a constraint subsumed by a sibling.
+- **`CLAUDE.md`'s own "no DELETE on anything in `iam`" is false**, found by widening CHECK 28
+  to sweep the whole plane for it: `iam.role_permissions` legitimately holds DELETE, reasoned
+  in `0002` -- editing a role's permission list is a replacement rather than a status change,
+  because a permission is a fact about the software rather than evidence about a person. The
+  check carries one named exception plus a pin that the exception is still reachable, so a
+  second one cannot be added quietly.
+
+Known gaps, deliberate:
+
+- **Nothing sends the link.** MOD-013 authors a message and has no dispatcher, so the
+  invitation is created and its link is returned once -- rendered on the screen that minted
+  it, because only the digest is stored. That is the messaging provider at the door, and it is
+  the one external blocker on this screen.
+- **The address is not verified.** An invitation to a mistyped address is a link nobody can
+  use, and the remedy is a resend to the corrected one. MOD-013's own standing limitation.
+- **No `ppl_staff_profiles` row is written.** Employment is MOD-014's and an invitation is
+  about access, which is why ADM-STF-01 composes three planes rather than joining them.
+- **An expired invitation cannot be written, so the browser cannot render one.** `expires_at`
+  is `now() + make_interval(days => N)` with a one-day floor, deliberately, so the window's
+  two ends come from one clock -- which means the canvas's `omar.s@nadi.jo · expired` row has
+  no fixture and the four state words are proven in the component suite instead. One browser
+  mutation had to move layers for the same reason.
+- **A settled invitation is on no screen.** `list_invitations` takes `include_settled` and
+  nothing passes it: the canvas draws PENDING and inventing a settled board would be inventing
+  product. The parameter has no caller, which is this build's recurring shape named rather
+  than left -- and it is what made a `settled` guard in `PendingActions` unreachable, deleted
+  once the browser suite showed it could not render.
+- **Open registration stands.** There are two paths into a tenant now and one of them grants a
+  role. Withdrawing `POST /identities` has a wide blast radius -- every fixture and harness
+  here creates an identity through it -- and needs a decision about how a tenant's first
+  identity is created, which is `authz.bootstrap`'s own standing gap.
 
 Known gaps, deliberate:
 
@@ -7217,9 +7333,13 @@ no certifications here) now carries the finding the design's own footnote names,
 data behind it.
 
 Three things on these two screens are refusals rather than omissions, and each is in this
-file's recurring shapes. There is **no Invite button and no third chip**: no invitation exists
-in this build at all, and `Invited · 0` would say nobody has been invited rather than that
-nothing can invite anybody. There are **no unticked grant rows**: the canvas draws two
+file's recurring shapes -- **and the first of them has since stopped being one**. There was
+**no Invite button and no third chip** because no invitation existed in this build at all;
+ADM-STF-03 is built, the button is drawn, and the sentence this screen had been *returning to
+a reader* ("there is no invitation in this build at all") was false for as long as it took to
+build one, with two browser tests holding it on the page. The chip is unchanged and is its own
+judgement: `Invited · 0` would say nobody has been invited rather than pointing at the list
+that holds them, which is on the invite screen. There are **no unticked grant rows**: the canvas draws two
 capabilities its subject lacks, which implies a candidate set, and here a permission exists if
 a role carries it -- so "what somebody could have" is the whole 207-entry catalogue and
 picking two would be inventing the product's idea of a sensitive capability. And **"a club manager sees only
@@ -7495,7 +7615,7 @@ FD-02's member lookup at `/desk/lookup`, ADM-MSH-07's cancellation sheet at
 `/desk/classes/{id}`, FD-03's denial resolution at `/desk/denials/{id}`, FD-07's shift at
 `/desk/shift` and FD-02's member lookup at `/desk/lookup`, with FD-08's device strip above all
 five -- the first Front Desk screens -- ADM-STF-01/02's
-staff list and staff record, ADM-PAY-05's
+staff list and staff record, ADM-STF-03's invitation at `/staff/invite`, ADM-PAY-05's
 recovery workspace, ADM-PAY-10's dispute board, ADM-RPT-01/02/03/04
 under `/reports`, ADM-PAY-07's wallet on a member's billing tab and ADM-MEM-07's attendance
 tab, and MOD-026's task list, attention item and resolved board under `/tasks`.
@@ -7504,7 +7624,8 @@ implemented module with no screen at all, which is the bulk of the remaining wor
 own surface is read-only -- publishing a schedule, substituting an instructor and cancelling a
 session are all built on the server and none has a form, which is the same gap the hierarchy
 has and for the same reason: every one of those writes is stepped-up; the staff screens are
-read-only too, and `End access` is the one control there whose server half now exists --
+read-only too **except for the invitation**, which is ADM-STF-03: `Invite someone` writes,
+and `End access` is the one control left whose server half exists without a form --
 `set_identity_status` is built and tested, and revoking an assignment takes a written reason,
 so a form that collects one is a different piece of work from a button;
 a step-up spends a recovery code, and the account page's reissue needs a stepped-up session,
@@ -7541,16 +7662,16 @@ specified V1 screens and leaves `owning_module` null for every one of them -- it
 `unresolved_policy` says no owning implementation module has been inferred, and that null is
 not a pass. So nothing maps a screen to a module, and any statement of the form "module X's
 frontend is complete" is an assertion about a mapping that does not exist here. What the
-artefacts do support is per *surface*: `design:coverage` reports 58 screens in the inventory
-across Admin and Front Desk, 6 states of those, 12 blocked on something external and 15 in the
+artefacts do support is per *surface*: `design:coverage` reports 60 screens in the inventory
+across Admin and Front Desk, 6 states of those, 12 blocked on something external and 13 in the
 backlog, and Member, Coach, Console and POS have no implementation at all. **Closing this honestly means
 resolving the mapping before claiming a module is done**, not counting routes -- and the
 backlog is now the half of that mapping which exists: every unbuilt screen on those two
 surfaces names the module that owns it, checked against the catalogue, so the modules with
 Admin and Front Desk screens still owed are MOD-055 (3), MOD-023 (1), MOD-058 (1) and
-MOD-059 (1), plus 8 screens that are work inside modules already built, and one that is a
-service worker. **ADM-SET-07 and ADM-PAY-06 came off that list**, which leaves MOD-005 and
-MOD-017 with no owed screen at all.
+MOD-059 (1), plus 6 screens that are work inside modules already built, and one that is a
+service worker. **ADM-SET-07, ADM-PAY-06 and ADM-STF-03 came off that list**, which leaves
+MOD-005, MOD-008 and MOD-017 with no owed screen at all.
 **MOD-026 came off that list by building its three**, which is the first time a module has: its backlog entries had been rewritten twice
 as the slices landed, because the check validates the module id and cannot read the sentence
 beside it. **MOD-027 came off it a different way** -- its first slice landed, so its eight
@@ -7564,8 +7685,8 @@ everywhere, and the backlog has two halves.
 The first is the screens the eighteen built modules do not have. `web/` covers the sign-in, the
 step-up, the account page, MOD-004, MOD-005, MOD-007, MOD-008, MOD-009, MOD-010, MOD-011,
 MOD-012, MOD-013, MOD-014, MOD-016, MOD-017, MOD-018, MOD-019, MOD-020's roster, MOD-021 and
-MOD-022, and the staff list and record ADM-STF-01/02 specify -- so **MOD-015 is the only
-implemented module with no screen at all**;
+MOD-022, the staff list and record ADM-STF-01/02 specify and ADM-STF-03's invitation -- so
+**MOD-015 is the only implemented module with no screen at all**;
 `contracts/ui/screen-contracts.yaml` names the rest.
 
 **And MOD-015's screens are not Admin screens, which changes what "next" means.** This
@@ -7709,10 +7830,14 @@ listing omits it, so the text had been unreadable anywhere in the build. **ADM-P
 off it the same way**: `GET /finance/disputes` (the module had three dispute writers and no
 reader at all), `GET /access/attendance/window` for the check-in record a chargeback is
 answered with, and a routine `finance.dispute.read` beside the financial write -- MOD-018's
-rule, because a read behind a step-up is a read nobody does until the window has expired. ADM-RPT-05's export gate, ADM-STF-03's invitation and every
-`tenancy.*`/`catalog.*`/`finance.*` form are blocked on the same thing: each is a stepped-up
-financial write with no form in this app, and a button that answered 403 is worse than its
-absence. The rest need modules this repository does not have (CRM, automation, search) --
+rule, because a read behind a step-up is a read nobody does until the window has expired.
+**ADM-STF-03 came off it by being built**, and it is the counter-example to the sentence this
+paragraph used to make: its invitation is a stepped-up financial write *with* a form, because
+a form that offers the step-up before the button is not a button that answers 403 -- which
+`/plans`, `/desk/trial` and the freeze sheet had already established and which this sentence
+had not caught up with. So what is actually blocked is narrower: ADM-RPT-05's export gate and
+every `tenancy.*`/`catalog.*`/`finance.*` form, each a stepped-up write nobody has written the
+form for -- a priority rather than an obstacle. The rest need modules this repository does not have (CRM, automation, search) --
 **tasks came off that list**, because MOD-026 exists and its three screens are built.
 
 Within those, the work is per module rather than per screen, because each one needs its gate,
