@@ -120,3 +120,41 @@ parity test cannot see which value a caller passed.
 - **The seventeen call sites' own correctness.** Each currently passes `latn` and will pass the
   tenant's value; whether every figure on every screen *should* follow the tenant's numerals is
   the canvas's claim rather than this ADR's, and the one exception it names is money.
+
+## Amendment, 2026-11-25 — what building it changed
+
+Three things in the record above were wrong or understated, and the slice is recorded in
+`CLAUDE.md` and in `contracts/ui/design-compliance.md`.
+
+**`formatMonthDay` does not exist and never did.** "What this does not decide" says the preview
+"needs Levantine month names, which `formatMonthDay` does not carry" — naming a function that
+is in no file, which sends a reader looking for it. Nothing in this build renders a month name
+at all. `web/src/i18n/dates.ts` is the new one, called `monthDay`, and it is web-only: it
+cannot live in `conventions.mjs`, because that module is compared character for character
+against `backend/app/l10n/conventions.py` and Python's standard library carries no CLDR month
+names — a twin needs `babel`, which would be this repository's second dependency ever. The
+canvas's rule is "applied identically on screen, receipt and export" and a receipt is rendered
+by the backend, so the twin is owed the day one renders a date.
+
+**The read returns the money rule as a token, not as the sentence D6 implies.** The first
+implementation returned English prose, and this application has no fallback to English — so an
+Arabic reader could never be shown that field, which means the screen words the rule itself and
+the server's field is read by nothing. `money_numerals: "latn"` is the fact; the catalogue
+words it; `formatMoney`'s callers get a value to pass rather than a constant to remember, which
+is what D6 was reaching for.
+
+**A regional tag carries a default numbering system, which D4 and D5 between them do not say.**
+`ar-JO` resolves to `arab`, so taking the month name from the region would take the digits from
+it too — the thing `formatInteger`'s own contract forbids. The tag is forced to `-u-nu-latn`
+and `shapeDigits` decides the digits. Within this build's two locales that forcing is
+*redundant*, because `shapeDigits` normalises in both directions; it is kept for a third
+locale, whose default digits it would not know how to undo, and no mutation can catch it until
+such a locale exists.
+
+**What D1 to D6 got right, confirmed by building it**: the narrow permission (the fixture's own
+tenant_admin went from 224 permissions to 225 and a reader without it is correctly refused);
+the `latn` fallback, which is why a refused read breaks no page; one key per convention with the
+numeral system as a validated `string`; the derived month set; and the money exception. **And
+D1's premise held in a way worth recording**: adding the permission to the catalogue granted it
+to nobody, because `authz.bootstrap` stores the list it computed when it ran — so the browser
+fixture had to be re-provisioned before the screen could be exercised at all.

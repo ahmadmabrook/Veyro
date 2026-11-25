@@ -97,7 +97,7 @@ export default async function RootLayout({
     const [
       organization, people, access, permissions, devices, operations, schedule, configuration,
       finance, catalog, privacy, messages, integrations, payments, tasks, leads, till,
-      memberships, prices,
+      memberships, prices, localization,
     ] = await gateAll([
       "tenancy.organization.read",
       "people.person.read",
@@ -122,6 +122,11 @@ export default async function RootLayout({
       // page then refuses.
       "membership.record.read",
       "catalog.price.read",
+      // **ADM-SET-07 has its own permission and the rail asks for it** -- ADR-0015 D1. It is
+      // deliberately not `config.definition.read`: the whole point of a narrow read is that a
+      // front desk can hold it, so a rail entry gated on the registry would hide the screen
+      // from exactly the reader the permission was separated for.
+      "config.display.read",
     ] as const);
     // **Grouped, iconed and counted, which is what the rail actually is.** The Command
     // Center canvas draws thirteen items under four headings -- OPERATE, PEOPLE, MONEY,
@@ -256,6 +261,12 @@ export default async function RootLayout({
         group: "nav.groupSettings", icon: "organization" },
       { href: "/configuration", label: "nav.configuration", allowed: configuration.allowed,
         group: "nav.groupSettings", icon: "configuration" },
+      // **After the configuration board, because it is a slice of the same registry read
+      // through its own permission.** ADM-SET-07's two keys are `cfg_values` rows like any
+      // other; what makes the screen separate is that the design draws them as conventions a
+      // reader checks rather than as keys an engineer configures.
+      { href: "/localization", label: "nav.localization", allowed: localization.allowed,
+        group: "nav.groupSettings", icon: "settings" },
       { href: "/privacy", label: "nav.privacy", allowed: privacy.allowed,
         group: "nav.groupSettings", icon: "privacy" },
       { href: "/operations", label: "nav.operations", allowed: operations.allowed,

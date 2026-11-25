@@ -31,6 +31,7 @@ const surfaces: [string, string][] = [
   ["the availability grid",
    `/rota?resource=${creds.coachResourceId}&from=${creds.rotaExceptionDay}`],
   ["the configuration board", "/configuration"],
+  ["the localization screen", "/localization"],
   ["the operations board", "/operations"],
   ["the fleet board", "/fleet"],
   ["a device", `/fleet/${creds.deviceId}`],

@@ -1098,12 +1098,15 @@ a {
   display: inline-flex;
 }
 
-.ds-choice-chip-face {
+/* **One appearance, two components.** `StateChips` is the read of what `ChoiceChips` writes
+   -- ADM-SET-07's `NUMERALS` against ADM-CRM-04's `INTEREST` -- and the canvas draws them
+   identically, so the rule is written once and shared by selector rather than copied under a
+   second class name. */
+.ds-choice-chip-face,
+.ds-state-chip {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  /* The touch floor, which the source makes non-negotiable on a tapped control: "minimum
-     target 44px on Touch". A chip the canvas draws at 28px is a chip a receptionist misses. */
   min-block-size: 36px;
   padding-inline: var(--space-3);
   border: 1px solid var(--color-border-default);
@@ -1112,6 +1115,13 @@ a {
   color: var(--color-text-primary);
   font-size: var(--type-label-size);
   font-weight: 400;
+}
+
+/* **The pointer and the touch floor belong to the control alone.** The source makes 44px
+   non-negotiable on a *tapped* control -- "minimum target 44px on Touch", and a chip the
+   canvas draws at 28px is one a receptionist misses -- and a read-only state chip is not a
+   target, so growing it on a phone would make a statement look like a button. */
+.ds-choice-chip-face {
   cursor: pointer;
 }
 
@@ -1121,11 +1131,74 @@ a {
   }
 }
 
-.ds-choice-chip input:checked + .ds-choice-chip-face {
+.ds-choice-chip input:checked + .ds-choice-chip-face,
+.ds-state-chip[data-on="true"] {
   background: var(--color-text-primary);
   border-color: var(--color-text-primary);
   color: var(--color-text-inverse);
   font-weight: var(--type-label-weight);
+}
+
+/* The chips sit in a `ul` when they are a statement rather than a fieldset, so the marker and
+   the browser's own list indent go. */
+.ds-state-group ul.ds-choice-chips {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.ds-state-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+/* ------------------------------------------------- ADM-SET-07's localization
+ *
+ * The canvas is two chip groups side by side, then two sunken statement panels. The groups
+ * wrap to one column rather than squeezing: four chips at phone width in two 160px tracks is
+ * two columns of broken words, which the sideways-scroll sweep cannot see because a narrow
+ * grid does not overflow -- it just stops being readable. The lead board paid for exactly
+ * that with five pipeline columns.
+ */
+.ds-convention-groups {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  margin-block-start: var(--space-3);
+}
+
+.ds-convention-groups > * {
+  flex: 1 1 220px;
+  min-inline-size: 0;
+}
+
+/* A statement the screen is obeying rather than offering: the canvas's `background:#faf8f4`
+   panel, which is the sunken surface. Not a `Card` -- §31 forbids one that draws a border
+   round a block, and this has no title and no actions. */
+.ds-rule-panel {
+  margin-block-start: var(--space-3);
+  padding: var(--space-3);
+  background: var(--color-surface-sunken);
+  border-radius: var(--radius-card);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  max-inline-size: 78ch;
+  font-size: var(--type-bodySm-size);
+  line-height: var(--type-bodySm-line);
+  color: var(--color-text-secondary);
+  text-wrap: pretty;
+}
+
+/* The preview sentence, which is the one line on this screen a reader is meant to look at
+   rather than read past -- set at body size in the primary ink, against the panel's own
+   secondary. The canvas sets its date and amount in mono; that belongs on the figures rather
+   than on the sentence, and `isolate` is what keeps them from re-ordering. */
+.ds-preview-line {
+  font-size: var(--type-body-size);
+  line-height: var(--type-body-line);
+  color: var(--color-text-primary);
 }
 
 /* The ring belongs on the face, because the control it names is a pixel wide and hidden. */

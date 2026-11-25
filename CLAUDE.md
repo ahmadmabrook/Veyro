@@ -444,6 +444,78 @@ Known gaps, deliberate:
   flag whose evaluation returns nothing is indistinguishable from one that is not there. The
   surface says so rather than implying a complete list; closing it needs a listing route.
 
+**ADM-SET-07's display conventions are built, and the capability they select was built twice
+and selected nowhere.** ADR-0015. `GET /config/display` answers the two keys a rendered page
+needs -- the numeral system and the languages offered -- plus the two rules the canvas states
+rather than draws, on `config.display.read`, which is `data_access` and its own permission.
+`/localization` is the screen. Proven: 42 configuration tests, 6 Python mutations, 15 component
+tests, 12 browser tests and 6 browser mutations, all caught.
+
+**The gap this closes is the largest instance in the build of a capability with no caller.**
+`web/src/i18n/conventions.mjs` and `backend/app/l10n/conventions.py` both implement `arab` in
+full -- digit shaping, the Arabic thousands separator, the Arabic decimal separator -- and
+`conventions-parity.test.mjs` spawns Python to compare them character for character, because
+the canvas requires the rule "applied identically on screen, receipt and export" and a receipt
+is rendered by the backend. **Seventeen call sites pass `numbering = "latn" as const`**, each
+with a comment saying the numeral system is a tenant setting this build does not carry. Two
+runtimes kept in agreement by a test, for a value nobody chooses. Wiring those seventeen is the
+other half and is not done; the screen's own figures line is the first figure in the product
+that follows the setting.
+
+Five decisions carry the read, and three of them are refusals:
+
+- **Its own narrow permission, because the point is that a front desk holds it.** The obvious
+  reader was `config.definition.read`, already routine and already on `/config/resolved` -- and
+  it means "see every configuration key", so granting it to a receptionist so a page can choose
+  its digits is MOD-013's `GET /notifications/channels` finding one module over. The other two
+  cheap readers are structurally closed: `/auth/session` cannot answer because `veyro_iam_app`
+  holds nothing in `plt01`, and `presentation()` is cookie-only with no request at all, which is
+  why every page can call it.
+- **A refused or failed read falls back to `latn`, so the grant changes what somebody sees and
+  never whether a page works.** That fallback is what makes a cheap permission right rather than
+  an `UNGATED` entry. The *screen* is the exception and says so: D2 is about a page rendering
+  figures, and this is the page whose whole subject is the setting.
+- **A default is not a decision, and `declared` is the field that says which.** A tenant that
+  has configured nothing resolves to Latin digits and every catalogue this build has -- exactly
+  what every page renders today -- so a surface reading only the values would present one as the
+  other. MOD-005's own board had to learn the same thing about `scope_type: "default"`.
+- **One rule per tenant, so the query consults no brand and no location.** The canvas is
+  explicit -- "never mixed and never decided per component" -- which is the opposite of
+  `resolve_config`, built for the keys that do inherit. The scope filter is a mutation and is
+  caught.
+- **A stored value outside the closed set falls back rather than raising**, because the registry
+  validates on publish and this read is on the path of every rendered page: the writer it guards
+  against is the one that is not a route, and a page is not the place to find out.
+
+**And the money rule reaches a page as a token because the first version made it prose.** It
+returned the sentence -- in English, in a bilingual application, so an Arabic reader could never
+be shown it, which means the screen would word the rule itself and the field would have no
+reader at all. That is two wordings to keep true *plus* a typed response field nothing reads,
+both of which this build has already paid for on `GET /reports/attendance`. `money_numerals:
+"latn"` is the fact, the catalogue words it, and `formatMoney`'s callers get a value to pass
+rather than a constant to remember.
+
+Known gaps, deliberate:
+
+- **Nothing writes either key from a surface.** The canvas draws no save and no action -- unlike
+  ADM-SET-06 beside it, which draws `→ Use #1F6E7A` -- and `config.value.publish` is financial
+  class, so the screen is the read. A tenant changes its conventions the way it changes any
+  other configuration value, which is MOD-005's standing read-only gap rather than a new one.
+- **The seventeen call sites.** Each still passes `latn`; this read is what they were waiting
+  for. The browser fixture publishes `arab` on purpose, so the hour a figure elsewhere follows
+  the setting every assertion naming a number fails at once -- which is the signal rather than
+  the accident, and the fixture's own comment says so.
+- **No month name is rendered by the backend.** `monthDay` is web-only: it cannot live in
+  `conventions.mjs`, because that module is compared character for character against Python and
+  the standard library carries no CLDR month names, so a twin needs `babel` -- this repository's
+  second dependency ever. The canvas's rule is "identically on screen, receipt and export" and a
+  receipt is the backend's, so the day one renders a date this is the work.
+- **The region is a constant.** `monthDay`'s `ar-JO` is what makes the month name Levantine, and
+  CON-04 says the region is the irreversible choice a tenant is created with -- while nothing in
+  `plt01` records it. One region is provisioned, so there is nothing to read; the day there is a
+  second, this takes the region as an argument and `availability.week_from`'s own Sunday constant
+  moves with it.
+
 **MOD-015 (PLT-03 plans, subscriptions, metering and invoices) — implemented.** The plan
 catalogue lives in `plt01_platform` with no runtime-role grant; nine `bil_*` tables live in
 `plt01` under forced RLS. Working: plan versions with prices and entitlement limits, subscriptions
@@ -5522,7 +5594,9 @@ every rota window in, and the legal entity MOD-017 numbers invoices per; MOD-008
 permissions this session actually holds and the hash-chained audit log; MOD-014's duplicate
 queue and Member 360, with MOD-017's membership, entitlement and billing blocks composed onto
 it; MOD-019's schedule board and session detail with MOD-020's roster on
-it; MOD-005's configuration and feature-flag board; MOD-021's fleet board and
+it; MOD-005's configuration and feature-flag board and ADM-SET-07's localization screen,
+whose figures line is the first figure in this product that follows the tenant's own
+numeral setting; MOD-021's fleet board and
 device detail; an operations board over MOD-010's event plane, MOD-011's objectives and the
 worker's own scheduled jobs; MOD-022's door board and zone detail, which read the real
 routes and render the public code, the policy terms, the advisory occupancy with paragraph
@@ -7174,7 +7248,8 @@ Known gaps: the surface covers the sign-in, the step-up, the account page, MOD-0
 MOD-007, MOD-008, MOD-009, MOD-010, MOD-011, MOD-012, MOD-013, MOD-014, MOD-016, MOD-017,
 MOD-018, MOD-019, MOD-021, MOD-022, MOD-026 and MOD-027's board, table, profile and add form, plus
 MOD-020's roster on a session,
-ADM-SCH-03's create-a-class form at `/schedule/new`, ADM-SCH-04's availability grid at `/rota`, FD-07's shift open and close at `/desk/shift`,
+ADM-SCH-03's create-a-class form at `/schedule/new`, ADM-SCH-04's availability grid at `/rota`,
+ADM-SET-07's localization at `/localization`, FD-07's shift open and close at `/desk/shift`,
 FD-02's member lookup at `/desk/lookup`, ADM-MSH-07's cancellation sheet at
 `/people/{id}?tab=membership&cancel=1`, ADM-MSH-09's plans and pricing at `/plans`, ADM-MSH-06's plan change at `/people/{id}?tab=membership&plan=1`, ADM-MEM-10's walk-in form at
 `/members/new`, FD-05's walk-in trial at `/desk/trial`, FD-06's class check-in at
@@ -7227,14 +7302,16 @@ specified V1 screens and leaves `owning_module` null for every one of them -- it
 `unresolved_policy` says no owning implementation module has been inferred, and that null is
 not a pass. So nothing maps a screen to a module, and any statement of the form "module X's
 frontend is complete" is an assertion about a mapping that does not exist here. What the
-artefacts do support is per *surface*: `design:coverage` reports 43 screens in the inventory
-across Admin and Front Desk, 12 blocked on something external and 29 in the backlog, and
-Member, Coach, Console and POS have no implementation at all. **Closing this honestly means
+artefacts do support is per *surface*: `design:coverage` reports 57 screens in the inventory
+across Admin and Front Desk, 6 states of those, 12 blocked on something external and 16 in the
+backlog, and Member, Coach, Console and POS have no implementation at all. **Closing this honestly means
 resolving the mapping before claiming a module is done**, not counting routes -- and the
 backlog is now the half of that mapping which exists: every unbuilt screen on those two
 surfaces names the module that owns it, checked against the catalogue, so the modules with
-Admin and Front Desk screens still owed are MOD-055 (3), MOD-058 (1) and MOD-059 (1), plus 11
-screens that are work inside modules already built, and one that is a service worker.
+Admin and Front Desk screens still owed are MOD-055 (3), MOD-023 (1), MOD-058 (1) and
+MOD-059 (1), plus 9 screens that are work inside modules already built, and one that is a
+service worker. **ADM-SET-07 came off that list**, which leaves MOD-005 with no owed screen at
+all.
 **MOD-026 came off that list by building its three**, which is the first time a module has: its backlog entries had been rewritten twice
 as the slices landed, because the check validates the module id and cannot read the sentence
 beside it. **MOD-027 came off it a different way** -- its first slice landed, so its eight
@@ -7324,8 +7401,8 @@ arguments is *built*, whatever route it is reached at. **Routes are not the unit
 work is**, and a shared route is the design's call rather than a reason to let a parent's
 section stand in for a screen somebody built.
 
-It reads **91 specified screens on Admin and Front desk: 56 in the inventory, 6 states of
-those, 12 blocked on something external, 17 in the backlog**, and it names the five surfaces
+It reads **91 specified screens on Admin and Front desk: 57 in the inventory, 6 states of
+those, 12 blocked on something external, 16 in the backlog**, and it names the five surfaces
 it does *not* cover with their counts. It checks both directions -- a reason for a screen the inventory now argues is a
 stale excuse and fails, which is the schedule board's "gap note that outlived its gap" caught
 structurally. My own hand audit had said 43 were missing; the truth was that most were built,

@@ -56,14 +56,17 @@ LANGUAGES_KEY = "localization.languages_offered"
 #: **Money is always Latin, and the canvas says why rather than leaving it to taste**: "Money
 #: keeps Latin digits with its code -- JOD 41,280.00 -- because that is the form on your
 #: invoices and JoFotara submissions. Applied identically on screen, receipt and export." A
-#: member disputing a charge has to see the same string in both places. So this is returned on
-#: the read as a statement rather than a setting: there is no key for it and no way to turn it
-#: off, and a surface renders the rule it is obeying instead of implying a choice.
-MONEY_IS_ALWAYS_LATIN = (
-    "money keeps Latin digits with its currency code whatever the numeral system is, because "
-    "that is the form on an invoice and on a tax submission, and a member disputing a charge "
-    "has to see the same string in both places"
-)
+#: member disputing a charge has to see the same string in both places. So it is returned as a
+#: statement rather than a setting: there is no key for it and no way to turn it off.
+#:
+#: **A token rather than the sentence, which is a correction to the first version of this
+#: module.** It returned the rule as English prose -- and this application is bilingual, so an
+#: Arabic reader could not be shown it, which means a screen would word the rule itself and the
+#: field would have no reader at all. That is two wordings to keep true plus a typed response
+#: field nothing reads, both of which this build has paid for on `GET /reports/attendance`.
+#: The server states the fact and the catalogue words it; `formatMoney`'s own callers get a
+#: value to pass rather than a constant to remember, which is ADR-0015 D6 from the other side.
+MONEY_NUMERALS = "latn"
 
 #: The month-name set, derived rather than configured -- ADR-0015 D5. Returned so a surface can
 #: say which rule it is following; the client needs no table, because the regional locale tag
@@ -117,7 +120,7 @@ def display_conventions(pool: Pool, tenant_id: str) -> dict[str, Any]:
         # is already using.
         "languages_offered": list(offered) if offered else list(LANGUAGES),
         "month_names": MONTH_NAMES,
-        "money_is_always_latin": MONEY_IS_ALWAYS_LATIN,
+        "money_numerals": MONEY_NUMERALS,
         # Said on the read, because a tenant that has declared neither key is not a tenant that
         # chose Latin digits -- and a surface that could not tell them apart would present a
         # default as a decision.

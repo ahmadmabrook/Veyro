@@ -315,32 +315,14 @@ const BACKLOG = {
     + "submission counts the canvas shows are `int_connector_runs`, and 'Test connection' is "
     + "the `validated` state MOD-012 records as a claim by a named party. A live submission "
     + "needs an account at JoFotara, which is the seam this work stops at",
-  // **The entry below is written from the batch canvas, not the prototype.** `veyro-screen.js`
-  // draws a six-field ADM-SET-07 including a "Week starts · Saturday" that the deliverable
-  // does not have, and a first version of this entry carried it. The drawn canvas is the
-  // deliverable -- ADM-CRM-05 records the same trap -- so the prototype is read only where the
-  // batch is silent, and never for a field\u0027s existence.
-  "ADM-SET-07": "work: MOD-005. Titled LOCALIZATION, and three concerns rather than a list "
-    + "of toggles: the languages offered (English and \u0627\u0644\u0639\u0631\u0628"
-    + "\u064a\u0629), the numeral system, and the month names. The numeral rule is the "
-    + "screen -- \u0022Arabic-Indic for counts, dates and times. Money keeps Latin digits "
-    + "with its code, because that is the form on your invoices and JoFotara submissions. "
-    + "Applied identically on screen, receipt and export\u0022 -- so the hard-coded `latn` "
-    + "on every money figure here is the design\u0027s own rule, already honoured, and what "
-    + "is missing is Arabic-Indic for the figures that are *not* money, which this build "
-    + "formats `latn` everywhere. \u0022One rule per tenant, never mixed and never decided "
-    + "per component\u0022 is why it belongs in MOD-005\u0027s typed registry rather than in "
-    + "a component, and \u0022identically on screen, receipt and export\u0022 is why "
-    + "`conventions-parity.test.mjs` spawns Python to compare the two implementations "
-    + "character for character. Month names follow the Levantine set -- "
-    + "\u0622\u0628, \u062a\u0645\u0648\u0632 -- which `formatMonthDay` does not carry. "
-    + "The screen also shows the week start, which the inventory row lists among its "
-    + "concerns and CON-04 derives from the region -- \u0022Jordan sets data residency, JOD "
-    + "as the currency, the JoFotara tax adapter, Arabic as an available language, and a "
-    + "Sunday week start\u0022 -- so it is displayed rather than chosen, and the Sunday "
-    + "`availability.week_from` produces is right for a build that provisions one region. "
-    + "The screen is read-only as drawn, which is what MOD-005 can already answer; the work "
-    + "is the keys, their defaults, and the consumers that currently hard-code them",
+  // **ADM-SET-07 was here and is built.** `/localization` renders the two conventions as what
+  // is in force rather than as a choice, which is what the canvas draws -- no save and no
+  // action, unlike ADM-SET-06 beside it. Two things from this entry are worth keeping where a
+  // reader will find them: it was once written from `veyro-screen.js`, whose six-field
+  // ADM-SET-07 has a "Week starts · Saturday" the deliverable does not draw, so the batch
+  // file is the deliverable and the prototype is read only where the batch is silent (ADM-CRM-05
+  // records the same trap); and the seventeen call sites that still pass `latn` are the other
+  // half of the work, which the screen itself names.
   "ADM-COM-03": "work: MOD-014 has no segments -- PPL-01-R05 names them beside tags and "
     + "custom fields, and a segment is a saved query this module has no language for, so "
     + "tags are the static half. MOD-013's dispatcher is the seam the send stops at, behind "

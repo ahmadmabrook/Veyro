@@ -876,6 +876,45 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
     body: { config_key: "booking.window_hours", value: 72, scope_type: "tenant",
             published_by: ownerIdentityId, correlation_id: cid() },
   });
+  // **ADM-SET-07's two keys, declared and published, which is the state its canvas draws.**
+  // Both of them, so the screen's "nobody has set this" branch is absent here and the chips
+  // are a decision rather than a default -- the component test covers the defaulted side,
+  // because a tenant with nothing declared is the one state this fixture cannot also be.
+  //
+  // **`arab` on purpose**, so the browser renders the canvas's own preview -- `تنتهي عضويتك
+  // في ٢١ آب · المبلغ JOD 55.00` -- rather than the Latin-digit version of it, which is the
+  // only way the Arabic-Indic half of the rule is exercised in a browser at all.
+  //
+  // **And this is the thing to know before wiring the seventeen `latn` call sites.** Nothing
+  // but `/localization` reads this value today. The hour a figure anywhere else follows it,
+  // every count on every page in this fixture becomes Arabic-Indic and the assertions that
+  // name a number will fail -- correctly, and all at once. That is the signal rather than the
+  // accident: it says which assertions depend on the numeral system. Setting this to `latn`
+  // to keep them green would be hiding the question.
+  await call("/config/definitions", {
+    method: "POST", ...as(token),
+    body: { config_key: "localization.numerals", value_type: "string",
+            default_value: "latn", owner_module: "MOD-005",
+            validation: { enum: ["latn", "arab"] },
+            description: "Which numerals this tenant renders counts, dates and times in" },
+  });
+  await call("/config/definitions", {
+    method: "POST", ...as(token),
+    body: { config_key: "localization.languages_offered", value_type: "json",
+            default_value: ["en", "ar"], owner_module: "MOD-005",
+            description: "The languages this tenant offers its members and staff" },
+  });
+  await call("/config/values", {
+    method: "POST", ...as(token),
+    body: { config_key: "localization.numerals", value: "arab", scope_type: "tenant",
+            published_by: ownerIdentityId, correlation_id: cid() },
+  });
+  await call("/config/values", {
+    method: "POST", ...as(token),
+    body: { config_key: "localization.languages_offered", value: ["en", "ar"],
+            scope_type: "tenant", published_by: ownerIdentityId, correlation_id: cid() },
+  });
+
   await call("/flags/booking.new_flow", {
     method: "PUT", ...as(token),
     body: { enabled: true, default_variant: "off", rules: [],

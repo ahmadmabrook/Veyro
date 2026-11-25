@@ -313,6 +313,7 @@ corresponds to them. The others map loosely:
 | `/people/{id}?tab=membership&plan=1` | ADM-MSH-06 Membership · downgrade | **built from the canvas, and the half it leads with needed a table that did not exist** — `mem_entitlement_policies` had a consumer and no producer, so a membership granted nothing and the command said in its own response that it could not know what the plan being left gave. ADR-0013 is the edge; the loss, the requantified credit and the expiry are all read before anything is written, which needed a variant-keyed quote because the sibling preview takes an agreement and drawing one up is a financial write |
 | `/people/{id}?tab=notes` | ADM-MEM-09 Member · notes | **read built, write blocked** — `people.note.write` is financial class, because a note cannot be edited and will be read in a dispute; a redacted note is marked rather than dropped |
 | `/integrations` | ADM-SET-05 Integrations index | **built** — the install, its criticality and its written obligations; nothing syncs and the board says so |
+| `/localization` | ADM-SET-07 Localization | **built from the canvas** — the two conventions as what is in force rather than as a choice, which is what the canvas draws: no save, no action, unlike ADM-SET-06 beside it. The preview is rendered by the same `monthDay`, `formatMoney` and `shapeDigits` the product uses, so what a reader checks is what the product will do; the write, the seventeen call sites that still hard-code `latn` and the backend's missing month-name formatter are each named as absent with what they need |
 | `/plans` | ADM-MSH-09 Plans & pricing · owner only | **built from the canvas, and the count it is for needed a server read and the names needed another** — the blast radius is stated before the save, the typed confirmation is re-checked in the action, and the `deadBook` state refuses a write `create_price` would accept. Rendering it found that `sellable_plans` returned the *variant's* name, so six of eight rows read "Monthly" |
 | `/schedule` | ADM-SCH-01 Class schedule · week grid | **built from the canvas** |
 | `/rota` | ADM-SCH-04 Coach availability · week grid | **built from the canvas** — the schedule board's own missing third view, over a read that did not exist |
@@ -3034,3 +3035,96 @@ means in a build where one route has opted in.
 opted in, so a club manager sees the rail and an empty board. Opting one in is a predicate and
 a case, and `permit` refuses such a caller until it happens — which is the behaviour they had
 before this, so nothing regressed by leaving them.
+
+## ADM-SET-07 — localization, and the capability that was built twice and selected nowhere
+
+The canvas is four elements and two of them are rules rather than controls: LANGUAGES OFFERED
+`English` `العربية`, NUMERALS `0123` `٠١٢٣`, a statement about money, a rendered PREVIEW, and a
+footnote about month names. ADR-0015 is the record.
+
+**The screen is read-only because the canvas is, and the comparison that settles it is the card
+beside it.** ADM-SET-06 draws an action — `→ Use #1F6E7A` — and a field. ADM-SET-07 draws no
+save, no button and no input: its chips are spans. So they are a statement of what is in force,
+and `StateChips` is the read of what `ChoiceChips` writes, in the same file and sharing the same
+CSS rule by selector rather than by a second class name. MOD-005's value publication is
+`config.value.publish`, financial class, which is the same reason the configuration board beside
+it is read-only — but that is the second reason, not the first.
+
+**The capability was built twice and selected nowhere, which is the largest instance of that
+shape in this build.** `web/src/i18n/conventions.mjs` and `backend/app/l10n/conventions.py` both
+implement `arab` in full, and `conventions-parity.test.mjs` spawns Python to compare them
+character for character — because the canvas requires the rule "applied identically on screen,
+receipt and export" and a receipt is rendered by the backend. Seventeen call sites pass
+`numbering = "latn" as const`, each with a comment saying the numeral system is a tenant setting
+this build does not carry. Two runtimes kept in agreement by a test, for a value nobody chooses.
+
+**The money half was already right, and three comments in this repository called it a
+limitation.** "Money keeps Latin digits with its code" is the canvas's own rule, so the
+hard-coded `latn` on every money figure is the design honoured rather than a workaround. What is
+missing is Arabic-Indic for the figures that are *not* money.
+
+**The preview is rendered rather than drawn, and that is the point of it.** It goes through
+`monthDay`, `formatMoney`, `shapeDigits` and `isolate` — the functions every other figure in the
+app goes through — so the two things a reader cannot verify any other way are verifiable here:
+whether `٢١ آب` is the month name their members read, and whether the digits follow the tenant's
+rule while the money beside them does not.
+
+**`monthDay` is new and the region is why.** The month names come from the region rather than the
+language: `ar-JO` gives the Levantine `آب` where plain `ar` gives `أغسطس`, which is CON-04's own
+shape — "Jordan sets data residency, JOD as the currency, the JoFotara tax adapter, Arabic as an
+available language, and a Sunday week start". Two decisions inside it:
+
+- **The numbering is forced to `latn` in the tag and shaped afterwards.** `ar-JO` resolves to the
+  `arab` numbering system *by default*, so a regional tag alone would make the digits follow the
+  language — exactly what `formatInteger`'s own contract forbids: "a tenant must not get
+  Arabic-Indic digits merely because a string was Arabic". The tag decides the month name and
+  `shapeDigits` decides the digits.
+- **It takes a calendar date rather than an instant**, so it has no zone to state and none to get
+  wrong. `new Date("2026-08-21")` is UTC midnight and formatting it in the runtime's own zone
+  renders the 20th anywhere west of Greenwich; three defects in this repository have come from
+  that frame.
+
+**The money rule reaches the screen as a token, and the first version of the read returned it as
+prose.** English prose, in a bilingual application — so an Arabic reader could never be shown it,
+which means the screen would word the rule itself and the server's field would have no reader at
+all. That is two wordings to keep true *plus* a typed response field nothing reads, both of which
+this build has already paid for on `GET /reports/attendance`. `money_numerals: "latn"` is the
+fact; the catalogue words it; and `formatMoney`'s callers get a value to pass rather than a
+constant to remember, which is ADR-0015 D6 from the other side.
+
+**Three states the canvas does not draw, because its tenant has configured itself.**
+
+- **A default is not a decision.** A tenant that has declared nothing resolves to Latin digits
+  and every catalogue this build has, which is what every page renders today — so `declared`
+  comes back on the read and the screen says which it is, in the same words the configuration
+  board uses for `scope_type: "default"`.
+- **A tenant that does not offer Arabic gets the sample in English**, because a preview of a
+  surface nobody will see demonstrates nothing.
+- **A refused read is a refusal here rather than a silent fallback.** ADR-0015 D2 is about a page
+  *rendering figures*, where a gate answer must not be able to put a notice on the screen. This
+  is the screen whose whole subject is the setting.
+
+**The chip samples are produced by the function they demonstrate.** `0123` and `٠١٢٣` are the
+same four digits through `shapeDigits`; a pair of literals would be a second spelling of the one
+thing this screen exists to show. The language names are *not* catalogue entries, for the
+opposite reason: an autonym must not be translated, and the parity check could not see that it
+had been.
+
+**The in-force chip says so in words**, because colour is never the only signal. A filled chip is
+the sighted reading; `inUse` is a word from the catalogue rendered visually hidden on the one chip
+that carries it, so the group reads as "0123, ٠١٢٣ in use" rather than as two values a screen
+reader cannot tell apart. The unselected ones carry nothing — which one is in force is the
+distinction, and "not in use" on every other chip is noise.
+
+**Two things the component had to not inherit from `ChoiceChips`.** The pointer cursor and the
+44px touch floor belong to a tapped control: the source makes 44px non-negotiable on one, and a
+read-only state chip is not a target, so growing it on a phone would make a statement look like a
+button. The shared rule is split so the appearance is one block and those two properties are the
+control's alone.
+
+**What is still owed, and the third one is a dependency rather than a priority.** The write (the
+canvas draws none, and publishing is financial class). The seventeen call sites, which this read
+is what they were waiting for. And a month name on a receipt: the canvas's rule is "identically
+on screen, receipt and export", the backend renders the receipt, and Python's standard library
+carries no CLDR month names — so a twin for `monthDay` needs `babel`, which would be this
+repository's second dependency ever. Nothing in the backend renders a month name today.

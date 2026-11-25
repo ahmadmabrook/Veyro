@@ -517,7 +517,10 @@ class DisplayConventionsTests(GatedApiTestCase):
         CON-04's own shape for the week start.
         """
         body = self.display(self.tenant()).json()
-        self.assertIn("Latin digits", body["money_is_always_latin"])
+        # A token rather than a sentence: this application is bilingual, so prose here
+        # would be a field an Arabic reader could never be shown -- and then the screen
+        # words the rule itself and the field has no reader at all.
+        self.assertEqual(body["money_numerals"], "latn")
         self.assertEqual(body["month_names"], "levantine")
         # Neither is in `declared`, because neither is a key.
         self.assertEqual(body["declared"], [])

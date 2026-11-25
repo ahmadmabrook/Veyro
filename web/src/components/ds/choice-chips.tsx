@@ -135,3 +135,63 @@ export function ChoiceChips({
     </fieldset>
   );
 }
+
+/**
+ * The same chips, read-only — which of a closed set of values is in force.
+ *
+ * **Beside `ChoiceChips` rather than in a file of its own, because the appearance is one
+ * appearance.** A selected chip is a filled surface with inverse ink and an unselected one is
+ * a 1px border on the canvas; that rule is drawn identically on ADM-CRM-04's `INTEREST`, on
+ * ADM-CRM-07's `ReasonPicker` and on ADM-SET-07's `NUMERALS`, and the stylesheet carries it
+ * once for both components. Two files would be two spellings of one drawing, which is the
+ * duplication-by-divergence this build keeps finding.
+ *
+ * **Not a form control, and not a disabled one.** ADM-SET-07 draws no save and no action --
+ * unlike ADM-SET-06 beside it, which draws `→ Use #1F6E7A` -- so the chips there are a
+ * statement of what is in force rather than a choice: MOD-005's value publication is
+ * `config.value.publish`, financial class, and the whole surface is read-only for that reason.
+ * A disabled checkbox would be a control a reader tries, and `Chip` is the wrong primitive in
+ * the other direction -- its own docstring says it is "a removable filter, or a small
+ * enumerated value" and gives no in-force state at all.
+ *
+ * **The in-force value says so in words, because colour is never the only signal.** A filled
+ * chip is the sighted reading; `inUse` is a word from the catalogue, rendered visually hidden
+ * on the one chip that carries it, so the list reads as "0123, ٠١٢٣ in use" rather than as two
+ * values a screen reader cannot tell apart. The unselected ones carry nothing: which one is in
+ * force is the distinction, and "not in use" on every other chip is noise.
+ */
+export function StateChips({
+  id,
+  legend,
+  inUse,
+  options,
+}: {
+  /**
+   * The label's own id, so the list is named by it.
+   *
+   * **Passed rather than derived from the legend**, which is `DataGrid`'s `labelledBy` rule:
+   * an id built from translated text is an id that changes with the reader's language and
+   * breaks on a space. The caller knows what the group is; the component does not.
+   */
+  id: string;
+  legend: string;
+  /** The word for the value in force, from the catalogue. */
+  inUse: string;
+  options: readonly { value: string; label: string; on: boolean }[];
+}) {
+  return (
+    <div className="ds-state-group">
+      <p className="ds-field-label" id={id}>{legend}</p>
+      <ul className="ds-choice-chips" aria-labelledby={id}>
+        {options.map((one) => (
+          <li key={one.value}>
+            <span className="ds-state-chip" data-on={one.on ? "true" : "false"}>
+              {one.label}
+              {one.on ? <span className="ds-visually-hidden">{` — ${inUse}`}</span> : null}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}

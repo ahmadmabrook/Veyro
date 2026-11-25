@@ -3022,6 +3022,82 @@ const MUTATIONS = [
     grep: "can read the staff list at all, and is told it is bounded",
     runner: "playwright",
   },
+
+  // ------------------------------------------------- ADM-SET-07, localization
+  // **The forced `-u-nu-latn` in `monthDay`'s tag has no mutation, and the reason is worth
+  // more than the entry.** Removing it came back uncaught, correctly: `shapeDigits` is
+  // *bidirectional* -- its `latn` branch converts U+0660-0669 back to ASCII -- so whatever
+  // numbering `ar-JO` resolved to is normalised afterwards and the output is identical. The
+  // guard is for a third locale, whose default digits `shapeDigits` would not know how to
+  // undo, and this build has two. A permanently-uncaught entry is noise on every run, so the
+  // rule is kept and documented where it is written and the premise it rests on -- that
+  // `shapeDigits` normalises in both directions -- is asserted in `localization.test.ts`.
+  {
+    id: "localization-the-digits-are-shaped-by-the-tenants-rule",
+    why: "without the shaping the month name is right and the digits are whatever the tag"
+      + " happened to resolve, so an `arab` tenant reads `21 آب` -- the one pair that proves"
+      + " the two halves are decided separately",
+    file: "src/i18n/dates.ts",
+    from: "  return shapeDigits(latin, numbering) as string;",
+    to: "  return latin;",
+    grep: "forces the numbering rather than letting the regional tag decide it",
+    runner: "vitest",
+  },
+  {
+    id: "localization-the-preview-is-arabic-where-arabic-is-offered",
+    why: "an English-locale owner checking their tenant's Arabic rendering is the ordinary"
+      + " case, and a sample in their own language shows them the one half they can already"
+      + " read",
+    file: "src/lib/display.ts",
+    from: '  return conventions.languages_offered.includes("ar") ? "ar" : "en";',
+    to: '  return "en";',
+    grep: "is Arabic wherever Arabic is offered",
+    runner: "vitest",
+  },
+  {
+    id: "localization-money-keeps-its-own-numerals",
+    why: "the canvas's whole statement is that money does not follow the setting -- 'that is"
+      + " the form on your invoices and JoFotara submissions' -- so passing the tenant's"
+      + " numerals here renders `JOD ٥٥٫٠٠` under a panel saying it will not",
+    file: "src/app/localization/page.tsx",
+    from: "                                  conventions.money_numerals, previewLoc),",
+    to: "                                  conventions.numerals, previewLoc),",
+    grep: "renders the canvas's own preview sentence",
+    runner: "playwright",
+  },
+  {
+    id: "localization-the-count-follows-the-setting",
+    why: "`٢ languages offered` reads oddly and is the rule: passing `latn` to make the"
+      + " English line look ordinary is deciding it per component, which is the one thing"
+      + " 'never mixed and never decided per component' forbids -- and it is the only figure"
+      + " on the screen that shows the setting reaching anything",
+    file: "src/app/localization/page.tsx",
+    from: "                  { count: conventions.languages_offered.length }, conventions.numerals)}",
+    to: '                  { count: conventions.languages_offered.length }, "latn")}',
+    grep: "shapes its own count by the setting",
+    runner: "playwright",
+  },
+  {
+    id: "localization-a-default-is-not-a-decision",
+    why: "the sentence is about a tenant that has declared nothing, so rendering it for one"
+      + " that has just chosen both would be telling an owner they had not set what they set",
+    file: "src/lib/display.ts",
+    from: "  return !conventions.declared.includes(key);",
+    to: "  return true;",
+    grep: "says nothing about defaults",
+    runner: "playwright",
+  },
+  {
+    id: "localization-the-in-force-value-says-so-in-words",
+    why: "colour is never the only signal: a filled chip is the sighted reading and the word"
+      + " is what a screen reader gets, so dropping it leaves two samples a reader cannot"
+      + " tell apart",
+    file: "src/components/ds/choice-chips.tsx",
+    from: '              {one.on ? <span className="ds-visually-hidden">{` \u2014 ${inUse}`}</span> : null}',
+    to: "              {null}",
+    grep: "marks which numeral system is in force",
+    runner: "playwright",
+  },
 ];
 
 const only = process.argv[2];

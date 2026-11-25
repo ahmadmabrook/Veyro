@@ -3466,3 +3466,62 @@ wrapped in one route read as wrapped in all of them and it reported zero. Moving
 every test green except that one. The fix is to validate at the call site and pass the checked
 values in; the alternative — exempting the routes — would be declaring that a uuid is not a
 uuid.
+
+
+**Adding a permission to the catalogue grants it to nobody, and the tell is a 403 for the owner
+who holds everything.** `authz.bootstrap` creates a role holding every permission *that existed
+when it ran* and stores the list in `iam.role_permissions`; the catalogue is code and the grant
+is a row. So the hour `config.display.read` was added, the browser fixture's owner -- 224
+permissions, "tenant_admin", nominally everything -- was refused the new route, and the screen
+correctly rendered "Not permitted" for a reader who would hold it on any fresh tenant. Nothing
+is wrong in either half: this is the per-tenant registry doing what it is for. **The remedy is
+to re-provision rather than to edit a role**, because `_refuse_escalation` means a grantor may
+only grant what they hold and the owner does not hold what does not exist yet. Two consequences
+worth knowing: CI is always right, because it provisions immediately before the suite; and a
+local fixture provisioned before a permission landed will fail the new screen's specs in the
+shape of a product defect. The count on the fixture's own summary line is the check -- it moved
+224 to 225.
+
+**A prose field in a bilingual product has no reader, and the catalogue cannot see that it
+has none.** ADM-SET-07's read first returned the money rule as an English sentence. This
+application has no fallback to English -- `t` throws rather than returning a key, for MOD-013's
+reason -- so an Arabic reader could never be shown that field, which means the screen words the
+rule itself and the server's field is read by nothing. Two defects in one: two wordings to keep
+true, and a typed response field nothing reads. `GET /reports/attendance` has both, found a
+module late and after a false sentence had been rendered to every caller; this one was found
+before it shipped by asking which locale the field renders in. **A server field meant for a
+person is either rendered as it stands or it is a token the catalogue words** -- and where a
+client has two catalogues, prose on the wire can only ever be the second. The fact is cheaper
+anyway: `money_numerals: "latn"` gives `formatMoney`'s callers a value to pass instead of a
+constant to remember.
+
+**A regional locale tag carries a default numbering system, so a tag alone derives numbering
+from locale.** `Intl.DateTimeFormat("ar-JO", …)` resolves `numberingSystem: "arab"` and renders
+`٢١ آب`; plain `ar` resolves `latn` and renders `21 أغسطس`. Both halves matter and they come
+from different places: the *month name* is the region's (`آب` is Levantine, `أغسطس` is not) and
+the *digits* must be the tenant's, because `formatInteger`'s own contract is that "a tenant must
+not get Arabic-Indic digits merely because a string was Arabic". So a regional tag is the right
+way to get the month name and the wrong way to get the digits -- force `-u-nu-latn` and shape
+afterwards through the one function every other figure goes through.
+
+**An uncaught mutation has a fourth reading: the guard is for input the current producer cannot
+emit.** The three already recorded are a guard subsumed (delete it), a case that does not exist
+(build it), and an assertion that cannot see it (assert what moves). `monthDay`'s forced
+`-u-nu-latn` is none of those: removing it changes nothing, because `shapeDigits` is
+*bidirectional* -- its `latn` branch converts U+0660-0669 back to ASCII -- so the tag's own
+choice is normalised away. The guard is for a third locale, whose default digits `shapeDigits`
+would not know how to undo: Persian's `arabext` (U+06F0-06F9) passes through untouched and would
+reach a `latn` tenant's page. This build has two locales, so no case can exist. The shape of the
+answer is MOD-021's "a branch that exists for the writer that is not the service" and MOD-019's
+`sch_templates_status`: **keep the rule, drop the mutation -- a permanently-uncaught entry is
+noise on every run -- and assert the premise the redundancy rests on instead**, which here is
+that `shapeDigits` normalises both ways and leaves a third digit set alone.
+
+**A read-only twin of a form control is the component's job, not a disabled form.** ADM-SET-07
+draws the same chips ADM-CRM-04 does and draws no save: a selected chip is a filled surface with
+inverse ink and an unselected one is a 1px border, which is one appearance with two components
+over it. The CSS rule is therefore shared by selector rather than copied under a second class
+name -- and two properties are deliberately *not* shared, because they belong to a tapped
+control: the pointer cursor, and the 44px touch floor the source makes non-negotiable on a
+target. Growing a read-only state chip on a phone would make a statement look like a button. A
+disabled checkbox is the wrong answer in the other direction, because a reader tries it.
