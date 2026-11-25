@@ -3255,6 +3255,35 @@ So: when an assertion about a count can only take one value under the fault it i
 assert the thing that distinguishes them -- and when a test drives the same object twice, reset
 every piece of state the second pass reads, not just the one the first pass obviously wrote.
 
+**A disclosure the server composes and the client restates exists twice, and the copy that
+renders is the one nobody validates.** `GET /reports/attendance` returns seven carefully-worded
+disclosure strings; `web/src/lib/reports.ts` types all seven; and the screen renders **none** of
+them -- it says the same seven things in its own message keys instead. So the server's wording
+has no reader at all, which is exactly how one of them stayed false for a module, and the
+sentence a person actually sees was a *second* copy that nobody had checked against the schema
+either. Correcting the server string and the JSX comment left the rendered one untouched: I
+pushed a commit claiming the false sentence was "rendered on ADM-RPT-04" having fixed the two
+copies that are not.
+
+Two of the screen's own seven were false on the same fact -- "Nothing in this build records when
+a club is open" and "No table or configuration key in this build says which days are a working
+week" -- both in English and in Arabic, both rendered.
+
+**And a browser test asserted each of them, which is why they survived.** `toContainText
+("Nothing in this build records when a club is open")` held a false sentence on the screen for a
+module; the sibling pinned the other. This file already records "a test that asserts a gap has
+to be rewritten the day the gap closes", and those two are the strongest form of it: the test
+was not merely stale, it was *load-bearing for the falsehood*. Both now assert the narrower true
+claim **and the absence of the old sentence**, because an assertion on the new wording alone
+would not notice a revert -- which is the direction this one came from.
+
+**The shape to watch for**: a typed response field that nothing reads is the writer-with-no-
+reader finding inside a response type, and when the client restates the same fact in its own
+words the two copies drift silently in opposite directions. The check is cheap -- grep each
+field of a response type for a reader in the screen that consumes it -- and where a server
+sentence is meant for a person, the screen should render *it* rather than paraphrase it, so
+there is one wording to keep true.
+
 **A gap note the product *returns to the caller* is a defect rather than a stale comment, and
 a test that asserts a word in it cannot catch either.** `attendance.OPENING_HOURS_ARE_NOT_
 RECORDED` opened with "nothing in this build records when a club is open", was returned on every

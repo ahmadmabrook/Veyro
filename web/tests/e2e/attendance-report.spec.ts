@@ -119,12 +119,26 @@ test.describe("the attendance report", () => {
     await expect(main).toContainText("94% of floor capacity");
   });
 
-  test("says opening hours are not recorded, which is why all 24 are drawn", async ({
-    page,
-  }) => {
-    await expect(page.locator("main"))
-      .toContainText("Nothing in this build records when a club is open");
-  });
+  test("says this report does not consult the opening hours, which is why all 24 are drawn",
+    async ({ page }) => {
+      // **This test used to pin the sentence in place, and the sentence was false.** It
+      // asserted "Nothing in this build records when a club is open" -- which stopped being
+      // true when MOD-026's third slice added `plt01.tsk_business_hours`, a location's weekly
+      // pattern and its dated overrides with a writer, a withdrawal and a read route. MOD-026
+      // built that calendar *because* nothing recorded a club's hours and cited this report's
+      // refusal as its evidence, so closing the gap left the note behind -- and this assertion
+      // held it on the screen, in both locales, for a module.
+      //
+      // The claim that is still true is narrower: the report does not *consult* them. So that
+      // is what this asserts, plus the absence of the old sentence -- which is the direction
+      // that matters, because a gap note outliving its gap is what happened here and an
+      // assertion on the new wording alone would not notice a revert.
+      const main = page.locator("main");
+      await expect(main).toContainText("does not consult the club's opening hours");
+      await expect(main).not.toContainText("Nothing in this build records");
+      // And it says where they are, so a reader is not left thinking the product cannot know.
+      await expect(main).toContainText("recorded per club in this build");
+    });
 
   test("says the day set is the reader's choice and no chip claims a working week", async ({
     page,
@@ -133,11 +147,17 @@ test.describe("the attendance report", () => {
     await expect(chips.getByRole("link", { name: "All days" })).toBeVisible();
     await expect(chips.getByRole("link", { name: "Sun–Thu" })).toBeVisible();
     await expect(chips.getByRole("link", { name: "Mon–Fri" })).toBeVisible();
-    // Neither chip claims to be the working week, because nothing in this build knows which
-    // days those are.
+    // **Neither chip claims to be the working week, and that is still right** -- the day set
+    // is the reader's choice and labelling one "weekdays" would assert a fact about their
+    // business. What changed is the reason: this assertion used to pin "No table or
+    // configuration key in this build says which days are a working week", which stopped
+    // being true when MOD-026's business calendar started recording each club's open days.
+    // The behaviour stands; the sentence is narrower now, and the absence of the old one is
+    // asserted because that is the direction a revert comes from.
     await expect(chips.getByRole("link", { name: /weekday/i })).toHaveCount(0);
-    await expect(page.locator("main"))
-      .toContainText("which days are a working week");
+    const main = page.locator("main");
+    await expect(main).toContainText("does not read which days your clubs are open");
+    await expect(main).not.toContainText("No table or configuration key in this build");
   });
 
   test("narrowing the days changes what is counted", async ({ page }) => {

@@ -4502,7 +4502,19 @@ Known gaps, deliberate:
   refusal as its evidence, so closing the gap left behind the note that motivated it. The
   sentence was **returned to the caller on every read** and rendered on ADM-RPT-04, which makes
   it a defect rather than a stale comment, and its guard was `assertIn("opening", ...)` -- a
-  word both the false and the true sentence contain. What is still true is narrower: the hours
+  word both the false and the true sentence contain. **And the sentence a reader sees was a
+  second copy.** This read returns seven disclosure strings, `web/src/lib/reports.ts` types all
+  seven, and the screen renders none of them -- it restates each as its own message key. So the
+  server's wording has no reader, which is how it stayed false, and the rendered copy had never
+  been checked against the schema either: `attendanceReport.noOpeningHours` and
+  `attendanceReport.weekendNotDeclared` were both false on this fact, in both locales. A typed
+  response field nothing reads is the writer-with-no-reader finding inside a response type, and
+  a client that paraphrases a server sentence meant for a person creates two wordings to keep
+  true. **And a browser test asserted each of the two false ones**, which is why they survived:
+  `toContainText("Nothing in this build records when a club is open")` held the sentence on the
+  screen for a module. Those tests were not stale -- they were load-bearing for the falsehood.
+  Both now assert the narrower true claim *and* the absence of the old sentence, because an
+  assertion on the new wording alone would not notice a revert. What is still true is narrower: the hours
   are gated on `tasks.calendar.read`, which an access reader does not hold, so marking the
   closed hours is a composed second read, and whether a club's opening hours are a *tasks* fact
   is ADM-SET-02's question. So the hourly read returns all
