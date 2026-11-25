@@ -6,7 +6,7 @@ import { NotYet, PageHeader } from "@/components/ds/page-header";
 import { monthDay } from "@/i18n/dates";
 import { fill, formatMoney, isolate, t, type MessageKey } from "@/i18n/locale";
 import { shapeDigits } from "@/i18n/conventions.mjs";
-import { currentSession, gate, gateMessage } from "@/lib/api";
+import { currentSession, gateMessage } from "@/lib/api";
 import {
   LANGUAGES_KEY,
   NUMERALS_KEY,
@@ -14,6 +14,7 @@ import {
   PREVIEW_CURRENCY,
   PREVIEW_DATE,
   isDefaulted,
+  mayReadDisplay,
   previewLocale,
   readDisplayConventions,
 } from "@/lib/display";
@@ -53,7 +54,10 @@ export default async function LocalizationPage() {
   const session = await currentSession();
   if (!session) redirect("/login");
 
-  const mayDisplay = await gate("config.display.read");
+  // **The same gate answer every other page's figures go through**, memoised per request:
+  // this screen needs it twice -- once for the values and once to tell a refusal from a
+  // failure -- and a second `/authz/check` for one action would be a request for nothing.
+  const mayDisplay = await mayReadDisplay();
   const conventions = mayDisplay.allowed
     ? await readDisplayConventions().catch(() => null)
     : null;

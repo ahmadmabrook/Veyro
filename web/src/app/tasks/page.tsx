@@ -5,6 +5,7 @@ import { Banner } from "@/components/ds/banner";
 import { ProseNote } from "@/components/prose";
 import { fill, t, type Locale, type MessageKey } from "@/i18n/locale";
 import { ApiError, currentSession, gateAll, gateMessage, gateVerdict } from "@/lib/api";
+import { numerals } from "@/lib/display";
 import { presentation } from "@/lib/preferences";
 import {
   TASK_VIEWS, UNANSWERABLE, dueLabel, dueState, isTaskView, metaLine, sourceWord,
@@ -50,6 +51,10 @@ export default async function TasksPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { locale } = await presentation();
+  // **The tenant's numerals** -- ADR-0015. Every quantity on this page follows
+  // `localization.numerals`; an identifier does not, and neither does money. One read for the
+  // whole render: `conventions()` is React's per-request memo and the layout starts it.
+  const numbering = await numerals();
   const text = (key: MessageKey) => t(locale, key);
   const params = await searchParams;
   const wanted = typeof params.view === "string" ? params.view : undefined;
@@ -124,11 +129,11 @@ export default async function TasksPage({
     return {
       task_id: task.task_id,
       title: task.title,
-      meta: metaLine(locale, task, caseNumbers, now),
+      meta: metaLine(locale, task, caseNumbers, now, numbering),
       queue: queueNames.get(task.queue_id) ?? text("tasks.queueUnnamed"),
       source: word(locale, sourceWord(task.source), task.source),
       status: word(locale, taskStatusWord(task.status), task.status),
-      due: dueLabel(locale, due, task.due_at, now),
+      due: dueLabel(locale, due, task.due_at, now, numbering),
       overdue: due.kind === "overdue",
       caseId: task.case_id,
       // **A blocked task is unblocked before it is finished**, which is MOD-026's own rule
@@ -154,9 +159,10 @@ export default async function TasksPage({
       ) : (
         <TaskTable
           locale={locale}
+          numbering={numbering}
           rows={rows}
           mayWrite={mayWrite.allowed}
-          countLabel={fill(locale, "tasks.countLabel", { count: rows.length })}
+          countLabel={fill(locale, "tasks.countLabel", { count: rows.length }, numbering)}
         />
       )}
 

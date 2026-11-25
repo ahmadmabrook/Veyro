@@ -3,10 +3,10 @@ import Link from "next/link";
 import { Banner } from "@/components/ds/banner";
 import { MoneyValue } from "@/components/ds/money-value";
 import {
-  fill, formatInteger, formatMoney, t, type Locale, type MessageKey,
-} from "@/i18n/locale";
+  fill, formatInteger, formatMoney, t, type Locale, type MessageKey, type Numbering } from "@/i18n/locale";
 import { gate, gateAll, gateMessage, gateVerdict, failureMessage, type GateAnswer }
   from "@/lib/api";
+import { numerals } from "@/lib/display";
 import { readCancellationPreview, readFreezeAllowance } from "@/lib/membership";
 import { affordanceFor, type FreezeAllowance } from "@/lib/freeze";
 import {
@@ -314,6 +314,9 @@ async function Memberships({ personId, locale }: { personId: string; locale: Loc
 }
 
 async function Grants({ personId, locale }: { personId: string; locale: Locale }) {
+  // **The tenant's numerals** -- ADR-0015. `conventions()` is React's per-request memo,
+  // so each of these panels asking for itself costs one read for the whole render.
+  const numbering = await numerals();
   const text = (key: MessageKey) => t(locale, key);
   let page: { grants: EntitlementGrant[]; balance_is_unswept: boolean };
   try {
@@ -358,10 +361,10 @@ async function Grants({ personId, locale }: { personId: string; locale: Locale }
                     <span className="muted">{text("membership.unlimited")}</span>
                   ) : (
                     <span className="data">
-                      {formatInteger(left.balance ?? 0, "latn")}
+                      {formatInteger(left.balance ?? 0, numbering)}
                       {grant.granted_quantity === null
                         ? ""
-                        : ` / ${formatInteger(grant.granted_quantity, "latn")}`}
+                        : ` / ${formatInteger(grant.granted_quantity, numbering)}`}
                     </span>
                   )}
                 </td>
@@ -369,7 +372,7 @@ async function Grants({ personId, locale }: { personId: string; locale: Locale }
                   {left.kind === "unlimited" ? (
                     <span className="muted">—</span>
                   ) : (
-                    <span className="data">{formatInteger(left.held ?? 0, "latn")}</span>
+                    <span className="data">{formatInteger(left.held ?? 0, numbering)}</span>
                   )}
                 </td>
                 <td style={cell}>{grant.status}</td>
@@ -725,6 +728,9 @@ const caption: React.CSSProperties = { fontSize: "var(--type-caption-size)" };
  * somebody to find a second factor that changes nothing.
  */
 async function Freezing({ personId, locale }: { personId: string; locale: Locale }) {
+  // **The tenant's numerals** -- ADR-0015. `conventions()` is React's per-request memo,
+  // so each of these panels asking for itself costs one read for the whole render.
+  const numbering = await numerals();
   const text = (key: MessageKey) => t(locale, key);
   let live: MembershipRow | undefined;
   try {
@@ -760,8 +766,8 @@ async function Freezing({ personId, locale }: { personId: string; locale: Locale
           at last, and from the expression the write itself checks against. */}
       <p style={{ margin: 0 }}>
         {fill(locale, "freeze.used", {
-          used: formatInteger(allowance.days_used, "latn"),
-          allowed: formatInteger(allowance.allowance_days, "latn"),
+          used: formatInteger(allowance.days_used, numbering),
+          allowed: formatInteger(allowance.allowance_days, numbering),
         })}
       </p>
       {allowance.counting_an_open_freeze ? (
@@ -850,6 +856,8 @@ async function Freezing({ personId, locale }: { personId: string; locale: Locale
 async function Cancelling(
   { personId, locale, open }: { personId: string; locale: Locale; open: boolean },
 ) {
+  // **The tenant's numerals** -- ADR-0015, one read for the whole render.
+  const numbering = await numerals();
   const text = (key: MessageKey) => t(locale, key);
   const back = `/people/${personId}?tab=membership`;
 
@@ -926,7 +934,7 @@ async function Cancelling(
                 ? fill(locale, "cancel.termHolds",
                        { date: quote.commitment.ends_on ?? "" })
                 : fill(locale, "cancel.termEarly",
-                       { months: formatInteger(quote.commitment.minimum_term_months, "latn"),
+                       { months: formatInteger(quote.commitment.minimum_term_months, numbering),
                          date: quote.commitment.ends_on ?? "" })}
           </p>
         )}
@@ -957,7 +965,7 @@ async function Cancelling(
             ? text("cancel.endsToday")
             : fill(locale, "cancel.endsOn",
                    { date: quote.effective_on,
-                     days: formatInteger(quote.notice_days, "latn") })}
+                     days: formatInteger(quote.notice_days, numbering) })}
         </p>
       </div>
 
@@ -970,10 +978,10 @@ async function Cancelling(
           <p style={{ margin: 0 }}>
             {offer === "dormant_and_committed"
               ? fill(locale, "cancel.offerDormantCommitted",
-                     { days: formatInteger(daysSince ?? 0, "latn") })
+                     { days: formatInteger(daysSince ?? 0, numbering) })
               : offer === "dormant"
                 ? fill(locale, "cancel.offerDormant",
-                       { days: formatInteger(daysSince ?? 0, "latn") })
+                       { days: formatInteger(daysSince ?? 0, numbering) })
                 : text("cancel.offerCommitted")}
           </p>
           <p style={{ margin: 0 }}>
@@ -1053,6 +1061,8 @@ async function MovingPlan(
     personId: string; locale: Locale; open: boolean; toVariantId: string;
   },
 ) {
+  // **The tenant's numerals** -- ADR-0015, one read for the whole render.
+  const numbering = await numerals();
   const text = (key: MessageKey) => t(locale, key);
   const back = `/people/${personId}?tab=membership`;
 
@@ -1153,7 +1163,7 @@ async function MovingPlan(
 
       {quote !== null && named !== null ? (
         <PlanConsequence
-          locale={locale} quote={quote} planName={named.name}
+          locale={locale} quote={quote} planName={named.name} numbering={numbering}
           membershipId={live.membership_id} personId={personId}
           termsId={chosen?.membership_terms_id ?? ""}
           variantId={chosen?.variant_id ?? ""}
@@ -1176,9 +1186,10 @@ async function MovingPlan(
 /** The consequence, in the canvas's own order: the loss, then the date, then the money. */
 function PlanConsequence({
   locale, quote, planName, membershipId, personId, termsId, variantId, amount,
-  canWrite, stepUpHref,
+  canWrite, stepUpHref, numbering,
 }: {
   locale: Locale;
+  numbering: Numbering;
   quote: ChangeQuote;
   planName: string;
   membershipId: string;
@@ -1230,8 +1241,8 @@ function PlanConsequence({
                     <li key={`q-${one.policy_key}-${one.location_id ?? "all"}`}>
                       {fill(locale, "downgrade.requantified", {
                         right: one.display_name,
-                        was: formatInteger(one.from_quantity ?? 0, "latn"),
-                        now: formatInteger(one.to_quantity ?? 0, "latn"),
+                        was: formatInteger(one.from_quantity ?? 0, numbering),
+                        now: formatInteger(one.to_quantity ?? 0, numbering),
                       })}
                     </li>
                   ))}

@@ -23,6 +23,7 @@ import {
   type Install,
   type SyncCursor,
 } from "@/lib/integrations";
+import { numerals } from "@/lib/display";
 import { presentation } from "@/lib/preferences";
 import { utcStamp } from "@/lib/time";
 
@@ -52,6 +53,10 @@ import { utcStamp } from "@/lib/time";
  */
 export default async function IntegrationsPage() {
   const { locale } = await presentation();
+  // **The tenant's numerals** -- ADR-0015. Every quantity on this page follows
+  // `localization.numerals`; an identifier does not, and neither does money. One read for the
+  // whole render: `conventions()` is React's per-request memo and the layout starts it.
+  const numbering = await numerals();
   const text = (key: MessageKey) => t(locale, key);
 
   if (!(await currentSession())) redirect("/login");
@@ -107,11 +112,11 @@ export default async function IntegrationsPage() {
       locale={locale}
       figures={
         <>
-          {fill(locale, "integrations.installsCounted", { count: installs.length })}
+          {fill(locale, "integrations.installsCounted", { count: installs.length }, numbering)}
           {" \u00b7 "}
-          {fill(locale, "integrations.unmetCounted", { count: unmet.length })}
+          {fill(locale, "integrations.unmetCounted", { count: unmet.length }, numbering)}
           {" \u00b7 "}
-          {fill(locale, "integrations.deadCounted", { count: dead.length })}
+          {fill(locale, "integrations.deadCounted", { count: dead.length }, numbering)}
         </>
       }
     >
@@ -162,6 +167,7 @@ export default async function IntegrationsPage() {
                       <div className="muted" style={caption}>
                         {"v"}
                         <span className="data">
+                          {/* A definition version is cited, not counted: Latin. ADR-0015. */}
                           {formatInteger(install.definition_version, "latn")}
                         </span>
                         {" · "}
@@ -343,7 +349,7 @@ export default async function IntegrationsPage() {
             {dead.length > 0 ? (
               <Banner severity="attention">
                 {text("integrations.deadRuns")}{" "}
-                <span className="data">{formatInteger(dead.length, "latn")}</span>
+                <span className="data">{formatInteger(dead.length, numbering)}</span>
               </Banner>
             ) : null}
             <DataGrid
@@ -392,11 +398,11 @@ export default async function IntegrationsPage() {
                   priority: 2,
                   render: (run) => (
                     <>
-                      <span className="data">{formatInteger(run.records_read, "latn")}</span>{" "}
+                      <span className="data">{formatInteger(run.records_read, numbering)}</span>{" "}
                       {text("integrations.read")}
                       {" · "}
                       <span className="data">
-                        {formatInteger(run.records_written, "latn")}
+                        {formatInteger(run.records_written, numbering)}
                       </span>{" "}
                       {text("integrations.written")}
                       {reportedNotObserved(run) ? (
@@ -413,9 +419,9 @@ export default async function IntegrationsPage() {
                   priority: 3,
                   render: (run) => (
                     <>
-                      <span className="data">{formatInteger(run.attempts, "latn")}</span>
+                      <span className="data">{formatInteger(run.attempts, numbering)}</span>
                       {" / "}
-                      <span className="data">{formatInteger(run.max_attempts, "latn")}</span>
+                      <span className="data">{formatInteger(run.max_attempts, numbering)}</span>
                     </>
                   ),
                 },

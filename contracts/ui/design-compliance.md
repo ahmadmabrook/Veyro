@@ -3128,3 +3128,60 @@ is what they were waiting for. And a month name on a receipt: the canvas's rule 
 on screen, receipt and export", the backend renders the receipt, and Python's standard library
 carries no CLDR month names — so a twin for `monthDay` needs `babel`, which would be this
 repository's second dependency ever. Nothing in the backend renders a month name today.
+
+## ADR-0015's second half — the setting reaching every figure, and the two it must not
+
+The screen displays a value; this is the value reaching the product. Before it, seventeen
+constants and a hundred and sixty-three literals rendered Latin digits whatever a tenant had
+chosen, which made `/localization` a page about a setting with no consumer.
+
+**The number was ten times what the gap note said, and a sweep is what gave it.** The note
+named "seventeen call sites" -- the `const numbering = "latn" as const` declarations, which are
+greppable. What it missed is that `fill` *defaults* its numbering to `latn`, so every plural
+message renders a Latin count with nothing at the call site to find: 82 of those across 34
+files, plus 81 inline `formatInteger(..., "latn")` sites. **The first version of my own
+detector found 74 of the 82**, because it required the key on the same line as the call; the
+catalogue-driven sweep in `tests/component/i18n.test.ts` found the rest, including four
+Command Center panel titles.
+
+**It is all-or-nothing, which is what made the fixture decision wrong first.** "One rule per
+tenant, never mixed and never decided per component" means a page whose counts follow the
+setting beside a rail figure that does not is exactly the mixing the canvas forbids -- so this
+could not land a screen at a time. The fixture published `arab` for a few hours, with a comment
+arguing that the assertions it would break were "the signal rather than the accident". At 163
+sites and several hundred assertions that is not a signal, it is a rewrite of the suite into
+digits no maintainer can read: the fixture publishes `latn` (declared, which is the sharper
+state) and the `arab` half is proven at the component layer and by one mutation that flips the
+reader.
+
+**Three decisions, and the second is a control rather than a tidy-up.**
+
+- **One `cache()`d read per request, started in the layout.** `presentation()` keeps its
+  contract -- cookie-only, no request, callable from the sign-in page -- so this is a separate
+  reader memoised per request. A cookie written at sign-in would have cost no request and made
+  "one rule per tenant" false *across readers* for up to a session's lifetime: two staff on one
+  screen seeing different digits until the older session expired.
+- **`MoneyValue` lost its `numbering` prop.** Every caller passed `latn` and one had already
+  narrowed its own type to the literal, so the canvas's money exception was a default a caller
+  could forget. A default is a convention; an absent parameter is a control, and the rule now
+  lives in the component rather than in fourteen call sites.
+- **A quantity follows the tenant; an identifier does not.** A version, a chain sequence
+  number, an assurance level, a merchandising rank, a price book's priority: something a reader
+  cites, quotes or types back, where shaped digits would make them translate to read a
+  reference. Nine figures are declared on that rule and the sweep checks the list in both
+  directions, so a stale exemption fails too.
+
+**And the browser suite found a defect in the slice before it, by rendering an unrelated
+page.** ADR-0015 D9 had the conventions read make no gate call first, on the argument that
+`check` records a denial itself so gating would write the same row. `/authz/check` passes
+`record_denial=False` -- the gating suite's own `UNGATED` note says "it records no denial" --
+so the ungated read wrote one `iam.audit_events` row per page view for any reader whose tenant
+had not granted the permission, in a table with no DELETE grant. The first visible consequence
+was the permissions screen's audit log: twenty-five screens of `config.display.read denied`
+with `role.assigned` pushed off the page, which is the thing the hash chain exists to hold.
+Gating first costs a request and writes nothing.
+
+**What is still Latin and should not be**: nothing found. What is still owed is the backend
+twin -- a receipt's own figures go through `backend/app/l10n/conventions.py`, which implements
+`arab` in full and is never passed it, because nothing in the backend renders a figure for a
+tenant yet.

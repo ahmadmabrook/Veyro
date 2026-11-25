@@ -8,6 +8,7 @@ import { PageHeader } from "@/components/ds/page-header";
 import { currentSession, gate, failureMessage, gateMessage } from "@/lib/api";
 import { readEntries } from "@/lib/access";
 import { readFleet, type FleetView } from "@/lib/fleet";
+import { numerals } from "@/lib/display";
 import { presentation } from "@/lib/preferences";
 import { utcStamp } from "@/lib/time";
 
@@ -28,6 +29,10 @@ import { utcStamp } from "@/lib/time";
  */
 export default async function FleetPage() {
   const { locale } = await presentation();
+  // **The tenant's numerals** -- ADR-0015. Every quantity on this page follows
+  // `localization.numerals`; an identifier does not, and neither does money. One read for the
+  // whole render: `conventions()` is React's per-request memo and the layout starts it.
+  const numbering = await numerals();
   const text = (key: MessageKey) => t(locale, key);
 
   if (!(await currentSession())) redirect("/login");
@@ -74,17 +79,17 @@ export default async function FleetPage() {
       title={
         attention.size === 0
           ? text("fleet.allAnswering")
-          : fill(locale, "fleet.someDown", { count: attention.size })
+          : fill(locale, "fleet.someDown", { count: attention.size }, numbering)
       }
       // The board's own three answers, as figures: how many devices, how many need somebody,
       // and when the reachability was worked out. The last is the one a reader has to have:
       // nothing polls, so the board is "as of" when it loaded.
       figures={
         <>
-          <span className="data">{formatInteger(fleet.devices.length, "latn")}</span>{" "}
+          <span className="data">{formatInteger(fleet.devices.length, numbering)}</span>{" "}
           {text("fleet.counted")}
           {" \u00b7 "}
-          <span className="data">{formatInteger(attention.size, "latn")}</span>{" "}
+          <span className="data">{formatInteger(attention.size, numbering)}</span>{" "}
           {text("fleet.attention").toLocaleLowerCase(locale)}
           {" \u00b7 "}
           {text("fleet.asOf")}{" "}
@@ -168,7 +173,7 @@ labelledBy="fleet-heading"
                   return count === undefined ? (
                     <span className="muted">{text("fleet.notADoor")}</span>
                   ) : (
-                    <span className="data" dir="ltr">{formatInteger(count, "latn")}</span>
+                    <span className="data" dir="ltr">{formatInteger(count, numbering)}</span>
                   );
                 },
               },
@@ -204,7 +209,7 @@ labelledBy="fleet-heading"
             {utcStamp(fleet.as_of)}
           </span>
           {" · "}
-          <span className="data">{formatInteger(fleet.count, "latn")}</span>{" "}
+          <span className="data">{formatInteger(fleet.count, numbering)}</span>{" "}
           {text("fleet.counted")}
         </p>
       </section>

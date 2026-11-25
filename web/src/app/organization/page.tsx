@@ -13,6 +13,7 @@ import {
   listOrganizations,
   type OrganizationTree,
 } from "@/lib/organization";
+import { numerals } from "@/lib/display";
 import { presentation } from "@/lib/preferences";
 
 /**
@@ -35,6 +36,10 @@ import { presentation } from "@/lib/preferences";
  */
 export default async function OrganizationPage() {
   const { locale } = await presentation();
+  // **The tenant's numerals** -- ADR-0015. Every quantity on this page follows
+  // `localization.numerals`; an identifier does not, and neither does money. One read for the
+  // whole render: `conventions()` is React's per-request memo and the layout starts it.
+  const numbering = await numerals();
   const text = (key: MessageKey) => t(locale, key);
 
   if (!(await currentSession())) redirect("/login");
@@ -77,13 +82,13 @@ export default async function OrganizationPage() {
       figures={
         <>
           {fill(locale, "org.brandsCounted", { count: tree.reduce(
-            (sum, node) => sum + node.brands.length, 0) })}
+            (sum, node) => sum + node.brands.length, 0) }, numbering)}
           {" \u00b7 "}
           {fill(locale, "org.sitesCounted", { count: tree.reduce((sum, node) =>
-            sum + node.brands.reduce((n, brand) => n + brand.locations.length, 0), 0) })}
+            sum + node.brands.reduce((n, brand) => n + brand.locations.length, 0), 0) }, numbering)}
           {" \u00b7 "}
           {fill(locale, "org.entitiesCounted", { count: tree.reduce(
-            (sum, node) => sum + node.entities.length, 0) })}
+            (sum, node) => sum + node.entities.length, 0) }, numbering)}
         </>
       }
     >

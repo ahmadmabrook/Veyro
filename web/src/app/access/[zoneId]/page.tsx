@@ -7,7 +7,7 @@ import { DataGrid } from "@/components/ds/data-grid";
 import { MetricCell, MetricRow } from "@/components/ds/metric-cell";
 import { PageHeader } from "@/components/ds/page-header";
 import { RecordHeader } from "@/components/ds/record-header";
-import { fill, formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
+import { fill, formatInteger, t, type Locale, type MessageKey, type Numbering } from "@/i18n/locale";
 import { ApiError, currentSession, gate, gateMessage } from "@/lib/api";
 import {
   DISCREET,
@@ -20,6 +20,7 @@ import {
   type ZoneDetail,
   type ZonePolicy,
 } from "@/lib/access";
+import { numerals } from "@/lib/display";
 import { presentation } from "@/lib/preferences";
 
 /**
@@ -46,6 +47,10 @@ export default async function ZonePage({
 }) {
   const { zoneId } = await params;
   const { locale } = await presentation();
+  // **The tenant's numerals** -- ADR-0015. Every quantity on this page follows
+  // `localization.numerals`; an identifier does not, and neither does money. One read for the
+  // whole render: `conventions()` is React's per-request memo and the layout starts it.
+  const numbering = await numerals();
   const text = (key: MessageKey) => t(locale, key);
 
   if (!(await currentSession())) redirect("/login");
@@ -105,7 +110,7 @@ export default async function ZonePage({
             {text(`access.risk.${zone.risk_class}` as MessageKey)}
             {" · "}
             {fill(locale, "access.pointsCounted",
-              { count: zone.points.length, entries })}
+              { count: zone.points.length, entries }, numbering)}
             {" · "}
             {text("access.offlineCeiling")}{" "}
             <span className="data" dir="ltr">
@@ -130,7 +135,7 @@ export default async function ZonePage({
             : {
               value: (
                 <span className="data" dir="ltr">
-                  {formatInteger(occupancy.inside, "latn")}
+                  {formatInteger(occupancy.inside, numbering)}
                 </span>
               ),
               // Paragraph 4180: advisory unless both directions are reliably measured, and
@@ -147,11 +152,11 @@ export default async function ZonePage({
             : {
               value: (
                 <span className="data" dir="ltr">
-                  {formatInteger(counts.granted, "latn")}
+                  {formatInteger(counts.granted, numbering)}
                 </span>
               ),
               comparison: fill(locale, "access.ofDecisions",
-                { count: decisions.decisions.length }),
+                { count: decisions.decisions.length }, numbering),
             })}
         />
         <MetricCell
@@ -162,7 +167,7 @@ export default async function ZonePage({
             : {
               value: (
                 <span className="data" dir="ltr">
-                  {formatInteger(counts.policy, "latn")}
+                  {formatInteger(counts.policy, numbering)}
                 </span>
               ),
               comparison: text("access.policyMeans"),
@@ -176,7 +181,7 @@ export default async function ZonePage({
             : {
               value: (
                 <span className="data" dir="ltr">
-                  {formatInteger(counts.fault, "latn")}
+                  {formatInteger(counts.fault, numbering)}
                 </span>
               ),
               comparison: text("access.faultMeans"),
@@ -192,7 +197,7 @@ export default async function ZonePage({
           {zone.policy === null ? (
             <Banner severity="critical">{text("access.noPolicy")}</Banner>
           ) : (
-            <Terms policy={zone.policy} locale={locale} />
+            <Terms policy={zone.policy} locale={locale} numbering={numbering} />
           )}
         </div>
       </section>
@@ -244,7 +249,10 @@ export default async function ZonePage({
   );
 }
 
-function Terms({ policy, locale }: { policy: ZonePolicy; locale: Locale }) {
+function Terms(
+  { policy, locale, numbering }:
+  { policy: ZonePolicy; locale: Locale; numbering: Numbering },
+) {
   const text = (key: MessageKey) => t(locale, key);
   const hhmm = (minute: number) =>
     `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`;
@@ -267,7 +275,8 @@ function Terms({ policy, locale }: { policy: ZonePolicy; locale: Locale }) {
       policy.max_balance_minor === null ? (
         text("access.terms.none")
       ) : (
-        <span className="data">{formatInteger(policy.max_balance_minor, "latn")}</span>
+        <span className="data">{/* Minor units of money, which ADM-SET-07 exempts from the setting outright. */}
+        {formatInteger(policy.max_balance_minor, "latn")}</span>
       ),
     ],
     [
@@ -276,7 +285,7 @@ function Terms({ policy, locale }: { policy: ZonePolicy; locale: Locale }) {
         text("access.terms.none")
       ) : (
         <>
-          <span className="data">{formatInteger(policy.min_age_years, "latn")}</span>{" "}
+          <span className="data">{formatInteger(policy.min_age_years, numbering)}</span>{" "}
           {text("access.terms.years")}
         </>
       ),
@@ -287,7 +296,7 @@ function Terms({ policy, locale }: { policy: ZonePolicy; locale: Locale }) {
         text("access.terms.none")
       ) : (
         <>
-          <span className="data">{formatInteger(policy.anti_passback_seconds, "latn")}</span>{" "}
+          <span className="data">{formatInteger(policy.anti_passback_seconds, numbering)}</span>{" "}
           {text("access.terms.seconds")}
         </>
       ),
@@ -297,7 +306,7 @@ function Terms({ policy, locale }: { policy: ZonePolicy; locale: Locale }) {
       policy.capacity === null ? (
         text("access.terms.none")
       ) : (
-        <span className="data">{formatInteger(policy.capacity, "latn")}</span>
+        <span className="data">{formatInteger(policy.capacity, numbering)}</span>
       ),
     ],
   ];

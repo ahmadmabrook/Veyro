@@ -6,8 +6,9 @@ import { DataGrid } from "@/components/ds/data-grid";
 import { MetricCell, MetricRow } from "@/components/ds/metric-cell";
 import { PageHeader } from "@/components/ds/page-header";
 import { RecordHeader } from "@/components/ds/record-header";
-import { fill, formatInteger, t, type MessageKey } from "@/i18n/locale";
+import { fill, formatInteger, t, type MessageKey, type Numbering } from "@/i18n/locale";
 import { ApiError, currentSession, gateAll, gateMessage } from "@/lib/api";
+import { numerals } from "@/lib/display";
 import { presentation } from "@/lib/preferences";
 import { heldBeyondRoster, readRoster } from "@/lib/booking";
 import { readSession, type SessionResource } from "@/lib/scheduling";
@@ -35,6 +36,10 @@ export default async function SessionPage({
   params: Promise<{ sessionId: string }>;
 }) {
   const { locale } = await presentation();
+  // **The tenant's numerals** -- ADR-0015. Every quantity on this page follows
+  // `localization.numerals`; an identifier does not, and neither does money. One read for the
+  // whole render: `conventions()` is React's per-request memo and the layout starts it.
+  const numbering = await numerals();
   const text = (key: MessageKey) => t(locale, key);
 
   if (!(await currentSession())) redirect("/login");
@@ -112,12 +117,12 @@ export default async function SessionPage({
       <MetricRow label={text("schedule.metrics")}>
         <MetricCell
           label={text("schedule.booked")}
-          value={<span className="data" dir="ltr">{formatInteger(session.held, "latn")}</span>}
+          value={<span className="data" dir="ltr">{formatInteger(session.held, numbering)}</span>}
           comparison={fill(locale, "schedule.ofPlaces", { places: session.places })}
         />
         <MetricCell
           label={text("schedule.freeMetric")}
-          value={<span className="data" dir="ltr">{formatInteger(session.free, "latn")}</span>}
+          value={<span className="data" dir="ltr">{formatInteger(session.free, numbering)}</span>}
           {...(session.free === 0 ? { comparison: text("schedule.full") } : {})}
         />
         <MetricCell
@@ -131,7 +136,7 @@ export default async function SessionPage({
             : {
               value: (
                 <span className="data" dir="ltr">
-                  {formatInteger(roster.waitlist.length, "latn")}
+                  {formatInteger(roster.waitlist.length, numbering)}
                 </span>
               ),
             })}
@@ -157,7 +162,7 @@ export default async function SessionPage({
                 </span>
               ),
               comparison: fill(locale, "schedule.overOccurrences",
-                { count: session.usual_fill_over }),
+                { count: session.usual_fill_over }, numbering),
             })}
         />
       </MetricRow>
@@ -179,7 +184,8 @@ export default async function SessionPage({
           <h2 className="ds-panel-title">{text("schedule.resources")}</h2>
         </div>
         <div className="ds-panel-body">
-          <Resources list={session.resources} timezone={session.timezone} />
+          <Resources list={session.resources} timezone={session.timezone}
+            numbering={numbering} />
         </div>
       </section>
 
@@ -189,7 +195,8 @@ export default async function SessionPage({
             <h2 className="ds-panel-title">{text("schedule.formerResources")}</h2>
           </div>
           <div className="ds-panel-body">
-            <Resources list={session.former_resources} timezone={session.timezone} />
+            <Resources list={session.former_resources} timezone={session.timezone}
+              numbering={numbering} />
           </div>
         </section>
       ) : null}
@@ -376,7 +383,7 @@ export default async function SessionPage({
             {session.conflict_overrides.map((override) => (
               <li key={override.overridden_at}>
                 <span className="data">
-                  {formatInteger(override.conflict_count, "latn")}
+                  {formatInteger(override.conflict_count, numbering)}
                 </span>
                 {" · "}
                 {override.conflict_summary}
@@ -396,9 +403,11 @@ export default async function SessionPage({
 function Resources({
   list,
   timezone,
+  numbering,
 }: {
   list: (SessionResource & { superseded_at?: string })[];
   timezone: string;
+  numbering: Numbering;
 }) {
   return (
     <ul style={{ margin: 0, paddingInlineStart: "var(--space-5)" }}>
@@ -412,7 +421,7 @@ function Resources({
           {resource.quantity > 1 ? (
             <>
               {" × "}
-              <span className="data">{formatInteger(resource.quantity, "latn")}</span>
+              <span className="data">{formatInteger(resource.quantity, numbering)}</span>
             </>
           ) : null}
           {resource.superseded_at !== undefined ? (

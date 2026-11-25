@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 
 import { PageHeader } from "@/components/ds/page-header";
 import { ProseNote } from "@/components/prose";
-import { fill, formatInteger, formatMoney, t, type MessageKey } from "@/i18n/locale";
+import { fill, formatInteger, formatMoney, t, type MessageKey, type Numbering } from "@/i18n/locale";
 import { currentSession, gate, gateMessage } from "@/lib/api";
 import { readCashSessions } from "@/lib/cash-reads";
 import { readStaff } from "@/lib/staff";
@@ -10,6 +10,7 @@ import type { CashSession } from "@/lib/cash";
 import { listAccounts } from "@/lib/ledger";
 import { listLegalEntities } from "@/lib/organization";
 import { isWithheld } from "@/lib/people";
+import { numerals } from "@/lib/display";
 import { presentation } from "@/lib/preferences";
 import { utcStamp } from "@/lib/time";
 
@@ -41,7 +42,12 @@ import { CloseDrawerForm } from "./close-form";
  */
 export default async function CashPage() {
   const { locale } = await presentation();
-  const numbering = "latn" as const;
+  // **The tenant's numerals rather than a constant** -- ADR-0015. Every count, date and time
+  // on this page follows `localization.numerals`; money does not, and `MoneyValue` carries no
+  // `numbering` prop at all so that exception is the component's rule rather than this page's
+  // to remember. One read for the whole render: `conventions()` is React's per-request memo
+  // and the layout starts it, so this costs no round trip of its own.
+  const numbering = await numerals();
   const text = (key: MessageKey) => t(locale, key);
 
   if (!(await currentSession())) redirect("/login");
@@ -98,7 +104,8 @@ export default async function CashPage() {
     (one) => one.account_kind === "suspense" && one.status === "active");
   const entity = entities?.[0];
   const money = (minor: number, currency: string) =>
-    formatMoney(minor, currency, numbering, locale);
+    // `latn`, not the tenant's: ADM-SET-07's money exception. See the comment above.
+    formatMoney(minor, currency, "latn", locale);
 
   return (
     <div className="stack">
@@ -188,7 +195,14 @@ function Drawer({
   money: (minor: number, currency: string) => string;
   text: (key: MessageKey) => string;
   locale: "en" | "ar";
-  numbering: "latn";
+  /**
+   * The tenant's numeral system, for the counts and dates this renders.
+   *
+   * **Widened from the literal `"latn"` by ADR-0015**, which is what the setting reaching a
+   * page means. Money is the exception and is not rendered through this: `MoneyValue` carries
+   * no numbering at all, and a direct `formatMoney` here passes the literal.
+   */
+  numbering: Numbering;
   legalEntityId: string;
   suspenseAccountId: string;
 }) {
@@ -236,7 +250,6 @@ function Drawer({
       {drawer.expected_minor === null ? null : (
         <CloseDrawerForm
           locale={locale}
-          numbering={numbering}
           sessionId={drawer.session_id}
           legalEntityId={legalEntityId}
           suspenseAccountId={suspenseAccountId}

@@ -22,6 +22,7 @@ import {
   type Promotion,
 } from "@/lib/catalog";
 import { money } from "@/lib/membership";
+import { numerals } from "@/lib/display";
 import { presentation } from "@/lib/preferences";
 
 /**
@@ -50,6 +51,10 @@ export default async function CatalogPage({
   searchParams: Promise<{ product?: string }>;
 }) {
   const { locale } = await presentation();
+  // **The tenant's numerals** -- ADR-0015. Every quantity on this page follows
+  // `localization.numerals`; an identifier does not, and neither does money. One read for the
+  // whole render: `conventions()` is React's per-request memo and the layout starts it.
+  const numbering = await numerals();
   const text = (key: MessageKey) => t(locale, key);
   const chosen = await searchParams;
 
@@ -110,11 +115,11 @@ export default async function CatalogPage({
       locale={locale}
       figures={
         <>
-          {fill(locale, "catalog.productsCounted", { count: products.length })}
+          {fill(locale, "catalog.productsCounted", { count: products.length }, numbering)}
           {" \u00b7 "}
-          {fill(locale, "catalog.booksCounted", { count: books.length })}
+          {fill(locale, "catalog.booksCounted", { count: books.length }, numbering)}
           {" \u00b7 "}
-          {fill(locale, "catalog.promotionsCounted", { count: promotions.length })}
+          {fill(locale, "catalog.promotionsCounted", { count: promotions.length }, numbering)}
         </>
       }
     >
@@ -170,6 +175,7 @@ export default async function CatalogPage({
                 priority: 3,
                 render: (product) => (
                   <span className="data">
+                    {/* A sort key an operator types back, not a quantity: Latin. ADR-0015. */}
                     {formatInteger(product.merchandising_rank, "latn")}
                   </span>
                 ),
@@ -250,8 +256,8 @@ export default async function CatalogPage({
                     variant.entitlement_quantity === null
                       ? variant.term_days === null
                         ? <span className="muted">—</span>
-                        : `${formatInteger(variant.term_days, "latn")} ${text("catalog.days")}`
-                      : `${formatInteger(variant.entitlement_quantity, "latn")} ${text("catalog.uses")}`,
+                        : `${formatInteger(variant.term_days, numbering)} ${text("catalog.days")}`
+                      : `${formatInteger(variant.entitlement_quantity, numbering)} ${text("catalog.uses")}`,
                 },
                 {
                   header: text("catalog.status"),

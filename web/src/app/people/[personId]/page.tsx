@@ -29,6 +29,7 @@ import {
 import {
   isWithheld, readMember360, splitComposed, splitSections, withheldRemedy, type Member360, type Note, type Person, type TimelineEntry, type WithheldRemedy,
 } from "@/lib/people";
+import { numerals } from "@/lib/display";
 import { presentation } from "@/lib/preferences";
 import { dayLabel, timeOfDay, utcStamp } from "@/lib/time";
 
@@ -98,6 +99,9 @@ export default async function Member360Page({
 }) {
   const { personId } = await params;
   const query = await searchParams;
+  // **The tenant's numerals** -- ADR-0015. The quantities on this record follow
+  // `localization.numerals`; money does not, and `MoneyValue` carries no numbering at all.
+  const numbering = await numerals();
   const { locale } = await presentation();
   const text = (key: MessageKey) => t(locale, key);
   const tabParam = typeof query.tab === "string" ? query.tab : undefined;
@@ -188,8 +192,8 @@ export default async function Member360Page({
             queue === null
               ? text("member.queueUnavailable")
               : fill(locale, "member.queueCounts", {
-                shown: formatInteger(queue.people.length, "latn"),
-                total: formatInteger(queue.total, "latn"),
+                shown: formatInteger(queue.people.length, numbering),
+                total: formatInteger(queue.total, numbering),
               })
           }
           // **The canvas prints `↑↓ moves · ⏎ opens · list keeps position` and two of those
@@ -298,7 +302,7 @@ export default async function Member360Page({
             {" · "}
             {text("member.consents")}{" "}
             <span className="data">
-              {formatInteger(record.consent_record_count, "latn")}
+              {formatInteger(record.consent_record_count, numbering)}
             </span>
           </p>
         </section>
@@ -328,6 +332,8 @@ async function Overview({
   nameWithheld: MessageKey;
   remedy: WithheldRemedy;
 }) {
+  // **The tenant's numerals** -- ADR-0015, one read for the whole render.
+  const numbering = await numerals();
   const text = (key: MessageKey) => t(locale, key);
   const shown = filter === "all"
     ? record.timeline
@@ -384,7 +390,7 @@ async function Overview({
           footer={
             record.timeline.length === 0
               ? text("member.noTimeline")
-              : fill(locale, "member.timelineCount", { count: record.timeline.length })
+              : fill(locale, "member.timelineCount", { count: record.timeline.length }, numbering)
           }
         >
           {shown.map((entry) => (
@@ -451,7 +457,12 @@ function Entry({ entry, locale }: { entry: TimelineEntry; locale: Locale }) {
  */
 async function AttendanceTab({ personId, locale }: { personId: string; locale: Locale }) {
   const text = (key: MessageKey) => t(locale, key);
-  const numbering = "latn" as const;
+  // **The tenant's numerals rather than a constant** -- ADR-0015. Every count, date and time
+  // on this page follows `localization.numerals`; money does not, and `MoneyValue` carries no
+  // `numbering` prop at all so that exception is the component's rule rather than this page's
+  // to remember. One read for the whole render: `conventions()` is React's per-request memo
+  // and the layout starts it, so this costs no round trip of its own.
+  const numbering = await numerals();
   const may = await gate("access.zone.read");
   if (!may.allowed) {
     return <Banner severity="info">{text(gateMessage(may))}</Banner>;
@@ -485,7 +496,7 @@ async function AttendanceTab({ personId, locale }: { personId: string; locale: L
               : {
                   value: (
                     <span className="data" dir="ltr">
-                      {fill(locale, "attendance.days", { count: seen.days_since })}
+                      {fill(locale, "attendance.days", { count: seen.days_since }, numbering)}
                     </span>
                   ),
                   comparison: seen.last_location ?? undefined,
@@ -500,14 +511,14 @@ async function AttendanceTab({ personId, locale }: { personId: string; locale: L
                 }
               : {
                   value: <span className="data" dir="ltr">{seen.entries_per_week}</span>,
-                  comparison: fill(locale, "attendance.overWeeks", { count: seen.weeks }),
+                  comparison: fill(locale, "attendance.overWeeks", { count: seen.weeks }, numbering),
                 })}
           />
           <MetricCell label={text("attendance.lifetime")} value={count(seen.lifetime_entries)} />
         </MetricRow>
 
         <h3 id="attendance-chart">
-          {fill(locale, "attendance.perWeek", { count: seen.chart_weeks })}
+          {fill(locale, "attendance.perWeek", { count: seen.chart_weeks }, numbering)}
         </h3>
         {/* **The canvas's shape, with the figures still reachable.** It draws twelve vertical
             bars about a hundred pixels tall with the two ends of the axis labelled; a row per
@@ -575,6 +586,8 @@ async function AttendanceTab({ personId, locale }: { personId: string; locale: L
 }
 
 async function AccessTab({ personId, locale }: { personId: string; locale: Locale }) {
+  // **The tenant's numerals** -- ADR-0015, one read for the whole render.
+  const numbering = await numerals();
   const text = (key: MessageKey) => t(locale, key);
   const may = await gate("access.credential.read");
   if (!may.allowed) {
@@ -629,7 +642,7 @@ async function AccessTab({ personId, locale }: { personId: string; locale: Local
                     ? text("credential.neverUsed")
                     : (
                       <>
-                        {fill(locale, "credential.uses", { count: credential.uses })}
+                        {fill(locale, "credential.uses", { count: credential.uses }, numbering)}
                         {" \u00b7 "}
                         {text("credential.lastUsed")}{" "}
                         <span className="data" dir="ltr">

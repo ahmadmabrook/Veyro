@@ -8,6 +8,7 @@ import { listAuthEvents, listDevices, listSessions } from "@/lib/account-reads";
 import type { PasskeyFact } from "@/lib/passkey";
 import { listPasskeys, readOwnIdentity, type OwnIdentity } from "@/lib/passkey-reads";
 import { currentSession, failureMessage } from "@/lib/api";
+import { numerals } from "@/lib/display";
 import { presentation } from "@/lib/preferences";
 
 /**
@@ -28,6 +29,10 @@ import { presentation } from "@/lib/preferences";
  */
 export default async function AccountPage() {
   const { locale } = await presentation();
+  // **The tenant's numerals** -- ADR-0015. Every quantity on this page follows
+  // `localization.numerals`; an identifier does not, and neither does money. One read for the
+  // whole render: `conventions()` is React's per-request memo and the layout starts it.
+  const numbering = await numerals();
   const text = (key: MessageKey) => t(locale, key);
 
   const session = await currentSession();
@@ -64,10 +69,10 @@ export default async function AccountPage() {
       locale={locale}
       figures={
         <>
-          {fill(locale, "account.sessionsCounted", { count: live.length })}
+          {fill(locale, "account.sessionsCounted", { count: live.length }, numbering)}
           {" \u00b7 "}
           {fill(locale, "account.devicesCounted",
-            { count: devices.filter((one) => one.revoked_at === null).length })}
+            { count: devices.filter((one) => one.revoked_at === null).length }, numbering)}
           {" \u00b7 "}
           {fill(locale, "account.assuranceLevel",
             { level: String(Number(session.aal ?? 1)) })}

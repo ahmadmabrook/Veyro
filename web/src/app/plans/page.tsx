@@ -8,6 +8,7 @@ import { fill, formatInteger, formatMoney, t, type MessageKey } from "@/i18n/loc
 import { currentSession, gate, gateAll, gateMessage, gateVerdict } from "@/lib/api";
 import { planName, repriceable, type Plan } from "@/lib/plans";
 import { readPlanTable } from "@/lib/plans-reads";
+import { numerals } from "@/lib/display";
 import { presentation } from "@/lib/preferences";
 import { utcDate } from "@/lib/time";
 
@@ -43,7 +44,12 @@ export default async function PlansPage({
 }) {
   const { locale } = await presentation();
   const text = (key: MessageKey) => t(locale, key);
-  const numbering = "latn" as const;
+  // **The tenant's numerals rather than a constant** -- ADR-0015. Every count, date and time
+  // on this page follows `localization.numerals`; money does not, and `MoneyValue` carries no
+  // `numbering` prop at all so that exception is the component's rule rather than this page's
+  // to remember. One read for the whole render: `conventions()` is React's per-request memo
+  // and the layout starts it, so this costs no round trip of its own.
+  const numbering = await numerals();
   const chosen = (await searchParams).variant ?? "";
 
   if (!(await currentSession())) redirect("/login");
@@ -93,7 +99,8 @@ export default async function PlansPage({
   // recorded defects from.
   const today = new Date().toISOString().slice(0, 10);
   const amount = (minor: number, currency: string) =>
-    formatMoney(minor, currency, numbering, locale);
+    // `latn`, not the tenant's: ADM-SET-07's money exception. See the comment above.
+    formatMoney(minor, currency, "latn", locale);
 
   return (
     <>
@@ -116,7 +123,7 @@ export default async function PlansPage({
             labelledBy="plans-heading"
             rows={rows}
             rowKey={(row) => row.variant_id}
-            countLabel={fill(locale, "plans.rowCount", { count: rows.length })}
+            countLabel={fill(locale, "plans.rowCount", { count: rows.length }, numbering)}
             columns={[
               {
                 header: text("plans.colPlan"),

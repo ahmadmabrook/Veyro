@@ -5,7 +5,7 @@ import { useActionState, useState } from "react";
 import { Banner } from "@/components/ds/banner";
 import { Button } from "@/components/ds/button";
 import { Field } from "@/components/ds/field";
-import { fill, formatMoney, t, type Locale, type MessageKey } from "@/i18n/locale";
+import { fill, formatMoney, t, type Locale, type MessageKey, type Numbering } from "@/i18n/locale";
 import { moneyOf, parseAmount } from "@/lib/cash";
 import { direction, riseState, type Impact, type PriceRow } from "@/lib/plans";
 
@@ -29,7 +29,7 @@ export function PriceForm({
   locale, numbering, plan, current, impact, today, canWrite, stepUpHref,
 }: {
   locale: Locale;
-  numbering: "latn";
+  numbering: Numbering;
   /** `name` is the product's, from `planName` -- not the variant's. */
   plan: { variant_id: string; name: string };
   current: PriceRow;
@@ -53,7 +53,9 @@ export function PriceForm({
   const money = moneyOf(current.currency);
   const proposed = money === null ? null : parseAmount(typedAmount, money);
   const amount = (minor: number) =>
-    formatMoney(minor, current.currency, numbering, locale);
+    // `latn`, not the tenant's: ADM-SET-07's money exception, which is why this form
+    // takes the numeral system for its counts and dates and does not use it here.
+    formatMoney(minor, current.currency, "latn", locale);
 
   return (
     <form action={action} className="ds-cash-form">

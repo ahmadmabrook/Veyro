@@ -26,11 +26,10 @@ import { IDLE, type ShiftState } from "./state";
  * after the submit had already failed. What is *not* gated on the count is the submit itself.
  */
 export function OpenShiftForm({
-  locale, numbering, drawer, locationId, legalEntityId, suspenseAccountId,
+  locale, drawer, locationId, legalEntityId, suspenseAccountId,
   safeAccountId,
 }: {
   locale: Locale;
-  numbering: "latn";
   drawer: Drawer;
   locationId: string;
   /** Empty where this session may not read the entities. Both postings need one. */
@@ -50,7 +49,9 @@ export function OpenShiftForm({
   const counted = money === null ? null : parseAmount(typed, money);
   const owes = countOwes(drawer, counted);
   const out = owes.gap !== null && owes.gap !== 0;
-  const amount = (minor: number) => formatMoney(minor, drawer.currency, numbering, locale);
+  // `latn`: every figure in this form is money, which ADM-SET-07 exempts from the
+  // tenant's numeral setting, so the component takes no numbering at all.
+  const amount = (minor: number) => formatMoney(minor, drawer.currency, "latn", locale);
 
   // What the posting needs, and whether this session could read it. Said rather than left to
   // a 422, because the remedy is in the chart or in a permission rather than in this form.

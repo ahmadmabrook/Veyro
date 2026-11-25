@@ -26,11 +26,10 @@ import { IDLE, type CashState } from "./state";
  * say "short by 2.50" would ask for the explanation after the submit had already failed.
  */
 export function CloseDrawerForm({
-  locale, numbering, sessionId, legalEntityId, suspenseAccountId, currency, expectedMinor,
+  locale, sessionId, legalEntityId, suspenseAccountId, currency, expectedMinor,
   back = "/payments/cash", askForNote = false,
 }: {
   locale: Locale;
-  numbering: "latn";
   sessionId: string;
   legalEntityId: string;
   /** Where a variance posts. Empty when the tenant's chart has no suspense account. */
@@ -57,7 +56,9 @@ export function CloseDrawerForm({
   const counted = money === null ? null : parseAmount(typed, money);
   const gap = variance(expectedMinor, counted);
   const out = gap !== null && gap !== 0;
-  const amount = (minor: number) => formatMoney(minor, currency, numbering, locale);
+  // `latn`: every figure in this form is money, which ADM-SET-07 exempts from the
+  // tenant's numeral setting, so the component takes no numbering at all.
+  const amount = (minor: number) => formatMoney(minor, currency, "latn", locale);
 
   return (
     <form action={action} className="ds-cash-form">

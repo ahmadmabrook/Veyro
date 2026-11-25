@@ -11,6 +11,7 @@ import { currentSession, failureMessage, gateAll, gateMessage, gateVerdict } fro
 import { listRoles, readCatalog, simulate, type Assignment } from "@/lib/authz";
 import { listLocations, type Location } from "@/lib/organization";
 import { isWithheld, readPerson, withheldRemedy } from "@/lib/people";
+import { numerals } from "@/lib/display";
 import { presentation } from "@/lib/preferences";
 import {
   NO_UNTICKED_ROWS,
@@ -82,6 +83,10 @@ export default async function StaffProfilePage({
   params: Promise<{ personId: string }>;
 }) {
   const { locale } = await presentation();
+  // **The tenant's numerals** -- ADR-0015. Every quantity on this page follows
+  // `localization.numerals`; an identifier does not, and neither does money. One read for the
+  // whole render: `conventions()` is React's per-request memo and the layout starts it.
+  const numbering = await numerals();
   const text = (key: MessageKey) => t(locale, key);
   const { personId } = await params;
 
@@ -309,7 +314,7 @@ export default async function StaffProfilePage({
                 {reach.brands.length > 0 ? (
                   <span className="muted">
                     {" "}
-                    {fill(locale, "staff.reach.brands", { count: reach.brands.length })}
+                    {fill(locale, "staff.reach.brands", { count: reach.brands.length }, numbering)}
                   </span>
                 ) : null}
               </>
@@ -367,7 +372,7 @@ export default async function StaffProfilePage({
         )}
         {split !== null && split.lapsed.length > 0 ? (
           <p className="muted" style={{ margin: 0 }}>
-            {fill(locale, "staff.lapsed", { count: split.lapsed.length })}
+            {fill(locale, "staff.lapsed", { count: split.lapsed.length }, numbering)}
           </p>
         ) : null}
         <ProseNote>{text("staff.attributionIsAnId")}</ProseNote>

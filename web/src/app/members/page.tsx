@@ -18,6 +18,7 @@ import {
 import { listMembers, listMemberships } from "@/lib/members-reads";
 import { isWithheld, withheldRemedy } from "@/lib/people";
 import { planName, stateName } from "@/lib/members";
+import { numerals } from "@/lib/display";
 import { presentation } from "@/lib/preferences";
 
 /**
@@ -55,6 +56,10 @@ export default async function MembersPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { locale } = await presentation();
+  // **The tenant's numerals** -- ADR-0015. Every quantity on this page follows
+  // `localization.numerals`; an identifier does not, and neither does money. One read for the
+  // whole render: `conventions()` is React's per-request memo and the layout starts it.
+  const numbering = await numerals();
   const text = (key: MessageKey) => t(locale, key);
   const params = await searchParams;
   const wanted = typeof params.state === "string" ? params.state : undefined;
@@ -146,7 +151,7 @@ export default async function MembersPage({
             : counts.map(({ state, count }, index) => (
                 <span key={state}>
                   {index > 0 ? " \u00b7 " : ""}
-                  <span className="data">{formatInteger(count, "latn")}</span>{" "}
+                  <span className="data">{formatInteger(count, numbering)}</span>{" "}
                   {state === "none"
                     ? text("members.noProfile")
                     : stateName(state) === null
@@ -334,12 +339,12 @@ export default async function MembersPage({
             only its own length would imply the records that did not match do not exist. */}
         <p className="muted" style={{ margin: 0, fontSize: "var(--type-caption-size)" }}>
           {text("members.showing")}{" "}
-          <span className="data">{formatInteger(page.people.length, "latn")}</span>{" "}
+          <span className="data">{formatInteger(page.people.length, numbering)}</span>{" "}
           {text("members.ofTotal")}{" "}
-          <span className="data">{formatInteger(page.matching, "latn")}</span>{" "}
+          <span className="data">{formatInteger(page.matching, numbering)}</span>{" "}
           {text("members.matching")}
           {" · "}
-          <span className="data">{formatInteger(page.total, "latn")}</span>{" "}
+          <span className="data">{formatInteger(page.total, numbering)}</span>{" "}
           {text("members.totalLabel")}
         </p>
       </section>

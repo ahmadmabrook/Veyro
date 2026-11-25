@@ -468,6 +468,7 @@ export function metaLine(
   task: TaskRow,
   caseNumbers: Map<string, string>,
   now: Date,
+  numbering: Numbering,
 ): string {
   const provenance = task.case_id === null
     ? word(locale, sourceWord(task.source), task.source)
@@ -479,7 +480,7 @@ export function metaLine(
       })();
   const parts = [
     provenance,
-    dueLabel(locale, dueState(task.due_at, now), task.due_at, now),
+    dueLabel(locale, dueState(task.due_at, now), task.due_at, now, numbering),
   ];
   // **The subject only when it is not the tenant, and the priority only when it is not
   // normal.** Both are on every row and neither carries information on most of them: a task
@@ -507,6 +508,7 @@ export function dueLabel(
   due: ReturnType<typeof dueState>,
   dueAt: string | null,
   now: Date,
+  numbering: Numbering,
 ): string {
   switch (due.kind) {
     case "none": return t(locale, "tasks.noDue");
@@ -518,8 +520,8 @@ export function dueLabel(
     case "overdue":
       return due.days === 0
         ? t(locale, "tasks.overdueToday")
-        : fill(locale, "tasks.overdueDays", { count: due.days });
-    case "days": return fill(locale, "tasks.dueInDays", { count: due.days });
+        : fill(locale, "tasks.overdueDays", { count: due.days }, numbering);
+    case "days": return fill(locale, "tasks.dueInDays", { count: due.days }, numbering);
     case "date":
       return fill(locale, "tasks.dueOn", {
         date: dueAt === null ? "" : dayLabel(dueAt, now),

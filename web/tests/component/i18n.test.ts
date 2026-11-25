@@ -271,10 +271,13 @@ describe("a placeholder is a contract", () => {
    */
   function fillSites(): {
     key: string; names: string[]; values: Record<string, string>;
+    /** Whatever follows the values object up to the call's own close: the numbering, or "". */
+    tail: string;
     where: string;
   }[] {
     const out: {
-      key: string; names: string[]; values: Record<string, string>; where: string;
+      key: string; names: string[]; values: Record<string, string>; tail: string;
+      where: string;
     }[] = [];
     const walk = (dir: string) => {
       for (const name of readdirSync(dir)) {
@@ -312,7 +315,22 @@ describe("a placeholder is a contract", () => {
             const names = parsed.map((entry) => entry.name);
             const values = Object.fromEntries(
               parsed.map((entry) => [entry.name, entry.value]));
-            out.push({ key: m[1]!, names, values, where: path });
+            // **The fourth argument, which is the numbering.** `fill` defaults it to `latn`,
+            // so a plural site that omits it renders Latin digits whatever the tenant chose --
+            // which is the half ADR-0015 had to enumerate: 82 sites across 34 files, found by
+            // this sweep rather than by reading. Read from the close of the values object to
+            // the close of the call, so a nested object or call in the argument is included.
+            let after = end + 1;
+            let callDepth = 1;
+            for (let i = end + 1; i < text.length; i += 1) {
+              if ("([{".includes(text[i]!)) callDepth += 1;
+              else if (")]}".includes(text[i]!)) {
+                callDepth -= 1;
+                if (callDepth === 0) { after = i; break; }
+              }
+            }
+            const tail = strip(text.slice(end + 1, after)).trim().replace(/^,/, "").trim();
+            out.push({ key: m[1]!, names, values, tail, where: path });
           }
         }
       }
@@ -386,5 +404,88 @@ describe("a placeholder is a contract", () => {
       }
     }
     expect([...new Set(offenders)]).toEqual([]);
+  });
+
+  /**
+   * ADR-0015's own sweep: the tenant's numeral setting reaches every figure, or it reaches
+   * none of them.
+   *
+   * **"One rule per tenant, never mixed and never decided per component"** is the canvas's own
+   * sentence, which makes this an all-or-nothing property rather than a per-screen choice: a
+   * page whose counts follow the setting beside a rail figure that does not is exactly the
+   * mixing it forbids. So the enforcement has to be a sweep, and the sweep is what gave the
+   * real number -- 82 plural `fill` sites across 34 files, on top of the 81 inline
+   * `formatInteger` ones, where a gap note had said "seventeen call sites".
+   *
+   * **`fill` defaults its numbering to `latn`**, which is right for the many messages that
+   * carry no figure and wrong for every plural one: a plural message renders its `count`, so
+   * omitting the argument renders Latin digits whatever the tenant chose. The catalogue knows
+   * which keys are plural, so the subject of this check is exact rather than a guess at which
+   * values are numeric.
+   */
+  it("passes the tenant's numerals at every plural call site", () => {
+    const offenders = fillSites()
+      .filter((site) => typeof MESSAGES[DEFAULT_LOCALE][
+        site.key as keyof typeof MESSAGES.en] === "object")
+      .filter((site) => site.tail === "")
+      .map((site) => `${site.where}: ${site.key} renders a count in Latin digits`);
+    expect([...new Set(offenders)]).toEqual([]);
+  });
+
+  /**
+   * And the figures that deliberately do *not* follow the setting, each declared.
+   *
+   * Three kinds, and the rule is the distinction between them:
+   *
+   * - **A quantity follows the tenant** -- something counted, measured or totalled.
+   * - **An identifier does not** -- a version, a chain sequence number, an assurance level, a
+   *   sort key: something a reader cites, quotes or types back. Shaping those would make
+   *   somebody translate digits to read a reference.
+   * - **Money does not either**, by the canvas's own exception: "Money keeps Latin digits with
+   *   its code, because that is the form on your invoices and JoFotara submissions." That one
+   *   is structural rather than declared -- `MoneyValue` carries no numbering prop at all
+   *   (ADR-0015 D10) -- so what is left here is the one place money is rendered as an integer.
+   *
+   * The list is the uncomfortable half, as `GateCoverageTests.UNGATED` is: adding to it is a
+   * claim that a figure is not a quantity, and the reason has to be in the code beside it.
+   */
+  it("declares every figure that deliberately keeps Latin digits", () => {
+    const LATIN_BY_DESIGN = [
+      // Versions: a reader cites "v3", and a tenant's own `cfg_values` version is a reference.
+      "src/app/configuration/page.tsx",
+      "src/app/access/page.tsx",
+      "src/app/integrations/page.tsx",
+      "src/app/notifications/page.tsx",
+      // The audit chain's sequence number, which is the chain's own reference.
+      "src/app/permissions/page.tsx",
+      // Sort keys an operator types back: a merchandising rank and a price book's priority.
+      "src/app/catalog/page.tsx",
+      // An assurance level, which is cited the way a version is.
+      "src/app/account/account-view.tsx",
+      // Minor units of money rendered as an integer, which the canvas exempts outright.
+      "src/app/access/[zoneId]/page.tsx",
+    ];
+    const offenders: string[] = [];
+    const walk = (dir: string) => {
+      for (const name of readdirSync(dir)) {
+        const path = join(dir, name);
+        if (statSync(path).isDirectory()) walk(path);
+        else if (/\.tsx?$/.test(name)) {
+          const text = readFileSync(path, "utf8");
+          const n = [...text.matchAll(/formatInteger\([^()]*,\s*"latn"\s*\)/g)].length;
+          if (n > 0 && !LATIN_BY_DESIGN.includes(path)) {
+            offenders.push(`${path}: ${n} figure(s) hard-code Latin digits`);
+          }
+        }
+      }
+    };
+    walk("src");
+    expect(offenders).toEqual([]);
+    // **Both directions**, so a declaration that stops being true fails too: a file that no
+    // longer renders a Latin-by-design figure is a stale exemption, which is the shape this
+    // repository's id sweep and `design:coverage` both check for.
+    const stale = LATIN_BY_DESIGN.filter(
+      (path) => !/formatInteger\([^()]*,\s*"latn"\s*\)/.test(readFileSync(path, "utf8")));
+    expect(stale).toEqual([]);
   });
 });

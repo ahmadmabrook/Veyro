@@ -13,6 +13,7 @@ import { readAttendance, readDecisions, type PersonAttendance } from "@/lib/deni
 import { readZone } from "@/lib/access";
 import { readNames } from "@/lib/desk-reads";
 import { nameOf } from "@/lib/desk";
+import { numerals } from "@/lib/display";
 import { presentation } from "@/lib/preferences";
 import { utcStamp } from "@/lib/time";
 
@@ -48,6 +49,10 @@ export default async function DenialPage(
 ) {
   const { personId } = await params;
   const { locale } = await presentation();
+  // **The tenant's numerals** -- ADR-0015. Every quantity on this page follows
+  // `localization.numerals`; an identifier does not, and neither does money. One read for the
+  // whole render: `conventions()` is React's per-request memo and the layout starts it.
+  const numbering = await numerals();
   const text = (key: MessageKey) => t(locale, key);
 
   const [mayDecisions, mayReason, mayOverride, mayPeople, mayZone] = await gateAll([
@@ -192,7 +197,7 @@ export default async function DenialPage(
                   either. */}
               {attendance.days_since === 0
                 ? text("denial.lastVisitToday")
-                : fill(locale, "denial.lastVisit", { count: attendance.days_since })}
+                : fill(locale, "denial.lastVisit", { count: attendance.days_since }, numbering)}
               {attendance.entries_per_week === null ? null : (
                 <>
                   {" · "}
@@ -205,7 +210,7 @@ export default async function DenialPage(
                       somebody who did not. */}
                   {fill(locale, "denial.wasComing", {
                     count: Math.round(attendance.entries_per_week),
-                  })}
+                  }, numbering)}
                 </>
               )}
             </p>

@@ -13,6 +13,7 @@ import { readCollections, type Collections } from "@/lib/command-centre-reads";
 import { listMembers } from "@/lib/members-reads";
 import { exceptions, moneyKind, readPayments, type PaymentsLedger } from "@/lib/payments";
 import { isWithheld, withheldRemedy } from "@/lib/people";
+import { numerals } from "@/lib/display";
 import { presentation } from "@/lib/preferences";
 import { utcStamp } from "@/lib/time";
 
@@ -59,6 +60,10 @@ export default async function PaymentsPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { locale } = await presentation();
+  // **The tenant's numerals** -- ADR-0015. Every quantity on this page follows
+  // `localization.numerals`; an identifier does not, and neither does money. One read for the
+  // whole render: `conventions()` is React's per-request memo and the layout starts it.
+  const numbering = await numerals();
   const text = (key: MessageKey) => t(locale, key);
   const query = await searchParams;
   const needsAction = query.filter === "needs_action";
@@ -166,7 +171,7 @@ export default async function PaymentsPage({
           href="/payments?filter=needs_action"
           {...(needsAction ? { "aria-current": "page" as const } : {})}
         >
-          {fill(locale, "payments.needsAction", { count: ledger.needs_action })}
+          {fill(locale, "payments.needsAction", { count: ledger.needs_action }, numbering)}
         </Link>
         <Link href="/payments" {...(needsAction ? {} : { "aria-current": "page" as const })}>
           {text("payments.all")}
@@ -326,7 +331,7 @@ export default async function PaymentsPage({
           />
         )}
         <p className="muted" style={{ margin: 0, fontSize: "var(--type-caption-size)" }}>
-          <span className="data">{formatInteger(ledger.count, "latn")}</span>{" "}
+          <span className="data">{formatInteger(ledger.count, numbering)}</span>{" "}
           {text("payments.rows")}
           {ledger.truncated ? <> {"· "}{text("payments.truncated")}</> : null}
         </p>

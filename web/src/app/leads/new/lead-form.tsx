@@ -8,7 +8,7 @@ import { Banner } from "@/components/ds/banner";
 import { Button } from "@/components/ds/button";
 import { ChoiceChips } from "@/components/ds/choice-chips";
 import { Field } from "@/components/ds/field";
-import { fill, t, type Locale, type MessageKey } from "@/i18n/locale";
+import { fill, t, type Locale, type MessageKey, type Numbering } from "@/i18n/locale";
 import { checkPhone, type DetectionAnswer } from "@/lib/contact-check";
 import {
   DETECTION_DEBOUNCE_MS, detectionFor, holdReason, interruption, isAbout, mayCreate,
@@ -65,7 +65,14 @@ export function LeadForm({
 }: {
   nameWithheld: MessageKey;
   locale: Locale;
-  numbering: "latn";
+  /**
+   * The tenant's numeral system, for the counts and dates this renders.
+   *
+   * **Widened from the literal `"latn"` by ADR-0015**, which is what the setting reaching a
+   * page means. Money is the exception and is not rendered through this: `MoneyValue` carries
+   * no numbering at all, and a direct `formatMoney` here passes the literal.
+   */
+  numbering: Numbering;
   /** `people.person.write` — the new-person half, financial class. */
   canCreatePerson: boolean;
   /** Why the person write is closed, where it is. Only `needs_step_up` is worth a link. */

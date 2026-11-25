@@ -12,9 +12,15 @@ import { useOwnerSession, useReaderSession } from "./sign-in";
  * sentence itself is what gets read off the page -- the Levantine month name, Arabic-Indic
  * digits on the date, Latin digits on the money, and the two not re-ordering each other.
  *
- * **The fixture publishes `arab`**, so this is the canvas's own preview rather than a
- * Latin-digit version of it. The defaulted state -- a tenant that has declared nothing -- is
- * the one state this fixture cannot also be, and is covered where it is decided.
+ * **The fixture publishes `latn`, declared on purpose**, which is the sharper of the two
+ * states: the same value as the fallback and a different fact, so the screen's "nobody has set
+ * this" branch is absent here. It is not `arab` because the hour a figure anywhere else in the
+ * product followed the setting -- which is now every quantity on every screen -- an `arab`
+ * tenant would turn several hundred assertions into Arabic-Indic digits no maintainer could
+ * read. So the Arabic-Indic half is proven where it is decided: the canvas's exact sentence,
+ * character for character, in `tests/component/localization.test.ts`, and the browser mutation
+ * `localization-the-setting-reaches-a-page`, which flips the reader and is caught by the pages
+ * that then change.
  */
 
 const WCAG = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"];
@@ -25,15 +31,15 @@ test.describe("the localization screen", () => {
     await page.goto("/localization");
   });
 
-  test("renders the canvas's own preview sentence", async ({ page }) => {
+  test("renders the preview in the tenant's own conventions", async ({ page }) => {
     await expect(page.getByRole("heading", { name: "Localization", level: 1 })).toBeVisible();
-    // The whole claim in one string. `٢١ آب` is the Levantine month under Arabic-Indic
-    // digits; `JOD 55.00` is Latin beside it, which is the rule the panel above states.
+    // **`آب`, the Levantine month, under this tenant's Latin digits.** The month name comes
+    // from the region and the digits from the setting, which is exactly what makes them two
+    // decisions: `21 آب` is the pair that proves the tag did not decide the numbering.
     const preview = page.locator(".ds-preview-line");
-    await expect(preview).toContainText("٢١ آب");
+    await expect(preview).toContainText("21 آب");
+    await expect(preview).not.toContainText("أغسطس");
     await expect(preview).toContainText("JOD 55.00");
-    // The money is not shaped: `٥٥` would mean the rule had been applied to it.
-    await expect(preview).not.toContainText("٥٥");
     await expect(preview).toHaveAttribute("dir", "rtl");
   });
 
@@ -43,22 +49,24 @@ test.describe("the localization screen", () => {
     // **Colour is never the only signal.** The filled chip is the sighted reading; the word
     // is what a screen reader gets, and it is on the one chip that carries it.
     const numerals = page.locator(".ds-state-group").filter({ hasText: "Numerals" });
+    // Both samples are drawn; one is filled. The unoffered one is what makes the group read
+    // as a choice of two rather than as a list of one.
     await expect(numerals.getByText("٠١٢٣")).toBeVisible();
     await expect(numerals.locator('[data-on="true"]')).toHaveCount(1);
+    await expect(numerals.locator('[data-on="true"]')).toContainText("0123");
     await expect(numerals.locator('[data-on="true"]')).toContainText("in use");
     // The figures line names the system in words, because the chips are only samples.
-    await expect(page.locator(".ds-page-figures")).toContainText("Arabic-Indic digits");
+    await expect(page.locator(".ds-page-figures")).toContainText("Latin digits");
   });
 
-  test("shapes its own count by the setting, in an English sentence", async ({ page }) => {
-    // **This reads oddly and is the rule.** `٢ languages offered` is what "one rule per
-    // tenant, never mixed and never decided per component" means for an English reader on an
-    // `arab` tenant -- `conventions.mjs` says numbering is never derived from locale, and the
-    // rule runs both ways. It is also the only figure on the screen that demonstrates the
-    // setting reaching anything, which is why it is asserted rather than left to look like a
-    // defect somebody will helpfully fix.
-    await expect(page.locator(".ds-page-figures")).toContainText("٢");
-    await expect(page.locator(".ds-page-figures")).toContainText("languages offered");
+  test("shapes its own count by the setting", async ({ page }) => {
+    // **The figure follows the chip that is filled**, which on this tenant means Latin digits
+    // and no visible difference -- so what is asserted here is that the count is rendered at
+    // all and that it is not Arabic-Indic while the setting says Latin. The direction that
+    // moves is the mutation's: flipping the reader to `arab` changes this and every other
+    // count in the product, which is the property "never mixed" is about.
+    await expect(page.locator(".ds-page-figures")).toContainText("2 languages offered");
+    await expect(page.locator(".ds-page-figures")).not.toContainText("٢");
   });
 
   test("offers no control, because the canvas draws none", async ({ page }) => {

@@ -1,6 +1,7 @@
 import { MetricCell, MetricRow } from "@/components/ds/metric-cell";
 import { MoneyValue } from "@/components/ds/money-value";
 import { fill, formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
+import { numerals } from "@/lib/display";
 import { gateAll } from "@/lib/api";
 import { readAttendance, readCredentials, recordBand } from "@/lib/member-record";
 import {
@@ -39,6 +40,8 @@ export type MemberFacts = {
 export async function memberFacts(
   personId: string, locale: Locale,
 ): Promise<MemberFacts> {
+  // **The tenant's numerals** -- ADR-0015, one read for the whole render.
+  const numbering = await numerals();
   const text = (key: MessageKey) => t(locale, key);
   // **One round trip, not five.** `/authz/checks` asks the same question about several
   // actions in one request, with the same scope resolution and the same assurance weighing
@@ -115,7 +118,7 @@ export async function memberFacts(
                   currency={owedCurrency}
                 />
               ),
-              comparison: fill(locale, "member.unpaidCount", { count: unpaid }),
+              comparison: fill(locale, "member.unpaidCount", { count: unpaid }, numbering),
             })}
         />
         <MetricCell
@@ -151,7 +154,7 @@ export async function memberFacts(
               // case gets its own key rather than a plural form that is dead on arrival.
               value: attendance.days_since === 0
                 ? text("member.today")
-                : fill(locale, "member.daysAgo", { count: attendance.days_since }),
+                : fill(locale, "member.daysAgo", { count: attendance.days_since }, numbering),
               // "was 3× a week" — past tense, because the rate is measured over the weeks
               // before the last visit rather than before today. The service says why.
               comparison: attendance.entries_per_week === null
@@ -181,7 +184,7 @@ export async function memberFacts(
                   </span>
                 ),
                 comparison: fill(locale, "member.grantCount",
-                  { count: counted.length }),
+                  { count: counted.length }, numbering),
               })}
         />
         <MetricCell
@@ -200,7 +203,7 @@ export async function memberFacts(
               // noun moves into the line under it, which is what every other cell does.
               value: (
                 <span className="data" dir="ltr">
-                  {formatInteger(held.live, "latn")}
+                  {formatInteger(held.live, numbering)}
                 </span>
               ),
               // **Holding a credential is not an admission**, and the cell says so rather
@@ -208,7 +211,7 @@ export async function memberFacts(
               // presentation against the zone's policy, their membership and their
               // entitlement, and nothing on a record page can evaluate that without
               // recording a decision.
-              comparison: `${fill(locale, "member.credentialNoun", { count: held.live })
+              comparison: `${fill(locale, "member.credentialNoun", { count: held.live }, numbering)
                 } \u00b7 ${text("member.notAnAdmission")}`,
             })}
         />

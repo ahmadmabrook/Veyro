@@ -6,13 +6,14 @@ import { DataGrid } from "@/components/ds/data-grid";
 import { PageHeader } from "@/components/ds/page-header";
 import { Prose, ProseNote } from "@/components/prose";
 import { WithheldLink } from "@/components/withheld";
-import { fill, t, type Locale, type MessageKey } from "@/i18n/locale";
+import { fill, t, type Locale, type MessageKey, type Numbering } from "@/i18n/locale";
 import {
   currentSession, failureMessage, gateAll, gateMessage, gateVerdict,
 } from "@/lib/api";
 import type { Assignment } from "@/lib/authz";
 import { listLocations, type Location } from "@/lib/organization";
 import { isWithheld, withheldRemedy } from "@/lib/people";
+import { numerals } from "@/lib/display";
 import { presentation } from "@/lib/preferences";
 import {
   accessFindings,
@@ -81,6 +82,10 @@ export default async function StaffPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { locale } = await presentation();
+  // **The tenant's numerals** -- ADR-0015. Every quantity on this page follows
+  // `localization.numerals`; an identifier does not, and neither does money. One read for the
+  // whole render: `conventions()` is React's per-request memo and the layout starts it.
+  const numbering = await numerals();
   const text = (key: MessageKey) => t(locale, key);
   const query = await searchParams;
   const only = typeof query.state === "string" ? query.state : undefined;
@@ -176,9 +181,9 @@ export default async function StaffPage({
         // the same distinction for the same reason: a figure that reports only part of the
         // table invites the reader to look for the rest.
         <>
-          {fill(locale, "staff.working", { count: list.by_state.active ?? 0 })}
+          {fill(locale, "staff.working", { count: list.by_state.active ?? 0 }, numbering)}
           {" · "}
-          {fill(locale, "staff.onRecord", { count: list.total })}
+          {fill(locale, "staff.onRecord", { count: list.total }, numbering)}
           {" · "}
           <span className="data" dir="ltr">{utcStamp(new Date().toISOString())}</span>
         </>
@@ -217,7 +222,7 @@ export default async function StaffPage({
       {list.bounded_to_locations !== null ? (
         <Banner severity="info">
           {fill(locale, "staff.boundedToClubs",
-            { count: list.bounded_to_locations.length })}
+            { count: list.bounded_to_locations.length }, numbering)}
         </Banner>
       ) : null}
 
@@ -225,7 +230,7 @@ export default async function StaffPage({
           than amber: somebody who has left can still open the product. */}
       {findings.length > 0 ? (
         <Banner severity="critical">
-          {fill(locale, "staff.stillHaveAccess", { count: findings.length })}{" "}
+          {fill(locale, "staff.stillHaveAccess", { count: findings.length }, numbering)}{" "}
           {text("staff.stillHaveAccessWhy")}
         </Banner>
       ) : null}
@@ -265,7 +270,7 @@ export default async function StaffPage({
           rowKey={(row) => row.person_id}
           rowSeverity={(row) => standingSeverity(
             standingOf(row, seen?.get(row.identity_id ?? "") ?? null))}
-          countLabel={fill(locale, "staff.rowCount", { count: list.matching })}
+          countLabel={fill(locale, "staff.rowCount", { count: list.matching }, numbering)}
           columns={[
             {
               header: text("staff.colName"),
@@ -307,7 +312,7 @@ export default async function StaffPage({
               priority: 2,
               restricted: () => roles === null,
               render: (row) => (
-                <RoleCell locale={locale} row={row} roles={roles} />
+                <RoleCell locale={locale} row={row} roles={roles} numbering={numbering} />
               ),
             },
             {
@@ -316,7 +321,8 @@ export default async function StaffPage({
               priority: 3,
               restricted: () => roles === null,
               render: (row) => (
-                <ReachCell locale={locale} row={row} roles={roles} sites={sites} />
+                <ReachCell locale={locale} row={row} roles={roles} sites={sites}
+                  numbering={numbering} />
               ),
             },
             {
@@ -386,8 +392,11 @@ function NotApplicable({ locale }: { locale: Locale }) {
 
 /** The primary role, with the count of what is beyond it. */
 function RoleCell({
-  locale, row, roles,
-}: { locale: Locale; row: StaffRow; roles: Map<string, Assignment[]> | null }) {
+  locale, row, roles, numbering,
+}: {
+  locale: Locale; row: StaffRow; roles: Map<string, Assignment[]> | null;
+  numbering: Numbering;
+}) {
   const text = (key: MessageKey) => t(locale, key);
   if (roles === null) return null;
   // **Not applicable rather than "no login" a second time.** A role is held by an identity,
@@ -404,7 +413,7 @@ function RoleCell({
       {primary.display_name ?? primary.role_key}
       {beyond.length === 0 ? null : (
         <div className="muted" style={{ fontSize: "var(--type-caption-size)" }}>
-          {fill(locale, "staff.plusGrants", { count: beyond.length })}
+          {fill(locale, "staff.plusGrants", { count: beyond.length }, numbering)}
         </div>
       )}
     </>
@@ -420,12 +429,13 @@ function RoleCell({
  * based at Khalda with a tenant-wide role reaches every club.
  */
 function ReachCell({
-  locale, row, roles, sites,
+  locale, row, roles, sites, numbering,
 }: {
   locale: Locale;
   row: StaffRow;
   roles: Map<string, Assignment[]> | null;
   sites: Map<string, Location> | null;
+  numbering: Numbering;
 }) {
   const text = (key: MessageKey) => t(locale, key);
   if (roles === null) return null;
@@ -449,7 +459,7 @@ function ReachCell({
       {unnamed > 0 ? (
         <span className="muted">
           {resolved.length > 0 ? " · " : ""}
-          {fill(locale, "staff.reach.unnamed", { count: unnamed })}
+          {fill(locale, "staff.reach.unnamed", { count: unnamed }, numbering)}
         </span>
       ) : null}
     </>

@@ -63,8 +63,11 @@ describe("the board's five columns", () => {
   test("a count goes through the one number path", () => {
     // Not `String(n)`: this app has one number formatter and a cross-runtime parity test
     // behind it, so a second one is the drift that test exists to catch.
-    expect(columnCount(12)).toBe("12");
-    expect(columnCount(1200)).toBe("1,200");
+    expect(columnCount(12, "latn")).toBe("12");
+    expect(columnCount(1200, "latn")).toBe("1,200");
+    // **And it follows the tenant** -- ADR-0015: a column count is a quantity, so an
+    // `arab` tenant reads its own digits and its own thousands separator.
+    expect(columnCount(1200, "arab")).toBe("\u0661\u066c\u0662\u0660\u0660");
   });
 
   test("two cards a column, which is what the canvas draws", () => {
@@ -74,40 +77,40 @@ describe("the board's five columns", () => {
 
 describe("the age label", () => {
   test("the canvas's two forms: hours below a day and days above it", () => {
-    expect(sinceLabel("en", 4)).toBe("4h");
-    expect(sinceLabel("en", 23)).toBe("23h");
-    expect(sinceLabel("en", 24)).toBe("1d");
-    expect(sinceLabel("en", 48)).toBe("2d");
+    expect(sinceLabel("en", 4, "latn")).toBe("4h");
+    expect(sinceLabel("en", 23, "latn")).toBe("23h");
+    expect(sinceLabel("en", 24, "latn")).toBe("1d");
+    expect(sinceLabel("en", 48, "latn")).toBe("2d");
   });
 
   test("under an hour is a word rather than a zero", () => {
     // "0h" reads as a measurement and is one nobody wants; the canvas has no such case, and
     // a lead touched a minute ago is "just now" in any product.
-    expect(sinceLabel("en", 0)).toBe("just now");
+    expect(sinceLabel("en", 0, "latn")).toBe("just now");
   });
 
   test("the days are whole, because this app's number path throws for a fraction", () => {
-    expect(sinceLabel("en", 59)).toBe("2d");
+    expect(sinceLabel("en", 59, "latn")).toBe("2d");
   });
 
   test("Arabic takes its own plural forms rather than the English ones", () => {
-    expect(sinceLabel("ar", 2)).toBe("ساعتان");
-    expect(sinceLabel("ar", 48)).toBe("يومان");
+    expect(sinceLabel("ar", 2, "latn")).toBe("ساعتان");
+    expect(sinceLabel("ar", 48, "latn")).toBe("يومان");
   });
 });
 
 describe("the meta line", () => {
   test("is the canvas's own shape", () => {
-    expect(metaLine("en", LEAD({ hours_since_contact: 48 })))
+    expect(metaLine("en", LEAD({ hours_since_contact: 48 }), "latn"))
       .toBe("Sweifieh open day · 2d");
-    expect(metaLine("en", LEAD({ source: "Instagram", hours_since_contact: 4 })))
+    expect(metaLine("en", LEAD({ source: "Instagram", hours_since_contact: 4 }), "latn"))
       .toBe("Instagram · 4h");
   });
 
   test("an unattributed lead says so rather than leaving the line half-empty", () => {
     // "Where did this come from" is the question ADM-RPT-03 is built on, so the absence is
     // the answer that matters most -- not a blank before a separator.
-    expect(metaLine("en", LEAD({ source: null, hours_since_contact: 4 })))
+    expect(metaLine("en", LEAD({ source: null, hours_since_contact: 4 }), "latn"))
       .toBe("no source recorded · 4h");
   });
 });

@@ -47,7 +47,6 @@ export default async function ShiftPage({
 }) {
   const { locale } = await presentation();
   const text = (key: MessageKey) => t(locale, key);
-  const numbering = "latn" as const;
   const params = await searchParams;
 
   if (!(await currentSession())) redirect("/login");
@@ -154,7 +153,10 @@ export default async function ShiftPage({
     ? drawers[0]
     : drawers.find((one) => one.cash_account_id === chosen);
   const amount = (minor: number, currency: string) =>
-    formatMoney(minor, currency, numbering, locale);
+    // **`latn`, and no tenant read on this page at all.** ADM-SET-07's money exception
+    // covers every figure here -- a float, a count, a variance -- so there is nothing on
+    // this screen that follows `localization.numerals` and nothing to fetch.
+    formatMoney(minor, currency, "latn", locale);
 
   return (
     <>
@@ -205,7 +207,7 @@ export default async function ShiftPage({
               </Banner>
             ) : (
               <CloseDrawerForm
-                locale={locale} numbering={numbering}
+                locale={locale}
                 sessionId={drawer.open_session.session_id}
                 legalEntityId={legalEntityId}
                 suspenseAccountId={suspenseAccountId}
@@ -217,7 +219,7 @@ export default async function ShiftPage({
             )
           ) : (
             <OpenShiftForm
-              locale={locale} numbering={numbering} drawer={drawer}
+              locale={locale} drawer={drawer}
               locationId={locationId}
               legalEntityId={legalEntityId}
               suspenseAccountId={suspenseAccountId}

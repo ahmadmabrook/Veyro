@@ -7,7 +7,7 @@ import { ContactMatchLine } from "@/components/contact-match-line";
 import { Banner } from "@/components/ds/banner";
 import { Button } from "@/components/ds/button";
 import { Field } from "@/components/ds/field";
-import { fill, t, type Locale, type MessageKey } from "@/i18n/locale";
+import { fill, t, type Locale, type MessageKey, type Numbering } from "@/i18n/locale";
 import { checkPhone } from "@/lib/contact-check";
 import {
   DETECTION_DEBOUNCE_MS, detectionFor, holdReason, interruption, isAbout, mayCreate,
@@ -51,7 +51,14 @@ export function WalkInForm({
 }: {
   nameWithheld: MessageKey;
   locale: Locale;
-  numbering: "latn";
+  /**
+   * The tenant's numeral system, for the counts and dates this renders.
+   *
+   * **Widened from the literal `"latn"` by ADR-0015**, which is what the setting reaching a
+   * page means. Money is the exception and is not rendered through this: `MoneyValue` carries
+   * no numbering at all, and a direct `formatMoney` here passes the literal.
+   */
+  numbering: Numbering;
   canWrite: boolean;
   /** Why the write is closed, where it is. Only `needs_step_up` is worth a link. */
   writeVerdict: "gate_failed" | "unreachable_level" | "needs_step_up" | "denied";

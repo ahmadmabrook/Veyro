@@ -23,6 +23,7 @@ import {
   type NotificationTemplate,
   type Suppression,
 } from "@/lib/notifications";
+import { numerals } from "@/lib/display";
 import { presentation } from "@/lib/preferences";
 
 /**
@@ -47,6 +48,10 @@ import { presentation } from "@/lib/preferences";
  */
 export default async function NotificationsPage() {
   const { locale } = await presentation();
+  // **The tenant's numerals** -- ADR-0015. Every quantity on this page follows
+  // `localization.numerals`; an identifier does not, and neither does money. One read for the
+  // whole render: `conventions()` is React's per-request memo and the layout starts it.
+  const numbering = await numerals();
   const text = (key: MessageKey) => t(locale, key);
 
   if (!(await currentSession())) redirect("/login");
@@ -102,11 +107,11 @@ export default async function NotificationsPage() {
       locale={locale}
       figures={
         <>
-          {fill(locale, "notify.authoredCounted", { count: rows.length })}
+          {fill(locale, "notify.authoredCounted", { count: rows.length }, numbering)}
           {" \u00b7 "}
-          {fill(locale, "notify.waitingCounted", { count: waiting.length })}
+          {fill(locale, "notify.waitingCounted", { count: waiting.length }, numbering)}
           {" \u00b7 "}
-          {fill(locale, "notify.suppressedCounted", { count: liveSuppressions.length })}
+          {fill(locale, "notify.suppressedCounted", { count: liveSuppressions.length }, numbering)}
         </>
       }
     >
@@ -130,9 +135,9 @@ export default async function NotificationsPage() {
             <dl className="facts">
               <dt className="muted">{text("notify.waitingCount")}</dt>
               <dd style={{ margin: 0 }}>
-                <span className="data">{formatInteger(waiting.length, "latn")}</span>{" "}
+                <span className="data">{formatInteger(waiting.length, numbering)}</span>{" "}
                 {text("notify.of")}{" "}
-                <span className="data">{formatInteger(rows.length, "latn")}</span>
+                <span className="data">{formatInteger(rows.length, numbering)}</span>
               </dd>
             </dl>
             <DataGrid
@@ -157,6 +162,7 @@ export default async function NotificationsPage() {
                         {row.locale}
                         {" · v"}
                         <span className="data">
+                          {/* A template version is cited, not counted: Latin. ADR-0015. */}
                           {formatInteger(row.template_version, "latn")}
                         </span>
                       </div>
@@ -401,7 +407,7 @@ export default async function NotificationsPage() {
                 {digest.channel}
                 {" · "}
                 <span className="data">
-                  {formatInteger(digest.notification_count, "latn")}
+                  {formatInteger(digest.notification_count, numbering)}
                 </span>{" "}
                 {text("notify.held")}
                 {" · "}

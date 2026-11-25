@@ -24,6 +24,7 @@ import {
 import { readMembership } from "@/lib/membership";
 import { listMembers } from "@/lib/members-reads";
 import { isWithheld, withheldRemedy } from "@/lib/people";
+import { numerals } from "@/lib/display";
 import { presentation } from "@/lib/preferences";
 
 /**
@@ -86,6 +87,10 @@ export default async function DisputesPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { locale } = await presentation();
+  // **The tenant's numerals** -- ADR-0015. Every quantity on this page follows
+  // `localization.numerals`; an identifier does not, and neither does money. One read for the
+  // whole render: `conventions()` is React's per-request memo and the layout starts it.
+  const numbering = await numerals();
   const text = (key: MessageKey) => t(locale, key);
   const query = await searchParams;
   const only = typeof query.status === "string" ? query.status : undefined;
@@ -161,7 +166,7 @@ export default async function DisputesPage({
           text("dispute.noneOpen")
         ) : (
           <>
-            {fill(locale, "dispute.count", { count: list.count })}
+            {fill(locale, "dispute.count", { count: list.count }, numbering)}
             {exposure === null ? null : (
               <>
                 {" · "}

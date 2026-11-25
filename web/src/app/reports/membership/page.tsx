@@ -7,6 +7,7 @@ import { ProseNote } from "@/components/prose";
 import { formatInteger, t, type MessageKey } from "@/i18n/locale";
 import { currentSession, gate, failureMessage } from "@/lib/api";
 import { readMembershipSummary, type MembershipSummary } from "@/lib/command-centre-reads";
+import { numerals } from "@/lib/display";
 import { presentation } from "@/lib/preferences";
 
 /**
@@ -39,7 +40,12 @@ import { presentation } from "@/lib/preferences";
  */
 export default async function MembershipReportPage() {
   const { locale } = await presentation();
-  const numbering = "latn" as const;
+  // **The tenant's numerals rather than a constant** -- ADR-0015. Every count, date and time
+  // on this page follows `localization.numerals`; money does not, and `MoneyValue` carries no
+  // `numbering` prop at all so that exception is the component's rule rather than this page's
+  // to remember. One read for the whole render: `conventions()` is React's per-request memo
+  // and the layout starts it, so this costs no round trip of its own.
+  const numbering = await numerals();
   const text = (key: MessageKey) => t(locale, key);
 
   if (!(await currentSession())) redirect("/login");

@@ -21,6 +21,7 @@ import {
   type InvoiceHistory,
 } from "@/lib/invoice";
 import { isWithheld, readMember360 } from "@/lib/people";
+import { numerals } from "@/lib/display";
 import { presentation } from "@/lib/preferences";
 import { dayLabel, timeOfDay, utcStamp } from "@/lib/time";
 
@@ -69,6 +70,10 @@ export default async function InvoicePage({
 }) {
   const { invoiceId } = await params;
   const { locale } = await presentation();
+  // **The tenant's numerals** -- ADR-0015. Every quantity on this page follows
+  // `localization.numerals`; an identifier does not, and neither does money. One read for the
+  // whole render: `conventions()` is React's per-request memo and the layout starts it.
+  const numbering = await numerals();
   const text = (key: MessageKey) => t(locale, key);
 
   if (!(await currentSession())) redirect("/login");
@@ -145,7 +150,7 @@ export default async function InvoicePage({
             {text("invoice.due")}{" "}
             <span className="data" dir="ltr">{invoice.due_on}</span>
             {invoice.days_late > 0 ? (
-              <> {"· "}{fill(locale, "invoice.daysLate", { count: invoice.days_late })}</>
+              <> {"· "}{fill(locale, "invoice.daysLate", { count: invoice.days_late }, numbering)}</>
             ) : null}
             {" · "}
             {invoice.document_kind}
@@ -198,7 +203,7 @@ export default async function InvoicePage({
                 priority: 2,
                 render: (line) => (
                   <span className="data" dir="ltr">
-                    {formatInteger(line.quantity, "latn")}
+                    {formatInteger(line.quantity, numbering)}
                   </span>
                 ),
               },

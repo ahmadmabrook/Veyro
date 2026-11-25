@@ -4,7 +4,7 @@ import { MoneyValue } from "@/components/ds/money-value";
 import { AttentionQueue, AttentionRow } from "@/components/ds/attention-row";
 import { Banner } from "@/components/ds/banner";
 import { MetricCell, MetricRow } from "@/components/ds/metric-cell";
-import { fill, formatInteger, formatMoney, t, type MessageKey } from "@/i18n/locale";
+import { fill, formatInteger, formatMoney, t, type MessageKey, type Numbering } from "@/i18n/locale";
 import { ApiError, currentSession, gate, gateAll } from "@/lib/api";
 import { listLegalEntities, type LegalEntity } from "@/lib/organization";
 import {
@@ -29,6 +29,7 @@ import {
   type Unstaffed,
   type Visits,
 } from "@/lib/command-centre-reads";
+import { numerals } from "@/lib/display";
 import { presentation } from "@/lib/preferences";
 import { redirect } from "next/navigation";
 
@@ -98,12 +99,12 @@ type Panel<T> = { data: T; allowed: true } | { allowed: false; reachable: boolea
 
 export default async function CommandCentre() {
   const { locale } = await presentation();
-  // **`latn` everywhere, like every other money figure in this app.** The numeral system is a
-  // tenant setting -- `ARABIC_RULES` makes it one -- and this build does not carry it, so
-  // `formatMoney` is called with Latin digits here exactly as the ledger and the member
-  // record call it. A page that chose `arab` on its own would be the only screen in the
-  // product whose figures differed from the rest, which is worse than the gap.
-  const numbering = "latn" as const;
+  // **The tenant's numerals rather than a constant** -- ADR-0015. Every count, date and time
+  // on this page follows `localization.numerals`; money does not, and `MoneyValue` carries no
+  // `numbering` prop at all so that exception is the component's rule rather than this page's
+  // to remember. One read for the whole render: `conventions()` is React's per-request memo
+  // and the layout starts it, so this costs no round trip of its own.
+  const numbering = await numerals();
   const text = (key: MessageKey) => t(locale, key);
 
   const session = await currentSession();
@@ -148,13 +149,17 @@ export default async function CommandCentre() {
   }
 
   const money = (amountMinor: number, currency: string) =>
-    formatMoney(amountMinor, currency, numbering, locale);
+    // **`latn`, not the tenant's.** ADM-SET-07's rule: money keeps Latin digits with its
+    // code whatever the numeral setting is, "because that is the form on your invoices and
+    // JoFotara submissions" and a member disputing a charge has to see the same string in
+    // both places. The counts on this page follow the setting; this does not.
+    formatMoney(amountMinor, currency, "latn", locale);
 
   const items = orderQueue([
-    ...moneyItems(dunning, locale),
-    ...complianceItems(filings, locale),
-    ...retentionItems(membership, locale),
-    ...staffingItems(unstaffed, locale),
+    ...moneyItems(dunning, locale, numbering),
+    ...complianceItems(filings, locale, numbering),
+    ...retentionItems(membership, locale, numbering),
+    ...staffingItems(unstaffed, locale, numbering),
   ]);
   const counts = queueCounts(items);
   // **Every panel that feeds the queue, and whether it answered.** "Nothing needs you" is a
@@ -632,6 +637,7 @@ function categoryLabel(category: string): MessageKey {
 function moneyItems(
   panel: Panel<DunningCases>,
   locale: "en" | "ar",
+  numbering: Numbering,
 ): AttentionItem[] {
   if (!panel.allowed || panel.data === null || panel.data.count === 0) return [];
   const at = panel.data.at_risk[0];
@@ -657,7 +663,7 @@ function moneyItems(
           },
         }
       : {}),
-    title: fill(locale, "cc.moneyTitle", { count: panel.data.count }),
+    title: fill(locale, "cc.moneyTitle", { count: panel.data.count }, numbering),
     body: t(locale, "cc.moneyBody"),
     // **"Open the recovery workspace"**, which is what the canvas's own button says and
     // where ADM-PAY-05 is reached from -- `veyro-screen.js` wires this item to that screen
@@ -670,6 +676,7 @@ function moneyItems(
 function complianceItems(
   panel: Panel<RejectedFilings>,
   locale: "en" | "ar",
+  numbering: Numbering,
 ): AttentionItem[] {
   if (!panel.allowed || panel.data === null || panel.data.count === 0) return [];
   return [{
@@ -677,7 +684,7 @@ function complianceItems(
     category: "compliance",
     severity: "critical",
     when: t(locale, "cc.scope"),
-    title: fill(locale, "cc.complianceTitle", { count: panel.data.count }),
+    title: fill(locale, "cc.complianceTitle", { count: panel.data.count }, numbering),
     body: t(locale, "cc.complianceBody"),
     actions: [{ label: "cc.openIt", href: "/finance" }],
   }];
@@ -686,6 +693,7 @@ function complianceItems(
 function retentionItems(
   panel: Panel<MembershipSummary>,
   locale: "en" | "ar",
+  numbering: Numbering,
 ): AttentionItem[] {
   if (!panel.allowed || panel.data === null) return [];
   const expiring = panel.data.expiring;
@@ -712,13 +720,15 @@ function retentionItems(
         }
       : {}),
     title: fill(locale, "cc.retentionTitle",
-      { count: expiring.count, days: expiring.within_days }),
+      { count: expiring.count, days: expiring.within_days }, numbering),
     body: t(locale, "cc.retentionBody"),
     actions: [{ label: "cc.openIt", href: "/members" }],
   }];
 }
 
-function staffingItems(panel: Panel<Unstaffed>, locale: "en" | "ar"): AttentionItem[] {
+function staffingItems(
+  panel: Panel<Unstaffed>, locale: "en" | "ar", numbering: Numbering,
+): AttentionItem[] {
   if (!panel.allowed || panel.data === null || panel.data.count === 0) return [];
   return [{
     key: "cc-staffing",
@@ -733,7 +743,7 @@ function staffingItems(panel: Panel<Unstaffed>, locale: "en" | "ar"): AttentionI
     severity: "info",
     density: "condensed",
     when: `${panel.data.from_date} → ${panel.data.to_date}`,
-    title: fill(locale, "cc.staffingTitle", { count: panel.data.count }),
+    title: fill(locale, "cc.staffingTitle", { count: panel.data.count }, numbering),
     // Two bodies: "0 places are held across them" is a sentence with nothing in it, and the
     // empty case is the one worth saying something useful about.
     body: panel.data.members_affected > 0

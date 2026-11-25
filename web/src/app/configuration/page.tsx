@@ -12,6 +12,7 @@ import {
   listDefinitions,
   readResolved,
 } from "@/lib/configuration";
+import { numerals } from "@/lib/display";
 import { presentation } from "@/lib/preferences";
 
 /**
@@ -42,6 +43,10 @@ export default async function ConfigurationPage({
   searchParams: Promise<{ subject?: string }>;
 }) {
   const { locale } = await presentation();
+  // **The tenant's numerals** -- ADR-0015. Every quantity on this page follows
+  // `localization.numerals`; an identifier does not, and neither does money. One read for the
+  // whole render: `conventions()` is React's per-request memo and the layout starts it.
+  const numbering = await numerals();
   const text = (key: MessageKey) => t(locale, key);
 
   const session = await currentSession();
@@ -72,14 +77,14 @@ export default async function ConfigurationPage({
       <PageHeader title={text("config.title")}
         figures={
           <>
-            {fill(locale, "config.keysCounted", { count: definitions?.length ?? 0 })}
+            {fill(locale, "config.keysCounted", { count: definitions?.length ?? 0 }, numbering)}
             {" \u00b7 "}
-            {fill(locale, "config.unsetCounted", { count: unset })}
+            {fill(locale, "config.unsetCounted", { count: unset }, numbering)}
             {" \u00b7 "}
-            {fill(locale, "config.flagsCounted", { count: Object.keys(flags ?? {}).length })}
+            {fill(locale, "config.flagsCounted", { count: Object.keys(flags ?? {}).length }, numbering)}
             {killSwitches === 0
               ? null
-              : <> {"\u00b7 "}{fill(locale, "config.killCounted", { count: killSwitches })}</>}
+              : <> {"\u00b7 "}{fill(locale, "config.killCounted", { count: killSwitches }, numbering)}</>}
           </>
         }
        />
@@ -155,6 +160,7 @@ export default async function ConfigurationPage({
                           <span className="muted">
                             {" · v"}
                             <span className="data">
+                              {/* A version is cited, not counted: Latin. ADR-0015. */}
                               {formatInteger(entry.version, "latn")}
                             </span>
                           </span>

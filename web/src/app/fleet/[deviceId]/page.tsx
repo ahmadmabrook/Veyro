@@ -12,6 +12,7 @@ import {
   type CommandQueue,
   type DeviceDetail,
 } from "@/lib/fleet";
+import { numerals } from "@/lib/display";
 import { presentation } from "@/lib/preferences";
 
 /**
@@ -36,6 +37,10 @@ export default async function DevicePage({
 }) {
   const { deviceId } = await params;
   const { locale } = await presentation();
+  // **The tenant's numerals** -- ADR-0015. Every quantity on this page follows
+  // `localization.numerals`; an identifier does not, and neither does money. One read for the
+  // whole render: `conventions()` is React's per-request memo and the layout starts it.
+  const numbering = await numerals();
   const text = (key: MessageKey) => t(locale, key);
 
   if (!(await currentSession())) redirect("/login");
@@ -195,14 +200,14 @@ export default async function DevicePage({
             <dt className="muted">{text("device.latency")}</dt>
             <dd style={{ margin: 0 }}>
               <span className="data">
-                {formatInteger(device.health.latency_ms, "latn")}
+                {formatInteger(device.health.latency_ms, numbering)}
               </span>{" "}
               ms
             </dd>
             <dt className="muted">{text("device.errors")}</dt>
             <dd style={{ margin: 0 }}>
               <span className="data">
-                {formatInteger(device.health.error_count, "latn")}
+                {formatInteger(device.health.error_count, numbering)}
               </span>
             </dd>
             <dt className="muted">{text("device.agent")}</dt>

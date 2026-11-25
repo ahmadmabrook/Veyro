@@ -158,3 +158,65 @@ numeral system as a validated `string`; the derived month set; and the money exc
 D1's premise held in a way worth recording**: adding the permission to the catalogue granted it
 to nobody, because `authz.bootstrap` stores the list it computed when it ran — so the browser
 fixture had to be re-provisioned before the screen could be exercised at all.
+
+## Amendment, 2026-11-25 — how the setting reaches a page
+
+"What this does not decide" left the seventeen call sites open; this is the decision, and
+`conventions()` in `web/src/lib/display.ts` is it.
+
+**D7 — one `cache()`d read per request, warmed in the layout.** `presentation()` keeps its
+contract: cookie-only, no request, callable from the sign-in page. `conventions()` is a
+separate reader wrapped in React's `cache`, so the layout and the page that renders the figures
+share one call however many components ask. The honest cost is **one extra request per page
+render**, which is the same order as the gate batch the layout already makes, and it buys a
+value that cannot go stale.
+
+**D8 — not a cookie, and the reason is the canvas's own sentence.** A cookie written at sign-in
+would be request-free and would make "one rule per tenant, never mixed" false across readers
+for up to a session's lifetime: two staff looking at the same screen would see different
+digits until the older session expired. A tenant fact must not be cached per reader for a
+fortnight. Nothing here invalidates a cookie across sessions, so the cheap option is the wrong
+one.
+
+**D9 — the read is made without gating it first, and the cost of that is stated.** `check`
+writes a denial to MOD-008's audit chain itself, by design -- "a surface cannot ask without the
+refusal being recorded" -- so a gate call before the read would write exactly the row a bare
+403 writes, and cost a request as well. So `conventions()` reads and treats any failure,
+including a refusal, as `latn`. The consequence: a reader who lacks a routine permission their
+tenant should grant contributes one `iam.audit_events` row per page view, in a table with no
+DELETE grant. That is the *existing* shape rather than a new one -- the layout's rail already
+asks twenty actions on every render and every one a reader lacks writes a row -- and it is
+bounded by an operational anomaly rather than by navigation in the steady state.
+
+**D10 — `MoneyValue` loses its `numbering` prop, which makes D6 structural.** Every caller
+passed `latn` and one of them had already narrowed the type to the literal. A default a caller
+*may* override is a convention; an absent parameter is a control. Money's rule is now in the
+component rather than in fourteen call sites remembering it, and the static sweep D6 asks for
+covers the direct `formatMoney` calls that remain.
+
+**D11 — a figure that cannot move may be a literal.** The money rule's own sentence quotes
+`JOD 41,280.00`, and that is not a missed call site: the sentence states that money keeps Latin
+digits whatever the setting is, so the figure inside it can never need shaping. Said on the
+screen, because a reader sweeping for unformatted money would otherwise find it.
+
+### D9 corrected — the gate call is free and the read was not
+
+D9 said the conventions read is made without gating first, "because `check` writes a denial to
+MOD-008's chain itself, so a gate call before the read would write exactly the row a bare 403
+writes and cost a request as well." **The premise is false.** `/authz/check` passes
+`record_denial=False`, and the gating suite's own `UNGATED` entry for its batch sibling says so
+in as many words: "it answers only about the caller's own session, it is bounded at forty
+actions, and it records no denial." A page asking what it may draw is not an access attempt; a
+`permit` is.
+
+So the ungated read wrote one `iam.audit_events` row **per page view** for any reader whose
+tenant has not granted the permission — in a table with no DELETE grant, driven by navigation,
+which is the unbounded-growth shape this build refuses elsewhere. **Found by the browser suite
+rather than by reading it back**: the permissions screen's audit-log assertion failed because
+twenty-five screens of `config.display.read denied` had pushed `role.assigned` off the page, so
+the first visible consequence was the log becoming unreadable — which is what the hash chain is
+for.
+
+`conventions()` now asks `mayReadDisplay()` first and reads only when allowed. It costs one
+`/authz/check` per page render, memoised per request beside the read, and writes nothing. The
+rest of D9 stands: a refusal is still the `latn` fallback and the page still says nothing.

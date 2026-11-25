@@ -8,6 +8,7 @@ import { ClassCell, WeekGrid } from "@/components/ds/week-grid";
 import { fill, formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
 import { ApiError, currentSession, gate, gateMessage, gateVerdict } from "@/lib/api";
 import { listLocations, type Location } from "@/lib/organization";
+import { numerals } from "@/lib/display";
 import { presentation } from "@/lib/preferences";
 import {
   isUuid, needsAttention, readCalendar, weekDays, weekRows, weekSummary,
@@ -57,6 +58,10 @@ export default async function SchedulePage({
   searchParams: Promise<{ site?: string; from?: string; span?: string }>;
 }) {
   const { locale } = await presentation();
+  // **The tenant's numerals** -- ADR-0015. Every quantity on this page follows
+  // `localization.numerals`; an identifier does not, and neither does money. One read for the
+  // whole render: `conventions()` is React's per-request memo and the layout starts it.
+  const numbering = await numerals();
   const text = (key: MessageKey) => t(locale, key);
 
   if (!(await currentSession())) redirect("/login");
@@ -224,8 +229,8 @@ export default async function SchedulePage({
                         href={`/schedule/${session.session_id}`}
                         // Never blank: a class with no coach is a gap somebody has to fill.
                         coach={session.staff ?? text("schedule.noCoach")}
-                        fill={`${formatInteger(session.held, "latn")}/${
-                          formatInteger(session.places, "latn")}`}
+                        fill={`${formatInteger(session.held, numbering)}/${
+                          formatInteger(session.places, numbering)}`}
                         // **An edge-mark, never a fill.** A class with no coach is the
                         // design's own severe cell; a full class is ordinary and a
                         // cancelled one is a decision somebody made.
@@ -257,7 +262,8 @@ export default async function SchedulePage({
                     {text("schedule.problems")}
                   </h2>
                 }
-                counts={fill(locale, "schedule.problemCount", { count: problems.length })}
+                counts={fill(locale, "schedule.problemCount", { count: problems.length },
+                  numbering)}
               >
                 {problems.map((session) => (
                   <AttentionRow

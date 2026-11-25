@@ -3525,3 +3525,28 @@ name -- and two properties are deliberately *not* shared, because they belong to
 control: the pointer cursor, and the 44px touch floor the source makes non-negotiable on a
 target. Growing a read-only state chip on a phone would make a statement look like a button. A
 disabled checkbox is the wrong answer in the other direction, because a reader tries it.
+
+
+**A `permit` on a route every page render touches writes an audit row per page view, and
+`/authz/check` exists because of it.** MOD-008 records a denial inside `check` by design — "so
+a surface cannot ask without the refusal being recorded" — and the route a client uses to ask
+what it may draw passes `record_denial=False`, with the `UNGATED` entry for its batch sibling
+stating it outright: "it records no denial." That distinction is the whole of it: **asking what
+to draw is not an access attempt, and a `permit` is.** ADR-0015's first version read a
+display-convention route straight through on the strength of the opposite claim, so every page
+render by a reader whose tenant had not granted one routine permission appended a row to an
+insert-only table with no DELETE grant.
+
+Three things worth carrying:
+
+- **The first visible consequence was the audit log becoming unreadable**, not a cost graph.
+  Twenty-five screens of `config.display.read denied` pushed `role.assigned` off the first page,
+  which is what the hash chain exists to hold. A log nobody can read is a log that is not there.
+- **It was found by the browser suite**, by an assertion about a *rendered value* on a page that
+  has nothing to do with the change — the permissions screen's own "describes the log by what is
+  in it". No backend test could see it: each denial is correct in isolation and the suite that
+  would notice is the one that drives many page views as a reader holding little.
+- **Gating first is free**, which is the part the wrong premise hid: a `/authz/check` costs a
+  request and writes nothing, so the fix is one call before the read rather than a permission
+  deleted or a route added to `UNGATED`. Before arguing that a control is too expensive to ask
+  for, read what the asking route actually does.

@@ -6,9 +6,10 @@ import { MetricCell, MetricRow } from "@/components/ds/metric-cell";
 import { MoneyValue } from "@/components/ds/money-value";
 import { PageHeader } from "@/components/ds/page-header";
 import { ProseNote } from "@/components/prose";
-import { fill, t, type Locale, type MessageKey } from "@/i18n/locale";
+import { fill, t, type Locale, type MessageKey, type Numbering } from "@/i18n/locale";
 import { currentSession, gate, failureMessage } from "@/lib/api";
 import { listLegalEntities, type LegalEntity } from "@/lib/organization";
+import { numerals } from "@/lib/display";
 import { presentation } from "@/lib/preferences";
 import {
   change,
@@ -52,7 +53,9 @@ import {
  */
 export default async function RevenueReportPage() {
   const { locale } = await presentation();
-  const numbering = "latn" as const;
+  // **The tenant's numerals for the counts in each currency block** -- ADR-0015. The money
+  // figures do not follow it: `MoneyValue` carries no numbering at all.
+  const numbering = await numerals();
   const text = (key: MessageKey) => t(locale, key);
 
   if (!(await currentSession())) redirect("/login");
@@ -121,8 +124,8 @@ export default async function RevenueReportPage() {
             key={block.currency}
             block={block}
             report={current}
-            locale={locale}
             numbering={numbering}
+            locale={locale}
             entities={entities}
           />
         ))
@@ -141,14 +144,16 @@ function CurrencyBlock({
   block,
   report,
   locale,
-  numbering,
   entities,
+  numbering,
 }: {
   block: RevenueCurrency;
   report: RevenueReport;
   locale: Locale;
-  numbering: "latn";
   entities: LegalEntity[];
+  // The counts here are quantities and follow the tenant; the money does not, and
+  // `MoneyValue` carries no numbering at all. ADR-0015.
+  numbering: Numbering;
 }) {
   const text = (key: MessageKey) => t(locale, key);
   const previous = fill(locale, "revenue.vsPrevious", {
@@ -158,8 +163,7 @@ function CurrencyBlock({
   const collected = change(block.collected_change_bp);
   const invoiced = change(block.invoiced_change_bp);
   const amount = (minor: number) => (
-    <MoneyValue kind="aggregate" amountMinor={minor} currency={block.currency}
-      numbering={numbering} />
+    <MoneyValue kind="aggregate" amountMinor={minor} currency={block.currency} />
   );
 
   // The entity columns, in a stable order, so a row's cells line up with the heading. A
@@ -200,7 +204,7 @@ function CurrencyBlock({
           label={text("revenue.outstanding")}
           value={
             <MoneyValue kind="owed" amountMinor={block.outstanding_minor}
-              currency={block.currency} numbering={numbering} />
+              currency={block.currency} />
           }
         />
         <MetricCell
@@ -217,7 +221,7 @@ function CurrencyBlock({
           caption={text("revenue.bySource")}
           labelledBy={`revenue-sources-${block.currency}`}
           density="compact"
-          countLabel={fill(locale, "revenue.sourceCount", { count: block.by_source.length })}
+          countLabel={fill(locale, "revenue.sourceCount", { count: block.by_source.length }, numbering)}
           rows={block.by_source}
           rowKey={(row) => row.product_type}
           columns={[
@@ -242,12 +246,12 @@ function CurrencyBlock({
               priority: 3 as const,
               render: (row: SourceRow) => (
                 <MoneyValue kind="aggregate" amountMinor={at(row, id)}
-                  currency={block.currency} numbering={numbering} />
+                  currency={block.currency} />
               ),
               total: () => (
                 <MoneyValue kind="aggregate"
                   amountMinor={block.by_source.reduce((sum, row) => sum + at(row, id), 0)}
-                  currency={block.currency} numbering={numbering} />
+                  currency={block.currency} />
               ),
             })),
             {

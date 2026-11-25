@@ -7,6 +7,7 @@ import { DataGrid } from "@/components/ds/data-grid";
 import { fill, formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
 import { currentSession, gate, failureMessage, gateMessage } from "@/lib/api";
 import { listZones, type ZoneSummary } from "@/lib/access";
+import { numerals } from "@/lib/display";
 import { presentation } from "@/lib/preferences";
 
 /**
@@ -23,6 +24,10 @@ import { presentation } from "@/lib/preferences";
  */
 export default async function DoorBoardPage() {
   const { locale } = await presentation();
+  // **The tenant's numerals** -- ADR-0015. Every quantity on this page follows
+  // `localization.numerals`; an identifier does not, and neither does money. One read for the
+  // whole render: `conventions()` is React's per-request memo and the layout starts it.
+  const numbering = await numerals();
   const text = (key: MessageKey) => t(locale, key);
 
   if (!(await currentSession())) redirect("/login");
@@ -62,9 +67,9 @@ export default async function DoorBoardPage() {
       locale={locale}
       figures={
         <>
-          {fill(locale, "access.zonesCounted", { count: zones.length })}
+          {fill(locale, "access.zonesCounted", { count: zones.length }, numbering)}
           {" \u00b7 "}
-          {fill(locale, "access.noPolicyCount", { count: unpoliced })}
+          {fill(locale, "access.noPolicyCount", { count: unpoliced }, numbering)}
           {" \u00b7 "}
           {t(locale, "members.scope")}
         </>
@@ -115,6 +120,7 @@ labelledBy="doors-heading"
                   <>
                     {text("access.policyVersion")}{" "}
                     <span className="data">
+                      {/* A policy version is cited, not counted: Latin. ADR-0015. */}
                       {formatInteger(zone.live_policy_version, "latn")}
                     </span>
                   </>
@@ -146,9 +152,9 @@ labelledBy="doors-heading"
               // reader decides nothing at all.
               render: (zone) => (
                 <>
-                  <span className="data">{formatInteger(zone.entry_points, "latn")}</span>{" "}
+                  <span className="data">{formatInteger(zone.entry_points, numbering)}</span>{" "}
                   {text("access.direction.entry")} ·{" "}
-                  <span className="data">{formatInteger(zone.exit_points, "latn")}</span>{" "}
+                  <span className="data">{formatInteger(zone.exit_points, numbering)}</span>{" "}
                   {text("access.direction.exit")}
                 </>
               ),

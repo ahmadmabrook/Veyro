@@ -10,6 +10,7 @@ import { LocaleSwitch } from "@/components/locale-switch";
 import { formatInteger, t } from "@/i18n/locale";
 import { currentSession, gateAll } from "@/lib/api";
 import { listMembers } from "@/lib/members-reads";
+import { conventions } from "@/lib/display";
 import { presentation } from "@/lib/preferences";
 
 import "./globals.css";
@@ -279,13 +280,30 @@ export default async function RootLayout({
     ];
   }
 
+  // **One read for the whole render, started here.** ADR-0015 D7: `conventions()` is React's
+  // per-request memo, so asking for it in the layout means every page and component that
+  // renders a figure shares this call rather than making its own -- and starting it before
+  // the count below means the two are in flight together rather than one after the other.
+  // Only when there is a session: the sign-in page has no tenant to ask about, and a request
+  // that could only fail is a request not worth making.
+  const theirs = session ? conventions() : null;
+
   if (session && items.some((item) => item.href === "/members" && item.allowed)) {
     // **One extra read for the whole rail, and a failure costs the count rather than the
     // page.** A rail that refused to render because a count was unavailable would be a
     // navigation that depends on a figure, which is the wrong way round.
-    memberCount = await listMembers({ limit: 1 })
-      .then((page) => formatInteger(page.total, "latn"))
-      .catch(() => undefined);
+    //
+    // **And the count follows the tenant's numerals**, which it did not until ADR-0015: a rail
+    // figure left in Latin digits beside a page of Arabic-Indic ones is exactly the mixing
+    // "one rule per tenant, never mixed and never decided per component" forbids, and the
+    // rail is the figure a reader sees on every screen.
+    const [page, numerals] = await Promise.all([
+      listMembers({ limit: 1 }).catch(() => null),
+      theirs,
+    ]);
+    memberCount = page === null
+      ? undefined
+      : formatInteger(page.total, numerals?.numerals ?? "latn");
     items = items.map((item) =>
       item.href === "/members" && memberCount !== undefined
         ? { ...item, count: memberCount }

@@ -501,10 +501,29 @@ Known gaps, deliberate:
   ADM-SET-06 beside it, which draws `→ Use #1F6E7A` -- and `config.value.publish` is financial
   class, so the screen is the read. A tenant changes its conventions the way it changes any
   other configuration value, which is MOD-005's standing read-only gap rather than a new one.
-- **The seventeen call sites.** Each still passes `latn`; this read is what they were waiting
-  for. The browser fixture publishes `arab` on purpose, so the hour a figure elsewhere follows
-  the setting every assertion naming a number fails at once -- which is the signal rather than
-  the accident, and the fixture's own comment says so.
+- **The call sites are wired, and the number was ten times the gap note's.** ADR-0015 D7-D11.
+  Every quantity in the product now follows `localization.numerals`: 81 inline
+  `formatInteger(..., "latn")` sites and 82 plural `fill` sites across 34 files, on top of the
+  fourteen page-level constants the note had called "seventeen call sites". The second
+  population was found by a sweep rather than by reading, because `fill` *defaults* its
+  numbering to `latn` -- so a plural message renders Latin digits with nothing at the call site
+  to grep for.
+  **Three decisions carry it:**
+  **one `cache()`d read per request**, started in the layout, because `presentation()` is
+  cookie-only by contract and a cookie written at sign-in would make "one rule per tenant,
+  never mixed" false across readers for a session's lifetime -- two staff on one screen seeing
+  different digits until the older session expired;
+  **`MoneyValue` lost its `numbering` prop**, so the canvas's money exception is the
+  component's rule rather than fourteen call sites remembering it -- every caller passed `latn`
+  and one had already narrowed its own type to the literal;
+  and **a quantity follows the tenant while an identifier does not** -- a version, a chain
+  sequence number, an assurance level, a sort key: something a reader cites, quotes or types
+  back, where shaping the digits would make somebody translate them to read a reference. Nine
+  figures are declared Latin on that rule, in a list a sweep checks in both directions.
+  **Proven: two sweeps in `tests/component/i18n.test.ts`** -- every plural `fill` passes the
+  numbering, and every remaining `latn` literal is declared with its reason -- plus 6 browser
+  mutations, of which `localization-the-setting-reaches-a-page` flips the one reader they all
+  go through and is caught by the door board's own `1 Entry`.
 - **No month name is rendered by the backend.** `monthDay` is web-only: it cannot live in
   `conventions.mjs`, because that module is compared character for character against Python and
   the standard library carries no CLDR month names, so a twin needs `babel` -- this repository's

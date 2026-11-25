@@ -18,6 +18,7 @@ import {
 } from "@/lib/leads";
 import { readLead, readLeadTrial } from "@/lib/leads-reads";
 import { isWithheld, withheldRemedy } from "@/lib/people";
+import { numerals } from "@/lib/display";
 import { presentation } from "@/lib/preferences";
 import { dayLabel, monthDayLabel, timeOfDay } from "@/lib/time";
 import { LOST_REASONS, reasonWord, recontactSentence } from "@/lib/lost";
@@ -152,10 +153,12 @@ export default async function LeadPage({
   //: route of its own, which the canvas says by labelling one card with both ids -- so the
   //: band, the metric row and one section change and everything else stays.
   const running = trial !== null && trial.on_trial ? trial : null;
-  // The same `as const` every other screen uses, and the reason the integer formatter takes
-  // it as an argument rather than reading a locale: a numeral system is a tenant setting this
-  // build does not carry, and one number path is what the cross-runtime parity test holds.
-  const numbering = "latn" as const;
+  // **The tenant's numerals rather than a constant** -- ADR-0015. Every count, date and time
+  // on this page follows `localization.numerals`; money does not, and `MoneyValue` carries no
+  // `numbering` prop at all so that exception is the component's rule rather than this page's
+  // to remember. One read for the whole render: `conventions()` is React's per-request memo
+  // and the layout starts it, so this costs no round trip of its own.
+  const numbering = await numerals();
   /**
    * The header's one band.
    *
@@ -212,7 +215,7 @@ export default async function LeadPage({
           <MetricCell label={text("lead.metaStage")} value={stage} />
           <MetricCell
             label={text("lead.metaSince")}
-            value={sinceLabel(locale, lead.hours_since_contact)}
+            value={sinceLabel(locale, lead.hours_since_contact, numbering)}
           />
           <MetricCell
             label={text("lead.metaTouchpoints")}
@@ -259,7 +262,7 @@ export default async function LeadPage({
           <h2 id="lead-trial">
             {running.ends_tomorrow || running.days_left <= 1
               ? text(urgencyKey(running))
-              : fill(locale, "trial.running", { count: running.days_left })}
+              : fill(locale, "trial.running", { count: running.days_left }, numbering)}
           </h2>
           <p>{text(usageSentence(running))}</p>
           <ProseNote>{text("trial.visitsAreEntries")}</ProseNote>

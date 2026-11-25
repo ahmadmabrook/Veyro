@@ -9,6 +9,7 @@ import { Prose, ProseNote } from "@/components/prose";
 import { Withheld } from "@/components/withheld";
 import { fill, t, type Locale, type MessageKey } from "@/i18n/locale";
 import { currentSession, failureMessage, gateAll, gateMessage, gateVerdict } from "@/lib/api";
+import { numerals } from "@/lib/display";
 import { presentation } from "@/lib/preferences";
 import { listMembers } from "@/lib/members-reads";
 import { isWithheld, withheldRemedy } from "@/lib/people";
@@ -99,6 +100,10 @@ export default async function RecoveryPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { locale } = await presentation();
+  // **The tenant's numerals** -- ADR-0015. Every quantity on this page follows
+  // `localization.numerals`; an identifier does not, and neither does money. One read for the
+  // whole render: `conventions()` is React's per-request memo and the layout starts it.
+  const numbering = await numerals();
   const text = (key: MessageKey) => t(locale, key);
   void (await searchParams);
 
@@ -176,7 +181,7 @@ export default async function RecoveryPage({
           text("recovery.noneOpen")
         ) : (
           <>
-            {fill(locale, "recovery.failedCount", { count: workspace.count })}
+            {fill(locale, "recovery.failedCount", { count: workspace.count }, numbering)}
             {atRisk === null ? null : (
               <>
                 {" · "}
@@ -258,7 +263,7 @@ export default async function RecoveryPage({
             <DataGrid
               caption={text("recovery.listTitle")}
               labelledBy="recovery-heading"
-              countLabel={fill(locale, "recovery.rowCount", { count: workspace.count })}
+              countLabel={fill(locale, "recovery.rowCount", { count: workspace.count }, numbering)}
               density="compact"
               rows={workspace.cases}
               rowKey={(one) => one.case_id}

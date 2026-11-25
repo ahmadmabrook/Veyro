@@ -1,4 +1,5 @@
-import { fill, formatInteger, type Locale, type MessageKey } from "@/i18n/locale";
+import { fill, formatInteger, type Locale, type MessageKey, type Numbering }
+  from "@/i18n/locale";
 
 /**
  * ADM-CRM-01 and ADM-CRM-02's decisions, with no I/O in the module.
@@ -339,10 +340,10 @@ export function interestWord(interest: string): MessageKey | null {
  * counts in the wrong frame, which this build has three recorded defects from, so the figure
  * comes down on the row and this only chooses the unit.
  */
-export function sinceLabel(locale: Locale, hours: number): string {
+export function sinceLabel(locale: Locale, hours: number, numbering: Numbering): string {
   if (hours < 1) return fill(locale, "leads.sinceNow", {});
-  if (hours < 24) return fill(locale, "leads.sinceHours", { count: hours });
-  return fill(locale, "leads.sinceDays", { count: Math.floor(hours / 24) });
+  if (hours < 24) return fill(locale, "leads.sinceHours", { count: hours }, numbering);
+  return fill(locale, "leads.sinceDays", { count: Math.floor(hours / 24) }, numbering);
 }
 
 /**
@@ -352,9 +353,9 @@ export function sinceLabel(locale: Locale, hours: number): string {
  * from" is the question ADM-RPT-03 is built on, and an unattributed lead is the answer that
  * matters most.
  */
-export function metaLine(locale: Locale, lead: LeadRow): string {
+export function metaLine(locale: Locale, lead: LeadRow, numbering: Numbering): string {
   const source = lead.source ?? fill(locale, "leads.noSource", {});
-  return `${source} · ${sinceLabel(locale, lead.hours_since_contact)}`;
+  return `${source} · ${sinceLabel(locale, lead.hours_since_contact, numbering)}`;
 }
 
 /**
@@ -362,11 +363,11 @@ export function metaLine(locale: Locale, lead: LeadRow): string {
  *
  * Rendered through `formatInteger` rather than interpolated, because this app has one
  * number path and a cross-runtime parity test behind it -- a bare `String(n)` is a second
- * one. `latn` because the numeral system is a tenant setting this build does not carry,
- * which is the same choice `money()` records.
+ * one. **It takes the numeral system rather than assuming one** (ADR-0015): a column count is
+ * a quantity, so it follows `localization.numerals` like every other count on the board.
  */
-export function columnCount(count: number): string {
-  return formatInteger(count, "latn");
+export function columnCount(count: number, numbering: Numbering): string {
+  return formatInteger(count, numbering);
 }
 
 /**

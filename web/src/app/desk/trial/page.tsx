@@ -6,6 +6,7 @@ import { NotYet, PageHeader } from "@/components/ds/page-header";
 import { fill, t, type MessageKey } from "@/i18n/locale";
 import { currentSession, gate, gateAll, gateMessage, gateVerdict } from "@/lib/api";
 import { listSellablePlans } from "@/lib/leads-reads";
+import { numerals } from "@/lib/display";
 import { presentation } from "@/lib/preferences";
 import { headlineDays, planChoice, type TrialPlan } from "@/lib/walk-in-trial";
 import { withheldRemedy } from "@/lib/mask";
@@ -45,7 +46,12 @@ import { TrialForm } from "./trial-form";
 export default async function WalkInTrialPage() {
   const { locale } = await presentation();
   const text = (key: MessageKey) => t(locale, key);
-  const numbering = "latn" as const;
+  // **The tenant's numerals rather than a constant** -- ADR-0015. Every count, date and time
+  // on this page follows `localization.numerals`; money does not, and `MoneyValue` carries no
+  // `numbering` prop at all so that exception is the component's rule rather than this page's
+  // to remember. One read for the whole render: `conventions()` is React's per-request memo
+  // and the layout starts it, so this costs no round trip of its own.
+  const numbering = await numerals();
 
   if (!(await currentSession())) redirect("/login");
 

@@ -24,6 +24,7 @@ import {
   type RetentionPolicy,
   type SecurityIncident,
 } from "@/lib/privacy";
+import { numerals } from "@/lib/display";
 import { presentation } from "@/lib/preferences";
 import { utcStamp } from "@/lib/time";
 
@@ -55,6 +56,10 @@ import { utcStamp } from "@/lib/time";
  */
 export default async function PrivacyPage() {
   const { locale } = await presentation();
+  // **The tenant's numerals** -- ADR-0015. Every quantity on this page follows
+  // `localization.numerals`; an identifier does not, and neither does money. One read for the
+  // whole render: `conventions()` is React's per-request memo and the layout starts it.
+  const numbering = await numerals();
   const text = (key: MessageKey) => t(locale, key);
 
   if (!(await currentSession())) redirect("/login");
@@ -112,14 +117,14 @@ export default async function PrivacyPage() {
       locale={locale}
       figures={
         <>
-          {fill(locale, "privacy.requestsCounted", { count: requests.length })}
+          {fill(locale, "privacy.requestsCounted", { count: requests.length }, numbering)}
           {" \u00b7 "}
-          {fill(locale, "privacy.queueCounted", { count: queue.length })}
+          {fill(locale, "privacy.queueCounted", { count: queue.length }, numbering)}
           {" \u00b7 "}
-          {fill(locale, "privacy.holdsCounted", { count: liveHolds.length })}
+          {fill(locale, "privacy.holdsCounted", { count: liveHolds.length }, numbering)}
           {reach === null ? null : (
             <> {"\u00b7 "}{fill(locale, "privacy.residueCounted",
-              { count: reach.residue_count })}</>
+              { count: reach.residue_count }, numbering)}</>
           )}
         </>
       }
@@ -151,7 +156,7 @@ export default async function PrivacyPage() {
               <dt className="muted">{text("privacy.residue")}</dt>
               <dd style={{ margin: 0 }}>
                 <span className="data">
-                  {formatInteger(reach.residue_count, "latn")}
+                  {formatInteger(reach.residue_count, numbering)}
                 </span>{" "}
                 {text("privacy.columns")}
               </dd>
@@ -178,7 +183,7 @@ export default async function PrivacyPage() {
                           {group.tables.slice(0, 3).join(", ")}
                         </span>
                         {group.tables.length > 3
-                          ? ` +${formatInteger(group.tables.length - 3, "latn")}`
+                          ? ` +${formatInteger(group.tables.length - 3, numbering)}`
                           : ""}
                       </div>
                     </>
@@ -189,7 +194,7 @@ export default async function PrivacyPage() {
                   kind: "text",
                   priority: 1,
                   render: (group) => (
-                    <span className="data">{formatInteger(group.columns, "latn")}</span>
+                    <span className="data">{formatInteger(group.columns, numbering)}</span>
                   ),
                 },
                 {
@@ -337,7 +342,7 @@ export default async function PrivacyPage() {
                 render: (policy) => (
                   <>
                     <span className="data">
-                      {formatInteger(policy.retention_days, "latn")}
+                      {formatInteger(policy.retention_days, numbering)}
                     </span>{" "}
                     {text("privacy.days")}
                   </>

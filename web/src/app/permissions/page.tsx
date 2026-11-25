@@ -5,7 +5,7 @@ import { Banner } from "@/components/ds/banner";
 import { CapabilityMatrix, MATRIX_GLYPH } from "@/components/ds/capability-matrix";
 import { PageHeader } from "@/components/ds/page-header";
 import { DataGrid } from "@/components/ds/data-grid";
-import { fill, formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
+import { fill, formatInteger, t, type Locale, type MessageKey, type Numbering } from "@/i18n/locale";
 import {
   currentSession,
   failureMessage,
@@ -31,6 +31,7 @@ import {
   type EffectivePermissions,
   type Role,
 } from "@/lib/authz";
+import { numerals } from "@/lib/display";
 import { presentation } from "@/lib/preferences";
 import { utcStamp } from "@/lib/time";
 
@@ -64,6 +65,10 @@ export default async function PermissionsPage({
   const query = await searchParams;
   const showAll = query.rows === "all";
   const { locale } = await presentation();
+  // **The tenant's numerals** -- ADR-0015. Every quantity on this page follows
+  // `localization.numerals`; an identifier does not, and neither does money. One read for the
+  // whole render: `conventions()` is React's per-request memo and the layout starts it.
+  const numbering = await numerals();
   const text = (key: MessageKey) => t(locale, key);
 
   const session = await currentSession();
@@ -128,11 +133,11 @@ export default async function PermissionsPage({
       <PageHeader title={text("perms.title")}
         figures={
           <>
-            {fill(locale, "perms.rolesCounted", { count: roles.length })}
+            {fill(locale, "perms.rolesCounted", { count: roles.length }, numbering)}
             {" \u00b7 "}
-            {fill(locale, "perms.heldCounted", { count: mine?.permissions.length ?? 0 })}
+            {fill(locale, "perms.heldCounted", { count: mine?.permissions.length ?? 0 }, numbering)}
             {" \u00b7 "}
-            {fill(locale, "perms.auditCounted", { count: audit.length })}
+            {fill(locale, "perms.auditCounted", { count: audit.length }, numbering)}
           </>
         }
        />
@@ -153,7 +158,8 @@ export default async function PermissionsPage({
             <p className="muted" style={{ margin: 0 }}>
               {text("perms.scope")}: <span className="data" dir="ltr">{mine.scope_type}</span>
             </p>
-            <PermissionList permissions={mine.permissions} locale={locale} />
+            <PermissionList permissions={mine.permissions} locale={locale}
+              numbering={numbering} />
           </>
         )}
       </section>
@@ -197,7 +203,8 @@ export default async function PermissionsPage({
         ) : rolesFailed ? null : roles.length === 0 ? (
           <Banner severity="info">{text("perms.noRoles")}</Banner>
         ) : (
-          <Matrix roles={roles} catalog={catalog} locale={locale} showAll={showAll} />
+          <Matrix roles={roles} catalog={catalog} locale={locale} showAll={showAll}
+            numbering={numbering} />
         )}
       </section>
 
@@ -240,7 +247,8 @@ labelledBy="audit-heading"
                     // enough to identify a row on its own.
                     priority: 1,
                     render: (entry) => (
-                      <span className="data">{formatInteger(entry.sequence, "latn")}</span>
+                      <span className="data">{/* A chain sequence number is a reference: Latin. ADR-0015. */}
+                      {formatInteger(entry.sequence, "latn")}</span>
                     ),
                   },
                   {
@@ -296,11 +304,13 @@ function Matrix({
   catalog,
   locale,
   showAll,
+  numbering,
 }: {
   roles: Role[];
   catalog: PermissionCatalog | null;
   locale: Locale;
   showAll: boolean;
+  numbering: Numbering;
 }) {
   const text = (key: MessageKey) => t(locale, key);
   if (catalog === null) {
@@ -331,7 +341,7 @@ function Matrix({
       detail: fill(locale, "perms.moduleCount", {
         count: catalog.permissions.filter(
           (one) => one.name.startsWith(`${module}.`)).length,
-      }),
+      }, numbering),
     }));
   const label = (value: Mark): string => text(`perms.mark.${value}` as MessageKey);
   return (
@@ -351,9 +361,9 @@ function Matrix({
       legend={
         <>
           {showAll
-            ? fill(locale, "perms.showingAll", { count: catalog.count })
+            ? fill(locale, "perms.showingAll", { count: catalog.count }, numbering)
             : fill(locale, "perms.showingModules",
-              { count: modules.length, total: catalog.count })}
+              { count: modules.length, total: catalog.count }, numbering)}
           {" "}
           <Link href={showAll ? "/permissions" : "/permissions?rows=all"}>
             {text(showAll ? "perms.showModules" : "perms.showAll")}
@@ -393,9 +403,11 @@ function Matrix({
 function PermissionList({
   permissions,
   locale,
+  numbering,
 }: {
   permissions: string[];
   locale: Locale;
+  numbering: Numbering;
 }) {
   if (permissions.length === 0) {
     return (
@@ -414,7 +426,7 @@ function PermissionList({
             </span>
           </dt>
           <dd style={{ margin: 0 }}>
-            <span className="data">{formatInteger(names.length, "latn")}</span>
+            <span className="data">{formatInteger(names.length, numbering)}</span>
           </dd>
         </div>
       ))}

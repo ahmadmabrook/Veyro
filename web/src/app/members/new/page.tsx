@@ -4,6 +4,7 @@ import { Banner } from "@/components/ds/banner";
 import { PageHeader } from "@/components/ds/page-header";
 import { t, type MessageKey } from "@/i18n/locale";
 import { gateAll, gateMessage, gateVerdict } from "@/lib/api";
+import { numerals } from "@/lib/display";
 import { presentation } from "@/lib/preferences";
 import { withheldRemedy } from "@/lib/mask";
 
@@ -52,10 +53,12 @@ import { WalkInForm } from "./walk-in-form";
  */
 export default async function AddMemberPage() {
   const { locale } = await presentation();
-  // The numeral system is a tenant setting this build does not carry, so `latn` everywhere --
-  // the same `as const` the member record uses, and the reason the money and integer
-  // formatters take it as an argument rather than reading a locale.
-  const numbering = "latn" as const;
+  // **The tenant's numerals rather than a constant** -- ADR-0015. Every count, date and time
+  // on this page follows `localization.numerals`; money does not, and `MoneyValue` carries no
+  // `numbering` prop at all so that exception is the component's rule rather than this page's
+  // to remember. One read for the whole render: `conventions()` is React's per-request memo
+  // and the layout starts it, so this costs no round trip of its own.
+  const numbering = await numerals();
   const [read, write, mayNames] = await gateAll([
     "people.person.read",
     "people.person.write",

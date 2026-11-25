@@ -4,13 +4,14 @@ import { Banner } from "@/components/ds/banner";
 import { PageHeader } from "@/components/ds/page-header";
 import { Withheld } from "@/components/withheld";
 import { withheldRemedy } from "@/lib/mask";
-import { fill, formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
+import { fill, formatInteger, t, type Locale, type MessageKey, type Numbering } from "@/i18n/locale";
 import { ApiError, gateAll, gateMessage, gateVerdict } from "@/lib/api";
 import {
   checkinWindow, deskOrder, hasStarted, mayCheckIn, minutesUntil, nameOf, notHere,
   presence, rowState, waiting, type NamedPerson, type Roster, type RosterBooking,
 } from "@/lib/desk";
 import { readNames, readRoster } from "@/lib/desk-reads";
+import { numerals } from "@/lib/display";
 import { presentation } from "@/lib/preferences";
 import { readSession } from "@/lib/scheduling";
 import { inZone } from "@/lib/time";
@@ -61,7 +62,12 @@ export default async function ClassCheckInPage(
 ) {
   const { sessionId } = await params;
   const { locale } = await presentation();
-  const numbering = "latn" as const;
+  // **The tenant's numerals rather than a constant** -- ADR-0015. Every count, date and time
+  // on this page follows `localization.numerals`; money does not, and `MoneyValue` carries no
+  // `numbering` prop at all so that exception is the component's rule rather than this page's
+  // to remember. One read for the whole render: `conventions()` is React's per-request memo
+  // and the layout starts it, so this costs no round trip of its own.
+  const numbering = await numerals();
   const text = (key: MessageKey) => t(locale, key);
   const count = (value: number) => formatInteger(value, numbering);
 
@@ -267,7 +273,14 @@ function Row({
 }: {
   locale: Locale;
   nameWithheld: MessageKey;
-  numbering: "latn";
+  /**
+   * The tenant's numeral system, for the counts and dates this renders.
+   *
+   * **Widened from the literal `"latn"` by ADR-0015**, which is what the setting reaching a
+   * page means. Money is the exception and is not rendered through this: `MoneyValue` carries
+   * no numbering at all, and a direct `formatMoney` here passes the literal.
+   */
+  numbering: Numbering;
   sessionId: string;
   booking: RosterBooking;
   person: NamedPerson | undefined;

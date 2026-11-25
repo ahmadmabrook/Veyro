@@ -4,8 +4,9 @@ import { redirect } from "next/navigation";
 import { Banner } from "@/components/ds/banner";
 import { DataGrid } from "@/components/ds/data-grid";
 import { ProseNote } from "@/components/prose";
-import { fill, t, type Locale, type MessageKey } from "@/i18n/locale";
+import { fill, t, type Locale, type MessageKey, type Numbering } from "@/i18n/locale";
 import { ApiError, currentSession, gateAll, gateMessage, gateVerdict } from "@/lib/api";
+import { numerals } from "@/lib/display";
 import { presentation } from "@/lib/preferences";
 import {
   compactDuration, durationWords,
@@ -43,6 +44,10 @@ import { listQueues, listResolved } from "@/lib/tasks-reads";
  */
 export default async function ResolvedPageView() {
   const { locale } = await presentation();
+  // **The tenant's numerals** -- ADR-0015. Every quantity on this page follows
+  // `localization.numerals`; an identifier does not, and neither does money. One read for the
+  // whole render: `conventions()` is React's per-request memo and the layout starts it.
+  const numbering = await numerals();
   const text = (key: MessageKey) => t(locale, key);
 
   if (!(await currentSession())) redirect("/login");
@@ -54,7 +59,7 @@ export default async function ResolvedPageView() {
   if (!mayCases.allowed) {
     const verdict = gateVerdict(mayCases);
     return (
-      <Shell locale={locale} page={null}>
+      <Shell locale={locale} numbering={numbering} page={null}>
         <Banner severity={verdict === "gate_failed" ? "critical" : "info"}>
           {verdict === "denied" ? text("case.refused") : text(gateMessage(mayCases))}
         </Banner>
@@ -79,7 +84,7 @@ export default async function ResolvedPageView() {
 
   if (page === null) {
     return (
-      <Shell locale={locale} page={null}>
+      <Shell locale={locale} numbering={numbering} page={null}>
         <Banner severity="critical">{text("error.unexpected")}</Banner>
       </Shell>
     );
@@ -88,7 +93,7 @@ export default async function ResolvedPageView() {
   const queueNames = new Map(queues.map((queue) => [queue.queue_id, queue.display_name]));
 
   return (
-    <Shell locale={locale} page={page}>
+    <Shell locale={locale} numbering={numbering} page={page}>
       {page.cases.length === 0 ? (
         <Banner severity="info">{text("resolved.empty")}</Banner>
       ) : (
@@ -160,9 +165,10 @@ export default async function ResolvedPageView() {
 }
 
 function Shell({
-  locale, page, children,
+  locale, page, children, numbering,
 }: {
   locale: Locale;
+  numbering: Numbering;
   /** Absent where the gate refused or the read failed, so no figure is drawn as a zero. */
   page: ResolvedPage | null;
   children: React.ReactNode;
@@ -182,7 +188,7 @@ function Shell({
       {/* The canvas's sub-line: "7 resolved today · Median 41 minutes · all locations". */}
       {page === null ? null : (
         <p className="muted" style={{ margin: 0 }}>
-          {fill(locale, "resolved.count", { count: page.resolved })}
+          {fill(locale, "resolved.count", { count: page.resolved }, numbering)}
           {" · "}
           {page.median_seconds === null
             ? text("resolved.noMedian")

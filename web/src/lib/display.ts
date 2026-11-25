@@ -1,5 +1,7 @@
+import { cache } from "react";
+
 import type { Locale, Numbering } from "@/i18n/locale";
-import { api } from "@/lib/api";
+import { api, gate } from "@/lib/api";
 
 /**
  * ADM-SET-07's display conventions, and the three decisions a screen makes from them.
@@ -41,6 +43,67 @@ export const LANGUAGES_KEY = "localization.languages_offered";
 
 export function readDisplayConventions(): Promise<DisplayConventions> {
   return api<DisplayConventions>("/config/display");
+}
+
+/** What every page falls back to: exactly what this build rendered before the setting existed. */
+export const FALLBACK: DisplayConventions = {
+  numerals: "latn",
+  languages_offered: ["en", "ar"],
+  month_names: "levantine",
+  money_numerals: "latn",
+  declared: [],
+};
+
+/**
+ * The tenant's conventions for a page that renders figures -- one read per request.
+ *
+ * **ADR-0015 D7.** `presentation()` keeps its contract -- cookie-only, no request, callable
+ * from the sign-in page -- and this is the separate reader. `cache` is React's per-request
+ * memo, so the layout warms it and every component that asks shares one call: the honest cost
+ * is one extra request per page render, which is the same order as the gate batch the layout
+ * already makes.
+ *
+ * **Not a cookie, which is D8 and the canvas's own sentence.** One written at sign-in would be
+ * request-free and would make "one rule per tenant, never mixed" false across readers for up to
+ * a session's lifetime: two staff looking at the same screen would see different digits until
+ * the older session expired. Nothing here invalidates a cookie across sessions.
+ *
+ * **Any failure is the fallback and the page says nothing** -- D2. A refused read, an
+ * unreachable API and a tenant that has declared nothing all render what this build rendered
+ * before the setting existed, so a missing grant changes what somebody sees rather than
+ * whether a page works.
+ *
+ * **It asks the gate before it reads, and the first version did not** -- D9, corrected. The
+ * argument for reading straight through was that `check` writes a denial to MOD-008's chain
+ * itself, so a gate call would write the row a bare 403 writes anyway. That is false:
+ * `/authz/check` passes `record_denial=False`, which the gating suite's own `UNGATED` note
+ * says in as many words -- "it records no denial" -- because a page asking what it may draw is
+ * not an access attempt. A `permit` is. So the ungated read wrote one `iam.audit_events` row
+ * **per page view** for any reader whose tenant has not granted the permission, in a table with
+ * no DELETE grant: navigation-driven growth, and the browser suite found it by rendering the
+ * audit log and finding 25 screens of `config.display.read denied` where `role.assigned` had
+ * been. Gating first costs a request and writes nothing.
+ */
+export const mayReadDisplay = cache(() => gate("config.display.read"));
+
+export const conventions = cache(async (): Promise<DisplayConventions> => {
+  if (!(await mayReadDisplay()).allowed) return FALLBACK;
+  try {
+    return await readDisplayConventions();
+  } catch {
+    return FALLBACK;
+  }
+});
+
+/**
+ * The numeral system a page's figures follow.
+ *
+ * The thing nearly every call site wants, so it does not have to remember that money is the
+ * exception -- `MoneyValue` carries no `numbering` prop at all (D10) and the direct
+ * `formatMoney` calls that remain pass the literal, which a sweep enforces.
+ */
+export async function numerals(): Promise<Numbering> {
+  return (await conventions()).numerals;
 }
 
 /**

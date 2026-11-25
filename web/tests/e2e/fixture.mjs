@@ -881,16 +881,24 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
   // are a decision rather than a default -- the component test covers the defaulted side,
   // because a tenant with nothing declared is the one state this fixture cannot also be.
   //
-  // **`arab` on purpose**, so the browser renders the canvas's own preview -- `تنتهي عضويتك
-  // في ٢١ آب · المبلغ JOD 55.00` -- rather than the Latin-digit version of it, which is the
-  // only way the Arabic-Indic half of the rule is exercised in a browser at all.
+  // **`latn`, and this is a correction to the first version of this block.** It published
+  // `arab`, so the browser rendered the canvas's own preview -- and the comment here said that
+  // the hour a figure elsewhere followed the setting, every number assertion would fail at
+  // once and that would be "the signal rather than the accident". Running the question gave
+  // the number: 81 inline `formatInteger(..., "latn")` call sites on top of the fourteen
+  // page-level constants, across 24 files, and with them several hundred assertions that name
+  // a figure. At that scale the failures are not a signal, they are a rewrite of the suite into
+  // Arabic-Indic digits no maintainer could read -- so the tenant renders what every tenant
+  // without a declared preference renders, and the `arab` half is proven where it is decided:
+  // the canvas's exact sentence is asserted character for character in
+  // `tests/component/localization.test.ts`, and the browser mutation
+  // `localization-the-setting-reaches-a-page` flips `numerals()` to `arab` and is caught by
+  // the pages that would then change.
   //
-  // **And this is the thing to know before wiring the seventeen `latn` call sites.** Nothing
-  // but `/localization` reads this value today. The hour a figure anywhere else follows it,
-  // every count on every page in this fixture becomes Arabic-Indic and the assertions that
-  // name a number will fail -- correctly, and all at once. That is the signal rather than the
-  // accident: it says which assertions depend on the numeral system. Setting this to `latn`
-  // to keep them green would be hiding the question.
+  // **Declared rather than left to default**, which is the sharper state of the two: `latn`
+  // chosen on purpose is the same value as the fallback and a different fact, so the screen's
+  // "nobody has set this" branch is absent here and the defaulted side is covered by the
+  // component test.
   await call("/config/definitions", {
     method: "POST", ...as(token),
     body: { config_key: "localization.numerals", value_type: "string",
@@ -906,7 +914,7 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
   });
   await call("/config/values", {
     method: "POST", ...as(token),
-    body: { config_key: "localization.numerals", value: "arab", scope_type: "tenant",
+    body: { config_key: "localization.numerals", value: "latn", scope_type: "tenant",
             published_by: ownerIdentityId, correlation_id: cid() },
   });
   await call("/config/values", {

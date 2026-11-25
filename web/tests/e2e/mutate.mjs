@@ -3054,27 +3054,36 @@ const MUTATIONS = [
     grep: "is Arabic wherever Arabic is offered",
     runner: "vitest",
   },
+  // **The preview's money/numerals split has no browser mutation, and the fixture is why.**
+  // Passing `conventions.numerals` where the page passes `money_numerals` is a no-op while
+  // the tenant publishes `latn`, because the two values are then equal -- so no browser
+  // assertion could see it, and an entry here would report a gap on every run. The property
+  // is proven where the two differ: `tests/component/localization.test.ts` builds the
+  // sentence at `arab` and asserts the date shapes while `JOD 55.00` does not. That is the
+  // cost of a `latn` fixture, taken deliberately -- see the note in `fixture.mjs`.
   {
-    id: "localization-money-keeps-its-own-numerals",
-    why: "the canvas's whole statement is that money does not follow the setting -- 'that is"
-      + " the form on your invoices and JoFotara submissions' -- so passing the tenant's"
-      + " numerals here renders `JOD ٥٥٫٠٠` under a panel saying it will not",
+    id: "localization-the-count-follows-the-setting",
+    why: "the figure above the chips obeys the chip that is filled, which is the only thing on"
+      + " this screen that shows the setting reaching a figure at all -- and passing a"
+      + " constant is deciding it per component, which 'never mixed and never decided per"
+      + " component' forbids",
     file: "src/app/localization/page.tsx",
-    from: "                                  conventions.money_numerals, previewLoc),",
-    to: "                                  conventions.numerals, previewLoc),",
-    grep: "renders the canvas's own preview sentence",
+    from: "                  { count: conventions.languages_offered.length }, conventions.numerals)}",
+    to: '                  { count: conventions.languages_offered.length }, "arab")}',
+    grep: "shapes its own count by the setting",
     runner: "playwright",
   },
   {
-    id: "localization-the-count-follows-the-setting",
-    why: "`٢ languages offered` reads oddly and is the rule: passing `latn` to make the"
-      + " English line look ordinary is deciding it per component, which is the one thing"
-      + " 'never mixed and never decided per component' forbids -- and it is the only figure"
-      + " on the screen that shows the setting reaching anything",
-    file: "src/app/localization/page.tsx",
-    from: "                  { count: conventions.languages_offered.length }, conventions.numerals)}",
-    to: '                  { count: conventions.languages_offered.length }, "latn")}',
-    grep: "shapes its own count by the setting",
+    id: "localization-the-setting-reaches-a-page",
+    why: "**ADR-0015's second half, in one mutation.** Every quantity in the product goes"
+      + " through this one reader, and the fixture publishes `latn` -- so flipping it turns"
+      + " the door board's own `1 Entry` into `١ Entry`. If nothing fails, the setting"
+      + " reaches nothing and the screen that displays it is a page about a value with no"
+      + " consumer, which is the shape this whole slice exists to close",
+    file: "src/lib/display.ts",
+    from: "  return (await conventions()).numerals;",
+    to: '  return "arab";',
+    grep: "lists the seeded zone with its risk class and its readers",
     runner: "playwright",
   },
   {

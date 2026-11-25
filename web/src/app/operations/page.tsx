@@ -26,6 +26,7 @@ import {
   type Subscription,
   type WorkerJobs,
 } from "@/lib/operations";
+import { numerals } from "@/lib/display";
 import { presentation } from "@/lib/preferences";
 import { utcStamp } from "@/lib/time";
 
@@ -58,6 +59,10 @@ import { utcStamp } from "@/lib/time";
  */
 export default async function OperationsPage() {
   const { locale } = await presentation();
+  // **The tenant's numerals** -- ADR-0015. Every quantity on this page follows
+  // `localization.numerals`; an identifier does not, and neither does money. One read for the
+  // whole render: `conventions()` is React's per-request memo and the layout starts it.
+  const numbering = await numerals();
   const text = (key: MessageKey) => t(locale, key);
 
   if (!(await currentSession())) redirect("/login");
@@ -89,12 +94,12 @@ export default async function OperationsPage() {
       <PageHeader title={text("ops.title")}
         figures={
           <>
-            {fill(locale, "ops.pendingCounted", { count: health?.pending_events ?? 0 })}
+            {fill(locale, "ops.pendingCounted", { count: health?.pending_events ?? 0 }, numbering)}
             {" \u00b7 "}
             {fill(locale, "ops.deliveriesCounted",
-              { count: health?.pending_deliveries ?? 0 })}
+              { count: health?.pending_deliveries ?? 0 }, numbering)}
             {" \u00b7 "}
-            {fill(locale, "ops.deadCounted", { count: health?.dead_letters ?? 0 })}
+            {fill(locale, "ops.deadCounted", { count: health?.dead_letters ?? 0 }, numbering)}
           </>
         }
        />
@@ -108,7 +113,7 @@ export default async function OperationsPage() {
                 <dt className="muted">{text("ops.pendingEvents")}</dt>
                 <dd style={{ margin: 0 }}>
                   <span className="data">
-                    {formatInteger(outbox.pending_events, "latn")}
+                    {formatInteger(outbox.pending_events, numbering)}
                   </span>
                   {outbox.oldest_pending_at ? (
                     <span className="muted">
@@ -123,12 +128,12 @@ export default async function OperationsPage() {
                 <dt className="muted">{text("ops.pendingDeliveries")}</dt>
                 <dd style={{ margin: 0 }}>
                   <span className="data">
-                    {formatInteger(outbox.pending_deliveries, "latn")}
+                    {formatInteger(outbox.pending_deliveries, numbering)}
                   </span>
                 </dd>
                 <dt className="muted">{text("ops.deadLetters")}</dt>
                 <dd style={{ margin: 0 }}>
-                  <span className="data">{formatInteger(outbox.dead_letters, "latn")}</span>
+                  <span className="data">{formatInteger(outbox.dead_letters, numbering)}</span>
                 </dd>
               </dl>
               {/* **Which kind of number this is.** Without these lines a backlog reads as an
@@ -199,7 +204,7 @@ export default async function OperationsPage() {
                       job.runs === 0 ? (
                         <span className="muted">{text("ops.noRuns")}</span>
                       ) : (
-                        <span className="data">{formatInteger(job.runs, "latn")}</span>
+                        <span className="data">{formatInteger(job.runs, numbering)}</span>
                       ),
                   },
                   {
@@ -207,7 +212,7 @@ export default async function OperationsPage() {
                     kind: "text",
                     priority: 1,
                     render: (job) => (
-                      <span className="data">{formatInteger(job.failed, "latn")}</span>
+                      <span className="data">{formatInteger(job.failed, numbering)}</span>
                     ),
                   },
                   {
@@ -216,7 +221,7 @@ export default async function OperationsPage() {
                     priority: 3,
                     render: (job) => (
                       <span className="data" dir="ltr">
-                        {formatInteger(job.every_seconds, "latn")}s
+                        {formatInteger(job.every_seconds, numbering)}s
                       </span>
                     ),
                   },
@@ -282,7 +287,7 @@ export default async function OperationsPage() {
                     kind: "text",
                     priority: 2,
                     render: (letter) => (
-                      <span className="data">{formatInteger(letter.attempts, "latn")}</span>
+                      <span className="data">{formatInteger(letter.attempts, numbering)}</span>
                     ),
                   },
                   {
@@ -350,7 +355,7 @@ export default async function OperationsPage() {
                       {row.metric_key} {row.comparison} {row.threshold}
                     </span>
                     {" · "}
-                    <span className="data">{formatInteger(row.window_hours, "latn")}</span>{" "}
+                    <span className="data">{formatInteger(row.window_hours, numbering)}</span>{" "}
                     {text("ops.hours")}
                     {" · "}
                     {text("ops.owner")}: {row.owner}

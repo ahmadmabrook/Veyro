@@ -7,7 +7,7 @@ import { PageHeader } from "@/components/ds/page-header";
 import { LeadCard, PipelineColumn } from "@/components/ds/pipeline-column";
 import { Withheld } from "@/components/withheld";
 import { ProseNote } from "@/components/prose";
-import { fill, t, type Locale, type MessageKey } from "@/i18n/locale";
+import { fill, t, type Locale, type MessageKey, type Numbering } from "@/i18n/locale";
 import { ApiError, currentSession, gateAll, gateMessage, gateVerdict } from "@/lib/api";
 import { readNames } from "@/lib/desk-reads";
 import { isWithheld, withheldRemedy } from "@/lib/people";
@@ -18,6 +18,7 @@ import {
   type Board, type LeadFilter, type LeadRow, type LeadView,
 } from "@/lib/leads";
 import { listLeads, readBoard } from "@/lib/leads-reads";
+import { numerals } from "@/lib/display";
 import { presentation } from "@/lib/preferences";
 
 import { LeadTable, type LeadDisplay } from "./lead-table";
@@ -53,6 +54,9 @@ export default async function LeadsPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { locale } = await presentation();
+  // **The tenant's numerals** -- ADR-0015. The column counts are quantities, so they follow
+  // `localization.numerals` like every other count in the product.
+  const numbering = await numerals();
   const text = (key: MessageKey) => t(locale, key);
   const params = await searchParams;
   const wantedView = typeof params.view === "string" ? params.view : undefined;
@@ -96,7 +100,7 @@ export default async function LeadsPage({
   if (!mayLeads.allowed) {
     const verdict = gateVerdict(mayLeads);
     return (
-      <Shell locale={locale} view={view} filter={filter} board={null} coldAfter={48} action={addLead}>
+      <Shell locale={locale} numbering={numbering} view={view} filter={filter} board={null} coldAfter={48} action={addLead}>
         <Banner severity={verdict === "gate_failed" ? "critical" : "info"}>
           {verdict === "denied" ? text("leads.refused") : text(gateMessage(mayLeads))}
         </Banner>
@@ -133,7 +137,7 @@ export default async function LeadsPage({
 
   if (failed) {
     return (
-      <Shell locale={locale} view={view} filter={filter} board={null} coldAfter={coldAfter} action={addLead}>
+      <Shell locale={locale} numbering={numbering} view={view} filter={filter} board={null} coldAfter={coldAfter} action={addLead}>
         <Banner severity="critical">{text("error.unexpected")}</Banner>
       </Shell>
     );
@@ -156,10 +160,10 @@ export default async function LeadsPage({
   const rows: LeadDisplay[] = leads.map((lead) => ({
     lead_id: lead.lead_id,
     name: nameOf(lead.person_id),
-    meta: metaLine(locale, lead),
+    meta: metaLine(locale, lead, numbering),
     source: lead.source ?? text("leads.noSource"),
     owner: lead.owner_person_id === null ? null : (nameOf(lead.owner_person_id) ?? ""),
-    age: sinceLabel(locale, lead.hours_since_contact),
+    age: sinceLabel(locale, lead.hours_since_contact, numbering),
     next: lead.next_action ?? text("leads.noNext"),
     // **The board's column, not the stored sales stage.** The two disagree for anybody
     // with a membership, and the table is the other view of the same list.
@@ -169,7 +173,7 @@ export default async function LeadsPage({
 
   if (board?.mine_is_zero_without_a_person_record !== undefined) {
     return (
-      <Shell locale={locale} view={view} filter={filter} board={board} coldAfter={coldAfter} action={addLead}>
+      <Shell locale={locale} numbering={numbering} view={view} filter={filter} board={board} coldAfter={coldAfter} action={addLead}>
         {/* **Two different facts and only one is about the work.** A reader whose sign-in is
             not linked to a person owns no leads, and so does a reader with an empty queue --
             the first is ordinary, because staff hold permissions and do not have to be
@@ -180,7 +184,7 @@ export default async function LeadsPage({
   }
 
   return (
-    <Shell locale={locale} view={view} filter={filter} board={board} coldAfter={coldAfter} action={addLead}>
+    <Shell locale={locale} numbering={numbering} view={view} filter={filter} board={board} coldAfter={coldAfter} action={addLead}>
       {rows.some((row) => row.name === null) ? (
         <p className="ds-note">
           {remedy === "step_up" ? (
@@ -212,7 +216,7 @@ export default async function LeadsPage({
           <LeadTable
             locale={locale}
             rows={rows}
-            countLabel={fill(locale, "leads.countLabel", { count: rows.length })}
+            countLabel={fill(locale, "leads.countLabel", { count: rows.length }, numbering)}
             nameWithheld={nameWithheld}
           />
           <ProseNote>{text("leads.ageCarriesColour")}</ProseNote>
@@ -224,6 +228,7 @@ export default async function LeadsPage({
           leads={leads}
           nameOf={nameOf}
           nameWithheld={nameWithheld}
+          numbering={numbering}
         />
       )}
       <ProseNote>{text("leads.nameIsElsewhere")}</ProseNote>
@@ -246,7 +251,7 @@ function wordFor(locale: Locale, key: MessageKey | null, raw: string): string {
 }
 
 function Board({
-  locale, board, leads, nameOf, nameWithheld,
+  locale, board, leads, nameOf, nameWithheld, numbering,
 }: {
   locale: Locale;
   board: Board | null;
@@ -255,6 +260,7 @@ function Board({
   // Which sentence a withheld name gets: the page decides it from the gate's answer, because
   // only the page knows whether a step-up would lift the mask for this reader.
   nameWithheld: MessageKey;
+  numbering: Numbering;
 }) {
   const text = (key: MessageKey) => t(locale, key);
   const counts = new Map((board?.columns ?? []).map((one) => [one.stage, one.count]));
@@ -281,12 +287,12 @@ function Board({
           <PipelineColumn
             key={stage}
             title={title}
-            count={columnCount(total)}
+            count={columnCount(total, numbering)}
             countLabel={fill(locale, "leads.columnLabel", {
               stage: title, count: total,
             })}
             {...(hidden > 0
-              ? { overflow: fill(locale, "leads.more", { count: hidden }) }
+              ? { overflow: fill(locale, "leads.more", { count: hidden }, numbering) }
               : note !== null && total === 0
                 ? { overflow: text(note) }
                 : {})}
@@ -300,7 +306,7 @@ function Board({
                     <Withheld locale={locale} reason={nameWithheld} />
                   )
                 }
-                meta={metaLine(locale, lead)}
+                meta={metaLine(locale, lead, numbering)}
                 {...(lead.going_cold ? { mark: text("leads.cold") } : {})}
               />
             ))}
@@ -312,9 +318,10 @@ function Board({
 }
 
 function Shell({
-  locale, view, filter, board, coldAfter, action, children,
+  locale, view, filter, board, coldAfter, action, children, numbering,
 }: {
   locale: Locale;
+  numbering: Numbering;
   view: LeadView;
   filter: LeadFilter;
   board: Board | null;
@@ -348,9 +355,9 @@ function Shell({
         title={text("leads.heading")}
         figures={board === null ? undefined : (
           <>
-            {fill(locale, "leads.openLeads", { count: board.open_leads })}
+            {fill(locale, "leads.openLeads", { count: board.open_leads }, numbering)}
             {" · "}
-            {fill(locale, "leads.goingCold", { count: board.going_cold })}
+            {fill(locale, "leads.goingCold", { count: board.going_cold }, numbering)}
           </>
         )}
         actions={action}

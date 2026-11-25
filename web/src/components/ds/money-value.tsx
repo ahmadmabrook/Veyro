@@ -1,5 +1,4 @@
 import { moneyParts as rawParts } from "@/i18n/conventions.mjs";
-import type { Numbering } from "@/i18n/locale";
 
 /**
  * MoneyValue — §39, "seven kinds, never a bare number".
@@ -31,6 +30,16 @@ import type { Numbering } from "@/i18n/locale";
  *
  * **The sign is explicit and never colour-only.** A refunded value carries `−` in the text,
  * which is what makes it readable in monochrome and to a colour-blind reader.
+ *
+ * **And there is no `numbering` prop, which is ADM-SET-07's rule made structural.** The canvas
+ * states it: "Money keeps Latin digits with its code -- JOD 41,280.00 -- because that is the
+ * form on your invoices and JoFotara submissions. Applied identically on screen, receipt and
+ * export." A member disputing a charge has to see the same string in both places, so money is
+ * the one figure that does *not* follow the tenant's numeral setting. This took a prop with a
+ * `latn` default until ADR-0015 D10, and every caller passed `latn` -- one of them had already
+ * narrowed its own type to the literal. A default a caller may override is a convention; an
+ * absent parameter is a control, and the rule now lives here rather than in fourteen call
+ * sites remembering it.
  */
 
 export type MoneyKind =
@@ -46,14 +55,12 @@ export function MoneyValue({
   kind,
   amountMinor,
   currency,
-  numbering = "latn",
   restrictedLabel,
 }: {
   kind: MoneyKind;
   /** Required for every kind but `restricted` and `notApplicable`, which carry no figure. */
   amountMinor?: number;
   currency?: string;
-  numbering?: Numbering;
   /** The word shown where a figure is withheld. Never blank, never zero. */
   restrictedLabel?: string;
 }) {
@@ -68,7 +75,7 @@ export function MoneyValue({
   if (amountMinor === undefined || currency === undefined) {
     throw new Error(`MoneyValue(${kind}) needs an amount and a currency`);
   }
-  const { code, sign, major, minor } = rawParts(amountMinor, currency, numbering);
+  const { code, sign, major, minor } = rawParts(amountMinor, currency, "latn");
   // A refund's sign is in the text. `−` (minus) rather than a hyphen: it is the character
   // that aligns with digits in a tabular face.
   const shown = kind === "refunded" && sign === "" ? "−" : sign.replace("-", "−");

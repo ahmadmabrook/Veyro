@@ -7,7 +7,7 @@ import { Banner } from "@/components/ds/banner";
 import { Button } from "@/components/ds/button";
 import { DataGrid } from "@/components/ds/data-grid";
 import { Field } from "@/components/ds/field";
-import { fill, t, type Locale, type MessageKey } from "@/i18n/locale";
+import { fill, t, type Locale, type MessageKey, type Numbering } from "@/i18n/locale";
 
 import { completeSelected } from "./actions";
 import { IDLE, type BulkState } from "./state";
@@ -54,11 +54,13 @@ export function TaskTable({
   rows,
   mayWrite,
   countLabel,
+  numbering,
 }: {
   locale: Locale;
   rows: TaskDisplay[];
   mayWrite: boolean;
   countLabel: string;
+  numbering: Numbering;
 }) {
   const [state, action, pending] = useActionState<BulkState, FormData>(
     completeSelected, IDLE);
@@ -147,7 +149,7 @@ export function TaskTable({
 
         {state.done > 0 && state.refused.length === 0 ? (
           <Banner severity="info">
-            {fill(locale, "tasks.bulkDone", { count: state.done })}
+            {fill(locale, "tasks.bulkDone", { count: state.done }, numbering)}
           </Banner>
         ) : null}
         {state.done > 0 && state.refused.length > 0 ? (

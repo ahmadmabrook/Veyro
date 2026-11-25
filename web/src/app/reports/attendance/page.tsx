@@ -14,6 +14,7 @@ import {
   gateVerdict,
 } from "@/lib/api";
 import { listLocations, type Location } from "@/lib/organization";
+import { numerals } from "@/lib/display";
 import { presentation } from "@/lib/preferences";
 import {
   barHeightPercent,
@@ -77,7 +78,12 @@ export default async function AttendanceReportPage({
   searchParams: Promise<{ site?: string; range?: string; zone?: string; weeks?: string }>;
 }) {
   const { locale } = await presentation();
-  const numbering = "latn" as const;
+  // **The tenant's numerals rather than a constant** -- ADR-0015. Every count, date and time
+  // on this page follows `localization.numerals`; money does not, and `MoneyValue` carries no
+  // `numbering` prop at all so that exception is the component's rule rather than this page's
+  // to remember. One read for the whole render: `conventions()` is React's per-request memo
+  // and the layout starts it, so this costs no round trip of its own.
+  const numbering = await numerals();
   const text = (key: MessageKey) => t(locale, key);
   const count = (value: number) => (
     <span className="data" dir="ltr">{formatInteger(value, numbering)}</span>
@@ -260,7 +266,7 @@ export default async function AttendanceReportPage({
                   </span>
                 ),
                 comparison: fill(locale, "attendanceReport.inTheBusiestHour",
-                                 { count: busiest.entries }),
+                                 { count: busiest.entries }, numbering),
               })}
         />
         <MetricCell
@@ -281,7 +287,7 @@ export default async function AttendanceReportPage({
         <MetricCell
           label={text("attendanceReport.daysCounted")}
           value={count(report.window.days_counted)}
-          comparison={fill(locale, "attendanceReport.overWeeks", { count: report.weeks })}
+          comparison={fill(locale, "attendanceReport.overWeeks", { count: report.weeks }, numbering)}
         />
       </MetricRow>
 
@@ -353,7 +359,7 @@ export default async function AttendanceReportPage({
                     {fill(locale, "attendanceReport.anotherPeak", {
                       hours: busiest.other_peak_hours.map(hourLabel).join(", "),
                       count: busiest.other_peak_hours.length,
-                    })}
+                    }, numbering)}
                   </Prose>
                 </>
               ) : null}

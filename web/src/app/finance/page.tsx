@@ -22,6 +22,7 @@ import {
 } from "@/lib/ledger";
 import { money } from "@/lib/membership";
 import { listLegalEntities, type LegalEntity } from "@/lib/organization";
+import { numerals } from "@/lib/display";
 import { presentation } from "@/lib/preferences";
 import { utcStamp } from "@/lib/time";
 
@@ -59,6 +60,10 @@ export default async function FinancePage({
   searchParams: Promise<{ entity?: string; currency?: string }>;
 }) {
   const { locale } = await presentation();
+  // **The tenant's numerals** -- ADR-0015. Every quantity on this page follows
+  // `localization.numerals`; an identifier does not, and neither does money. One read for the
+  // whole render: `conventions()` is React's per-request memo and the layout starts it.
+  const numbering = await numerals();
   const text = (key: MessageKey) => t(locale, key);
   const chosen = await searchParams;
 
@@ -150,11 +155,11 @@ export default async function FinancePage({
       locale={locale}
       figures={
         <>
-          {fill(locale, "finance.accountsCounted", { count: accounts.length })}
+          {fill(locale, "finance.accountsCounted", { count: accounts.length }, numbering)}
           {" \u00b7 "}
-          {fill(locale, "finance.periodsCounted", { count: periods.length })}
+          {fill(locale, "finance.periodsCounted", { count: periods.length }, numbering)}
           {" \u00b7 "}
-          {fill(locale, "finance.attentionCounted", { count: attention.length })}
+          {fill(locale, "finance.attentionCounted", { count: attention.length }, numbering)}
         </>
       }
     >
@@ -397,7 +402,7 @@ export default async function FinancePage({
                 priority: 2,
                 render: (item) => (
                   <>
-                    <span className="data">{formatInteger(item.age_days, "latn")}</span>{" "}
+                    <span className="data">{formatInteger(item.age_days, numbering)}</span>{" "}
                     {text("finance.days")}
                   </>
                 ),
