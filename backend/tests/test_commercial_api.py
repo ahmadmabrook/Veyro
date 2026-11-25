@@ -5337,6 +5337,44 @@ class SellablePlanTests(CommercialApiTestCase):
         self.assertEqual(plans[0]["billing_anchor"], "calendar")
         self.assertEqual(plans[0]["billing_period"], "monthly")
 
+    def test_the_product_name_is_here_because_the_variant_name_is_not_the_plans(self) -> None:
+        """Found by rendering ADM-MSH-09: six of eight rows read "Monthly".
+
+        A variant is a term length and a product is the thing a member buys, so a picker
+        carrying only `v.display_name` cannot tell one plan from another -- which is the one
+        defect that makes a picker useless, on both of this read's callers.
+        """
+        tenant_id = self.tenant()
+        self.membership(tenant_id)
+        listed = self.client.get("/memberships/plans", headers=self.headers(tenant_id))
+        self.assertEqual(listed.status_code, 200, listed.text)
+        plans = listed.json()["plans"]
+        self.assertTrue(plans)
+        # The helper names the product "Gold membership" and its variant "Monthly", which is
+        # the ordinary shape and the one the defect hid.
+        self.assertEqual(plans[0]["product_name"], "Gold membership")
+        self.assertEqual(plans[0]["display_name"], "Monthly")
+        self.assertEqual(plans[0]["product_text_locale"], "en")
+
+    def test_an_untranslated_product_gets_no_name_rather_than_an_english_one(self) -> None:
+        """`list_products`' own rule, which is why the join is a LEFT one with no fallback.
+
+        A name in a language nobody asked for is worse than none: the caller is told which
+        locale answered, so a surface can show `product_key` instead.
+        """
+        tenant_id = self.tenant()
+        self.membership(tenant_id)
+        listed = self.client.get(
+            "/memberships/plans", params={"locale": "ar"},
+            headers=self.headers(tenant_id))
+        self.assertEqual(listed.status_code, 200, listed.text)
+        plans = listed.json()["plans"]
+        self.assertTrue(plans)
+        self.assertIsNone(plans[0]["product_name"])
+        self.assertIsNone(plans[0]["product_text_locale"])
+        # The key is always there, which is what makes the absence usable.
+        self.assertTrue(plans[0]["product_key"])
+
     def test_the_listing_is_bounded(self) -> None:
         tenant_id = self.tenant()
         refused = self.client.get(

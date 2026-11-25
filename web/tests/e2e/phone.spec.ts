@@ -94,6 +94,11 @@ const surfaces: [string, string][] = [
   ["an invoice", `/finance/invoices/${creds.invoiceId}`],
   ["the finance board", "/finance"],
   ["the catalog board", "/catalog"],
+  // ADM-MSH-09's table is four columns with a figure and a count, and its sheet is a form
+  // reached by a query string -- which is exactly the kind of route a list of paths leaves
+  // out, as ADM-MSH-07's cancellation sheet was until somebody added it by hand.
+  ["the plans table", "/plans"],
+  ["the price sheet", `/plans?variant=${creds.clubVariantId}`],
   ["a product", `/catalog?product=${creds.productId}`],
   ["the reports index", "/reports"],
   // **MOD-026's three.** The task list is a six-column grid whose primary cell stacks a title

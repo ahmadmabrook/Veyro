@@ -2863,6 +2863,90 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
             billing_anchor: "calendar", correlation_id: cid() },
   });
 
+  // **ADM-MSH-09's two plans that cannot be re-priced**, which no fixture could reach before
+  // and which are the branches that matter most on that screen: one plan the till cannot sell
+  // at all, and one whose price in force sits in a book nobody activated -- where the screen
+  // refuses a write `create_price` would accept, because that function never reads the book's
+  // status, so the new version would be stored and resolved by no sale.
+  //
+  // **Both come from routes rather than from SQL**, which is what makes them real states
+  // rather than rows nothing can produce. `publish_product` needs "a price in a live book over
+  // a live window", and `supersede_price` always names a replacement -- there is no withdraw
+  // outright -- so the only way past the published check is a replacement that has not started
+  // yet. That is MOD-016's own documented gap: "a published product can stop being sellable
+  // with nothing changing its status", and nothing on the server notices.
+  const draftBook = await call("/catalog/price-books", {
+    method: "POST", ...as(token),
+    // Left in `draft` deliberately, and never activated. `cat_price_books.status` admits
+    // `draft`, `active` and `retired` and the only writer sets `active`, so `retired` is a
+    // declared value nothing in this build writes -- `draft` is the reachable half.
+    body: { price_book_key: `draft${Date.now().toString(36)}`, display_name: "Winter draft",
+            currency: "JOD", effective_from: "2026-01-01T00:00:00+00:00",
+            correlation_id: cid() },
+  });
+  for (const [key, name, intoDraft] of [
+    [`unsellable${Date.now().toString(36)}`, "Off-peak (unpriced)", false],
+    [`deadbook${Date.now().toString(36)}`, "Corporate (draft book)", true],
+  ]) {
+    const version = await call("/memberships/contract-versions", {
+      method: "POST", ...as(token),
+      body: { contract_key: key, body: `Terms: ${name}.`, minimum_term_months: 0,
+              notice_days: 30, cancellation_mode: "end_of_notice",
+              freeze_days_per_year: 30, correlation_id: cid() },
+    });
+    await call(`/memberships/contract-versions/${version.contract_version_id}/publish`, {
+      method: "POST", ...as(publisherToken), body: { correlation_id: cid() },
+    });
+    const product = await call("/catalog/products", {
+      method: "POST", ...as(token),
+      body: { product_key: `${key}p`, product_type: "membership",
+              texts: [{ locale: "en", display_name: name }],
+              variants: [{ variant_key: "monthly", display_name: "Monthly",
+                           term_days: 30 }],
+              correlation_id: cid() },
+    });
+    const variantId = product.variants[0].variant_id;
+    // The live price the publish check needs.
+    const live = await call("/catalog/prices", {
+      method: "POST", ...as(token),
+      body: { price_book_id: priceBook.price_book_id, variant_id: variantId,
+              amount_minor: 35000, effective_from: "2026-01-01T00:00:00+00:00",
+              correlation_id: cid() },
+    });
+    await call(`/catalog/products/${product.product_id}/publish`, {
+      method: "POST", ...as(token), body: { expected_version: 1, correlation_id: cid() },
+    });
+    if (intoDraft) {
+      // A price for the same variant in the book nobody activated. It is in window, so once
+      // the active book's row is withdrawn it is the only figure left -- and a sale resolves
+      // to none of them.
+      await call("/catalog/prices", {
+        method: "POST", ...as(token),
+        body: { price_book_id: draftBook.price_book_id, variant_id: variantId,
+                amount_minor: 30000, effective_from: "2026-01-01T00:00:00+00:00",
+                correlation_id: cid() },
+      });
+    }
+    // The replacement, dated far enough ahead that it has not started -- so the variant has
+    // no in-window price in any active book.
+    const later = await call("/catalog/prices", {
+      method: "POST", ...as(token),
+      body: { price_book_id: priceBook.price_book_id, variant_id: variantId,
+              amount_minor: 38000, effective_from: "2099-01-01T00:00:00+00:00",
+              correlation_id: cid() },
+    });
+    await call(`/catalog/prices/${live.price_id}/supersede`, {
+      method: "POST", ...as(token),
+      body: { replacement_price_id: later.price_id, correlation_id: cid() },
+    });
+    await call("/memberships/terms", {
+      method: "POST", ...as(token),
+      body: { product_id: product.product_id, contract_key: key,
+              membership_kind: "recurring", billing_period: "monthly",
+              correlation_id: cid() },
+    });
+  }
+
   const contactedLead = await leadFor("Omar Zaid");
   await call(`/crm/leads/${contactedLead.lead_id}/touchpoints`, {
     method: "POST", ...as(token),

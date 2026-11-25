@@ -312,6 +312,7 @@ corresponds to them. The others map loosely:
 | `/people/{id}?tab=membership&cancel=1` | ADM-MSH-07 Membership · cancel | **built from the canvas, and building it found that the design and the implementation disagreed about a money figure** — the canvas buys out a commitment for a two-month fee and the lifecycle held the member to the term, which nothing had noticed because no screen rendered the fee. The commitment line is four sentences, the fee is shown in parts, and the freeze the canvas offers instead is offered only where both halves of its argument hold. Drawn as a parameter on the tab rather than a side sheet, which this app has none of. **All four commitment sentences render now, and seeding them is what found that one of them could not**: `held_to_term` was keyed on whether access ends before the term, which is false for exactly the member a contract holds to it, so a member nine months into a twelve-month commitment was told it had been served |
 | `/people/{id}?tab=notes` | ADM-MEM-09 Member · notes | **read built, write blocked** — `people.note.write` is financial class, because a note cannot be edited and will be read in a dispute; a redacted note is marked rather than dropped |
 | `/integrations` | ADM-SET-05 Integrations index | **built** — the install, its criticality and its written obligations; nothing syncs and the board says so |
+| `/plans` | ADM-MSH-09 Plans & pricing · owner only | **built from the canvas, and the count it is for needed a server read and the names needed another** — the blast radius is stated before the save, the typed confirmation is re-checked in the action, and the `deadBook` state refuses a write `create_price` would accept. Rendering it found that `sellable_plans` returned the *variant's* name, so six of eight rows read "Monthly" |
 | `/schedule` | ADM-SCH-01 Class schedule · week grid | **built from the canvas** |
 | `/rota` | ADM-SCH-04 Coach availability · week grid | **built from the canvas** — the schedule board's own missing third view, over a read that did not exist |
 | `/desk/*` (layout) | FD-08 Device strip | **built from the canvas** — always visible above the Front Desk surface, worst row first, and every degraded row names what to do instead; the canvas's own "type the name instead" is replaced because this product has no member search, and the receipt printer and card terminal it draws are not kinds of device this build registers |
@@ -2738,3 +2739,97 @@ as buttons.
 learn this: FD-06's `ds-desk-rows` family is a touch row with a name, a meta line and a trailing
 state, and both screens are Front Desk at Touch density. A second row style on one surface is
 two answers to "what does a row at this desk look like".
+
+## ADM-MSH-09 — plans and pricing, and the three defects rendering it found
+
+The canvas is "Settings-shaped, not a sheet. Plan catalogue with entitlements, price, and a
+change-history trail. Raising a price requires an effective date and states how many members are
+affected before saving", and its argument is one disclosure: *"2,140 members are on this plan.
+890 are inside a fixed-term commitment and keep 55.00 until it ends. The other 1,250 move at
+their next renewal, the earliest on 22 August"* — with the note that the count *"is computed
+**before** the change is saved, not reported after. A price rise is the most consequential
+action in Admin and the only one where the blast radius is stated in members rather than
+currency."*
+
+The count is `price_change_impact`, built in the slice before this one. What this screen added
+is everything around it, and three things in it are decisions:
+
+- **The confirmation compares an amount, not a string.** The canvas says `type "58.00" to
+  confirm`, and the point of a tier-3 typed confirmation is to make somebody read the figure —
+  not to reproduce its trailing zero. `58` and `58.00` are the same amount in the same currency,
+  and refusing the first would be a control about typography, which teaches people to copy and
+  paste. It is still the figure rather than a word, because typing the amount is what makes the
+  reader look at it.
+- **Seven states, each with its own sentence**, because a disabled button with no reason is the
+  control nobody can act on: resting, not an amount, the amount it already is, no date, a date
+  in the past, waiting for the typed figure, ready. The order is the point too — a figure that
+  will not parse is named before a missing date, so a reader fixing one thing at a time is told
+  about the field they are in.
+- **The write is re-checked in the action.** A client decides whether to enable a button and a
+  server action is the thing that writes, so a submit that arrived without the typed figure is
+  refused rather than trusted.
+
+**Three defects came out of rendering it, and none of the three was visible to any assertion.**
+
+- **Every plan read "Monthly".** The `PLAN` column rendered `display_name`, which
+  `sellable_plans` sets from `v.display_name` — the *variant's* name. A variant is a term length
+  and a product is the thing a member buys, so six of eight rows were called the same thing on
+  the screen whose job is choosing which plan to re-price. Both of that read's callers are
+  pickers, so it was the one defect that makes the read useless. The fix is on the server:
+  `product_name` and `product_text_locale`, joined for the locale asked for with **no
+  fallback**, which is `list_products`' own rule — a tenant that has not translated a product
+  gets no name rather than an English one, and the surface shows `product_key` instead.
+- **The `CHANGED` column printed `2026-01-01T00:00:00+00:00`.** `effective_from` is a
+  timestamptz and the canvas draws a date. The frame is UTC and the header says so once, because
+  a price book is tenant-wide and carries no club zone to convert into — the same reason the
+  member timeline is UTC, and the label goes on the column rather than on every cell because a
+  table of dates each followed by "UTC" is noise.
+- **The third state I had written could not happen, and the one that can was dropped by my own
+  type.** `repriceable` had a `noBook` branch keyed on `price_book_id === ""` — a NOT NULL uuid,
+  so `list_prices` cannot return it. Meanwhile that read has returned `price_book_status` and
+  `price_book_priority` from the start and the hand-written `PriceRow` declared neither, so the
+  second of the three conditions that decide a sale's price was thrown away. Both halves of this
+  build's recurring finding in one place: a declared state nothing writes, beside a server fact
+  a hand-written type lost. The real state is a live price in a book nobody activated, and it
+  matters because **`create_price` never reads the book's status** — so a new version written
+  into a draft book is accepted by the server and resolved by no sale. The screen refuses it and
+  names the book, because activating it is a different act.
+
+**And the selection those facts feed was letting the alphabet choose a figure.** `list_prices`
+orders by book key, so taking "the first in-window row per variant" meant a variant priced in
+two books — `REV` beside `REV-RETAIL` is MOD-016's own example of a legitimate chart — read as
+whichever key sorted first. `livePrices` borrows `choose_book`'s own comparison instead: an
+active book beats one nobody activated, then the higher priority, then the book key, which is
+unique. That function's docstring says why the last key is there — *"so there is never a tie the
+planner gets to break. A resolver whose answer depended on row order would fail the requirement
+in the way nobody notices until two tills disagree"* — and the first version of `livePrices`
+ended on `effective_from`, which ties for two books priced from the same date. The fixture has
+exactly that pair, so the tie was live rather than hypothetical.
+
+**One of `choose_book`'s three keys is missing and that is the gap the screen names.**
+Specificity is scored against a *sale* — its channel, its customer segment — and a plans table
+has no sale, so this read answers for a sale matching every book. A book scoped to one channel
+can win here and lose at the till, which `plans.gapPriority` says.
+
+**The save is reachable and this suite does not press it.** `catalog.price.write` is financial
+class, so an ordinary password session is held whatever it types — the page says which hold it
+is and offers the step-up, ADM-MSH-03's precedent. The spec asserts that every field-level
+refusal clears and that the remaining hold is the step-up, which is the honest end of the
+sequence; pressing it would spend one of the owner's five recovery codes per run, and this
+repository has four recorded tests whose green depended on how many times the suite had been
+run.
+
+**The two plans that cannot be re-priced are seeded, and neither could be reached before.** A
+published product always has a price, because `publish_product` requires one in a live book and
+`supersede_price` always names a replacement — there is no withdraw outright. So the only way
+past it is a replacement that has not started: that is MOD-016's own documented gap, *"a
+published product can stop being sellable with nothing changing its status"*, and nothing on the
+server notices. The fixture walks it through the routes rather than writing SQL, so both states
+are ones the product can actually produce.
+
+**What is still owed is the entitlements column and the history trail**, both named on the
+screen. Nothing maps a product to its entitlement policies — the policy table carries no product
+— so the column would be invented rather than read. The trail is in the data already, since
+every price version is kept and none can be edited; what is missing is a read, because
+`list_prices` returns the rows in force unless asked for superseded ones and nothing presents a
+plan's versions as a history.

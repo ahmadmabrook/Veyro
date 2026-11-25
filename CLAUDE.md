@@ -2293,6 +2293,17 @@ Things worth knowing before extending it:
   one.
 - **A published product with no live price cannot be published**, and the check is over active
   books and live windows rather than over any row at all.
+- **`create_price` never reads the book's status, and nothing else does either.** So a price
+  written into a `draft` or `retired` book is accepted, stored, returned by `list_prices` as in
+  its window, and resolved by no sale -- `choose_book` scores only active books. A price change
+  that reports success and charges nobody, available on the ordinary path with no adversary.
+  **Found by building ADM-MSH-09**, which refuses it on the surface and names the book, because
+  activating the book is a different act from re-pricing; the server-side refusal is MOD-016's
+  to add and is the honest place for it.
+- **`cat_price_books.status` admits `retired` and the only writer sets `active`.** A declared
+  value nothing in this build writes, in the module whose subject is pricing -- so a tenant can
+  open a book and activate it and has no way to withdraw one. `draft` is the reachable half of
+  the absence and is what the screen above refuses on.
 
 Known gaps, deliberate:
 
@@ -2945,6 +2956,15 @@ Known gaps, deliberate:
   disclosed on the read and on the screen rather than resolved, because resolving them means
   deciding what "owed" means across an invoice, its payments and a credit note -- which is a
   figure MOD-018 owns and this module would be inventing a second definition of.
+- **A plan has a name now, and until this slice it had the *variant's*.** `sellable_plans`
+  projected `v.display_name`, so a tenant selling six monthly memberships got six plans all
+  called "Monthly" -- on the two screens that exist to pick one. **Found by rendering
+  ADM-MSH-09's table**, which is the only way it could be: the field is present, non-null and
+  correctly named, so nothing structural can see that it answers a different question from the
+  one both callers ask. `product_name` and `product_text_locale` come from
+  `cat_product_texts` joined for the locale asked for, with **no fallback** -- `list_products`'
+  own rule, because a name in a language nobody asked for is worse than none and the key is
+  always there to show instead. Proven: 2 HTTP tests, one per direction.
 - **A price rise can be sized before it is saved, and that count did not exist.**
   ADM-MSH-09's whole argument is one disclosure -- "2,140 members are on this plan. 890 are
   inside a fixed-term commitment and keep 55.00 until it ends. The other 1,250 move at their
@@ -2969,7 +2989,7 @@ Known gaps, deliberate:
   membership base on "see what a sale would cost" is MOD-013's
   `GET /notifications/channels` finding. Proven: 10 HTTP tests and 6 mutations, all caught --
   one of which was ill-formed on its first run and named a constant that does not exist, so it
-  was "caught" by a `NameError`. **What is still owed is the screen and the price write.**
+  was "caught" by a `NameError`. **The screen is built** -- see "The web app" -- and what is still owed at its button is the charge, which is the payment provider.
 - **Nothing invoices the cancellation fee, and nothing invoices a plan change either.** Both
   are disclosed and recorded against the change, and no invoice is issued and no payment
   taken -- which is why ADM-MSH-07 is buildable while ADM-MSH-01, 02, 04 and 05 are not: their
@@ -5355,6 +5375,56 @@ account page, which was the only screen in this app that wrote anything for a lo
 has five of them: revoking another live session, revoking a device, trusting one, minting a
 batch of recovery codes and enrolling a passkey.
 
+**ADM-MSH-09 is `/plans`, and rendering it found three defects none of which any assertion
+could see.** The canvas is a table and a sheet whose argument is one disclosure -- "2,140
+members are on this plan. 890 are inside a fixed-term commitment and keep 55.00 until it ends.
+The other 1,250 move at their next renewal, the earliest on 22 August" -- with its own note
+that the figure "is computed *before* the change is saved, not reported after. A price rise is
+the most consequential action in Admin and the only one where the blast radius is stated in
+members rather than currency." The count is `price_change_impact`; the screen is everything
+around it. Three decisions and three defects are worth carrying:
+
+- **The typed confirmation compares an amount, not a string.** The canvas says `type "58.00" to
+  confirm`, and the point of a tier-3 control is to make somebody read the figure rather than
+  reproduce its trailing zero -- a control about typography teaches people to copy and paste.
+  Still the figure rather than a word, because typing the amount is what makes the reader look.
+  Re-checked in the server action, because a control only the browser enforces is not one.
+- **Every plan read "Monthly".** The `PLAN` column rendered the *variant's* name, which is all
+  `sellable_plans` returned -- six of eight rows identically labelled on the screen whose job is
+  choosing which plan to re-price. The fix is MOD-017's, above.
+- **The `CHANGED` column printed `2026-01-01T00:00:00+00:00`.** `effective_from` is a
+  timestamptz and the canvas draws a date; the frame is UTC and the header says so once, because
+  a price book is tenant-wide and carries no club zone to convert into. The label goes on the
+  column rather than on every cell, which is the one difference from `utcStamp`.
+- **The third state I wrote could not happen, and the one that can was dropped by my own
+  type.** `repriceable`'s `noBook` branch was keyed on `price_book_id === ""`, a NOT NULL uuid;
+  meanwhile `list_prices` has returned `price_book_status` and `price_book_priority` from the
+  start and the hand-written `PriceRow` declared neither. A declared state nothing writes beside
+  a server fact a hand-written type lost, each hiding the other. The real state is the dead book
+  above.
+- **And the price selection was letting the alphabet choose a figure.** `list_prices` orders by
+  book key, so "the first in-window row per variant" meant a variant priced in two books read as
+  whichever key sorted first. `livePrices` borrows `choose_book`'s own comparison -- active book,
+  then priority, then the key, which is unique -- and that function's docstring says why the
+  last key is there: "so there is never a tie the planner gets to break". The first version
+  ended on `effective_from`, which ties for two books priced from the same date, which is what
+  the fixture has.
+
+**One of `choose_book`'s three keys is missing and the screen names it**: specificity is scored
+against a *sale* and a plans table has no sale, so a book scoped to one channel can win here and
+lose at the till. **The save is reachable and the suite does not press it** -- `catalog.price
+.write` is financial class, so the page offers the step-up and the spec asserts that every
+field-level refusal clears and the remaining hold is that one. **Both plans that cannot be
+re-priced are seeded through the routes**, which took MOD-016's own documented gap to reach: a
+published product always has a price, so the only way past the publish check is a replacement
+that has not started yet. Proven: 13 mutations (all caught, two uncaught on the first run -- the
+priority case had both rules agreeing, and a date mutation pointed at a test that asserted no
+date), 32 component tests, 16 browser tests.
+
+**What is still owed is the entitlements column and the history trail**, both named on the
+screen: nothing maps a product to its entitlement policies, and every price version is kept but
+no read presents them as a history.
+
 **ADM-CRM-01's board and ADM-CRM-02's table are `/leads`, and they are the first screens here
 whose own components the design system did not have.** The canvas's COMPONENTS line names
 `PipelineColumn ×5 · LeadCard` and nothing else in the design specifies them, so the drawing is
@@ -6846,7 +6916,7 @@ MOD-018, MOD-019, MOD-021, MOD-022, MOD-026 and MOD-027's board, table, profile 
 MOD-020's roster on a session,
 ADM-SCH-03's create-a-class form at `/schedule/new`, ADM-SCH-04's availability grid at `/rota`, FD-07's shift open and close at `/desk/shift`,
 FD-02's member lookup at `/desk/lookup`, ADM-MSH-07's cancellation sheet at
-`/people/{id}?tab=membership&cancel=1`, ADM-MEM-10's walk-in form at
+`/people/{id}?tab=membership&cancel=1`, ADM-MSH-09's plans and pricing at `/plans`, ADM-MEM-10's walk-in form at
 `/members/new`, FD-05's walk-in trial at `/desk/trial`, FD-06's class check-in at
 `/desk/classes/{id}`, FD-03's denial resolution at `/desk/denials/{id}`, FD-07's shift at
 `/desk/shift` and FD-02's member lookup at `/desk/lookup`, with FD-08's device strip above all
@@ -6903,9 +6973,9 @@ Member, Coach, Console and POS have no implementation at all. **Closing this hon
 resolving the mapping before claiming a module is done**, not counting routes -- and the
 backlog is now the half of that mapping which exists: every unbuilt screen on those two
 surfaces names the module that owns it, checked against the catalogue, so the modules with
-Admin and Front Desk screens still owed are MOD-055 (3), MOD-058 (1) and MOD-059 (1), plus 23
-screens that are work inside modules already built. **MOD-026 came off that list by building
-its three**, which is the first time a module has: its backlog entries had been rewritten twice
+Admin and Front Desk screens still owed are MOD-055 (3), MOD-058 (1) and MOD-059 (1), plus 12
+screens that are work inside modules already built, and one that is a service worker.
+**MOD-026 came off that list by building its three**, which is the first time a module has: its backlog entries had been rewritten twice
 as the slices landed, because the check validates the module id and cannot read the sentence
 beside it. **MOD-027 came off it a different way** -- its first slice landed, so its eight
 screens moved from "waiting on a module" to "work inside a module that exists", which the
@@ -6994,8 +7064,8 @@ arguments is *built*, whatever route it is reached at. **Routes are not the unit
 work is**, and a shared route is the design's call rather than a reason to let a parent's
 section stand in for a screen somebody built.
 
-It reads **91 specified screens on Admin and Front desk: 48 in the inventory, 6 states of
-those, 12 blocked on something external, 25 in the backlog**, and it names the five surfaces
+It reads **91 specified screens on Admin and Front desk: 55 in the inventory, 6 states of
+those, 12 blocked on something external, 18 in the backlog**, and it names the five surfaces
 it does *not* cover with their counts. It checks both directions -- a reason for a screen the inventory now argues is a
 stale excuse and fails, which is the schedule board's "gap note that outlived its gap" caught
 structurally. My own hand audit had said 43 were missing; the truth was that most were built,

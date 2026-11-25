@@ -42,6 +42,145 @@ const web = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
  * does not collect those files and so reported no failure rather than no test.
  */
 const MUTATIONS = [
+  // ------------------------------------------------- ADM-MSH-09, plans and pricing
+  {
+    id: "plans-dead-book-keeps-its-figure",
+    why: "the amount was really written, so dropping it would hide the thing an owner has to"
+      + " act on -- what is untrue of it is that a sale resolves to it, which is the marker's"
+      + " job",
+    file: "src/app/plans/page.tsx",
+    from: "      {state.kind === \"deadBook\" ? (",
+    to: "      {false ? (",
+    grep: "says the book is not active",
+    runner: "playwright",
+  },
+  {
+    id: "plans-date-column-is-a-date",
+    why: "`effective_from` is a timestamptz, so rendering it raw put"
+      + " `2026-01-01T00:00:00+00:00` in a column the canvas draws as a date",
+    file: "src/app/plans/page.tsx",
+    from: "                      : utcDate(row.price.effective_from)}",
+    to: "                      : row.price.effective_from}",
+    grep: "renders the price date as a date",
+    runner: "playwright",
+  },
+  {
+    id: "plans-names-the-product-not-the-variant",
+    why: "a variant is a term length and a product is the thing a member buys -- rendering the"
+      + " variant alone put \"Monthly\" on six of eight rows, on the screen whose job is"
+      + " choosing which plan to re-price",
+    file: "src/lib/plans.ts",
+    from: "    name: named ? (plan.product_name as string) : plan.product_key,",
+    to: "    name: plan.display_name,",
+    grep: "is the product, qualified by the variant",
+    runner: "vitest",
+  },
+  {
+    id: "plans-untranslated-falls-back-to-the-key",
+    why: "`list_products`' own rule: a tenant that has not translated a product gets no name"
+      + " rather than an English one, and a blank is the same absence as a null",
+    file: "src/lib/plans.ts",
+    from: "  const named = plan.product_name !== null && plan.product_name.trim() !== \"\";",
+    to: "  const named = plan.product_name !== null;",
+    grep: "treats a blank name as untranslated",
+    runner: "vitest",
+  },
+  {
+    id: "plans-priority-not-the-alphabet",
+    why: "`list_prices` orders by book key, so taking the first in-window row would let the"
+      + " alphabet choose which figure a plan reads as -- MOD-018's `chart_for` finding, where"
+      + " an unordered lookup made the planner the author",
+    file: "src/lib/plans.ts",
+    from: "  if (one.price_book_priority !== held.price_book_priority) {",
+    to: "  if (false) {",
+    grep: "takes the higher priority, not the earlier book key",
+    runner: "vitest",
+  },
+  {
+    id: "plans-tie-breaks-on-the-book-key",
+    why: "`choose_book` ends on the key because it is unique, 'so there is never a tie the"
+      + " planner gets to break' -- two books at one priority priced from the same date is the"
+      + " ordinary result of adding a seasonal book beside a standing one, and the fixture has"
+      + " exactly that",
+    file: "src/lib/plans.ts",
+    from: "  if (one.price_book_key !== held.price_book_key) {",
+    to: "  if (false) {",
+    grep: "breaks a priority tie on the book key",
+    runner: "vitest",
+  },
+  {
+    id: "plans-active-book-beats-a-draft",
+    why: "a book nobody activated matches no sale whatever its priority, so a draft book with"
+      + " the highest priority would otherwise decide every figure on the screen",
+    file: "src/lib/plans.ts",
+    from: "  if (active(one) !== active(held)) return active(one) > active(held);",
+    to: "  if (false) return active(one) > active(held);",
+    grep: "prefers an active book over a draft one",
+    runner: "vitest",
+  },
+  {
+    id: "plans-dead-book-is-refused",
+    why: "`create_price` never reads the book's status, so a version written into a retired"
+      + " or draft book is accepted by the server and resolved by no sale -- a price change"
+      + " that reports success and charges nobody",
+    file: "src/lib/plans.ts",
+    from: "  if (plan.price.price_book_status !== LIVE_BOOK) {",
+    to: "  if (false) {",
+    grep: "refuses a live price whose book was retired",
+    runner: "vitest",
+  },
+  {
+    id: "plans-out-of-window-is-not-a-price",
+    why: "a superseded row is still a row, and treating it as the price in force would offer"
+      + " to supersede something already superseded",
+    file: "src/lib/plans.ts",
+    from: "  if (plan.price === null || !plan.price.in_window) return { kind: \"noPrice\" };",
+    to: "  if (plan.price === null) return { kind: \"noPrice\" };",
+    grep: "has no price when the only row is outside its window",
+    runner: "vitest",
+  },
+  {
+    id: "plans-confirmation-is-an-amount",
+    why: "comparing the typed string would refuse 58 for 58.00 -- a control about typography"
+      + " rather than about the number, which teaches people to copy and paste",
+    file: "src/lib/plans.ts",
+    from: "  return parsed !== null && parsed === amountMinor;",
+    to: "  return parsed !== null && typed.trim() === String(amountMinor);",
+    grep: "accepts the same amount written shorter",
+    runner: "vitest",
+  },
+  {
+    id: "plans-unchanged-is-refused",
+    why: "a new version charging the same still supersedes the row in force, so a reader who"
+      + " mistyped and got the old figure back would have moved the price's history for"
+      + " nothing",
+    file: "src/lib/plans.ts",
+    from: "  if (amountMinor === current.amount_minor) return { kind: \"unchanged\" };",
+    to: "  if (false) return { kind: \"unchanged\" };",
+    grep: "refuses the price it already is",
+    runner: "vitest",
+  },
+  {
+    id: "plans-past-date-is-refused",
+    why: "MOD-016's own stated gap: a stored resolution is immutable so a receipt stands, but"
+      + " a re-derivation of a historical order reads the price rows and would come back with"
+      + " a figure nobody charged",
+    file: "src/lib/plans.ts",
+    from: "  if (effectiveFrom < today) return { kind: \"dateInThePast\" };",
+    to: "  if (false) return { kind: \"dateInThePast\" };",
+    grep: "refuses a date in the past and accepts today",
+    runner: "vitest",
+  },
+  {
+    id: "plans-confirmation-gates-ready",
+    why: "the canvas's tier-3 control is `type 58.00 to confirm`; without it the write is"
+      + " enabled by a figure and a date, which is every other write in Admin",
+    file: "src/lib/plans.ts",
+    from: "  if (!confirms(typedConfirmation, { amountMinor, currency: current.currency })) {",
+    to: "  if (false) {",
+    grep: "waits for the typed figure",
+    runner: "vitest",
+  },
   // ---------------------------------------------------------------- FD-02, member lookup
   {
     id: "lookup-one-character-is-refused",

@@ -4320,7 +4320,7 @@ PLAN_TRIAL_FILTERS = ("exclude", "include", "only")
 
 
 def sellable_plans(
-    pool: Pool, tenant_id: str, *, trials: str = "exclude",
+    pool: Pool, tenant_id: str, *, trials: str = "exclude", locale: str = "en",
     limit: int = SELLABLE_PLANS,
 ) -> dict[str, Any]:
     """The membership plans that can be sold: ADM-CRM-06's plan pick, and ADM-MSH-01's.
@@ -4363,12 +4363,15 @@ def sellable_plans(
             """
             SELECT p.product_id, v.variant_id, v.display_name, p.product_key,
                    t.billing_period, t.billing_anchor, t.membership_kind, t.trial_days,
-                   t.membership_terms_id
+                   t.membership_terms_id, x.display_name
             FROM plt01.mem_membership_terms t
             JOIN plt01.cat_products p
                 ON p.tenant_id = t.tenant_id AND p.product_id = t.product_id
             JOIN plt01.cat_variants v
                 ON v.tenant_id = p.tenant_id AND v.product_id = p.product_id
+            LEFT JOIN plt01.cat_product_texts x
+                ON x.tenant_id = p.tenant_id AND x.product_id = p.product_id
+               AND x.locale = %s
             WHERE (NOT %s OR t.trial_days IS NULL)
               AND (NOT %s OR t.trial_days IS NOT NULL)
               AND t.status = 'active'
@@ -4377,12 +4380,23 @@ def sellable_plans(
             ORDER BY p.product_key, v.variant_key
             LIMIT %s
             """,
-            (trials == "exclude", trials == "only", limit),
+            (locale, trials == "exclude", trials == "only", limit),
         ).fetchall()
     return {
         "plans": [
             {"product_id": str(r[0]), "variant_id": str(r[1]),
              "display_name": str(r[2]), "product_key": str(r[3]),
+             # **The variant's name is not the plan's**, which ADM-MSH-09 found by rendering
+             # six rows that all read "Monthly". A variant is a term length and a product is
+             # the thing a member buys, so a picker carrying only `v.display_name` cannot tell
+             # one plan from another -- on the two screens whose whole job is choosing one.
+             #
+             # **Not fallen back to another locale**, which is `list_products`' own rule: a
+             # tenant that has not translated a product gets no name rather than an English
+             # one, and `product_text_locale` says which it is, so a surface can show the key
+             # rather than a name in a language nobody asked for.
+             "product_name": None if r[9] is None else str(r[9]),
+             "product_text_locale": locale if r[9] is not None else None,
              "billing_period": str(r[4]), "billing_anchor": str(r[5]),
              "membership_kind": str(r[6]),
              "trial_days": None if r[7] is None else int(r[7]),

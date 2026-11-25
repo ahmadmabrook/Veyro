@@ -3064,3 +3064,62 @@ has two and `_SUPERSESSION_STEP` carries a third for the `a.starts_on <= %s` tha
 at an agreement which has not begun. psycopg says "the query has 7 placeholders but 6 parameters
 were passed", which is clear — but only at runtime, so a read with no test fails in front of a
 caller. Count the helper's own `%s` as well as the predicate's.
+
+**A declared state the schema forbids, sitting beside a server fact a hand-written type
+dropped.** `repriceable`'s third branch was `price_book_id === ""` — a NOT NULL uuid, so
+`list_prices` cannot return it, which makes it this build's "a declared value nothing writes" in
+a surface. What that branch was *reaching for* was already on the wire: that read has returned
+`price_book_status` and `price_book_priority` since MOD-016 was built, and the hand-written
+`PriceRow` declared neither, so the second of the three conditions that decide a sale's price
+was thrown away. Both halves of the recurring finding in one place, and each hid the other: the
+branch looked like the state was handled, and the missing fields meant the state that can
+actually happen had nothing to detect it with.
+
+**The state that was reachable is the one that matters, which is how to tell them apart.**
+`create_price` never reads the book's status, so a price written into a draft or retired book is
+accepted by the server and resolved by no sale — a price change that reports success and charges
+nobody. So the question to ask of a surface branch is not "is this well-formed" but "which input
+produces it", and when the answer is "none", ask what the branch was *for*: the answer is
+usually a fact the read already carries.
+
+**A case catches a weakening only if the two rules disagree on it, and that applies to an
+ordering as much as to a CHECK.** `livePrices` compares an active book, then the priority, then
+the book key. The case for the priority comparison used a high-priority book whose key also
+sorted first, so disabling priority gave the same answer and the mutation came back uncaught —
+correctly. The case that bites puts the keys and the priorities in opposite directions. A sort
+has no constraint name to anchor a case to, so the only thing that finds this is the sweep.
+
+**And the ordering has to be the server's, not a plausible one.** `choose_book`'s docstring says
+why its last key is the book key: *"which is unique, so there is never a tie the planner gets to
+break. A resolver whose answer depended on row order would fail the requirement in the way
+nobody notices until two tills disagree."* The first version of `livePrices` ended on
+`effective_from`, which ties for two books priced from the same date — the ordinary result of
+adding a seasonal book beside a standing one, and what the e2e fixture happens to have. So the
+answer came back to iteration order in the one place this build has a written rule against it.
+Borrow the comparison from the function that owns it; a second ordering is a figure one screen
+shows and the till disagrees with.
+
+**An axe scan without the suite's tags runs a wider rule set and reports the app shell.** Every
+other spec here calls `.withTags(["wcag2a","wcag2aa","wcag21a","wcag21aa"])`; a bare `analyze()`
+adds axe's *best-practice* set, whose `region` rule ("all page content is contained by
+landmarks") fired 127 times on the chrome — the language switch, the theme buttons, the avatar —
+which sits above the landmarks by design. The finding reads exactly like a page-level
+accessibility defect and is a convention mismatch. Matching the convention is right here; saying
+in the spec *why* it was narrowed is what stops the next reader assuming it was narrowed to hide
+something.
+
+**A spec that asserts a stepped-up button becomes enabled is asserting the wrong end of the
+sequence.** ADM-MSH-09's save is held by two different kinds of thing: five field-level refusals
+a reader can clear, and `catalog.price.write` being financial class, which an AAL-1 session
+cannot clear at all. Filling every field correctly and expecting `toBeEnabled` fails against a
+page that is working. The honest assertion is that every field message is gone *and* the
+remaining hold is the step-up the page offers — which is also the only shape a spec can take
+without spending a recovery code per run.
+
+**"One `write_text` per substitution" paid again, and the failure was invisible.** A four-part
+script changing `main.py` asserted on its third substitution and wrote nothing, so the route's
+`locale` parameter never landed — and the next two scripts in the same message succeeded, so the
+output read as progress. `mypy` caught it (`Name "locale" is not defined`); nothing else would
+have, because the docstring describing the parameter *was* written by a later script. The rule is
+already in this file; the new part is that a partial failure can leave the **documentation** of a
+change in place and the change itself absent, which is the one combination a reader cannot spot.

@@ -97,6 +97,7 @@ export default async function RootLayout({
     const [
       organization, people, access, permissions, devices, operations, schedule, configuration,
       finance, catalog, privacy, messages, integrations, payments, tasks, leads, till,
+      memberships, prices,
     ] = await gateAll([
       "tenancy.organization.read",
       "people.person.read",
@@ -115,6 +116,12 @@ export default async function RootLayout({
       "tasks.task.read",
       "crm.lead.read",
       "finance.cash.session",
+      // **ADM-MSH-09 needs three and the rail asks for the two `catalog` does not cover.**
+      // `/plans` reads the picker (product *and* membership), the prices and the per-plan
+      // count, so an entry gated on the catalogue alone would be shown to a session the
+      // page then refuses.
+      "membership.record.read",
+      "catalog.price.read",
     ] as const);
     // **Grouped, iconed and counted, which is what the rail actually is.** The Command
     // Center canvas draws thirteen items under four headings -- OPERATE, PEOPLE, MONEY,
@@ -207,6 +214,13 @@ export default async function RootLayout({
       // needs it.
       { href: "/reports", label: "nav.reports", allowed: true,
         group: "nav.groupMoney", icon: "reports" },
+      // **ADM-MSH-09, beside the catalogue it prices.** The design calls it "Plans & pricing
+      // · OWNER ONLY", which is a permission rather than a rail decision: `catalog.price.write`
+      // is financial class, so a reader who can see the plans and not re-price them gets the
+      // table and the sheet's own sentence instead of a button.
+      { href: "/plans", label: "nav.plans",
+        allowed: catalog.allowed && memberships.allowed && prices.allowed,
+        group: "nav.groupMoney", icon: "payments" },
       { href: "/catalog", label: "nav.catalog", allowed: catalog.allowed,
         group: "nav.groupMoney", icon: "point-of-sale" },
 

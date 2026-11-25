@@ -63,6 +63,22 @@ export function utcStamp(instant: string): string {
 }
 
 /**
+ * The date part of an instant, in UTC.
+ *
+ * **The label goes on the column, not on every cell**, which is the one difference from
+ * `utcStamp` above: a table of dates with "UTC" after each is noise, and a header that says it
+ * once satisfies the same rule — a reader who has seen one local-time screen reads the next
+ * one as local too, so the frame has to be stated somewhere a reader sees before the figures.
+ *
+ * **There is nothing to convert into.** A price book is tenant-wide and carries no location,
+ * so unlike a class or a door event there is no club zone this instant belongs to — which is
+ * the same reason the timeline gutter is UTC.
+ */
+export function utcDate(instant: string): string {
+  return instant.slice(0, 10);
+}
+
+/**
  * The timeline gutter's two halves: the clock above, the day under it.
  *
  * ADM-MEM-01 draws a 66px column carrying `06:12` over `today`, and that split is what makes a

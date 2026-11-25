@@ -285,11 +285,6 @@ const BACKLOG = {
     + "from Veyro, and to claim a sweep was needed. What is owed is the screen, and the "
     + "canvas's 'what they lose' list needs the product-to-entitlement-policy mapping MOD-017 "
     + "does not have",
-  "ADM-MSH-09": "work: MOD-016 holds the plan and MOD-017 the agreements, and nothing counts "
-    + "members per plan or splits them by commitment -- which is the canvas's whole argument: "
-    + "'2,140 members are on this plan, 890 are inside a fixed-term commitment and keep "
-    + "55.00'. A published price is immutable by privilege, so re-pricing is a new version "
-    + "and the count is what tells somebody what that costs",
   "ADM-PAY-06": "work: MOD-017's `collections.py` decides from a fixed policy, and the canvas "
     + "configures it in sentence form -- the retry count, the hour it runs, the grace days, "
     + "the exception threshold. None of those is stored anywhere; MOD-005's typed "

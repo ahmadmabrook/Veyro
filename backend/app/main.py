@@ -7353,7 +7353,7 @@ def create_app(
     @app.get("/memberships/plans")
     def list_sellable_plans(
         tenant_id: TenantId, session: Session, trials: str = "exclude",
-        limit: int = commercial.SELLABLE_PLANS,
+        locale: str = "en", limit: int = commercial.SELLABLE_PLANS,
     ) -> dict[str, Any]:
         """Which membership plans can be sold: ADM-CRM-06's plan pick, and ADM-MSH-01's.
 
@@ -7370,10 +7370,20 @@ def create_app(
         different and equally real question; `only` is FD-05's, which trial a walk-in can be
         started on. One field rather than two flags, because two could contradict and the
         answer would be an empty list reading as "this gym sells nothing".
+
+        **The product's name is here as well as the variant's, and the first version carried
+        only the variant's.** ADM-MSH-09 found it by rendering the table: six of eight rows
+        read "Monthly", because a variant is a term length and a product is the thing a member
+        buys. Both of this read's callers are pickers, so a plan nothing can tell apart from
+        another is the one defect that makes the read useless. `locale` is joined with **no
+        fallback**, which is `list_products`' own rule -- a tenant that has not translated a
+        product gets no name rather than an English one -- and `product_text_locale` says
+        which, so a surface shows `product_key` rather than a name in a language nobody asked
+        for.
         """
         permit(session, "catalog.product.read")
         return commercial.sellable_plans(
-            tenant_pool, tenant_id, trials=trials, limit=limit)
+            tenant_pool, tenant_id, trials=trials, locale=locale, limit=limit)
 
     @app.get("/memberships")
     def list_memberships(
