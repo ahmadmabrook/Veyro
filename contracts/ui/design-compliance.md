@@ -310,6 +310,7 @@ corresponds to them. The others map loosely:
 | `/people/{id}?tab=billing` | ADM-MEM-06 Member · billing tab | **built** — the membership, the entitlements and the invoices composed from MOD-017 through three gates, each refusing separately |
 | `/people/{id}?tab=membership` (freeze) | ADM-MSH-03 Membership · freeze | **built from the canvas, and the first stepped-up write form in this app** — the allowance reads routine, the act offers the step-up with `next` back here; the override at the limit and the thirty-second undo are named as absent |
 | `/people/{id}?tab=membership&cancel=1` | ADM-MSH-07 Membership · cancel | **built from the canvas, and building it found that the design and the implementation disagreed about a money figure** — the canvas buys out a commitment for a two-month fee and the lifecycle held the member to the term, which nothing had noticed because no screen rendered the fee. The commitment line is four sentences, the fee is shown in parts, and the freeze the canvas offers instead is offered only where both halves of its argument hold. Drawn as a parameter on the tab rather than a side sheet, which this app has none of. **All four commitment sentences render now, and seeding them is what found that one of them could not**: `held_to_term` was keyed on whether access ends before the term, which is false for exactly the member a contract holds to it, so a member nine months into a twelve-month commitment was told it had been served |
+| `/people/{id}?tab=membership&plan=1` | ADM-MSH-06 Membership · downgrade | **built from the canvas, and the half it leads with needed a table that did not exist** — `mem_entitlement_policies` had a consumer and no producer, so a membership granted nothing and the command said in its own response that it could not know what the plan being left gave. ADR-0013 is the edge; the loss, the requantified credit and the expiry are all read before anything is written, which needed a variant-keyed quote because the sibling preview takes an agreement and drawing one up is a financial write |
 | `/people/{id}?tab=notes` | ADM-MEM-09 Member · notes | **read built, write blocked** — `people.note.write` is financial class, because a note cannot be edited and will be read in a dispute; a redacted note is marked rather than dropped |
 | `/integrations` | ADM-SET-05 Integrations index | **built** — the install, its criticality and its written obligations; nothing syncs and the board says so |
 | `/plans` | ADM-MSH-09 Plans & pricing · owner only | **built from the canvas, and the count it is for needed a server read and the names needed another** — the blast radius is stated before the save, the typed confirmation is re-checked in the action, and the `deadBook` state refuses a write `create_price` would accept. Rendering it found that `sellable_plans` returned the *variant's* name, so six of eight rows read "Monthly" |
@@ -2833,3 +2834,85 @@ screen. Nothing maps a product to its entitlement policies — the policy table 
 every price version is kept and none can be edited; what is missing is a read, because
 `list_prices` returns the rows in force unless asked for superseded ones and nothing presents a
 plan's versions as a history.
+
+## ADM-MSH-06 — the downgrade, and the model its canvas needed
+
+The canvas, verbatim:
+
+> **Dana · Club+ to Club** — She loses: Access to Abdoun and Sweifieh · 2 monthly PT sessions ·
+> her 4 unused PT credits expire on 1 Sep. Takes effect **1 September**, not today — she has
+> paid for August at the higher rate and keeps it. New monthly: **JOD 55.00**.
+> *[Use the credits first] [Downgrade from 1 Sep]*
+>
+> The loss is stated before the saving, and the credit expiry is the line that matters — a
+> member who discovers it afterwards has been quietly charged for something they never got.
+
+**Three facts, and the build had one of them.** The date and the figure were built in the slice
+that added `plan_change`. What a plan *grants* had no table at all: `mem_entitlement_policies`
+declared COM-01-R03's nine kinds of right, `mem_entitlement_grants` carried everything a plan
+would need to hand one out, and `grep -rn 'source_kind="membership"' backend/` returned three
+hits all of them in a test file. So activating a membership granted nothing, every Member 360's
+entitlements block was empty for every member, and `change_membership_plan` said in its own
+response that it could not know which rights the plan being left gave. ADR-0013 is the design
+record and `0033` is the edge.
+
+**The disclosure had to come before any write, and that needed a route.**
+`plan-change-preview` takes a successor agreement, and drawing one up is
+`membership.agreement.write` — financial class. So a tier-3 screen that wanted to show the loss
+first had to write a contract in order to say what it would cost, which is the order the
+canvas's own note forbids. `plan-change-quote` is keyed on the *variant* instead, quotes the
+plan through `catalog.quote_price` (which writes nothing and had no caller but ADM-CRM-06), and
+says on its own response that nothing was written.
+
+Five decisions carry the screen:
+
+- **No `kind` field anywhere on it.** An upgrade and a downgrade differ in *both* things that
+  matter — when it takes effect and what it charges — so a caller able to declare `downgrade`
+  on a dearer plan would get the next-renewal timing *and* no charge. This build has shipped
+  that shape in six modules; the direction is derived from the two figures.
+- **The typed confirmation is the plan's name, not the amount.** ADM-MSH-09 types a figure
+  because the act *is* the figure. Here the money is a consequence of the move, and on a
+  downgrade it is zero — so typing it would be typing "0.00" to confirm losing access to two
+  clubs. The canvas's own button names the change.
+- **A requantified right is neither lost nor kept.** Four monthly sessions becoming two is the
+  half a member argues about: calling it "kept" reads as no change and "lost" as losing all
+  four, so it is its own list.
+- **An empty loss panel is two different facts**, and the server's two flags tell them apart: a
+  tenant that has declared no plan rights at all, and two plans that genuinely grant the same
+  ones. Rendering both as "nothing changes" is exactly the quiet charge the note is about.
+- **A booking is protected and gets its own sentence.** `reserve` is a negative ledger
+  movement, so the balance is already net of what is held — a member with four credits who has
+  booked one loses three and keeps the booking. Telling them they lose four would be the wrong
+  number in the direction the note is about.
+
+**Four defects came out of building it, and three were found by rendering rather than by a
+test.**
+
+- **A 500 on the member's record**, because `fill` is strict in both directions and "Takes
+  effect today." carries no `{on}` while the other two sentences do. `timingMessage` returned
+  the key alone, which pushed the placeholder contract onto the call site; it returns the key
+  *and* its values now.
+- **The server's refusal printed as an enum.**
+  `an_upgrade_takes_effect_inside_the_current_period` went straight onto the page — this
+  build's fifth instance of "a vocabulary the backend stores is never a label", and the first
+  where the string is a refusal somebody has to act on.
+- **The sheet rendered nothing at all for a chosen plan**, because the route takes a required
+  `correlation_id` and the read did not send one. `api` sets one on a body it builds and on the
+  gate's own query and nowhere else, so the 422 reached the screen through a `catch` as an
+  absence: the picker rendered, the consequence block did not, and no message said why.
+- **`list_memberships` could not say which plan a membership was on.** The picker needs it to
+  leave out the plan the member already has — offering it would be a control the quote answers
+  409 to — and the listing walked the supersession chain for every other figure while dropping
+  the variant. It carries it now, from the chain's live end.
+
+**And the fixture needed two members, which is what the branches are about.** The main one
+starts ninety days back and nothing in this build rolls a billing period forward, so
+`lifecycle.plan_change` correctly refuses every change on them — the sheet renders its refusal
+banner and the consequence block had no fixture that could reach it. The second starts ten days
+ago at JOD 90.00, above every published plan, because the direction is derived from the figures
+and with the ordinary 45.00 every plan in the fixture is dearer: the canvas's own *downgrade*
+had no case. Both states have a test.
+
+**What is still owed is the charge.** The figure is disclosed and recorded against the change
+and no invoice is issued, which is the payment provider at the door — the same seam
+ADM-MSH-05's "Upgrade and charge 8.43" stops at.

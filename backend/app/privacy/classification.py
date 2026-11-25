@@ -813,6 +813,24 @@ SUBJECT_COLUMNS: tuple[Reachability, ...] = (
     Reachability("plt01", "mem_entitlement_grants", "revoked_by", "write_once",
                  "who revoked it; `status` in the service is what refuses a second "
                  "revocation, not the grant"),
+    # **0033's two actors, both refused by this sweep until declared** -- which is what
+    # MOD-009 built it for, and the third slice running where it has caught a new table's
+    # columns before a reader did.
+    #
+    # `created_by` is who declared what a plan grants, on an insert-only row: the table's
+    # only UPDATE grant is the three withdrawal columns, so the database refuses the write.
+    # `withdrawn_by` carries a grant *and* is final by trigger, which is the one shape this
+    # registry's own test requires the reason to name -- `sec_legal_holds.released_by`'s
+    # precedent.
+    Reachability("plt01", "mem_plan_entitlements", "created_by", "unreachable",
+                 "who declared what this plan grants; the only UPDATE grant on the table is "
+                 "the three withdrawal columns, so this one cannot be written twice"),
+    Reachability("plt01", "mem_plan_entitlements", "withdrawn_by", "unreachable",
+                 "who stopped the plan granting it. The column carries an UPDATE grant and "
+                 "is immutable anyway, by the "
+                 "`mem_plan_entitlements_withdrawal_is_final` trigger: a withdrawal that "
+                 "could be re-attributed rewrites who decided a member stopped being sold "
+                 "something, which is the question the row is kept to answer"),
     Reachability("plt01", "mem_entitlement_reservations", "person_id", "unreachable",
                  "who held the quantity. The reservation is what the ledger movements point "
                  "at, and the ledger is insert-only"),

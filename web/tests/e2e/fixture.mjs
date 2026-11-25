@@ -1337,6 +1337,43 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
     method: "POST", ...as(token), body: { expected_version: 1, correlation_id: cid() },
   });
 
+  // **ADM-MSH-06's two plans, and ADR-0013's edge between a plan and the rights it sells.**
+  // The canvas is "Dana · Club+ to Club -- She loses: Access to Abdoun and Sweifieh · 2
+  // monthly PT sessions · her 4 unused PT credits expire on 1 Sep", so the fixture needs a
+  // member on the richer plan and a leaner one to move to. Without both, the loss panel
+  // renders its "neither plan declares what it grants" branch and the three that matter --
+  // a lost access right, a requantified credit and an expiry -- have no row behind them.
+  //
+  // **Declared *before* anybody activates**, because the mapping is read at activation and
+  // never again (ADR-0013 D8): a fixture that declared afterwards could only ever see the
+  // empty case.
+  const ptPolicy = await call("/member-entitlements/policies", {
+    method: "POST", ...as(token),
+    body: { policy_key: `pt${Date.now().toString(36)}`, display_name: "PT sessions",
+            entitlement_type: "service_credit", is_counted: true,
+            correlation_id: cid() },
+  });
+  const clubPolicy = await call("/member-entitlements/policies", {
+    method: "POST", ...as(token),
+    // Uncounted: "access to Abdoun" is a yes/no over a window rather than a number, which is
+    // why the quantity column is nullable.
+    body: { policy_key: `clubs${Date.now().toString(36)}`, display_name: "Club access",
+            entitlement_type: "location_access", is_counted: false,
+            correlation_id: cid() },
+  });
+  // The richer plan: two PT sessions and access at this club by name.
+  await call("/memberships/plan-entitlements", {
+    method: "POST", ...as(token),
+    body: { variant_id: product.variants[0].variant_id,
+            policy_id: ptPolicy.policy_id, quantity: 2, correlation_id: cid() },
+  });
+  await call("/memberships/plan-entitlements", {
+    method: "POST", ...as(token),
+    body: { variant_id: product.variants[0].variant_id,
+            policy_id: clubPolicy.policy_id, location_id: location.location_id,
+            correlation_id: cid() },
+  });
+
   // **Two promotions, one live and one that ended while still reading as active.** Nothing
   // retires a promotion when its window closes -- the resolver reads the window -- so
   // `status: active` on a campaign that finished in February is the ordinary state of this
@@ -1401,6 +1438,49 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
             // two are different human-facing numbers owned by different modules with nothing
             // relating them -- a fixture that gave both the same value would hide the fact.
             membership_number: "GOLD-00042",
+            idempotency_key: randomUUID(), correlation_id: cid() },
+  });
+
+  // **ADM-MSH-06 needs a member *inside* their billing period**, and the member above is not
+  // one. `MEMBERSHIP_START` is ninety days back and nothing in this build rolls a period
+  // forward, so `lifecycle.plan_change` correctly refuses every change on them with
+  // `an_upgrade_takes_effect_inside_the_current_period` -- which means the sheet renders its
+  // refusal banner and the consequence block and confirmation had no fixture that could reach
+  // them. `PlanChangeTests` works around the same thing with a membership ten days old.
+  //
+  // So one more member on the same plan, started ten days ago, carrying the rights declared
+  // above -- the mapping is read at activation and never again, which is why the declaration
+  // order matters more than the member order.
+  const recentPerson = await call("/people", {
+    method: "POST", ...as(token),
+    body: { legal_name: "Dana Khalil", date_of_birth: "1992-05-09",
+            correlation_id: cid() },
+  });
+  const recentStart = new Date(Date.now() - 10 * 86_400_000)
+    .toISOString().slice(0, 10);
+  const recentAgreement = await call("/memberships/agreements", {
+    method: "POST", ...as(token),
+    body: { person_id: recentPerson.person_id, membership_terms_id: terms.membership_terms_id,
+            variant_id: product.variants[0].variant_id,
+            // **JOD 90.00, deliberately above every published plan.** ADM-MSH-06 is a
+            // *downgrade* -- "Club+ to Club" -- and `lifecycle.plan_change` derives the
+            // direction from the two figures, never from a field: the source is this
+            // agreement's own amount and the target is the plan's live price. With the
+            // ordinary 45.00 here every plan in the fixture is dearer, so the sheet could
+            // only ever render the upgrade branch and the canvas's own case had no fixture.
+            // A member on a legacy higher price is also the realistic shape.
+            amount_minor: 90000,
+            currency: "JOD", starts_on: recentStart, correlation_id: cid() },
+  });
+  await call(`/memberships/agreements/${recentAgreement.agreement_id}/sign`, {
+    method: "POST", ...as(token),
+    body: { signature_kind: "click_through",
+            signature_evidence_ref: `s3://signatures/${recentAgreement.agreement_id}`,
+            signed_by_person_id: recentPerson.person_id, correlation_id: cid() },
+  });
+  await call("/memberships", {
+    method: "POST", ...as(token),
+    body: { agreement_id: recentAgreement.agreement_id, membership_number: "GOLD-00043",
             idempotency_key: randomUUID(), correlation_id: cid() },
   });
 
@@ -2863,6 +2943,15 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
             billing_anchor: "calendar", correlation_id: cid() },
   });
 
+  // The leaner one: PT at one session and no club access, which is the canvas's own
+  // difference -- a requantified credit beside a lost access right.
+  await call("/memberships/plan-entitlements", {
+    method: "POST", ...as(token),
+    body: { variant_id: clubProduct.variants[0].variant_id,
+            policy_id: ptPolicy.policy_id, quantity: 1, correlation_id: cid() },
+  });
+
+
   // **ADM-MSH-09's two plans that cannot be re-priced**, which no fixture could reach before
   // and which are the branches that matter most on that screen: one plan the till cannot sell
   // at all, and one whose price in force sits in a book nobody activated -- where the screen
@@ -3100,6 +3189,9 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
     zoneId: zone.zone_id,
     pointId: point.point_id,
     personId: person.person_id,
+    // ADM-MSH-06: a member inside their billing period, so the plan-change sheet's
+    // consequence block and confirmation are reachable at all.
+    recentPersonId: recentPerson.person_id,
     // ADM-MSH-07's four commitment sentences, one member each, named so a spec asserts the
     // case it means rather than whichever membership sorts first. `person` above is the
     // fourth -- a rolling contract with no commitment at all.
@@ -3152,6 +3244,7 @@ if (invokedDirectly) {
       `VEYRO_E2E_ROTA_EXCEPTION_DAY=${fixture.rotaExceptionDay}`,
       `VEYRO_E2E_POINT_ID=${fixture.pointId}`,
       `VEYRO_E2E_PERSON_ID=${fixture.personId}`,
+      `VEYRO_E2E_RECENT_PERSON_ID=${fixture.recentPersonId}`,
       `VEYRO_E2E_BUY_OUT_PERSON_ID=${fixture.buyOutPersonId}`,
       `VEYRO_E2E_HELD_TO_TERM_PERSON_ID=${fixture.heldToTermPersonId}`,
       `VEYRO_E2E_SERVED_TERM_PERSON_ID=${fixture.servedTermPersonId}`,

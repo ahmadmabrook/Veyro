@@ -77,6 +77,11 @@ const surfaces: [string, string][] = [
   // row-wrapping defect in.
   ["a membership cancellation",
    `/people/${creds.buyOutPersonId}?tab=membership&cancel=1`],
+  // ADM-MSH-06's sheet is a picker and a consequence block, both reached by a query string --
+  // the kind of route a list of paths leaves out, as the cancellation sheet was until
+  // somebody added it by hand.
+  ["the plan-change sheet",
+   `/people/${creds.personId}?tab=membership&plan=1`],
   ["a member's billing", `/people/${creds.personId}?tab=billing`],
   // MOD-018's board is the widest table in the app -- four money columns over a chart of
   // thirteen accounts -- so it is the one most likely to push the page sideways.

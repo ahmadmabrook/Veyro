@@ -200,17 +200,24 @@ class CommercialApiTestCase(GatedApiTestCase):
         return str(created.json()["membership_terms_id"])
 
     def membership(self, tenant_id: str, *, contract: dict | None = None,
-                   starts_on: str = "", terms_extra: dict | None = None) -> dict:
+                   starts_on: str = "", terms_extra: dict | None = None,
+                   product_id: str = "", variant_id: str = "") -> dict:
         """A live membership, from contract through activation. Returns the activation body
         plus the ids needed to drive the lifecycle.
 
         `terms_extra` reaches `/memberships/terms`, which is how a test builds a **trial**:
         `trial_days` is the only thing that marks a product as one (ADR-0010 D7).
+
+        `product_id`/`variant_id` reuse a product the test has already built, which is how a
+        test declares what the plan grants (ADR-0013) *before* the member activates -- the
+        mapping is read at activation and never again, so a test that built its own product
+        here could only ever see the empty case.
         """
         owner = self.headers(tenant_id)
         starts_on = starts_on or MEMBERSHIP_START.isoformat()
         contract_key = self.contract(tenant_id, **(contract or {}))
-        product_id, variant_id = self.membership_product(tenant_id)
+        if not product_id or not variant_id:
+            product_id, variant_id = self.membership_product(tenant_id)
         terms_id = self.terms(tenant_id, contract_key, product_id, **(terms_extra or {}))
         person_id = self.person(tenant_id)
         agreement = self.client.post("/memberships/agreements", json={
@@ -238,11 +245,15 @@ class CommercialApiTestCase(GatedApiTestCase):
                 "trial_days": active.json().get("trial_days"),
                 "ends_on": active.json().get("ends_on"),
                 "current_period_start": active.json()["current_period_start"],
-                "current_period_end": active.json()["current_period_end"]}
+                "current_period_end": active.json()["current_period_end"],
+                # ADR-0013: what the plan actually granted. An empty list is a plan that
+                # declares no rights, which is every plan a test does not set up.
+                "granted": active.json().get("granted", [])}
 
     def supersede(self, tenant_id: str, base: dict, *, amount_minor: int,
                   contract: dict | None = None, starts_on: str = "",
-                  currency: str = "JOD", sign: bool = True) -> str:
+                  currency: str = "JOD", sign: bool = True,
+                  variant_id: str = "", terms_id: str = "") -> str:
         """A superseding agreement on the same membership, signed unless asked otherwise.
 
         **A different contract where the test asks for one**, because the point of an upgrade
@@ -252,16 +263,21 @@ class CommercialApiTestCase(GatedApiTestCase):
         `starts_on` defaults to the original's, which is what a chain test wants; a plan
         change needs it to be the day the change takes effect, and `change_membership_plan`
         refuses the pair when they disagree.
+
+        `variant_id`/`terms_id` point the successor at a **different plan**, which ADM-MSH-06
+        needs and nothing could ask for before: the default keeps the original's variant, so
+        an upgrade moved the amount and left the plan -- which proves the figure travelled and
+        says nothing about what the member gains or loses.
         """
         owner = self.headers(tenant_id)
-        terms_id = base["terms_id"]
+        terms_id = terms_id or base["terms_id"]
         if contract is not None:
             contract_key = self.contract(tenant_id, **contract)
             product_id, _ = self.membership_product(tenant_id)
             terms_id = self.terms(tenant_id, contract_key, product_id)
         made = self.client.post("/memberships/agreements", json={
             "person_id": base["person_id"], "membership_terms_id": terms_id,
-            "variant_id": base["variant_id"], "amount_minor": amount_minor,
+            "variant_id": variant_id or base["variant_id"], "amount_minor": amount_minor,
             "currency": currency,
             "starts_on": starts_on or MEMBERSHIP_START.isoformat(),
             "supersedes_agreement_id": base["agreement_id"], **self.correlation()},
@@ -5265,6 +5281,547 @@ class ConversionQuoteTests(CommercialApiTestCase):
         self.assertEqual(self.client.get(
             base, params={"variant_id": str(uuid.uuid4()), "currency": "JOD"},
             headers=owner).status_code, 404)
+
+
+class PlanMoveTests(CommercialApiTestCase):
+    """ADM-MSH-06's loss panel: what a member loses by moving between two plans.
+
+    The canvas, verbatim: "She loses: Access to Abdoun and Sweifieh · 2 monthly PT sessions ·
+    her 4 unused PT credits expire on 1 Sep. Takes effect 1 September, not today -- she has
+    paid for August at the higher rate and keeps it." And its own note on why the order
+    matters: "The loss is stated before the saving, and the credit expiry is the line that
+    matters -- a member who discovers it afterwards has been quietly charged for something
+    they never got."
+    """
+
+    def live(self, tenant_id: str, **kwargs) -> dict:
+        starts = (TODAY - timedelta(days=10)).isoformat()
+        return self.membership(tenant_id, starts_on=starts, **kwargs)
+
+    def policy(self, tenant_id: str, *, key: str, counted: bool = True,
+               kind: str = "class_credit") -> str:
+        made = self.client.post("/member-entitlements/policies", json={
+            "policy_key": key, "display_name": key.title(),
+            "entitlement_type": kind, "is_counted": counted, **self.correlation(),
+        }, headers=self.headers(tenant_id))
+        self.assertEqual(made.status_code, 201, made.text)
+        return str(made.json()["policy_id"])
+
+    def declare(self, tenant_id: str, variant_id: str, policy_id: str, **kwargs) -> None:
+        made = self.client.post("/memberships/plan-entitlements", json={
+            "variant_id": variant_id, "policy_id": policy_id, **self.correlation(),
+            **kwargs,
+        }, headers=self.headers(tenant_id))
+        self.assertEqual(made.status_code, 201, made.text)
+
+    def two_plans(self, tenant_id: str) -> tuple[dict, str, str, str, str]:
+        """Club+ and Club, with the canvas's own difference between them.
+
+        Club+ grants two PT sessions and access at two clubs; Club grants one PT session and
+        no club access. Returns `(live, to_variant, to_terms, pt_policy, access_policy)`.
+        """
+        rich_product, rich_variant = self.membership_product(tenant_id)
+        lean_product, lean_variant = self.membership_product(tenant_id)
+        pt = self.policy(tenant_id, key="pt.sessions")
+        access = self.policy(
+            tenant_id, key="clubs.named", counted=False, kind="location_access")
+        abdoun, brand_id = self.location(tenant_id)
+        sweifieh, _ = self.location(tenant_id, brand_id=brand_id)
+        self.declare(tenant_id, rich_variant, pt, quantity=2)
+        self.declare(tenant_id, rich_variant, access, location_id=abdoun)
+        self.declare(tenant_id, rich_variant, access, location_id=sweifieh)
+        # The leaner plan keeps PT at a smaller quantity, which is the `requantified` case --
+        # neither a loss nor a keep, and the half a member argues about.
+        self.declare(tenant_id, lean_variant, pt, quantity=1)
+        # **And club access at a *third* site**, which is what makes the scope part of the
+        # identity testable: keyed on the policy alone this reads as "you keep club access",
+        # and keyed on the scope it is two losses and one gain. Without a shared policy on
+        # both sides, the two rules agree and no case can tell them apart -- which is this
+        # repository's "a case catches a weakening only if the two rules disagree on it".
+        third, _ = self.location(tenant_id, brand_id=brand_id)
+        self.declare(tenant_id, lean_variant, access, location_id=third)
+
+        live = self.live(tenant_id, product_id=rich_product, variant_id=rich_variant)
+        lean_terms = self.terms(
+            tenant_id, self.contract(tenant_id), lean_product)
+        return live, lean_variant, lean_terms, pt, access
+
+    def test_the_preview_states_the_loss_before_the_saving(self) -> None:
+        tenant_id = self.tenant()
+        live, lean_variant, lean_terms, pt, access = self.two_plans(tenant_id)
+        next_start = date.fromisoformat(live["current_period_end"]) + timedelta(days=1)
+        target = self.supersede(
+            tenant_id, live, amount_minor=2000, starts_on=next_start.isoformat(),
+            sign=False, variant_id=lean_variant, terms_id=lean_terms)
+        quote = self.client.get(
+            f"/memberships/{live['membership_id']}/plan-change-preview"
+            f"?to_agreement_id={target}",
+            headers=self.headers(tenant_id))
+        self.assertEqual(quote.status_code, 200, quote.text)
+        move = quote.json()["entitlements"]
+
+        # Two club-access rows lost, each naming its own location -- which is the canvas's
+        # "Access to Abdoun and Sweifieh".
+        self.assertEqual(sorted(one["policy_key"] for one in move["lost"]),
+                         ["clubs.named", "clubs.named"])
+        self.assertTrue(all(one["location_id"] for one in move["lost"]))
+
+        # PT is requantified rather than lost or kept: two becomes one.
+        self.assertEqual(len(move["requantified"]), 1)
+        self.assertEqual(move["requantified"][0]["policy_key"], "pt.sessions")
+        self.assertEqual(move["requantified"][0]["from_quantity"], 2)
+        self.assertEqual(move["requantified"][0]["to_quantity"], 1)
+        self.assertEqual(move["kept"], [])
+        # The third site is a gain, not a keep: the same policy at a scope the member did not
+        # have.
+        self.assertEqual([one["policy_key"] for one in move["gained"]], ["clubs.named"])
+        self.assertTrue(move["the_leaving_plan_declares_rights"])
+        self.assertTrue(move["the_joining_plan_declares_rights"])
+
+    def test_the_preview_states_what_the_member_still_holds_and_what_is_written_off(
+            self) -> None:
+        """ADM-MSH-06's third line -- "her 4 unused PT credits expire on 1 Sep" -- which is a
+        balance over the ledger rather than the grant's own column."""
+        tenant_id = self.tenant()
+        live, lean_variant, lean_terms, pt, _ = self.two_plans(tenant_id)
+        next_start = date.fromisoformat(live["current_period_end"]) + timedelta(days=1)
+        target = self.supersede(
+            tenant_id, live, amount_minor=2000, starts_on=next_start.isoformat(),
+            sign=False, variant_id=lean_variant, terms_id=lean_terms)
+        quote = self.client.get(
+            f"/memberships/{live['membership_id']}/plan-change-preview"
+            f"?to_agreement_id={target}",
+            headers=self.headers(tenant_id))
+        holding = quote.json()["entitlements"]["still_holding_from_the_plan_being_left"]
+        counted = next(one for one in holding if one["policy_key"] == "pt.sessions")
+        self.assertEqual(counted["remaining"], 2)
+        self.assertEqual(counted["held"], 0)
+        self.assertEqual(counted["written_off_on_the_change"], 2)
+
+        # **One of the two booked**, which is ADR-0013 D7 and the case nothing exercised: a
+        # reservation is a class the member has been told they are in, so the write-off is of
+        # the unreserved remainder. Told they lose two when one is a booking, a member has
+        # been given the wrong number in the direction that matters.
+        reserved = self.client.post("/member-entitlements/reservations", json={
+            "grant_id": counted["grant_id"], "purpose_kind": "booking", "quantity": 1,
+            "idempotency_key": f"hold-{uuid.uuid4().hex[:8]}", **self.correlation(),
+        }, headers=self.headers(tenant_id))
+        self.assertEqual(reserved.status_code, 201, reserved.text)
+        again = self.client.get(
+            f"/memberships/{live['membership_id']}/plan-change-preview"
+            f"?to_agreement_id={target}",
+            headers=self.headers(tenant_id))
+        after = next(
+            one for one
+            in again.json()["entitlements"]["still_holding_from_the_plan_being_left"]
+            if one["policy_key"] == "pt.sessions")
+        # **The balance is already net of the hold**, which is what makes D7 true by
+        # construction: one credit booked leaves one spendable, and writing that one off
+        # cannot reach the booking. The first version of the service subtracted the hold a
+        # second time and wrote off nothing -- leaving a revoked grant with a balance on it.
+        self.assertEqual(after["remaining"], 1)
+        self.assertEqual(after["held"], 1)
+        self.assertEqual(after["written_off_on_the_change"], 1)
+
+    def test_an_empty_move_says_whether_either_plan_declares_anything(self) -> None:
+        """Two different facts, and only these fields tell them apart: a tenant that has
+        declared no plan entitlements at all, and two plans that genuinely grant the same
+        rights. An empty panel otherwise reads as "nothing changes", which is exactly the
+        quiet charge the canvas's note is about."""
+        tenant_id = self.tenant()
+        live = self.live(tenant_id)
+        next_start = date.fromisoformat(live["current_period_end"]) + timedelta(days=1)
+        target = self.supersede(
+            tenant_id, live, amount_minor=2000, starts_on=next_start.isoformat(),
+            sign=False)
+        quote = self.client.get(
+            f"/memberships/{live['membership_id']}/plan-change-preview"
+            f"?to_agreement_id={target}",
+            headers=self.headers(tenant_id))
+        move = quote.json()["entitlements"]
+        self.assertEqual(move["lost"], [])
+        self.assertFalse(move["the_leaving_plan_declares_rights"])
+        self.assertFalse(move["the_joining_plan_declares_rights"])
+
+    def test_the_change_moves_the_grants_when_it_is_effective_now(self) -> None:
+        """An upgrade takes effect today, so the rights move today -- which is the whole
+        reason `from_variant_id` exists: the old plan's grants are revoked and nothing else
+        is."""
+        tenant_id = self.tenant()
+        live, lean_variant, lean_terms, pt, _ = self.two_plans(tenant_id)
+        # A goodwill grant that must survive, because a plan change is not a cancellation.
+        goodwill = self.client.post("/member-entitlements/grants", json={
+            "person_id": live["person_id"], "policy_id": pt,
+            "source_kind": "goodwill", "valid_from": "2026-01-01T00:00:00+00:00",
+            "quantity": 5, "reason": "apology", **self.correlation(),
+        }, headers=self.headers(tenant_id))
+        self.assertEqual(goodwill.status_code, 201, goodwill.text)
+        # **And a membership grant written by hand**, which is the case that distinguishes
+        # `from_variant_id` from `membership_id`. A goodwill grant carries no membership at
+        # all, so `WHERE membership_id = %s` excludes it whatever the variant filter does --
+        # which means the goodwill row alone cannot see a mutation that widens the filter.
+        # This one names the same membership and no plan, and is exactly the grant an
+        # operator makes when somebody complains.
+        by_hand = self.client.post("/member-entitlements/grants", json={
+            "person_id": live["person_id"], "policy_id": pt,
+            "source_kind": "membership", "membership_id": live["membership_id"],
+            "valid_from": "2026-01-01T00:00:00+00:00",
+            "quantity": 3, "reason": "agreed at the desk", **self.correlation(),
+        }, headers=self.headers(tenant_id))
+        self.assertEqual(by_hand.status_code, 201, by_hand.text)
+
+        # **One credit booked**, without which the two write-off expressions agree and the
+        # mutation that subtracts the hold twice is invisible -- this repository's "a case
+        # catches a weakening only if the two rules disagree on it".
+        mine = self.client.get(
+            "/member-entitlements",
+            params={"person_id": live["person_id"], **self.correlation()},
+            headers=self.headers(tenant_id))
+        plan_grant = next(
+            one for one in mine.json()["grants"]
+            if one["is_counted"] and one["source_kind"] == "membership"
+            and one["granted_quantity"] == 2)
+        booked = self.client.post("/member-entitlements/reservations", json={
+            "grant_id": plan_grant["grant_id"], "purpose_kind": "booking", "quantity": 1,
+            "idempotency_key": f"hold-{uuid.uuid4().hex[:8]}", **self.correlation(),
+        }, headers=self.headers(tenant_id))
+        self.assertEqual(booked.status_code, 201, booked.text)
+
+        target = self.supersede(
+            tenant_id, live, amount_minor=9000, starts_on=TODAY.isoformat(),
+            sign=False, variant_id=lean_variant, terms_id=lean_terms)
+        done = self.client.post(
+            f"/memberships/{live['membership_id']}/plan-change", json={
+                "to_agreement_id": target, "reason": "moving to Club",
+                "signature_kind": "click_through",
+                "signature_evidence_ref": "s3://sig/plan-move",
+                "idempotency_key": f"mv-{uuid.uuid4().hex[:8]}", **self.correlation(),
+            }, headers=self.headers(tenant_id))
+        self.assertEqual(done.status_code, 200, done.text)
+        body = done.json()
+        self.assertFalse(body["entitlements_move_at_the_effective_date"])
+        # Three rights revoked from the leaving plan, one granted by the joining plan.
+        self.assertEqual(len(body["entitlements"]["revoked"]), 3)
+        # The joining plan grants PT at one session and club access at the third site, so
+        # both are granted -- and the two club rights the leaving plan gave are gone.
+        self.assertEqual(
+            sorted(one["policy_key"] for one in body["entitlements"]["granted"]),
+            ["clubs.named", "pt.sessions"])
+
+        # The goodwill grant is untouched, which `_revoke_grants` would have taken.
+        held = self.client.get(
+            "/member-entitlements",
+            params={"person_id": live["person_id"], **self.correlation()},
+            headers=self.headers(tenant_id))
+        # The goodwill grant plus the two the joining plan gave. Three, and the goodwill one
+        # is the point: `_revoke_grants` would have taken it and `_revoke_plan_grants` does
+        # not, which is the whole reason `from_variant_id` exists.
+        # The goodwill grant, the hand-written membership grant, and the two the joining
+        # plan gave. Four, and the first two are the point: `_revoke_grants` would have taken
+        # both and `_revoke_plan_grants` takes neither, which is the whole reason
+        # `from_variant_id` exists rather than filtering on the membership.
+        live_rows = [one for one in held.json()["grants"] if one["status"] == "active"]
+        self.assertEqual(len(live_rows), 4)
+        self.assertTrue(any(one["source_kind"] == "goodwill" for one in live_rows))
+
+        # **And every revoked grant's balance is zero by arithmetic**, not by the status
+        # column saying so -- `_revoke_grants`' own stated reason for writing the movement.
+        # The first version of `_revoke_plan_grants` subtracted the held quantity from a
+        # balance that is already net of it, so a grant with a booking against it was revoked
+        # with value still on the ledger.
+        for row in held.json()["grants"]:
+            if row["status"] == "revoked" and row["is_counted"]:
+                self.assertEqual(
+                    row["balance"], 0,
+                    f"revoked grant {row['grant_id']} still carries {row['balance']}")
+
+    def test_the_quote_discloses_before_anything_is_written(self) -> None:
+        """What lets ADM-MSH-06 state the loss before the saving.
+
+        The sibling preview takes a successor agreement, and drawing one up is a financial
+        write -- so a tier-3 screen had to write a contract in order to say what it would
+        cost. This one is keyed on the plan, and the figure is `quote_price`'s rather than the
+        caller's.
+        """
+        tenant_id = self.tenant()
+        live, lean_variant, _, _, _ = self.two_plans(tenant_id)
+        quoted = self.client.get(
+            f"/memberships/{live['membership_id']}/plan-change-quote",
+            params={"to_variant_id": lean_variant, **self.correlation()},
+            headers=self.headers(tenant_id))
+        self.assertEqual(quoted.status_code, 200, quoted.text)
+        body = quoted.json()
+        self.assertTrue(body["nothing_is_written_by_this_read"])
+        self.assertTrue(body["the_change_needs_an_agreement_drawn_up_and_signed"])
+        # The target's figure comes from the plan's live price, which the membership helper
+        # writes at 4500 -- so a move between two plans at the same price is the transfer
+        # `plan_change` refuses by name rather than guessing at.
+        self.assertEqual(body["from_amount_minor"], 4500)
+        self.assertEqual(body["to_amount_minor"], 4500)
+        self.assertFalse(body["may_change"])
+        self.assertEqual(
+            body["refused_because"],
+            "a_plan_change_at_the_same_price_is_a_transfer_which_has_no_writer")
+        # And the loss panel is there whatever the money says, because the two are different
+        # questions and the canvas puts the loss first.
+        self.assertEqual(
+            sorted(one["policy_key"] for one in body["entitlements"]["lost"]),
+            ["clubs.named", "clubs.named"])
+
+        # **Nothing was written**, which is the claim. Asked twice, the quote answers
+        # identically: a read with a side effect would move the second answer -- which is
+        # exactly how `resolve_price` differs from `quote_price`, and the distinction this
+        # route rests on.
+        again = self.client.get(
+            f"/memberships/{live['membership_id']}/plan-change-quote",
+            params={"to_variant_id": lean_variant, **self.correlation()},
+            headers=self.headers(tenant_id))
+        self.assertEqual(again.status_code, 200, again.text)
+        for field in ("from_amount_minor", "to_amount_minor", "may_change",
+                      "refused_because"):
+            self.assertEqual(again.json()[field], body[field], field)
+        self.assertEqual(
+            len(again.json()["entitlements"]["lost"]), len(body["entitlements"]["lost"]))
+
+    def test_the_quote_refuses_the_plan_the_member_is_already_on(self) -> None:
+        tenant_id = self.tenant()
+        live = self.live(tenant_id)
+        refused = self.client.get(
+            f"/memberships/{live['membership_id']}/plan-change-quote",
+            params={"to_variant_id": live["variant_id"], **self.correlation()},
+            headers=self.headers(tenant_id))
+        self.assertEqual(refused.status_code, 409, refused.text)
+        self.assertEqual(
+            refused.json()["error"], "this_membership_is_already_on_that_plan")
+
+    def test_a_future_dated_downgrade_leaves_the_rights_alone(self) -> None:
+        """The canvas's own sentence: "she has paid for August at the higher rate and keeps
+        it". A downgrade takes effect at the next renewal, so revoking today would take away
+        rights the member has paid for."""
+        tenant_id = self.tenant()
+        live, lean_variant, lean_terms, _, _ = self.two_plans(tenant_id)
+        next_start = date.fromisoformat(live["current_period_end"]) + timedelta(days=1)
+        target = self.supersede(
+            tenant_id, live, amount_minor=2000, starts_on=next_start.isoformat(),
+            sign=False, variant_id=lean_variant, terms_id=lean_terms)
+        done = self.client.post(
+            f"/memberships/{live['membership_id']}/plan-change", json={
+                "to_agreement_id": target, "reason": "downgrading",
+                "signature_kind": "click_through",
+                "signature_evidence_ref": "s3://sig/plan-move",
+                "idempotency_key": f"mv-{uuid.uuid4().hex[:8]}", **self.correlation(),
+            }, headers=self.headers(tenant_id))
+        self.assertEqual(done.status_code, 200, done.text)
+        body = done.json()
+        self.assertEqual(body["kind"], "downgrade")
+        self.assertTrue(body["entitlements_move_at_the_effective_date"])
+        self.assertEqual(body["entitlements"]["revoked"], [])
+        self.assertEqual(body["entitlements"]["granted"], [])
+
+
+class PlanEntitlementTests(CommercialApiTestCase):
+    """ADR-0013: the edge between a plan and the rights it sells.
+
+    **`mem_entitlement_policies` had a consumer and no producer until this slice.** The grants
+    table carried everything a plan needed to hand out and `source_kind = 'membership'` was
+    written by nothing but tests, so activating a membership granted nothing at all -- which
+    MOD-017's own gap list recorded in the sentence "activation grants nothing either" without
+    anybody noticing that it made the whole entitlement model unreachable from the product.
+    """
+
+    def policy(self, tenant_id: str, *, key: str = "", counted: bool = True,
+               kind: str = "class_credit") -> str:
+        created = self.client.post("/member-entitlements/policies", json={
+            "policy_key": key or f"p{uuid.uuid4().hex[:8]}", "display_name": "PT sessions",
+            "entitlement_type": kind, "is_counted": counted, **self.correlation(),
+        }, headers=self.headers(tenant_id))
+        self.assertEqual(created.status_code, 201, created.text)
+        return str(created.json()["policy_id"])
+
+    def declare(self, tenant_id: str, variant_id: str, policy_id: str, **kwargs):
+        return self.client.post("/memberships/plan-entitlements", json={
+            "variant_id": variant_id, "policy_id": policy_id, **self.correlation(),
+            **kwargs,
+        }, headers=self.headers(tenant_id))
+
+    # ------------------------------------------------------------------ declaring
+
+    def test_a_counted_right_is_declared_in_a_quantity_and_an_uncounted_one_is_not(
+            self) -> None:
+        """The refusal happens when a plan is declared, not when a member activates one.
+
+        `grant_entitlement` makes the same pair of refusals; what this adds is that they
+        happen earlier, because an activation refused for a plan's own misconfiguration is a
+        member standing at a desk who has paid.
+        """
+        tenant_id = self.tenant()
+        _, variant_id = self.membership_product(tenant_id)
+        counted = self.policy(tenant_id, counted=True)
+        uncounted = self.policy(tenant_id, counted=False, kind="location_access")
+
+        refused = self.declare(tenant_id, variant_id, counted)
+        self.assertEqual(refused.status_code, 422, refused.text)
+        self.assertEqual(
+            refused.json()["error"], "a_counted_entitlement_is_granted_in_a_quantity")
+
+        refused = self.declare(tenant_id, variant_id, uncounted, quantity=2)
+        self.assertEqual(refused.status_code, 422, refused.text)
+        self.assertEqual(
+            refused.json()["error"], "an_unlimited_entitlement_takes_no_quantity")
+
+        self.assertEqual(self.declare(
+            tenant_id, variant_id, counted, quantity=2).status_code, 201)
+        self.assertEqual(self.declare(
+            tenant_id, variant_id, uncounted).status_code, 201)
+
+    def test_one_plan_cannot_grant_one_right_twice_at_one_scope(self) -> None:
+        """Which would double a member's quantity on activation with nothing saying which row
+        was the mistake. A 409 rather than psycopg's 500, because "it already grants that" is
+        something the caller can act on and "try again" is not."""
+        tenant_id = self.tenant()
+        _, variant_id = self.membership_product(tenant_id)
+        policy_id = self.policy(tenant_id)
+        self.assertEqual(
+            self.declare(tenant_id, variant_id, policy_id, quantity=2).status_code, 201)
+        again = self.declare(tenant_id, variant_id, policy_id, quantity=4)
+        self.assertEqual(again.status_code, 409, again.text)
+        self.assertEqual(
+            again.json()["error"], "this_plan_already_grants_that_right_at_that_scope")
+
+    def test_the_scope_is_part_of_the_identity_so_two_clubs_are_two_rows(self) -> None:
+        """ADM-MSH-06's own distinction: "all-clubs access" is one row with no location and
+        "access to Abdoun and Sweifieh" is two, each naming one. So the same policy at two
+        scopes is two declarations rather than a duplicate."""
+        tenant_id = self.tenant()
+        _, variant_id = self.membership_product(tenant_id)
+        policy_id = self.policy(tenant_id, counted=False, kind="location_access")
+        # `location` returns `(location_id, brand_id)`, and the second club shares the first's
+        # brand -- which is Abdoun and Sweifieh: two sites of one gym, the canvas's own case.
+        first, brand_id = self.location(tenant_id)
+        second, _ = self.location(tenant_id, brand_id=brand_id)
+        self.assertEqual(self.declare(
+            tenant_id, variant_id, policy_id, location_id=first).status_code, 201)
+        self.assertEqual(self.declare(
+            tenant_id, variant_id, policy_id, location_id=second).status_code, 201)
+        # And the same right unscoped is a third row, because "all clubs" is not either of
+        # them -- which is what `same_right` keys the scope into the identity for.
+        self.assertEqual(
+            self.declare(tenant_id, variant_id, policy_id).status_code, 201)
+
+    def test_a_withdrawal_frees_the_slot_and_leaves_grants_alone(self) -> None:
+        """The remedy the withdrawal exists to provide, and the half a reader would assume is
+        false: a plan's declaration is not retroactive in either direction."""
+        tenant_id = self.tenant()
+        _, variant_id = self.membership_product(tenant_id)
+        policy_id = self.policy(tenant_id)
+        made = self.declare(tenant_id, variant_id, policy_id, quantity=2)
+        self.assertEqual(made.status_code, 201, made.text)
+        one = str(made.json()["plan_entitlement_id"])
+
+        gone = self.client.post(
+            f"/memberships/plan-entitlements/{one}/withdraw",
+            json={"reason": "declared against the wrong policy", **self.correlation()},
+            headers=self.headers(tenant_id))
+        self.assertEqual(gone.status_code, 200, gone.text)
+        self.assertTrue(gone.json()["grants_already_written_are_unchanged"])
+
+        # The slot is free, which a non-partial index would not allow.
+        self.assertEqual(self.declare(
+            tenant_id, variant_id, policy_id, quantity=4).status_code, 201)
+
+        # And a second withdrawal is a 409 rather than a silent success, because a withdrawal
+        # that reported ok twice would read as two different acts.
+        twice = self.client.post(
+            f"/memberships/plan-entitlements/{one}/withdraw",
+            json={"reason": "again", **self.correlation()},
+            headers=self.headers(tenant_id))
+        self.assertEqual(twice.status_code, 409, twice.text)
+
+    def test_a_withdrawn_right_is_not_granted_to_a_member_who_joins_afterwards(self) -> None:
+        """The filter's own case, and the remedy the withdrawal exists to provide: without it
+        a plan goes on granting a right somebody withdrew."""
+        tenant_id = self.tenant()
+        product_id, variant_id = self.membership_product(tenant_id)
+        policy_id = self.policy(tenant_id, key="pt.sessions")
+        made = self.declare(tenant_id, variant_id, policy_id, quantity=2)
+        self.assertEqual(made.status_code, 201, made.text)
+        gone = self.client.post(
+            f"/memberships/plan-entitlements/{made.json()['plan_entitlement_id']}/withdraw",
+            json={"reason": "PT is sold separately now", **self.correlation()},
+            headers=self.headers(tenant_id))
+        self.assertEqual(gone.status_code, 200, gone.text)
+
+        joined = self.membership(
+            tenant_id, product_id=product_id, variant_id=variant_id)
+        self.assertEqual(joined["granted"], [])
+
+    def test_the_listing_is_the_plans_declaration_and_says_so(self) -> None:
+        tenant_id = self.tenant()
+        _, variant_id = self.membership_product(tenant_id)
+        policy_id = self.policy(tenant_id)
+        self.declare(tenant_id, variant_id, policy_id, quantity=2)
+        listed = self.client.get(
+            "/memberships/plan-entitlements",
+            params={"variant_id": variant_id, **self.correlation()},
+            headers=self.headers(tenant_id))
+        self.assertEqual(listed.status_code, 200, listed.text)
+        body = listed.json()
+        self.assertEqual(body["count"], 1)
+        self.assertEqual(body["rights"][0]["quantity"], 2)
+        self.assertTrue(
+            body["this_is_what_the_plan_declares_not_what_any_member_holds"])
+
+    # ------------------------------------------------------------------ activation
+
+    def test_activation_grants_what_the_plan_declares(self) -> None:
+        """The hole this slice closes. Before it, a member with a live membership held no
+        entitlements unless somebody called the grant route by hand."""
+        tenant_id = self.tenant()
+        product_id, variant_id = self.membership_product(tenant_id)
+        counted = self.policy(tenant_id, key="pt.sessions", counted=True)
+        access = self.policy(
+            tenant_id, key="clubs.all", counted=False, kind="location_access")
+        self.declare(tenant_id, variant_id, counted, quantity=2)
+        self.declare(tenant_id, variant_id, access)
+
+        live = self.membership(tenant_id, product_id=product_id, variant_id=variant_id)
+        keys = sorted(one["policy_key"] for one in live["granted"])
+        self.assertEqual(keys, ["clubs.all", "pt.sessions"])
+
+        # And the counted one has its opening movement, so the balance is two rather than the
+        # zero a grant written without its ledger row would read as.
+        held = self.client.get(
+            "/member-entitlements",
+            params={"person_id": live["person_id"], **self.correlation()},
+            headers=self.headers(tenant_id))
+        self.assertEqual(held.status_code, 200, held.text)
+        counted_row = next(
+            one for one in held.json()["grants"] if one["is_counted"])
+        self.assertEqual(counted_row["balance"], 2)
+
+    def test_a_plan_declaring_nothing_grants_nothing_and_says_so(self) -> None:
+        """Which is every plan in a tenant that has not used this, so the empty list has to be
+        an ordinary answer rather than a refusal."""
+        tenant_id = self.tenant()
+        live = self.membership(tenant_id)
+        self.assertEqual(live["granted"], [])
+
+    def test_a_right_declared_after_a_member_joined_does_not_reach_them(self) -> None:
+        """ADR-0013 D8, and the half somebody will assume is false: a plan's declaration is
+        read at activation and never again, which is what makes MOD-016's immutable price
+        version safe applied to a right."""
+        tenant_id = self.tenant()
+        product_id, variant_id = self.membership_product(tenant_id)
+        live = self.membership(tenant_id, product_id=product_id, variant_id=variant_id)
+        self.assertEqual(live["granted"], [])
+
+        policy_id = self.policy(tenant_id)
+        self.declare(tenant_id, variant_id, policy_id, quantity=2)
+        held = self.client.get(
+            "/member-entitlements",
+            params={"person_id": live["person_id"], **self.correlation()},
+            headers=self.headers(tenant_id))
+        self.assertEqual(held.json()["grants"], [])
 
 
 class SellablePlanTests(CommercialApiTestCase):

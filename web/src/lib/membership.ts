@@ -46,6 +46,12 @@ export type MembershipRow = {
    */
   original_agreement_id: string;
   /**
+   * The plan this membership is on, from the chain's live end -- so after an upgrade it is
+   * the plan the member moved *to*. ADM-MSH-06's picker leaves this one out, because
+   * offering it would be a control `plan-change-quote` answers 409 to.
+   */
+  variant_id: string;
+  /**
    * From the agreement that governs today, which snapshots what was sold under it -- not
    * today's price, and not the superseded agreement's either.
    */

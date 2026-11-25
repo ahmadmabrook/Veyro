@@ -439,6 +439,18 @@ WRITE_ROUTES = [
      {"reason": "sweep", **_CORR}),
     ("get", f"/member-entitlements/grants/{_ID}"
             "?correlation_id=00000000-0000-4000-8000-000000000003", None),
+    # ADR-0013: what a plan grants. A *plan's* declaration rather than a member's record, so
+    # the read has its own permission -- a tenant's plan catalogue is not anybody's
+    # entitlement history.
+    ("get", f"/memberships/plan-entitlements?variant_id={_ID}"
+            "&correlation_id=00000000-0000-4000-8000-000000000003", None),
+    # The variant-keyed quote, which is what lets ADM-MSH-06 disclose before it commits.
+    ("get", f"/memberships/{_ID}/plan-change-quote?to_variant_id={_SUBJECT}"
+            "&correlation_id=00000000-0000-4000-8000-000000000003", None),
+    ("post", "/memberships/plan-entitlements",
+     {"variant_id": _ID, "policy_id": _SUBJECT, "quantity": 2, **_CORR}),
+    ("post", f"/memberships/plan-entitlements/{_ID}/withdraw",
+     {"reason": "sweep", **_CORR}),
     # MOD-017, COM-03: the money it generates.
     ("post", "/finance/accounts",
      {"payer_person_id": _ID, "account_number": "SWEEP-1", "currency": "JOD",

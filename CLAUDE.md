@@ -2914,14 +2914,15 @@ than two functions. A row carries both now: `stage` is what the route's filter t
 is a date comparison in the tenant's own frame. **And a member is no longer counted as a lead
 going cold** on the listing, which the board's own count already said.
 
-**Two things the design asks for and this does not do**, both named rather than implied. The
-canvas's button is "Upgrade and charge 8.43": the figure is disclosed and recorded against the
-change and **no invoice is issued and no payment taken**, which is the payment provider at the
-door. And "She gains all-clubs access and 2 PT sessions monthly" does not happen -- a grant is
-explicit everywhere in this module (activation grants nothing either) and **nothing maps a
-product to its entitlement policies**, so the command cannot know which grants the plan being
-left gave. That is a structural gap rather than a choice, and both reads say so in their own
-response.
+**One of the two things the design asked for is built now, and the other is the provider.**
+The canvas's button is "Upgrade and charge 8.43": the figure is disclosed and recorded against
+the change and **no invoice is issued and no payment taken**, which is the payment provider at
+the door. "She gains all-clubs access and 2 PT sessions monthly" **does happen** -- ADR-0013's
+mapping is the edge that was missing, so a plan change revokes what the leaving plan gave and
+grants what the joining plan declares, in the transaction that records the change. It moves
+only where the change is effective now: a downgrade takes effect at the next renewal and
+ADM-MSH-06's canvas is explicit that the member keeps what they paid for, so a future-dated
+change leaves the rights alone.
 
 Known gaps, deliberate:
 
@@ -3004,7 +3005,17 @@ Known gaps, deliberate:
   trial and discovered there was none. A renewal, a grace entry and an expiry are what the
   undriven sweeps above would write; a suspension, a reinstatement and a transfer are
   commands, so each is work rather than a blocker: `_record_change` takes the kind already and
-  `check_transition` knows the statuses. **`transfer` is the one with a decision in front of
+  `check_transition` knows the statuses.
+- **A plan change is disclosed before anything is written now, and that needed a route.**
+  `preview_plan_change` takes a successor agreement and drawing one up is
+  `membership.agreement.write` -- financial class -- so a tier-3 screen that wanted to show
+  the consequence first had to write a contract in order to say what it would cost, which is
+  the order ADM-MSH-06's own note forbids. `plan-change-quote` is keyed on the variant,
+  quotes the plan through `catalog.quote_price` and says on its own response that nothing was
+  written. The arithmetic is `lifecycle.plan_change`'s, shared with the agreement path,
+  because two prorations is two figures a screen and a till can disagree about.
+
+  **`transfer` is the one with a decision in front of
   it**, because `plan_change` refuses a same-price move by naming it as a transfer and
   COM-01-R04 does not say whether a transfer is between people, between clubs, or both.
 - **`superseded` and `ended` are declared agreement statuses nothing writes**, and that is
@@ -3037,6 +3048,33 @@ Known gaps, deliberate:
   of MOD-017's nineteen is among them, so a member's timeline shows no agreement, no freeze and
   no invoice. Adding one is a `Projection` with a summary somebody wrote, which is the review
   point MOD-014 names.
+- **A plan grants what it sells now, and until ADR-0013 it granted nothing.**
+  `mem_entitlement_policies` declared COM-01-R03's nine kinds of right and
+  `mem_entitlement_grants` carried everything a plan needs to hand one out --
+  `source_kind = 'membership'` included -- and **only tests ever wrote one**: three hits in
+  `test_commercial_api.py` and nothing in the product. So activating a membership granted
+  nothing, every Member 360's entitlements block was empty for every member, and
+  `change_membership_plan` said in its own response that it could not know what the plan being
+  left gave. **A model with a consumer and no producer reads as complete from every
+  direction** -- every table had a writer, every constraint was right, the balance read
+  worked, the reservation was atomic and under a lock -- which is why this is the inverse of
+  this build's most-repeated finding and the harder one to see. `0033` is the one edge that
+  was missing. Four decisions carry it: **per variant, not per product**, because "2 PT
+  sessions monthly" differs by term length and an annual variant legitimately grants
+  twenty-four; **the grant's own four scope columns copied through**, because "all-clubs
+  access" is a row with no location and "access to Abdoun and Sweifieh" is two rows each
+  naming one, so a `scope` enum would be a second vocabulary to interpret twice; **no period
+  column**, because `mem_membership_terms.billing_period` is where a quantity refreshes and
+  two places stating that is two places that can disagree about how many sessions a member
+  has; and **`from_variant_id` on the grant**, because a membership outlives a plan change so
+  "this came from this membership" cannot tell a downgrade which rights to withdraw.
+  Proven: isolation check 78b with 14 probes, 25 schema mutations and 12 Python mutations,
+  all caught; 16 HTTP tests.
+- **`mem_entitlement_policies` has no UPDATE grant at all, so `retired` is a declared status
+  nothing can write.** Found by the sweep: the status filter in `_plan_rights` guards a state
+  no runtime role can reach, so there is no writer for a probe to be. The clause stays because
+  it mirrors `grant_entitlement`'s own check and will be right the day a retire command
+  exists; the absence is the finding.
 - **Two human-facing member numbers, from two modules, with nothing relating them.**
   `mem_memberships.membership_number` is this module's and `ppl_member_profiles.member_number`
   is MOD-014's; both are the kind of number somebody reads out at a front desk, and a member
@@ -5375,6 +5413,41 @@ account page, which was the only screen in this app that wrote anything for a lo
 has five of them: revoking another live session, revoking a device, trusting one, minting a
 batch of recovery codes and enrolling a passkey.
 
+**ADM-MSH-06 is the plan-change sheet at `/people/{id}?tab=membership&plan=1`, and the half
+its canvas leads with needed a table that did not exist.** "She loses: Access to Abdoun and
+Sweifieh · 2 monthly PT sessions · her 4 unused PT credits expire on 1 Sep", with its own note
+that "the loss is stated before the saving ... a member who discovers it afterwards has been
+quietly charged for something they never got". ADR-0013 is the model; what belongs here is the
+surface's own half.
+
+- **No `kind` field anywhere on the screen.** An upgrade and a downgrade differ in both things
+  that matter -- when it takes effect and what it charges -- so a caller able to declare one
+  would get the next-renewal timing *and* no charge. Derived from the two figures.
+- **The typed confirmation is the plan's name, not the amount.** ADM-MSH-09 types a figure
+  because the act *is* the figure; here the money is a consequence, and on a downgrade it is
+  zero -- so typing it would be typing "0.00" to confirm losing access to two clubs.
+- **An empty loss panel is two different facts**, and the server's two flags tell them apart:
+  a tenant that has declared no plan rights, and two plans granting the same ones. Rendering
+  both as "nothing changes" is the quiet charge the note is about.
+- **A booking is protected and says so.** `reserve` is a negative ledger movement so the
+  balance is already net of a hold: four credits with one booked loses three.
+
+**Four defects, three of them found by rendering.** A 500 on the member's record, because
+`fill` is strict in both directions and "Takes effect today." has no `{on}` -- a function
+returning a message key without its values pushes the placeholder contract onto every call
+site. The server's refusal printed as an enum, which is this build's fifth "a vocabulary the
+backend stores is never a label". The sheet rendering **nothing** for a chosen plan, because
+the route takes a required `correlation_id` the read did not send, so a 422 reached the screen
+through a `catch` as an absence. And `list_memberships` could not say which plan a membership
+was on, which the picker needs to leave out the one the member already has.
+
+**The fixture needed two members and that is what the branches are about.** The main one starts
+ninety days back and nothing rolls a billing period forward, so every change on them is
+correctly refused and the consequence block had no fixture that could reach it; the second
+starts ten days ago at JOD 90.00, above every published plan, because with the ordinary 45.00
+every plan in the fixture is dearer and the canvas's own *downgrade* had no case. Proven: 11
+browser tests, 28 component tests, 10 browser mutations, all caught.
+
 **ADM-MSH-09 is `/plans`, and rendering it found three defects none of which any assertion
 could see.** The canvas is a table and a sheet whose argument is one disclosure -- "2,140
 members are on this plan. 890 are inside a fixed-term commitment and keep 55.00 until it ends.
@@ -6916,7 +6989,7 @@ MOD-018, MOD-019, MOD-021, MOD-022, MOD-026 and MOD-027's board, table, profile 
 MOD-020's roster on a session,
 ADM-SCH-03's create-a-class form at `/schedule/new`, ADM-SCH-04's availability grid at `/rota`, FD-07's shift open and close at `/desk/shift`,
 FD-02's member lookup at `/desk/lookup`, ADM-MSH-07's cancellation sheet at
-`/people/{id}?tab=membership&cancel=1`, ADM-MSH-09's plans and pricing at `/plans`, ADM-MEM-10's walk-in form at
+`/people/{id}?tab=membership&cancel=1`, ADM-MSH-09's plans and pricing at `/plans`, ADM-MSH-06's plan change at `/people/{id}?tab=membership&plan=1`, ADM-MEM-10's walk-in form at
 `/members/new`, FD-05's walk-in trial at `/desk/trial`, FD-06's class check-in at
 `/desk/classes/{id}`, FD-03's denial resolution at `/desk/denials/{id}`, FD-07's shift at
 `/desk/shift` and FD-02's member lookup at `/desk/lookup`, with FD-08's device strip above all
@@ -6973,7 +7046,7 @@ Member, Coach, Console and POS have no implementation at all. **Closing this hon
 resolving the mapping before claiming a module is done**, not counting routes -- and the
 backlog is now the half of that mapping which exists: every unbuilt screen on those two
 surfaces names the module that owns it, checked against the catalogue, so the modules with
-Admin and Front Desk screens still owed are MOD-055 (3), MOD-058 (1) and MOD-059 (1), plus 12
+Admin and Front Desk screens still owed are MOD-055 (3), MOD-058 (1) and MOD-059 (1), plus 11
 screens that are work inside modules already built, and one that is a service worker.
 **MOD-026 came off that list by building its three**, which is the first time a module has: its backlog entries had been rewritten twice
 as the slices landed, because the check validates the module id and cannot read the sentence
@@ -7064,8 +7137,8 @@ arguments is *built*, whatever route it is reached at. **Routes are not the unit
 work is**, and a shared route is the design's call rather than a reason to let a parent's
 section stand in for a screen somebody built.
 
-It reads **91 specified screens on Admin and Front desk: 55 in the inventory, 6 states of
-those, 12 blocked on something external, 18 in the backlog**, and it names the five surfaces
+It reads **91 specified screens on Admin and Front desk: 56 in the inventory, 6 states of
+those, 12 blocked on something external, 17 in the backlog**, and it names the five surfaces
 it does *not* cover with their counts. It checks both directions -- a reason for a screen the inventory now argues is a
 stale excuse and fails, which is the schedule board's "gap note that outlived its gap" caught
 structurally. My own hand audit had said 43 were missing; the truth was that most were built,

@@ -83,6 +83,8 @@ export type Fixture = {
   deskSessionId: string;
   /** The seeded member: a tag, a contact point, two notes and a health custom field. */
   personId: string;
+  /** ADM-MSH-06: a member inside their billing period. */
+  recentPersonId: string;
   /** ADM-MSH-07's four commitment sentences, one member each; `personId` is the fourth. */
   buyOutPersonId: string;
   heldToTermPersonId: string;
@@ -280,6 +282,7 @@ export function fixture(): Fixture {
     bookedSessionId: env.VEYRO_E2E_BOOKED_SESSION_ID!,
     deskSessionId: env.VEYRO_E2E_DESK_SESSION_ID!,
     personId: env.VEYRO_E2E_PERSON_ID!,
+    recentPersonId: env.VEYRO_E2E_RECENT_PERSON_ID!,
     buyOutPersonId: env.VEYRO_E2E_BUY_OUT_PERSON_ID!,
     heldToTermPersonId: env.VEYRO_E2E_HELD_TO_TERM_PERSON_ID!,
     servedTermPersonId: env.VEYRO_E2E_SERVED_TERM_PERSON_ID!,

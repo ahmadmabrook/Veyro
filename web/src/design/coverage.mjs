@@ -274,17 +274,6 @@ const BACKLOG = {
     + "get -- moving all eighteen to another session, or crediting each of them -- and "
     + "neither bulk remedy is a built operation in MOD-019 or MOD-020. MOD-013's dispatcher "
     + "is the seam the notification stops at, behind both",
-  "ADM-MSH-06": "work: MOD-017 prices and records a downgrade now and cannot draw the half "
-    + "of this canvas that matters -- the panel 'leads with what they lose (all-clubs access, "
-    + "PT sessions)', and nothing in that module maps a product to its entitlement policies, "
-    + "so it cannot say which entitlements the plan being left gave. "
-    + "The future date needs no job: the superseding agreement carries its own "
-    + "`starts_on` and the chain walk compares "
-    + "it against the day it is asked, so the plan moves when the date arrives. This reason "
-    + "used to name MOD-015's `change_plan`, which is the SaaS subscription a tenant buys "
-    + "from Veyro, and to claim a sweep was needed. What is owed is the screen, and the "
-    + "canvas's 'what they lose' list needs the product-to-entitlement-policy mapping MOD-017 "
-    + "does not have",
   "ADM-PAY-06": "work: MOD-017's `collections.py` decides from a fixed policy, and the canvas "
     + "configures it in sentence form -- the retry count, the hour it runs, the grace days, "
     + "the exception threshold. None of those is stored anywhere; MOD-005's typed "

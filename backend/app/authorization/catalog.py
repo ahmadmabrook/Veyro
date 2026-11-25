@@ -424,6 +424,18 @@ PERMISSIONS: dict[str, Permission] = dict([
        "configuration", "financial"),
     _p("membership.entitlement.draw", "Reserve, consume or release an entitlement",
        "data_access"),
+    # **Declaring what a *plan* grants is a third act, and financial for a reason neither of
+    # the two above covers.** `membership.entitlement.grant` hands a right to one named
+    # member; this decides what every member who joins a plan from now on receives, so a
+    # mistake is wholesale rather than retail -- adding an unlimited all-clubs right to the
+    # cheapest plan gives away the product. It is `configuration` because it is a plan's
+    # declaration rather than a member's record, and reading it needs no member either, which
+    # is why the read is its own permission rather than `membership.entitlement.read`: a
+    # tenant's plan catalogue is not anybody's entitlement history.
+    _p("membership.plan_entitlement.read", "See what a membership plan grants",
+       "configuration"),
+    _p("membership.plan_entitlement.write",
+       "Declare or withdraw what a membership plan grants", "configuration", "financial"),
     _p("finance.account.read", "See a member billing account, its invoices and its schedule",
        "data_access"),
     _p("finance.account.write", "Create or change a member billing account or schedule",

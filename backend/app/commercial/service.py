@@ -26,11 +26,12 @@ This module holds the transactions, and four things about it are load-bearing:
 from __future__ import annotations
 
 from collections.abc import Sequence
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
 
 from psycopg import Connection, errors
 
+from app.catalog import service as catalog
 from app.commercial import collections, entitlements, invoicing, lifecycle, reporting
 from app.db import Pool, tenant_scope
 from app.errors import Conflict, InvalidRequest, NotFound, ServiceError
@@ -938,7 +939,10 @@ def activate_membership(
         raise InvalidRequest("an_idempotency_key_cannot_be_blank")
     with tenant_scope(pool, tenant_id) as conn:
         agreement = conn.execute(
-            "SELECT person_id, status, starts_on, signed_at, membership_terms_id"
+            "SELECT person_id, status, starts_on, signed_at, membership_terms_id,"
+            # The variant, because ADR-0013's mapping is keyed on it and the activation is
+            # where a plan's rights become a member's grants.
+            " variant_id"
             " FROM plt01.mem_agreements WHERE agreement_id = %s FOR UPDATE",
             (agreement_id,),
         ).fetchone()
@@ -1056,8 +1060,26 @@ def activate_membership(
                 {"membership_id": membership_id, "agreement_id": agreement_id,
                  "person_id": str(agreement[0])},
                 correlation_id=correlation_id, actor_id=actor_id)
+        # **The activation grants what the plan declares** (ADR-0013 D5), in this
+        # transaction. Until `mem_plan_entitlements` existed this module granted nothing at
+        # all -- "activation grants nothing either" was in its own gap list -- so a member
+        # with a live membership had no entitlements unless somebody called the grant route by
+        # hand. The first period's window is the membership's own, because the renewal that
+        # would open the next one is a sweep this build does not drive.
+        granted = _grant_plan(
+            conn, tenant_id, membership_id=membership_id, person_id=str(agreement[0]),
+            variant_id=str(agreement[5]),
+            valid_from=datetime.combine(period_start, time.min, tzinfo=UTC),
+            valid_to=datetime.combine(period_end, time.max, tzinfo=UTC),
+            actor_id=actor_id, correlation_id=correlation_id)
     return {"membership_id": membership_id, "status": "active",
             "membership_number": membership_number.upper(),
+            # **What the plan gave, named rather than counted.** A count tells a caller
+            # nothing they can act on, and the one question after an activation is whether
+            # the member can do what they were sold -- which is MOD-005's "a rule id is not a
+            # reason". An empty list is a plan that declares no rights, which is every plan
+            # in a tenant that has not used this yet.
+            "granted": granted,
             "current_period_start": period_start.isoformat(),
             "current_period_end": period_end.isoformat(),
             # **The trial's two facts, said rather than left to be derived twice.** A caller
@@ -1684,10 +1706,11 @@ def cancel_membership(
 def _plan_change_facts(
     conn: Connection[Any], membership: dict[str, Any], to_agreement_id: str,
     *, today: date,
-) -> tuple[lifecycle.PlanChange, tuple[str, ...], str, str]:
+) -> tuple[lifecycle.PlanChange, tuple[str, ...], str, str, str, str, str]:
     """The decision behind both halves of a plan change, read once and shared.
 
-    Returns `(change, steps, currency, from_agreement_id)`. The preview and the command read
+    Returns `(change, steps, currency, from_agreement_id, from_variant_id, to_variant_id,
+    person_id)`. The preview and the command read
     this, because a disclosure that computed its own figures would be MOD-017's own
     cancellation-fee finding one act over: two expressions, identical, agreeing for as long as
     nobody edits one of them -- and the one that gets edited is the one the command compares an
@@ -1698,7 +1721,7 @@ def _plan_change_facts(
         raise Conflict("this_membership_is_already_on_that_agreement")
     row = conn.execute(
         "SELECT a.person_id, a.amount_minor, a.currency, a.starts_on, a.signed_at,"
-        " a.status, a.supersedes_agreement_id, t.billing_period"
+        " a.status, a.supersedes_agreement_id, t.billing_period, a.variant_id"
         " FROM plt01.mem_agreements a"
         " JOIN plt01.mem_membership_terms t"
         "   ON t.membership_terms_id = a.membership_terms_id"
@@ -1724,7 +1747,7 @@ def _plan_change_facts(
     if str(row[5]) != "draft" or row[4] is not None:
         raise Conflict("a_plan_change_signs_a_draft_agreement")
     from_row = conn.execute(
-        "SELECT a.amount_minor, a.currency, t.billing_period"
+        "SELECT a.amount_minor, a.currency, t.billing_period, a.variant_id"
         " FROM plt01.mem_agreements a"
         " JOIN plt01.mem_membership_terms t"
         "   ON t.membership_terms_id = a.membership_terms_id"
@@ -1762,7 +1785,10 @@ def _plan_change_facts(
             "this_agreement_starts_on_"
             f"{row[3].isoformat()}_and_the_change_takes_effect_on_"
             f"{change.effective_on.isoformat()}")
-    return change, steps, str(row[2]).upper(), from_agreement_id
+    # The two variants travel with the facts, because ADR-0013's mapping is keyed on them and
+    # a second lookup in the command would be a second answer to "which plan is this".
+    return (change, steps, str(row[2]).upper(), from_agreement_id,
+            str(from_row[3]), str(row[8]), str(row[0]))
 
 
 def preview_plan_change(
@@ -1785,7 +1811,8 @@ def preview_plan_change(
     today = at or _today()
     with tenant_scope(pool, tenant_id) as conn:
         membership = _membership(conn, membership_id)
-        change, steps, currency, from_agreement_id = _plan_change_facts(
+        (change, steps, currency, from_agreement_id,
+         from_variant_id, to_variant_id, person_id) = _plan_change_facts(
             conn, membership, to_agreement_id, today=today)
         may_change, refused_because = True, None
         try:
@@ -1793,6 +1820,12 @@ def preview_plan_change(
                 change.kind, membership["status"], membership["status"])
         except lifecycle.LifecycleError as e:
             may_change, refused_because = False, str(e)
+        # **The loss, read inside the same transaction as the money.** Two reads would be two
+        # answers to "what does this member have", and the figure a member disputes is the
+        # one on the same screen as the date.
+        move = _plan_move(
+            conn, membership_id=membership_id,
+            from_variant_id=from_variant_id, to_variant_id=to_variant_id)
     return {
         "membership_id": membership_id,
         "from_agreement_id": from_agreement_id,
@@ -1819,11 +1852,13 @@ def preview_plan_change(
             "and no payment is taken: taking a card is real money and the owner reserves "
             "it, so the figure is the half that must be correct whatever the provider "
             "turns out to be"),
-        "the_entitlements_do_not_move": (
-            "a grant is explicit in this module -- activation grants nothing either -- and "
-            "nothing maps a product to its entitlement policies, so this command cannot "
-            "know which grants the plan being left gave. Changing them is "
-            "member-entitlements/grants and member-entitlements/{id}/revoke"),
+        # **ADM-MSH-06's "She loses", which is the half of that canvas this module could not
+        # draw.** Its own instruction: "The loss is stated before the saving, and the credit
+        # expiry is the line that matters -- a member who discovers it afterwards has been
+        # quietly charged for something they never got." So the four lists come before the
+        # money, and `requantified` is its own list because four monthly PT sessions becoming
+        # two is neither keeping PT nor losing it.
+        "entitlements": move,
     }
 
 
@@ -1885,7 +1920,8 @@ def change_membership_plan(
                     "effective_on": prior["effective_on"].isoformat(),
                     "due_minor": prior["disclosed_fee_minor"],
                     "to_agreement_id": to_agreement_id, "repeated": True}
-        change, steps, currency, from_agreement_id = _plan_change_facts(
+        (change, steps, currency, from_agreement_id,
+         from_variant_id, to_variant_id, person_id) = _plan_change_facts(
             conn, membership, to_agreement_id, today=today)
         if expected_version is not None and membership["version"] != expected_version:
             raise Conflict("this_membership_changed_since_it_was_read")
@@ -1943,6 +1979,27 @@ def change_membership_plan(
                 "UPDATE plt01.mem_memberships SET version = version + 1"
                 " WHERE membership_id = %s",
                 (membership_id,))
+        # **The entitlements move with the plan, and only where the change is effective
+        # now** -- ADR-0013 D6, and the same reasoning as the `ends_on` branch above: a
+        # downgrade takes effect at the next renewal, so revoking today would take away
+        # rights the member has paid for and ADM-MSH-06's canvas explicitly says they keep
+        # ("she has paid for August at the higher rate and keeps it"). A future-dated change
+        # leaves them, which is the gap the status cache already has and the same undriven
+        # renewal would close. **It is `_revoke_plan_grants`, not `_revoke_grants`**: a plan
+        # change is not a cancellation, so a goodwill grant, a corporate one and a bundle
+        # fulfilment stay -- `from_variant_id` is the filter and is why the column exists.
+        moved: dict[str, Any] = {"revoked": [], "granted": []}
+        if change.effective_on <= today:
+            at = datetime.combine(change.effective_on, time.min, tzinfo=UTC)
+            moved["revoked"] = _revoke_plan_grants(
+                conn, tenant_id, membership_id=membership_id,
+                variant_id=str(from_variant_id), moment=at,
+                reason=f"the plan changed: {reason}",
+                actor_id=actor_id, correlation_id=correlation_id)
+            moved["granted"] = _grant_plan(
+                conn, tenant_id, membership_id=membership_id, person_id=str(person_id),
+                variant_id=str(to_variant_id), valid_from=at, valid_to=None,
+                actor_id=actor_id, correlation_id=correlation_id)
         # `membership.changed` is the TSD's own name for this event in COM-01's published
         # list, which is why it is declared rather than invented -- MOD-012's rule about
         # `integration.disconnected`, met from the other side.
@@ -1965,9 +2022,12 @@ def change_membership_plan(
             "reasoning": list(steps), "repeated": repeated,
             "nothing_is_charged": (
                 "the figure is recorded against the change and no invoice is issued"),
-            "the_entitlements_do_not_move": (
-                "nothing maps a product to its entitlement policies, so a grant is still "
-                "explicit")}
+            # **The entitlements move now** (ADR-0013), where the change is effective:
+            # what the leaving plan gave is revoked and what the joining plan declares is
+            # granted, in this transaction. A future-dated downgrade leaves them, which is
+            # the canvas's own "she has paid for August at the higher rate and keeps it".
+            "entitlements": moved,
+            "entitlements_move_at_the_effective_date": change.effective_on > today}
 
 
 #: The change kinds whose reason is health data, so the prose is masked rather than returned.
@@ -4455,7 +4515,7 @@ def list_memberships(
             # `_refuse_a_truncated_chain` is told which one `depth` is, so a column added in
             # the middle silently re-points four fields -- which is the kind of change a type
             # checker cannot see.
-            " m.agreement_id, l.depth, t.trial_days"
+            " m.agreement_id, l.depth, t.trial_days, a.variant_id"
             " FROM plt01.mem_memberships m"
             # **The agreement is the chain's live end, not `m.agreement_id`.** The obvious
             # join is on the root, which after an upgrade carries the amount, currency and
@@ -4490,7 +4550,14 @@ def list_memberships(
              # ADR-0010 D7's marker, so a list can tell a trial from a membership without
              # joining the terms itself.
              "trial_days": int(r[18]) if r[18] is not None else None,
-             "is_a_trial": r[18] is not None}
+             "is_a_trial": r[18] is not None,
+             # **The plan this member is on**, taken from the chain's live end like every
+             # other figure here -- so after an upgrade it is the plan they moved *to*. A
+             # listing that could not say which plan a membership is on is a listing of
+             # memberships with no plan, and ADM-MSH-06's picker needs it to leave out the
+             # one they already have: offering it would be a control the quote answers 409
+             # to, which is FD-06's rule.
+             "variant_id": str(r[19])}
             for r in rows],
         "count": len(rows), "limit": limit,
         "truncated": len(rows) == limit,
@@ -5917,4 +5984,512 @@ def payments_ledger(
         "no_name_is_returned":
             "Rows carry payer_person_id and nothing else about anybody. A tenant-wide money "
             "permission must not become a read path around people.person.read.",
+    }
+
+
+# ----------------------------------------------- ADR-0013: what a plan grants
+
+#: How many rights one plan may declare. A gym sells a handful per plan; the bound is here
+#: rather than only on the read, because an activation grants one row each.
+PLAN_RIGHTS = 40
+
+
+def define_plan_entitlement(
+    pool: Pool, tenant_id: str, *, variant_id: str, policy_id: str, actor_id: str,
+    correlation_id: str, quantity: int | None = None, brand_id: str | None = None,
+    location_id: str | None = None, usable_from_minute: int | None = None,
+    usable_to_minute: int | None = None,
+) -> dict[str, Any]:
+    """Declare what a plan grants. ADR-0013, and COM-01-R03's missing producer.
+
+    **`mem_entitlement_policies` had a consumer and no producer until this.** The grants table
+    carried everything a plan would need to hand out and `source_kind = 'membership'` was
+    written by nothing but tests, so activating a membership granted nothing and every Member
+    360's entitlements block was empty for every member.
+
+    **The quantity is checked against the policy here, not by a CHECK**, because `is_counted`
+    lives on the policy and the quantity on this row -- a constraint would have to read another
+    table. `entitlements.check_plan_right` is the pair of refusals and `grant_entitlement`
+    makes the same two for the same reason; what this adds is that they happen when somebody
+    declares what a plan sells rather than when a member activates one, because an activation
+    refused for a plan's own misconfiguration is a member standing at a desk who has paid.
+
+    **Not retroactive** (ADR-0013 D8). Adding a right changes what the *next* member gets and
+    changes nothing for members already on the plan: their grants were written at activation
+    and this mapping is not re-read. That is the same property that makes MOD-016's immutable
+    price version safe, and it is the opposite of what a reader might assume -- so the response
+    says so rather than leaving it to be discovered.
+    """
+    with tenant_scope(pool, tenant_id) as conn:
+        policy = conn.execute(
+            "SELECT is_counted, status, entitlement_type, policy_key"
+            " FROM plt01.mem_entitlement_policies WHERE policy_id = %s",
+            (policy_id,),
+        ).fetchone()
+        if policy is None:
+            raise NotFound("entitlement_policy_not_found")
+        if str(policy[1]) != "active":
+            raise Conflict("this_entitlement_policy_is_retired")
+        try:
+            entitlements.check_plan_right(
+                is_counted=bool(policy[0]), quantity=quantity)
+        except entitlements.EntitlementError as e:
+            raise InvalidRequest(str(e)) from None
+        held = conn.execute(
+            "SELECT count(*) FROM plt01.mem_plan_entitlements"
+            " WHERE variant_id = %s AND withdrawn_at IS NULL",
+            (variant_id,),
+        ).fetchone()
+        assert held is not None
+        if int(held[0]) >= PLAN_RIGHTS:
+            raise Conflict("this_plan_already_declares_the_most_rights_allowed")
+        try:
+            row = conn.execute(
+                """
+                INSERT INTO plt01.mem_plan_entitlements
+                    (tenant_id, variant_id, policy_id, quantity, brand_id, location_id,
+                     usable_from_minute, usable_to_minute, created_by, correlation_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING plan_entitlement_id
+                """,
+                (tenant_id, variant_id, policy_id, quantity, brand_id, location_id,
+                 usable_from_minute, usable_to_minute, actor_id, correlation_id),
+            ).fetchone()
+        except errors.UniqueViolation:
+            # Caught as a 409 rather than left to psycopg's 500, because "this plan already
+            # grants that right at that scope" is a thing the caller can act on and "try
+            # again" is not.
+            raise Conflict("this_plan_already_grants_that_right_at_that_scope") from None
+        except errors.ForeignKeyViolation as e:
+            raise NotFound(_fk_subject(e)) from None
+        except errors.CheckViolation as e:
+            raise InvalidRequest(_check_name(e)) from None
+        assert row is not None
+        plan_entitlement_id = str(row[0])
+        # **No event, and MOD-010's catalogue is what settled it.** The first version
+        # published `membership.changed` with the variant and the policy on it, and the
+        # producer check refused the payload -- correctly: that name is the TSD's for a
+        # *membership* lifecycle change, so a consumer tracking memberships would have started
+        # seeing rows about plans. COM-01's published list has no name for a plan's own
+        # declaration, and inventing one is inventing product, which is MOD-012's rule about
+        # `integration.disconnected`. The row carries its actor and its correlation, which is
+        # what makes the act accountable without a consumer.
+    return {
+        "plan_entitlement_id": plan_entitlement_id,
+        "variant_id": variant_id, "policy_id": policy_id,
+        "policy_key": str(policy[3]), "entitlement_type": str(policy[2]),
+        "is_counted": bool(policy[0]), "quantity": quantity,
+        "applies_to_members_who_join_from_now": True,
+        "members_already_on_this_plan_keep_what_they_were_granted": True,
+    }
+
+
+def withdraw_plan_entitlement(
+    pool: Pool, tenant_id: str, plan_entitlement_id: str, *, reason: str, actor_id: str,
+    correlation_id: str,
+) -> dict[str, Any]:
+    """Stop a plan granting a right, without editing what it granted.
+
+    **A withdrawal, not a delete**, for the reason every operational statement in this build
+    is: "did this plan grant PT sessions in August, and who stopped it" is asked exactly when
+    a member disputes what they were sold. And final by trigger, because a withdrawal that
+    could be re-dated rewrites how long the plan granted it.
+
+    **It reaches no member.** Grants already written stay exactly as they are -- which is the
+    other half of ADR-0013 D8, and the half somebody will assume is false.
+    """
+    if not reason.strip():
+        raise InvalidRequest("a_withdrawal_states_a_reason")
+    with tenant_scope(pool, tenant_id) as conn:
+        row = conn.execute(
+            "UPDATE plt01.mem_plan_entitlements"
+            " SET withdrawn_at = now(), withdrawn_by = %s, withdraw_reason = %s"
+            " WHERE plan_entitlement_id = %s AND withdrawn_at IS NULL"
+            " RETURNING variant_id, policy_id",
+            (actor_id, reason, plan_entitlement_id),
+        ).fetchone()
+        if row is None:
+            # Two facts the caller can act on differently, and the lookup is what tells them
+            # apart: a row that was never there, and one already withdrawn.
+            found = conn.execute(
+                "SELECT withdrawn_at FROM plt01.mem_plan_entitlements"
+                " WHERE plan_entitlement_id = %s",
+                (plan_entitlement_id,),
+            ).fetchone()
+            if found is None:
+                raise NotFound("plan_entitlement_not_found")
+            raise Conflict("this_plan_entitlement_is_already_withdrawn")
+        # No event, for the reason `define_plan_entitlement` gives above.
+    return {"plan_entitlement_id": plan_entitlement_id, "withdrawn": True,
+            "grants_already_written_are_unchanged": True}
+
+
+def _plan_rights(conn: Connection[Any], variant_id: str) -> list[entitlements.PlanRight]:
+    """What this plan grants, live, with the policy's own facts joined on.
+
+    One read for both callers -- the disclosure and the activation -- because two queries for
+    "what does this plan grant" is one-module-two-definitions on the figure a member is told
+    they lose.
+    """
+    rows = conn.execute(
+        "SELECT e.policy_id, p.policy_key, p.display_name, p.entitlement_type,"
+        " p.is_counted, e.quantity, e.brand_id, e.location_id,"
+        " e.usable_from_minute, e.usable_to_minute"
+        " FROM plt01.mem_plan_entitlements e"
+        " JOIN plt01.mem_entitlement_policies p ON p.policy_id = e.policy_id"
+        " WHERE e.variant_id = %s AND e.withdrawn_at IS NULL AND p.status = 'active'"
+        " ORDER BY p.policy_key, e.brand_id, e.location_id",
+        (variant_id,),
+    ).fetchall()
+    return [
+        entitlements.PlanRight(
+            policy_id=str(r[0]), policy_key=str(r[1]), display_name=str(r[2]),
+            entitlement_type=str(r[3]), is_counted=bool(r[4]),
+            quantity=None if r[5] is None else int(r[5]),
+            brand_id=None if r[6] is None else str(r[6]),
+            location_id=None if r[7] is None else str(r[7]),
+            usable_from_minute=None if r[8] is None else int(r[8]),
+            usable_to_minute=None if r[9] is None else int(r[9]))
+        for r in rows]
+
+
+def list_plan_entitlements(
+    pool: Pool, tenant_id: str, *, variant_id: str, include_withdrawn: bool = False,
+) -> dict[str, Any]:
+    """What a plan grants, for ADM-MSH-09's entitlements column and ADM-MSH-06's loss panel."""
+    with tenant_scope(pool, tenant_id) as conn:
+        rows = conn.execute(
+            "SELECT e.plan_entitlement_id, e.policy_id, p.policy_key, p.display_name,"
+            " p.entitlement_type, p.is_counted, e.quantity, e.brand_id, e.location_id,"
+            " e.usable_from_minute, e.usable_to_minute, e.withdrawn_at, e.withdraw_reason"
+            " FROM plt01.mem_plan_entitlements e"
+            " JOIN plt01.mem_entitlement_policies p ON p.policy_id = e.policy_id"
+            " WHERE e.variant_id = %s AND (%s OR e.withdrawn_at IS NULL)"
+            " ORDER BY p.policy_key, e.brand_id, e.location_id",
+            (variant_id, include_withdrawn),
+        ).fetchall()
+    return {
+        "variant_id": variant_id,
+        "rights": [
+            {"plan_entitlement_id": str(r[0]), "policy_id": str(r[1]),
+             "policy_key": str(r[2]), "display_name": str(r[3]),
+             "entitlement_type": str(r[4]), "is_counted": bool(r[5]),
+             "quantity": None if r[6] is None else int(r[6]),
+             "brand_id": None if r[7] is None else str(r[7]),
+             "location_id": None if r[8] is None else str(r[8]),
+             "usable_from_minute": None if r[9] is None else int(r[9]),
+             "usable_to_minute": None if r[10] is None else int(r[10]),
+             "withdrawn_at": None if r[11] is None else r[11].isoformat(),
+             "withdraw_reason": r[12]}
+            for r in rows],
+        "count": len(rows),
+        # Said on the response rather than left to a reader: this is the plan's declaration,
+        # not any member's grants. A member's are `GET /member-entitlements`.
+        "this_is_what_the_plan_declares_not_what_any_member_holds": True,
+    }
+
+
+def _grant_plan(
+    conn: Connection[Any], tenant_id: str, *, membership_id: str, person_id: str,
+    variant_id: str, valid_from: datetime, valid_to: datetime | None, actor_id: str,
+    correlation_id: str,
+) -> list[dict[str, Any]]:
+    """Grant what the plan declares, in the transaction that activated the membership.
+
+    **It takes the connection** (ADR-0013 D5). A membership that exists with no grants is a
+    member who has paid and cannot train; a grant with no membership is a right nobody is
+    paying for. That is MOD-010's `append_event` argument applied to a right, and a
+    pool-taking version would read identically and guarantee neither.
+
+    **`from_variant_id` is what a later downgrade reads.** `source_kind = 'membership'` with
+    `source_id` cannot say which *plan* gave a grant, because a membership outlives a plan
+    change -- so without it a downgrade would have to revoke every grant the membership ever
+    had, goodwill ones included.
+
+    **One grant per declared right, with the opening movement beside it**, because a counted
+    grant's balance is a sum over the ledger and not the `granted_quantity` column: writing the
+    grant without its movement would make the balance zero on a grant that says two.
+    """
+    granted: list[dict[str, Any]] = []
+    for right in _plan_rights(conn, variant_id):
+        row = conn.execute(
+            """
+            INSERT INTO plt01.mem_entitlement_grants
+                (tenant_id, person_id, policy_id, source_kind, source_id, membership_id,
+                 from_variant_id, is_counted, granted_quantity, valid_from, valid_to,
+                 brand_id, location_id, usable_from_minute, usable_to_minute,
+                 created_by, correlation_id)
+            VALUES (%s, %s, %s, 'membership', %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s)
+            RETURNING grant_id
+            """,
+            (tenant_id, person_id, right.policy_id, membership_id, membership_id,
+             variant_id, right.is_counted, right.quantity, valid_from, valid_to,
+             right.brand_id, right.location_id, right.usable_from_minute,
+             right.usable_to_minute, actor_id, correlation_id),
+        ).fetchone()
+        assert row is not None
+        grant_id = str(row[0])
+        if right.is_counted:
+            assert right.quantity is not None
+            _movement(conn, tenant_id, grant_id=grant_id, movement_kind="grant",
+                      delta=right.quantity,
+                      reason=f"granted by the {right.policy_key} right on this plan",
+                      actor_id=actor_id, correlation_id=correlation_id)
+        _append(conn, tenant_id, "entitlement.granted", "entitlement", grant_id,
+                {"grant_id": grant_id, "person_id": person_id,
+                 "policy_id": right.policy_id, "entitlement_type": right.entitlement_type,
+                 "is_counted": right.is_counted},
+                correlation_id=correlation_id, actor_id=actor_id)
+        granted.append({"grant_id": grant_id, "policy_key": right.policy_key,
+                        "display_name": right.display_name,
+                        "quantity": right.quantity,
+                        "brand_id": right.brand_id, "location_id": right.location_id})
+    return granted
+
+
+def _revoke_plan_grants(
+    conn: Connection[Any], tenant_id: str, *, membership_id: str, variant_id: str,
+    reason: str, actor_id: str, correlation_id: str, moment: datetime,
+) -> list[dict[str, Any]]:
+    """Revoke what one plan gave this membership, and nothing else.
+
+    **Narrower than `_revoke_grants` on purpose.** That one revokes every live grant a
+    membership gave, which is right for a cancellation: the membership is over. A plan change
+    is not -- the membership continues on another plan -- so revoking everything would take a
+    goodwill grant, a corporate one and a bundle fulfilment with it. `from_variant_id` is the
+    filter, and it is why the column exists.
+
+    **What is held stays held** (ADR-0013 D7). Paragraph 1506's reservation is a booking
+    somebody made, and a downgrade that voided it would cancel a class the member has been
+    told they are in. So the write-off is of the unreserved remainder, which is what makes
+    ADM-MSH-06's "her 4 unused PT credits expire on 1 Sep" a figure rather than a threat.
+    """
+    revoked: list[dict[str, Any]] = []
+    rows = conn.execute(
+        "SELECT grant_id FROM plt01.mem_entitlement_grants"
+        " WHERE membership_id = %s AND from_variant_id = %s AND status = 'active'"
+        " ORDER BY created_at",
+        (membership_id, variant_id),
+    ).fetchall()
+    for (grant_id,) in rows:
+        grant, balance = _grant_locked(conn, str(grant_id))
+        if grant.status != "active":
+            continue
+        # **The balance is already net of what is held, so the write-off is the balance.**
+        # The first version subtracted the held quantity again -- `entitlements.SIGNS` makes
+        # `reserve` negative, so a reservation has already left the ledger sum -- and the
+        # double subtraction wrote off nothing on a grant with one of two credits booked,
+        # leaving a *revoked* grant carrying a balance of one. That is exactly what
+        # `_revoke_grants`' own comment says its movement exists to prevent: "the balance
+        # afterwards is zero by arithmetic rather than by the status column saying so".
+        #
+        # ADR-0013 D7 still holds and holds *by construction* rather than by this
+        # arithmetic: a held reservation is not in the balance, so writing the balance off
+        # cannot touch it. Nothing here voids a reservation, which is the point -- a
+        # downgrade must not cancel a class the member has been told they are in. Found by
+        # the test written for the disclosure.
+        held = entitlements.held_quantity([
+            int(r[0]) for r in conn.execute(
+                "SELECT quantity FROM plt01.mem_entitlement_reservations"
+                " WHERE grant_id = %s AND status = 'held'", (str(grant_id),)).fetchall()
+        ]) if grant.is_counted else 0
+        writable = balance if grant.is_counted else 0
+        if writable:
+            _movement(conn, tenant_id, grant_id=str(grant_id), movement_kind="revoke",
+                      delta=-writable, reason=reason, actor_id=actor_id,
+                      correlation_id=correlation_id)
+        conn.execute(
+            "UPDATE plt01.mem_entitlement_grants"
+            " SET status = 'revoked', revoked_at = %s, revoked_by = %s, revoke_reason = %s,"
+            " version = version + 1"
+            " WHERE grant_id = %s AND status = 'active'",
+            (moment, actor_id, reason, str(grant_id)))
+        person = conn.execute(
+            "SELECT person_id, policy_id FROM plt01.mem_entitlement_grants"
+            " WHERE grant_id = %s", (str(grant_id),)).fetchone()
+        assert person is not None
+        _append(conn, tenant_id, "entitlement.revoked", "entitlement", str(grant_id),
+                {"grant_id": str(grant_id), "person_id": str(person[0]),
+                 "policy_id": str(person[1])},
+                correlation_id=correlation_id, actor_id=actor_id)
+        revoked.append({"grant_id": str(grant_id), "written_off": writable,
+                        "still_held": held})
+    return revoked
+
+
+def _plan_move(
+    conn: Connection[Any], *, membership_id: str, from_variant_id: str, to_variant_id: str,
+) -> dict[str, Any]:
+    """ADM-MSH-06's loss panel: what the member loses, keeps, gains, and what they still hold.
+
+    **Four lists and a holding, not a verdict.** The canvas's own instruction is that "the loss
+    is stated before the saving", and its three lines are a lost access right, a requantified
+    credit and an expiry -- which are three different facts about one move, so collapsing them
+    into one sentence would be the module choosing which one a member argues about.
+
+    **The remaining quantity comes from the ledger, not the grant's column.** "Her 4 unused PT
+    credits expire on 1 Sep" is a balance, and this module has exactly one authority on a
+    balance. The held figure travels with it, because what is reserved is a booking somebody
+    made and ADR-0013 D7 does not write it off -- so a member told they lose four when one of
+    them is a class they are booked into has been told the wrong number.
+    """
+    move = entitlements.plan_move(
+        leaving=_plan_rights(conn, from_variant_id),
+        joining=_plan_rights(conn, to_variant_id))
+
+    def shape(right: entitlements.PlanRight) -> dict[str, Any]:
+        return {"policy_id": right.policy_id, "policy_key": right.policy_key,
+                "display_name": right.display_name,
+                "entitlement_type": right.entitlement_type,
+                "is_counted": right.is_counted, "quantity": right.quantity,
+                "brand_id": right.brand_id, "location_id": right.location_id,
+                "usable_from_minute": right.usable_from_minute,
+                "usable_to_minute": right.usable_to_minute}
+
+    # What this membership still holds from the plan it is leaving, per grant, so the screen
+    # can say which credits stop being drawable and how many of them are already booked.
+    holding: list[dict[str, Any]] = []
+    rows = conn.execute(
+        "SELECT g.grant_id, p.policy_key, p.display_name, g.is_counted, g.valid_to,"
+        " coalesce((SELECT sum(l.delta) FROM plt01.mem_entitlement_ledger l"
+        "            WHERE l.grant_id = g.grant_id), 0),"
+        " coalesce((SELECT sum(r.quantity) FROM plt01.mem_entitlement_reservations r"
+        "            WHERE r.grant_id = g.grant_id AND r.status = 'held'), 0)"
+        " FROM plt01.mem_entitlement_grants g"
+        " JOIN plt01.mem_entitlement_policies p ON p.policy_id = g.policy_id"
+        " WHERE g.membership_id = %s AND g.from_variant_id = %s AND g.status = 'active'"
+        " ORDER BY p.policy_key",
+        (membership_id, from_variant_id),
+    ).fetchall()
+    for r in rows:
+        counted = bool(r[3])
+        balance = int(r[5])
+        held = int(r[6])
+        holding.append({
+            "grant_id": str(r[0]), "policy_key": str(r[1]), "display_name": str(r[2]),
+            "is_counted": counted,
+            "remaining": balance if counted else None,
+            # **Reserved is not spent and not lost**, and the balance above is already net
+            # of it -- `reserve` is a negative ledger movement. So a member with four credits
+            # who has booked one has a balance of three and a hold of one: three are written
+            # off and the booking stands, which is ADR-0013 D7 by the ledger's own arithmetic
+            # rather than by a subtraction here.
+            "held": held if counted else None,
+            "written_off_on_the_change": balance if counted else None,
+            "valid_to": None if r[4] is None else r[4].isoformat(),
+        })
+    return {
+        "lost": [shape(one) for one in move.lost],
+        "kept": [shape(one) for one in move.kept],
+        "gained": [shape(one) for one in move.gained],
+        "requantified": [
+            {**shape(right), "from_quantity": was, "to_quantity": now}
+            for right, was, now in move.requantified],
+        "still_holding_from_the_plan_being_left": holding,
+        # **An empty move is two different facts**, and only this field tells them apart: a
+        # tenant that has declared no plan entitlements at all, and two plans that genuinely
+        # grant the same rights. Without it an empty loss panel reads as "nothing changes",
+        # which is exactly the quiet charge the canvas's own note is about.
+        "the_leaving_plan_declares_rights": bool(_plan_rights(conn, from_variant_id)),
+        "the_joining_plan_declares_rights": bool(_plan_rights(conn, to_variant_id)),
+    }
+
+
+def preview_plan_change_to_variant(
+    pool: Pool, tenant_id: str, membership_id: str, *, to_variant_id: str, actor_id: str,
+    correlation_id: str, today: date | None = None,
+) -> dict[str, Any]:
+    """ADM-MSH-06 and ADM-MSH-05: what moving this member to that plan would cost and change.
+
+    **Keyed on a variant, not on a successor agreement, and that is the point.**
+    `preview_plan_change` needs an agreement to quote, and drawing one up is
+    `membership.agreement.write` -- a financial write. So a tier-3 screen that wanted to
+    disclose before committing had to commit first, which is the order ADM-MSH-06's own note
+    forbids: "the loss is stated before the saving, and the credit expiry is the line that
+    matters -- a member who discovers it afterwards has been quietly charged for something
+    they never got."
+
+    **The figure is `catalog.quote_price`'s, not the caller's.** MOD-017's review found an
+    agreement citing a receipt for 45.00 and recording 4.50, and the rule out of it was that a
+    cited authority is the authority or it is decoration beside the figure. `quote_price` is
+    the read that answers "what would this sale cost" without writing the receipt -- it is
+    `resolve_price` with `store=False`, which had no caller at all until ADM-CRM-06 -- so the
+    preview quotes the plan rather than being told what it costs.
+
+    **The arithmetic is `lifecycle.plan_change`'s, shared with the agreement path.** Two
+    expressions for a proration is two figures a screen and a till can disagree about, which
+    is this build's most-repeated defect; what differs between the two previews is only how
+    the target's amount is found.
+    """
+    today = today or _now().date()
+    with tenant_scope(pool, tenant_id) as conn:
+        membership = _membership(conn, membership_id)
+        from_row = conn.execute(
+            "SELECT a.amount_minor, a.currency, t.billing_period, a.variant_id"
+            " FROM plt01.mem_agreements a"
+            " JOIN plt01.mem_membership_terms t"
+            "   ON t.membership_terms_id = a.membership_terms_id"
+            " WHERE a.agreement_id = %s",
+            (membership["agreement_id"],),
+        ).fetchone()
+        assert from_row is not None
+        from_variant_id = str(from_row[3])
+        if from_variant_id == to_variant_id:
+            raise Conflict("this_membership_is_already_on_that_plan")
+        if from_row[2] is None:
+            raise Conflict("this_membership_has_no_billing_period_to_prorate")
+    # **Outside the scope above, because a quote opens its own.** It is a read with no side
+    # effect -- that is the whole difference between it and `resolve_price` -- so two
+    # transactions cost a round trip and guarantee nothing less.
+    quoted = catalog.quote_price(
+        pool, tenant_id, variant_id=to_variant_id, currency=str(from_row[1]),
+        actor_id=actor_id, correlation_id=correlation_id)
+    may_change, refused_because = True, None
+    change: lifecycle.PlanChange | None = None
+    steps: tuple[str, ...] = ()
+    try:
+        change, steps = lifecycle.plan_change(
+            decided_on=today,
+            period_start=membership["current_period_start"],
+            period_end=membership["current_period_end"],
+            from_amount_minor=int(from_row[0]),
+            to_amount_minor=int(quoted["final_amount_minor"]),
+            billing_period=str(from_row[2]))
+    except lifecycle.LifecycleError as e:
+        may_change, refused_because = False, str(e)
+    with tenant_scope(pool, tenant_id) as conn:
+        move = _plan_move(
+            conn, membership_id=membership_id,
+            from_variant_id=from_variant_id, to_variant_id=to_variant_id)
+    return {
+        "membership_id": membership_id,
+        "from_variant_id": from_variant_id,
+        "to_variant_id": to_variant_id,
+        "from_amount_minor": int(from_row[0]),
+        "to_amount_minor": int(quoted["final_amount_minor"]),
+        "currency": str(from_row[1]),
+        "billing_period": str(from_row[2]),
+        "kind": None if change is None else change.kind,
+        "effective_on": None if change is None else change.effective_on.isoformat(),
+        "takes_effect_immediately": (
+            change is not None and change.effective_on <= today),
+        "due_minor": None if change is None else change.due_minor,
+        # The two halves kept apart rather than summed early, which is MOD-018's reason: a
+        # total that has lost its components cannot be reconciled against anything, and the
+        # first question about a proration is always which half is which.
+        "credit_minor": None if change is None else change.credit_minor,
+        "charge_minor": None if change is None else change.charge_minor,
+        "reasoning": list(steps),
+        "may_change": may_change,
+        "refused_because": refused_because,
+        # **ADM-MSH-06's "She loses", before anything is written.**
+        "entitlements": move,
+        # Said rather than left to be discovered: this quotes and discloses and writes
+        # nothing at all -- not the agreement, not a price resolution, not a lifecycle change.
+        "nothing_is_written_by_this_read": True,
+        # The successor still has to be drawn up and signed, which is the command's own two
+        # acts. A screen that offered "confirm" without saying so would be promising that one
+        # press is the whole change.
+        "the_change_needs_an_agreement_drawn_up_and_signed": True,
     }

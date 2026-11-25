@@ -244,3 +244,92 @@ def carryover_quantity(
             raise EntitlementError("a_capped_carryover_states_its_cap")
         return min(unused, carryover_limit)
     raise EntitlementError(f"{carryover_mode!r} is not a carryover mode this build evaluates")
+
+
+# ------------------------------------------------- what a plan grants, and what a move costs
+
+@dataclass(frozen=True)
+class PlanRight:
+    """One row of ADR-0013's plan-to-entitlement mapping, as a decision sees it."""
+
+    policy_id: str
+    policy_key: str
+    display_name: str
+    entitlement_type: str
+    is_counted: bool
+    quantity: int | None
+    brand_id: str | None
+    location_id: str | None
+    usable_from_minute: int | None
+    usable_to_minute: int | None
+
+
+def check_plan_right(*, is_counted: bool, quantity: int | None) -> None:
+    """A counted right is declared in a quantity and an uncounted one takes none.
+
+    **The schema cannot hold this and that is why it is here.** `is_counted` lives on
+    `mem_entitlement_policies` and the quantity on `mem_plan_entitlements`, so a CHECK would
+    have to read another row. `grant_entitlement` makes the same pair of refusals for the same
+    reason, in the same words, and the mapping has to make them *earlier* -- at the moment
+    somebody declares what a plan sells rather than at the moment a member activates one,
+    because an activation refused for a plan's own misconfiguration is a member at a desk who
+    has paid.
+    """
+    if is_counted and quantity is None:
+        raise EntitlementError("a_counted_entitlement_is_granted_in_a_quantity")
+    if not is_counted and quantity is not None:
+        raise EntitlementError("an_unlimited_entitlement_takes_no_quantity")
+
+
+def same_right(one: PlanRight, other: PlanRight) -> bool:
+    """Whether two plan rights are the same right at the same scope.
+
+    **The scope is part of the identity, not a detail of it.** ADM-MSH-06's canvas distinguishes
+    "all-clubs access" from "access to Abdoun and Sweifieh", and those are the same *policy* at
+    different scopes -- so a move between them is a real loss and a diff keyed on the policy
+    alone would report no change. The time band is in too, for the same reason an off-peak plan
+    is a cheaper product than an all-day one.
+    """
+    return (one.policy_id == other.policy_id
+            and one.brand_id == other.brand_id
+            and one.location_id == other.location_id
+            and one.usable_from_minute == other.usable_from_minute
+            and one.usable_to_minute == other.usable_to_minute)
+
+
+@dataclass(frozen=True)
+class PlanMove:
+    """What a member loses, keeps and gains by moving between two plans."""
+
+    lost: list[PlanRight]
+    kept: list[PlanRight]
+    gained: list[PlanRight]
+    #: A right kept at the same scope whose quantity moves, as (right, from, to).
+    requantified: list[tuple[PlanRight, int | None, int | None]]
+
+
+def plan_move(*, leaving: list[PlanRight], joining: list[PlanRight]) -> PlanMove:
+    """ADM-MSH-06's "She loses", computed from the two plans' own mappings.
+
+    **The loss is stated before the saving**, which is the canvas's own instruction and the
+    reason this returns four lists rather than a verdict: "a member who discovers it afterwards
+    has been quietly charged for something they never got".
+
+    **A right kept at a smaller quantity is neither lost nor kept**, and conflating it with
+    either is how the disclosure goes wrong in the direction that matters. Four monthly PT
+    sessions becoming two is not "you keep PT" -- it is the half of the loss a member argues
+    about -- and it is not "you lose PT" either, which would read as losing all four.
+    """
+    lost = [one for one in leaving if not any(same_right(one, two) for two in joining)]
+    kept: list[PlanRight] = []
+    requantified: list[tuple[PlanRight, int | None, int | None]] = []
+    for one in leaving:
+        match = next((two for two in joining if same_right(one, two)), None)
+        if match is None:
+            continue
+        if match.quantity == one.quantity:
+            kept.append(match)
+        else:
+            requantified.append((match, one.quantity, match.quantity))
+    gained = [two for two in joining if not any(same_right(two, one) for one in leaving)]
+    return PlanMove(lost=lost, kept=kept, gained=gained, requantified=requantified)

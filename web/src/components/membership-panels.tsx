@@ -2,7 +2,9 @@ import Link from "next/link";
 
 import { Banner } from "@/components/ds/banner";
 import { MoneyValue } from "@/components/ds/money-value";
-import { fill, formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
+import {
+  fill, formatInteger, formatMoney, t, type Locale, type MessageKey,
+} from "@/i18n/locale";
 import { gate, gateAll, gateMessage, gateVerdict, failureMessage, type GateAnswer }
   from "@/lib/api";
 import { readCancellationPreview, readFreezeAllowance } from "@/lib/membership";
@@ -16,6 +18,20 @@ import {
 } from "@/lib/cancellation";
 import { readAttendance } from "@/lib/member-record";
 import { CancelForm } from "@/app/people/[personId]/cancel-form";
+import { PlanMoveForm } from "@/app/people/[personId]/plan-form";
+import {
+  expiring,
+  lossState,
+  offerable,
+  planLabel,
+  refusalMessage,
+  stillBooked,
+  timingMessage,
+  type ChangeQuote,
+  type PlanOption,
+} from "@/lib/downgrade";
+import { readPlanChangeQuote, readPlans } from "@/lib/downgrade-reads";
+import { utcDate } from "@/lib/time";
 import { FreezeForm } from "@/app/people/[personId]/freeze-form";
 import {
   kindName,
@@ -72,6 +88,8 @@ export async function MembershipPanels({
   locale,
   only,
   cancelling = false,
+  movingPlan = false,
+  toVariantId = "",
 }: {
   personId: string;
   locale: Locale;
@@ -95,6 +113,16 @@ export async function MembershipPanels({
    * membership it would end.
    */
   cancelling?: boolean;
+  /**
+   * Whether ADM-MSH-06's sheet is open, and which plan it is quoting.
+   *
+   * `?tab=membership&plan=1` opens the picker and `&to=<variant>` quotes one, which is the
+   * same query-parameter shape the cancellation uses and for the same reason. The two-step
+   * is the canvas's own: the loss is stated before the saving, so a plan is chosen, the
+   * consequence is read, and only then is anything written.
+   */
+  movingPlan?: boolean;
+  toVariantId?: string;
 }) {
   const text = (key: MessageKey) => t(locale, key);
   // One round trip rather than three; see `member-metrics.tsx` for why that matters.
@@ -138,6 +166,19 @@ export async function MembershipPanels({
           decision, which is why this one is buildable and they are not. */}
       {show("membership") ? (
         <Cancelling personId={personId} locale={locale} open={cancelling} />
+      ) : null}
+
+      {/* **ADM-MSH-06, and the read that let it be built.** `plan-change-preview` takes a
+          successor agreement and drawing one up is a financial write, so a tier-3 screen had
+          to commit in order to disclose. `plan-change-quote` is keyed on the plan instead,
+          which is what makes the canvas's own order possible: "the loss is stated before the
+          saving". ADM-MSH-05's upgrade is the same sheet read the other way -- the kind is
+          derived from the two prices, never declared. */}
+      {show("membership") ? (
+        <MovingPlan
+          personId={personId} locale={locale} open={movingPlan}
+          toVariantId={toVariantId}
+        />
       ) : null}
 
       {show("membership") ? (
@@ -983,5 +1024,297 @@ async function Cancelling(
         ))}
       </dl>
     </section>
+  );
+}
+
+/**
+ * ADM-MSH-06 · DOWNGRADE · TIER 3, and ADM-MSH-05's upgrade read the other way.
+ *
+ * The canvas, verbatim: **"Dana · Club+ to Club** — She loses: Access to Abdoun and Sweifieh ·
+ * 2 monthly PT sessions · her 4 unused PT credits expire on 1 Sep. Takes effect **1
+ * September**, not today — she has paid for August at the higher rate and keeps it. New
+ * monthly: **JOD 55.00**." And its note: "The loss is stated before the saving, and the credit
+ * expiry is the line that matters — a member who discovers it afterwards has been quietly
+ * charged for something they never got."
+ *
+ * **Three facts, and the build had one of them until ADR-0013.** What a plan grants had no
+ * table at all — `mem_entitlement_policies` had a consumer and no producer, so activating a
+ * membership granted nothing and `change_membership_plan` said in its own response that it
+ * could not know which rights the plan being left gave.
+ *
+ * **No `kind` field anywhere on this screen.** The direction is derived from the two prices,
+ * because an upgrade and a downgrade differ in *both* things that matter — when it takes
+ * effect and what it charges — so a caller able to declare `downgrade` on a dearer plan would
+ * get the next-renewal timing *and* no charge. This build has shipped that shape in six
+ * modules.
+ */
+async function MovingPlan(
+  { personId, locale, open, toVariantId }: {
+    personId: string; locale: Locale; open: boolean; toVariantId: string;
+  },
+) {
+  const text = (key: MessageKey) => t(locale, key);
+  const back = `/people/${personId}?tab=membership`;
+
+  let live: MembershipRow | undefined;
+  try {
+    live = (await listMemberships(personId)).memberships.find(
+      (row) => row.status === "active" || row.status === "frozen");
+  } catch {
+    // The membership block above already reported the failure; a second banner for the same
+    // request would be the same fact twice.
+    return null;
+  }
+  if (live === undefined) return null;
+
+  // **Closed is one control**, which is the cancellation sheet's own reasoning: printing every
+  // member's plan options under their membership would make a question nobody asked the most
+  // prominent thing on the tab.
+  if (!open) {
+    return (
+      <section className="page-section" aria-labelledby={`plan-${live.membership_id}`}>
+        <h2 id={`plan-${live.membership_id}`} style={{ margin: 0 }}>
+          {text("downgrade.title")}
+        </h2>
+        <p className="muted" style={{ margin: 0 }}>{text("downgrade.closedLead")}</p>
+        <p style={{ margin: 0 }}>
+          <Link href={`${back}&plan=1`}>{text("downgrade.open")}</Link>
+        </p>
+      </section>
+    );
+  }
+
+  const [mayRead, mayPrice, mayWrite] = await gateAll([
+    "membership.entitlement.read", "catalog.price.read", "membership.agreement.write",
+  ] as const);
+
+  let plans: PlanOption[] = [];
+  if (mayPrice.allowed && mayRead.allowed) {
+    try {
+      plans = offerable(await readPlans(locale), live.variant_id ?? "");
+    } catch {
+      plans = [];
+    }
+  }
+
+  let quote: ChangeQuote | null = null;
+  const chosen = plans.find((one) => one.variant_id === toVariantId);
+  if (chosen !== undefined) {
+    try {
+      quote = await readPlanChangeQuote(live.membership_id, chosen.variant_id);
+    } catch {
+      quote = null;
+    }
+  }
+
+  const named = chosen === undefined ? null : planLabel(chosen);
+  const amount = (minor: number, currency: string) =>
+    formatMoney(minor, currency, "latn", locale);
+
+  return (
+    <section className="page-section" aria-labelledby={`plan-${live.membership_id}`}>
+      <h2 id={`plan-${live.membership_id}`} style={{ margin: 0 }}>
+        {text("downgrade.title")}
+      </h2>
+
+      {!mayRead.allowed || !mayPrice.allowed ? (
+        <Banner severity="attention"
+          title={text(gateMessage(mayRead.allowed ? mayPrice : mayRead))}>
+          {text("downgrade.closedLead")}
+        </Banner>
+      ) : plans.length === 0 ? (
+        <Banner severity="attention" title={text("downgrade.noPlans")}>
+          {text("downgrade.noPlansWhat")}
+        </Banner>
+      ) : (
+        <>
+          <h3 style={{ margin: 0 }}>{text("downgrade.pickAPlan")}</h3>
+          <p className="muted" style={{ margin: 0 }}>{text("downgrade.pickAPlanWhy")}</p>
+          <ul className="ds-desk-rows">
+            {plans.map((one) => {
+              const label = planLabel(one);
+              const picked = one.variant_id === toVariantId;
+              return (
+                <li key={one.variant_id} className="ds-desk-row">
+                  <span className="ds-desk-row-name">
+                    {picked ? label.name : (
+                      <Link href={`${back}&plan=1&to=${one.variant_id}`}>{label.name}</Link>
+                    )}
+                  </span>
+                  <span className="muted ds-desk-row-context">
+                    {[label.qualifier, one.billing_period].join(" · ")}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        </>
+      )}
+
+      {quote !== null && named !== null ? (
+        <PlanConsequence
+          locale={locale} quote={quote} planName={named.name}
+          membershipId={live.membership_id} personId={personId}
+          termsId={chosen?.membership_terms_id ?? ""}
+          variantId={chosen?.variant_id ?? ""}
+          amount={amount}
+          canWrite={mayWrite.allowed}
+          stepUpHref={gateVerdict(mayWrite) === "needs_step_up"
+            ? `/step-up?for=financial&action=membership.agreement.write`
+              + `&next=${encodeURIComponent(`${back}&plan=1&to=${toVariantId}`)}`
+            : null}
+        />
+      ) : null}
+
+      <p className="muted" style={{ margin: 0 }}>
+        <Link href={back}>{text("downgrade.keep")}</Link>
+      </p>
+    </section>
+  );
+}
+
+/** The consequence, in the canvas's own order: the loss, then the date, then the money. */
+function PlanConsequence({
+  locale, quote, planName, membershipId, personId, termsId, variantId, amount,
+  canWrite, stepUpHref,
+}: {
+  locale: Locale;
+  quote: ChangeQuote;
+  planName: string;
+  membershipId: string;
+  personId: string;
+  termsId: string;
+  variantId: string;
+  amount: (minor: number, currency: string) => string;
+  canWrite: boolean;
+  stepUpHref: string | null;
+}) {
+  const text = (key: MessageKey) => t(locale, key);
+  const loss = lossState(quote.entitlements);
+  const timing = timingMessage(quote);
+  const refusal = quote.refused_because === null
+    ? null : refusalMessage(quote.refused_because);
+  const expires = expiring(quote.entitlements);
+  const booked = stillBooked(quote.entitlements);
+
+  const rightLabel = (one: { display_name: string; location_id: string | null }) =>
+    one.location_id === null
+      ? fill(locale, "downgrade.lostAllClubs", { right: one.display_name })
+      : fill(locale, "downgrade.lostAtOneClub", { right: one.display_name });
+
+  return (
+    <div className="ds-freeze-consequence" data-testid="plan-consequence">
+      {/* **The loss first**, which is the canvas's instruction rather than a layout
+          preference: "the loss is stated before the saving". */}
+      {loss.kind === "nothingDeclared" ? (
+        <Banner severity="attention" title={text("downgrade.nothingDeclared")}>
+          {text("downgrade.nothingDeclaredWhat")}
+        </Banner>
+      ) : loss.kind === "sameRights" ? (
+        <Banner severity="info" title={text("downgrade.sameRights")}>
+          {text("downgrade.sameRightsWhat")}
+        </Banner>
+      ) : (
+        <>
+          {quote.entitlements.lost.length > 0 || quote.entitlements.requantified.length > 0
+            ? (
+              <>
+                <p style={{ margin: 0 }}><strong>{text("downgrade.loses")}</strong></p>
+                <ul style={{ margin: 0 }}>
+                  {quote.entitlements.lost.map((one) => (
+                    <li key={`${one.policy_key}-${one.location_id ?? "all"}`}>
+                      {rightLabel(one)}
+                    </li>
+                  ))}
+                  {quote.entitlements.requantified.map((one) => (
+                    <li key={`q-${one.policy_key}-${one.location_id ?? "all"}`}>
+                      {fill(locale, "downgrade.requantified", {
+                        right: one.display_name,
+                        was: formatInteger(one.from_quantity ?? 0, "latn"),
+                        now: formatInteger(one.to_quantity ?? 0, "latn"),
+                      })}
+                    </li>
+                  ))}
+                </ul>
+              </>
+            ) : null}
+          {quote.entitlements.gained.length > 0 ? (
+            <>
+              <p style={{ margin: 0 }}><strong>{text("downgrade.gains")}</strong></p>
+              <ul style={{ margin: 0 }}>
+                {quote.entitlements.gained.map((one) => (
+                  <li key={`g-${one.policy_key}-${one.location_id ?? "all"}`}>
+                    {rightLabel(one)}
+                  </li>
+                ))}
+              </ul>
+            </>
+          ) : null}
+        </>
+      )}
+
+      {/* **The credits, which the canvas calls the line that matters.** `written_off` is the
+          balance and the balance is already net of what is held, so a booking is protected
+          and gets its own sentence rather than being counted as a loss. */}
+      {expires.length > 0 ? (
+        <>
+          <p style={{ margin: 0 }}><strong>{text("downgrade.expiring")}</strong></p>
+          <ul style={{ margin: 0 }}>
+            {expires.map((one) => (
+              <li key={one.grant_id}>
+                {one.valid_to === null
+                  ? fill(locale, "downgrade.expiringNoDate", {
+                    count: one.written_off_on_the_change ?? 0,
+                    right: one.display_name,
+                  })
+                  : fill(locale, "downgrade.expiringOne", {
+                    count: one.written_off_on_the_change ?? 0,
+                    right: one.display_name,
+                    on: utcDate(one.valid_to),
+                  })}
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : null}
+      {booked.map((one) => (
+        <p key={`b-${one.grant_id}`} className="muted" style={{ margin: 0 }}>
+          {fill(locale, "downgrade.stillBooked",
+            { count: one.held ?? 0, right: one.display_name })}
+        </p>
+      ))}
+
+      {/* Then the date, with the reason the canvas gives rather than the rule. */}
+      <p style={{ margin: 0 }}>{fill(locale, timing.key, timing.values)}</p>
+
+      {/* And the money last. */}
+      <p style={{ margin: 0 }}>
+        {fill(locale, "downgrade.newAmount", {
+          period: quote.billing_period ?? "",
+          amount: amount(quote.to_amount_minor, quote.currency),
+        })}
+        {" "}
+        {quote.due_minor === 0 || quote.due_minor === null
+          ? text("downgrade.dueNothing")
+          : fill(locale, "downgrade.dueNow",
+            { amount: amount(quote.due_minor, quote.currency) })}
+      </p>
+      <p className="muted" style={{ margin: 0 }}>{text("downgrade.notCharged")}</p>
+
+      {!quote.may_change ? (
+        <Banner severity="attention" title={text("downgrade.refused")}>
+          {/* A vocabulary the backend stores is never a label -- and an unknown value falls
+              through to its stored form rather than to "refused", because the set is the
+              server's and hiding a reason somebody needs is worse than an ugly one. */}
+          {refusal === null ? (quote.refused_because ?? "") : text(refusal)}
+        </Banner>
+      ) : (
+        <PlanMoveForm
+          locale={locale} membershipId={membershipId} personId={personId}
+          termsId={termsId} variantId={variantId} planName={planName}
+          canWrite={canWrite} stepUpHref={stepUpHref}
+        />
+      )}
+    </div>
   );
 }

@@ -110,6 +110,11 @@ export default async function Member360Page({
   // ADM-MSH-07's sheet, which this app draws as a parameter on the tab rather than as an
   // overlay -- see `MembershipPanels`' own note on why.
   const cancelling = query.cancel === "1";
+  // ADM-MSH-06, the same query-parameter shape and for the same reason: this app has no side
+  // sheet, and a permanently-open form that moves a member's plan has no way out. `to` names
+  // the plan being quoted, so the picker and the consequence are one URL a reader can share.
+  const movingPlan = query.plan === "1";
+  const toVariantId = typeof query.to === "string" ? query.to : "";
   const filterParam = typeof query.filter === "string" ? query.filter : undefined;
   const filter: TimelineFilterKey = isTimelineFilter(filterParam) ? filterParam : "all";
 
@@ -244,6 +249,7 @@ export default async function Member360Page({
           <MembershipPanels
             personId={personId} locale={locale} only={tab}
             cancelling={cancelling}
+            movingPlan={movingPlan} toVariantId={toVariantId}
           />
         ) : null}
         {tab === "attendance"

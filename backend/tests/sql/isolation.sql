@@ -12313,9 +12313,9 @@ BEGIN
     SELECT count(*) INTO seen FROM pg_class t
     WHERE t.relnamespace = 'plt01'::regnamespace AND t.relkind IN ('r', 'p')
       AND (t.relname LIKE 'mem\_%' OR t.relname LIKE 'fin\_%');
-    IF seen <> 22 THEN
+    IF seen <> 23 THEN
         RAISE EXCEPTION
-            'CHECK 73 FAILED: expected 22 MOD-017 tables, found %',
+            'CHECK 73 FAILED: expected 23 MOD-017 tables, found %',
             seen;
     END IF;
     -- Row-level security, forced, on every one. `relkind IN ('r', 'p')` and not just `'r'`:
@@ -12600,7 +12600,15 @@ BEGIN
         ('plt01.mem_memberships: tenant_id -> plt01_platform.tenants'),
         ('plt01.mem_memberships: tenant_id,agreement_id -> plt01.mem_agreements'),
         ('plt01.mem_memberships: tenant_id,person_id -> plt01.ppl_persons'),
-        ('plt01.mem_memberships: tenant_id,membership_id,status_change_id -> plt01.mem_lifecycle_changes')
+        ('plt01.mem_memberships: tenant_id,membership_id,status_change_id -> plt01.mem_lifecycle_changes'),
+        -- 0033: the edge between a plan and the rights it sells, and the column that says
+        -- which plan produced a grant.
+        ('plt01.mem_entitlement_grants: tenant_id,from_variant_id -> plt01.cat_variants'),
+        ('plt01.mem_plan_entitlements: tenant_id -> plt01_platform.tenants'),
+        ('plt01.mem_plan_entitlements: tenant_id,policy_id -> plt01.mem_entitlement_policies'),
+        ('plt01.mem_plan_entitlements: tenant_id,brand_id -> plt01.brands'),
+        ('plt01.mem_plan_entitlements: tenant_id,location_id -> plt01.locations'),
+        ('plt01.mem_plan_entitlements: tenant_id,variant_id -> plt01.cat_variants')
     ), actual(fk) AS (
         SELECT 'plt01.' || c.relname || ': '
                || (SELECT string_agg(a.attname, ',' ORDER BY k.ord)
@@ -12733,11 +12741,12 @@ BEGIN
          'notice_days,publish_correlation_id,published_at,published_by,'
          'renewal_mode,status,tenant_id,version'),
         ('plt01.mem_entitlement_grants',
-         'brand_id,correlation_id,created_at,created_by,grant_id,'
-         'granted_quantity,is_counted,location_id,membership_id,person_id,'
-         'policy_id,revoke_reason,revoked_at,revoked_by,source_id,'
-         'source_kind,status,tenant_id,usable_from_minute,usable_to_minute,'
-         'valid_from,valid_to,version'),
+         'brand_id,correlation_id,created_at,created_by,'
+         'from_variant_id,grant_id,granted_quantity,is_counted,'
+         'location_id,membership_id,person_id,policy_id,revoke_reason,'
+         'revoked_at,revoked_by,source_id,source_kind,status,'
+         'tenant_id,usable_from_minute,usable_to_minute,valid_from,'
+         'valid_to,version'),
         ('plt01.mem_entitlement_ledger',
          'actor_id,correlation_id,delta,grant_id,movement_id,movement_kind,'
          'occurred_at,reason,reservation_id,tenant_id'),
@@ -12770,7 +12779,12 @@ BEGIN
          'agreement_id,correlation_id,created_at,created_by,'
          'current_period_end,current_period_start,ends_on,membership_id,'
          'membership_number,person_id,starts_on,status,status_change_id,'
-         'status_effective_on,tenant_id,version')
+         'status_effective_on,tenant_id,version'),
+        ('plt01.mem_plan_entitlements',
+         'brand_id,correlation_id,created_at,created_by,location_id,'
+         'plan_entitlement_id,policy_id,quantity,tenant_id,'
+         'usable_from_minute,usable_to_minute,variant_id,'
+         'withdraw_reason,withdrawn_at,withdrawn_by')
     ), actual(tbl, cols) AS (
         SELECT 'plt01.' || t.relname, string_agg(a.attname, ',' ORDER BY a.attname)
         FROM pg_attribute a JOIN pg_class t ON t.oid = a.attrelid
@@ -12876,7 +12890,14 @@ BEGIN
         ('plt01.mem_memberships',
          'agreement_id,correlation_id,created_at,created_by,membership_id,'
          'membership_number,person_id,starts_on,status,status_effective_on,'
-         'tenant_id,version')
+         'tenant_id,version'),
+        -- 0033. **`quantity` is nullable on purpose**: an uncounted right -- "access to
+        -- Abdoun" -- is a yes/no over a window rather than a number, so NULL is the
+        -- uncounted case rather than a missing figure. The scope columns are nullable for
+        -- the same reason the grant's are: no location is "all clubs".
+        ('plt01.mem_plan_entitlements',
+         'correlation_id,created_at,created_by,plan_entitlement_id,policy_id,'
+         'tenant_id,variant_id')
     ), actual(tbl, cols) AS (
         SELECT 'plt01.' || t.relname, string_agg(a.attname, ',' ORDER BY a.attname)
         FROM pg_attribute a JOIN pg_class t ON t.oid = a.attrelid
@@ -13044,7 +13065,16 @@ BEGIN
          'status_change_id,status_effective_on,version'),
         ('mem_memberships', 'veyro_cp_worker',
          'current_period_end,current_period_start,ends_on,status,'
-         'status_change_id,status_effective_on,version')
+         'status_change_id,status_effective_on,version'),
+        -- 0033: **the withdrawal columns only.** What a plan grants and at what scope cannot
+        -- be edited -- a quantity that moved would change what every future member gets with
+        -- no record of the change, and re-pointing `policy_id` would make an old grant's
+        -- provenance a lie. Correcting a row is withdrawing it and declaring the corrected
+        -- one, which is MOD-019's rota rule.
+        ('mem_plan_entitlements', 'veyro_cp_app',
+         'withdraw_reason,withdrawn_at,withdrawn_by'),
+        ('mem_plan_entitlements', 'veyro_cp_worker',
+         'withdraw_reason,withdrawn_at,withdrawn_by')
     ), actual(tbl, grantee, cols) AS (
         SELECT t.relname, r.rolname,
                coalesce(string_agg(att.attname, ',' ORDER BY att.attname), '(none)')
@@ -23530,6 +23560,339 @@ BEGIN
         WHEN raise_exception THEN
             IF SQLERRM NOT LIKE 'CHECK 78 FAILED%' THEN NULL; ELSE RAISE; END IF;
     END;
+END $$;
+ROLLBACK;
+
+
+-- ------------------------------------------- 78b. mem_plan_entitlements bites
+-- **0033's own cases, in the stronger form.** `check_violation` is the same exception for
+-- every CHECK on a table, so a case that counts it proves whichever fires first -- the trap
+-- this repository has shipped in five modules and found by sweeping afterwards each time.
+-- Every case here names the constraint that refused it and records a different one as a
+-- *confusion*, which fails the check on a clean database rather than at the next sweep.
+--
+-- One probe per rule plus one **permission**, because no number of refusal cases can see a
+-- constraint set tightened until the ordinary row is unwritable.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+DECLARE
+    probe integer := 0;
+    offender text;
+    state text;
+    confused text[] := ARRAY[]::text[];
+    variant constant uuid := 'cccccccc-1000-4000-8000-000000000003';
+    policy constant uuid := 'dddddddd-1000-4000-8000-000000000009';
+    actor constant uuid := '33333333-3333-4333-8333-333333333333';
+    spare uuid[];
+BEGIN
+    -- **A policy per insert-case, because the live index is on (variant, policy, scope).**
+    -- Without them, a mutation that drops the quantity bound lets the zero case *succeed* --
+    -- which is the behaviour the case is written to catch -- and then the next successful
+    -- insert collides with it, raising a `unique_violation` no handler here catches. The DO
+    -- block then dies with PostgreSQL's own message, every probe after it never runs, and the
+    -- sweep reports ten mutations as MUTERR for one ordering. That is this repository's "one
+    -- bad probe aborts the block" trap, found by the sweep rather than by reading.
+    spare := ARRAY[]::uuid[];
+    FOR i IN 1..7 LOOP
+        INSERT INTO plt01.mem_entitlement_policies
+            (tenant_id, policy_key, display_name, entitlement_type, is_counted,
+             created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'probe.' || i, 'Probe ' || i, 'class_credit', true, actor, actor)
+        RETURNING policy_id INTO offender;
+        spare := array_append(spare, offender::uuid);
+    END LOOP;
+    offender := NULL;
+
+    -- **The permission first**, so a tightening that makes an ordinary plan entitlement
+    -- unwritable fails here rather than in a service test. A counted class credit with a
+    -- quantity and no scope is the "2 monthly PT sessions" row the canvas is about.
+    BEGIN
+        INSERT INTO plt01.mem_plan_entitlements
+            (tenant_id, plan_entitlement_id, variant_id, policy_id, quantity,
+             created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'eeeeeeee-0033-4000-8000-000000000001', variant, policy, 2, actor, actor);
+        probe := probe + 1;
+    EXCEPTION
+        WHEN others THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME, state = RETURNED_SQLSTATE;
+            confused := array_append(
+                confused,
+                'the ordinary plan entitlement was refused by ' || coalesce(offender, '(none)')
+                || ' sqlstate ' || state);
+    END;
+
+    -- A quantity of zero is not an uncounted right: NULL is. Zero would grant a member a
+    -- credit they can never draw, which reads as a plan that includes PT and refuses it.
+    BEGIN
+        INSERT INTO plt01.mem_plan_entitlements
+            (tenant_id, plan_entitlement_id, variant_id, policy_id, quantity,
+             created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'eeeeeeee-0033-4000-8000-000000000002', variant, spare[1], 0, actor, actor);
+        RAISE EXCEPTION 'CHECK 78b FAILED: a plan entitlement granting zero';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'mem_plan_entitlements_quantity_positive' THEN probe := probe + 1;
+            ELSE confused := array_append(
+                confused, 'zero quantity answered by ' || offender); END IF;
+    END;
+
+    -- And the other side of the same bound. A plan granting ten thousand and one sessions is
+    -- a typo, and the bound is what stops the activation writing it into a grant.
+    BEGIN
+        INSERT INTO plt01.mem_plan_entitlements
+            (tenant_id, plan_entitlement_id, variant_id, policy_id, quantity,
+             created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'eeeeeeee-0033-4000-8000-000000000003', variant, spare[2], 10001, actor, actor);
+        RAISE EXCEPTION 'CHECK 78b FAILED: a plan entitlement granting ten thousand and one';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'mem_plan_entitlements_quantity_positive' THEN probe := probe + 1;
+            ELSE confused := array_append(
+                confused, 'the upper bound answered by ' || offender); END IF;
+    END;
+
+    -- A band is both ends or neither. One end alone is a window with no other side, which
+    -- `entitlements.usable` would compare against nothing.
+    BEGIN
+        INSERT INTO plt01.mem_plan_entitlements
+            (tenant_id, plan_entitlement_id, variant_id, policy_id, quantity,
+             usable_from_minute, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'eeeeeeee-0033-4000-8000-000000000004', variant, spare[3], 2, 360, actor, actor);
+        RAISE EXCEPTION 'CHECK 78b FAILED: a half-stated off-peak band';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'mem_plan_entitlements_band_paired' THEN probe := probe + 1;
+            ELSE confused := array_append(
+                confused, 'the half band answered by ' || offender); END IF;
+    END;
+
+    -- A band that ends before it starts is the one an off-peak plan would be sold on, and it
+    -- is the reason the bound is ordered rather than only ranged.
+    BEGIN
+        INSERT INTO plt01.mem_plan_entitlements
+            (tenant_id, plan_entitlement_id, variant_id, policy_id, quantity,
+             usable_from_minute, usable_to_minute, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'eeeeeeee-0033-4000-8000-000000000005', variant, spare[4], 2,
+                900, 600, actor, actor);
+        RAISE EXCEPTION 'CHECK 78b FAILED: an off-peak band that ends before it starts';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'mem_plan_entitlements_band_bounded' THEN probe := probe + 1;
+            ELSE confused := array_append(
+                confused, 'the reversed band answered by ' || offender); END IF;
+    END;
+
+    -- A minute past the end of a day. 1440 is midnight and is admitted as an end; 1441 is
+    -- nothing, and the cast a reader would reach for would not catch it.
+    BEGIN
+        INSERT INTO plt01.mem_plan_entitlements
+            (tenant_id, plan_entitlement_id, variant_id, policy_id, quantity,
+             usable_from_minute, usable_to_minute, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'eeeeeeee-0033-4000-8000-000000000006', variant, spare[5], 2,
+                600, 1441, actor, actor);
+        RAISE EXCEPTION 'CHECK 78b FAILED: a band ending after midnight';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'mem_plan_entitlements_band_bounded' THEN probe := probe + 1;
+            ELSE confused := array_append(
+                confused, 'the end-of-day bound answered by ' || offender); END IF;
+    END;
+
+    -- **A withdrawal with nobody's name on it**, which MOD-009's rule is about: the row is
+    -- kept so "did this plan grant PT in August, and who stopped it" stays answerable, and a
+    -- withdrawal with no actor answers half of that.
+    BEGIN
+        UPDATE plt01.mem_plan_entitlements
+        SET withdrawn_at = now(), withdraw_reason = 'moved to the annual plan'
+        WHERE plan_entitlement_id = 'eeeeeeee-0033-4000-8000-000000000001';
+        RAISE EXCEPTION 'CHECK 78b FAILED: a withdrawal with no actor';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'mem_plan_entitlements_withdrawal_attributed' THEN
+                probe := probe + 1;
+            ELSE confused := array_append(
+                confused, 'the unattributed withdrawal answered by ' || offender); END IF;
+    END;
+
+    -- **A NULL reason, not a blank one.** `length(btrim(NULL)) > 0` is NULL and a CHECK
+    -- passes on NULL, so only this case proves the `coalesce` -- the trap this repository
+    -- paid for in MOD-014 and MOD-021.
+    BEGIN
+        UPDATE plt01.mem_plan_entitlements
+        SET withdrawn_at = now(), withdrawn_by = actor, withdraw_reason = NULL
+        WHERE plan_entitlement_id = 'eeeeeeee-0033-4000-8000-000000000001';
+        RAISE EXCEPTION 'CHECK 78b FAILED: a withdrawal with a NULL reason';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'mem_plan_entitlements_withdrawal_attributed' THEN
+                probe := probe + 1;
+            ELSE confused := array_append(
+                confused, 'the NULL reason answered by ' || offender); END IF;
+    END;
+
+    -- And a reason of one tab, which `btrim` strips and the `~ '[^[:space:]]'` form refuses.
+    BEGIN
+        UPDATE plt01.mem_plan_entitlements
+        SET withdrawn_at = now(), withdrawn_by = actor, withdraw_reason = E'\t'
+        WHERE plan_entitlement_id = 'eeeeeeee-0033-4000-8000-000000000001';
+        RAISE EXCEPTION 'CHECK 78b FAILED: a withdrawal reason of one tab';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'mem_plan_entitlements_withdrawal_attributed' THEN
+                probe := probe + 1;
+            ELSE confused := array_append(
+                confused, 'the tab reason answered by ' || offender); END IF;
+    END;
+
+    -- **One live row per (variant, policy, scope)**, so a plan cannot grant the same right
+    -- twice at the same scope -- which would double a member's quantity on activation with
+    -- nothing saying which row was the mistake. The `coalesce` in the index is what makes two
+    -- unscoped rows collide: NULLs are distinct in a plain unique index.
+    BEGIN
+        INSERT INTO plt01.mem_plan_entitlements
+            (tenant_id, plan_entitlement_id, variant_id, policy_id, quantity,
+             created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'eeeeeeee-0033-4000-8000-000000000007', variant, policy, 4, actor, actor);
+        RAISE EXCEPTION 'CHECK 78b FAILED: one plan granted one right twice at one scope';
+    EXCEPTION
+        WHEN unique_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'mem_plan_entitlements_one_live' THEN probe := probe + 1;
+            ELSE confused := array_append(
+                confused, 'the duplicate answered by ' || coalesce(offender, '(none)'));
+            END IF;
+    END;
+
+    -- **The other direction of that index, which a drop-only case cannot see.** Withdrawing a
+    -- row has to free the slot, or a plan whose PT grant was entered wrongly could never have
+    -- a corrected one -- the remedy the withdrawal exists to provide, defeated by the index.
+    BEGIN
+        UPDATE plt01.mem_plan_entitlements
+        SET withdrawn_at = now(), withdrawn_by = actor,
+            withdraw_reason = 'entered against the wrong policy'
+        WHERE plan_entitlement_id = 'eeeeeeee-0033-4000-8000-000000000001';
+        INSERT INTO plt01.mem_plan_entitlements
+            (tenant_id, plan_entitlement_id, variant_id, policy_id, quantity,
+             created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'eeeeeeee-0033-4000-8000-000000000008', variant, policy, 4, actor, actor);
+        probe := probe + 1;
+    EXCEPTION
+        WHEN others THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME, state = RETURNED_SQLSTATE;
+            confused := array_append(
+                confused,
+                'a corrected row after a withdrawal was refused by '
+                || coalesce(offender, '(none)') || ' sqlstate ' || state);
+    END;
+
+    -- **The withdrawal is final, by trigger**, because a CHECK cannot see `OLD`: a withdrawal
+    -- that could be re-dated or re-attributed rewrites exactly how long a plan granted a
+    -- right, which is the question the row is kept for.
+    -- **Each trigger case withdraws its own row.** The first version re-dated the row an
+    -- earlier case had withdrawn -- and a PL/pgSQL exception handler rolls back to the start
+    -- of its own block, so when that earlier case failed under a mutation the withdrawal was
+    -- undone, these two UPDATEs set `withdrawn_at` with no actor, and the attribution CHECK
+    -- answered instead of the trigger. The DO block then died on an unhandled
+    -- `check_violation` and the sweep reported MUTERR for a mutation these cases had never
+    -- been given a chance to judge. A probe that depends on a sibling's committed state is a
+    -- probe that depends on the sibling passing.
+    BEGIN
+        INSERT INTO plt01.mem_plan_entitlements
+            (tenant_id, plan_entitlement_id, variant_id, policy_id, quantity,
+             created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'eeeeeeee-0033-4000-8000-00000000000a', variant, spare[6], 2, actor, actor);
+        UPDATE plt01.mem_plan_entitlements
+        SET withdrawn_at = now(), withdrawn_by = actor, withdraw_reason = 'wrong policy'
+        WHERE plan_entitlement_id = 'eeeeeeee-0033-4000-8000-00000000000a';
+        UPDATE plt01.mem_plan_entitlements
+        SET withdrawn_at = now() - interval '60 days'
+        WHERE plan_entitlement_id = 'eeeeeeee-0033-4000-8000-00000000000a';
+        RAISE EXCEPTION 'CHECK 78b FAILED: a withdrawal was backdated';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 78b FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+        WHEN others THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME, state = RETURNED_SQLSTATE;
+            confused := array_append(
+                confused, 'the backdated withdrawal answered by '
+                || coalesce(offender, '(none)') || ' sqlstate ' || state);
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_plan_entitlements
+            (tenant_id, plan_entitlement_id, variant_id, policy_id, quantity,
+             created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'eeeeeeee-0033-4000-8000-00000000000b', variant, spare[7], 2, actor, actor);
+        UPDATE plt01.mem_plan_entitlements
+        SET withdrawn_at = now(), withdrawn_by = actor, withdraw_reason = 'wrong policy'
+        WHERE plan_entitlement_id = 'eeeeeeee-0033-4000-8000-00000000000b';
+        UPDATE plt01.mem_plan_entitlements
+        SET withdrawn_by = '44444444-4444-4444-8444-444444444444'
+        WHERE plan_entitlement_id = 'eeeeeeee-0033-4000-8000-00000000000b';
+        RAISE EXCEPTION 'CHECK 78b FAILED: a withdrawal was re-attributed';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 78b FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+        WHEN others THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME, state = RETURNED_SQLSTATE;
+            confused := array_append(
+                confused, 'the re-attributed withdrawal answered by '
+                || coalesce(offender, '(none)') || ' sqlstate ' || state);
+    END;
+
+    -- **A grant naming a plan is a membership grant.** `from_variant_id` says which plan
+    -- produced a grant, which `source_kind = 'membership'` with `source_id` cannot, because a
+    -- membership outlives a plan change. A goodwill grant naming a plan would make a
+    -- provenance up.
+    BEGIN
+        INSERT INTO plt01.mem_entitlement_grants
+            (tenant_id, grant_id, person_id, policy_id, source_kind, is_counted,
+             granted_quantity, valid_from, from_variant_id, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'eeeeeeee-0033-4000-8000-000000000009',
+                'bbbbbbbb-1000-4000-8000-000000000001', policy, 'goodwill', true,
+                2, now(), variant, actor, actor);
+        RAISE EXCEPTION 'CHECK 78b FAILED: a goodwill grant named a plan';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'mem_entitlement_grants_variant_is_a_membership' THEN
+                probe := probe + 1;
+            ELSE confused := array_append(
+                confused, 'the goodwill provenance answered by ' || offender); END IF;
+    END;
+
+    IF array_length(confused, 1) IS NOT NULL THEN
+        RAISE EXCEPTION 'CHECK 78b FAILED: %', array_to_string(confused, '; ');
+    END IF;
+    IF probe <> 14 THEN
+        RAISE EXCEPTION
+            'CHECK 78b FAILED: expected 14 probes of 0033, counted % -- a rule with no '
+            'isolating case is a rule nobody has tested', probe;
+    END IF;
 END $$;
 ROLLBACK;
 

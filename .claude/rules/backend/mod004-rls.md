@@ -3123,3 +3123,65 @@ output read as progress. `mypy` caught it (`Name "locale" is not defined`); noth
 have, because the docstring describing the parameter *was* written by a later script. The rule is
 already in this file; the new part is that a partial failure can leave the **documentation** of a
 change in place and the change itself absent, which is the one combination a reader cannot spot.
+
+**A model with a consumer and no producer reads as complete from every direction.** This file
+records "a column implying a control nobody implemented" and "a declared value nothing writes"
+many times over. MOD-017 had the inverse and it hid for the whole life of the module:
+`mem_entitlement_policies` declared COM-01-R03's nine kinds of right with carryover and a
+reservation TTL, `mem_entitlement_grants` carried everything a plan needs to hand one out
+including `source_kind = 'membership'`, the balance read worked, the reservation was atomic and
+under a lock — and `grep -rn 'source_kind="membership"' backend/` returned three hits, all three
+in a test file. One edge was missing, between a plan and the rights it sells, and **nothing in
+the schema could say so**: every table had a writer, every constraint was right, every test
+passed. The question that finds it is not "does this column have a writer" but "does this
+*model* have a producer in the product" — and the grep is per `source_kind`, per status value,
+per declared kind, not per table.
+
+**A probe that depends on a sibling's committed state depends on the sibling passing.** Two
+trigger probes in CHECK 78b re-dated a row an earlier case had withdrawn — and a PL/pgSQL
+exception handler rolls back to the start of *its own* block, so when that earlier case failed
+under a mutation the withdrawal was undone, both UPDATEs set `withdrawn_at` with no actor, and
+the attribution CHECK answered instead of the trigger. The block then died on an unhandled
+`check_violation` and the sweep reported **ten** mutations as MUTERR for one ordering. Each
+probe now inserts and withdraws its own row. The general form is wider than triggers: a probe
+that reads state another probe wrote is a probe whose result is conditional on that probe, and
+the sweep is the only thing that makes the dependency visible.
+
+**And a refusal case that *succeeds* under its mutation collides with the next one.** The same
+block's five insert-refusal cases all targeted one (variant, policy, scope) slot. With the
+quantity bound dropped, the zero-quantity case inserts — which is the behaviour the case exists
+to catch — and then the next successful insert violates the live unique index, raising a
+`unique_violation` no handler caught. One policy per insert-case is the fix. The tell in the
+sweep output is a run of MUTERRs whose first entry is a drop of something unrelated to the
+index.
+
+**Arithmetic added to protect a property the ledger already guarantees is a defect, not
+belt-and-braces.** `entitlements.SIGNS` makes `reserve` negative, so a grant's balance is
+already net of what is held. `_revoke_plan_grants` subtracted the held quantity *again* to
+protect the booking — and on a grant with one of two credits reserved it wrote off nothing,
+leaving a **revoked** grant carrying a balance of one, which is precisely what `_revoke_grants`'
+own comment says its movement exists to prevent: "the balance afterwards is zero by arithmetic
+rather than by the status column saying so". The property held by construction all along.
+**Found by the test written for the disclosure**, which is the argument for asserting the figure
+a screen shows rather than the status a row carries.
+
+**`fill` is strict in both directions, so a function returning a message key without its values
+pushes a contract onto every call site.** `timingMessage` returned one of three keys and the
+component passed `{on}` to all three — and "Takes effect today." has no `{on}`, which is an
+error rather than an ignored extra: a 500 on the member's record. This is the plural-`count`
+finding's sibling and it has the same remedy: return the key *and* the values, so the one
+function that chose the message also owns what it needs.
+
+**A required `correlation_id` the client does not send reaches a screen as an absence.** `api`
+sets one on a body it builds and on the gate's own query and nowhere else, so a read whose route
+declares `correlation_id: str` answers 422 — and a surface that catches a failed read to render
+a block conditionally then renders *nothing*, with no message saying why. The picker appeared,
+the consequence did not, and every assertion about the picker passed. When a new route takes a
+correlation id, the read has to send it; when a read is wrapped in a `catch`, the absence it
+produces is indistinguishable from "there is nothing to show".
+
+**A `psql` session as `postgres` bypasses RLS, so a tenant filter must be an explicit
+`WHERE`.** A diagnostic query that set `app.tenant_id` and relied on the policy returned every
+tenant's rows — thousands of them from the backend suite's own tenants — because a superuser is
+exempt from row-level security entirely. The isolation suite never hits this because it
+`SET LOCAL ROLE` to a runtime role first. For an ad-hoc read, name the tenant in the predicate.

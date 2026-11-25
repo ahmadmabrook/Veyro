@@ -1766,6 +1766,35 @@ class GrantBody(BaseModel):
     correlation_id: str
 
 
+class PlanEntitlementBody(BaseModel):
+    """ADR-0013: declare what a membership plan grants.
+
+    **No `is_counted` field**, for `GrantBody`'s reason one level up: it comes from the policy,
+    and a caller able to send it could declare an unlimited all-clubs right on a plan the
+    tenant sells by the ten.
+
+    **Bounded here as well as by the CHECK**, because `NumericValueOutOfRange` is a `DataError`
+    rather than the `CheckViolation` the handlers catch -- MOD-011's, MOD-012's and MOD-013's
+    finding, three times over.
+    """
+
+    variant_id: str
+    policy_id: str
+    quantity: int | None = Field(default=None, ge=1, le=10_000)
+    brand_id: str | None = None
+    location_id: str | None = None
+    usable_from_minute: int | None = Field(default=None, ge=0, le=1439)
+    usable_to_minute: int | None = Field(default=None, ge=1, le=1440)
+    correlation_id: str
+
+
+class WithdrawPlanEntitlementBody(BaseModel):
+    """A withdrawal states a reason, because the row is kept to answer who stopped it."""
+
+    reason: str = Field(min_length=1, max_length=500)
+    correlation_id: str
+
+
 class ReserveBody(BaseModel):
     """ReserveEntitlement.
 
@@ -7286,6 +7315,38 @@ def create_app(
             tenant_pool, tenant_id, require_uuid(membership_id, "membership_id"),
             require_uuid(to_agreement_id, "to_agreement_id"))
 
+    @app.get("/memberships/{membership_id}/plan-change-quote")
+    def quote_plan_change(
+        tenant_id: TenantId, session: Session, correlation_id: str, membership_id: str,
+        to_variant_id: str,
+    ) -> dict[str, Any]:
+        """The same two figures, keyed on a *plan* rather than on a drafted agreement.
+
+        **This is what lets a tier-3 screen disclose before it commits.** The sibling above
+        takes a successor agreement, and drawing one up is `membership.agreement.write` --
+        financial class -- so a screen that wanted to show ADM-MSH-06's loss panel first had
+        to write a contract in order to say what it would cost. The canvas's own instruction
+        is the opposite: "the loss is stated before the saving, and the credit expiry is the
+        line that matters -- a member who discovers it afterwards has been quietly charged
+        for something they never got."
+
+        **Three permissions, because it composes three modules' facts.** The membership and
+        its entitlements are MOD-017's, and the target plan's figure is MOD-016's -- quoted
+        rather than resolved, so nothing is written and no coupon is spent. A reader holding
+        only the membership read would otherwise get a catalogue price out of a membership
+        route, which is MOD-010's `events.event.read` finding.
+
+        **Nothing is written at all**, which the response says: not the agreement, not a
+        price resolution, not a lifecycle change. The command is still two acts.
+        """
+        permit(session, "membership.record.read", correlation_id)
+        permit(session, "membership.entitlement.read", correlation_id)
+        permit(session, "catalog.price.read", correlation_id)
+        return commercial.preview_plan_change_to_variant(
+            tenant_pool, tenant_id, require_uuid(membership_id, "membership_id"),
+            to_variant_id=require_uuid(to_variant_id, "to_variant_id"),
+            actor_id=session["identity_id"], correlation_id=correlation_id)
+
     @app.post("/memberships/{membership_id}/plan-change")
     def change_membership_plan(
         tenant_id: TenantId, session: Session, membership_id: str, body: PlanChangeBody
@@ -7415,6 +7476,78 @@ def create_app(
             tenant_pool, tenant_id, as_of=as_of,
             expiring_within_days=expiring_within_days)
 
+    # ------------------------------------------- ADR-0013: what a plan grants
+    #
+    # **Under `/memberships`, not `/member-entitlements`.** That prefix is a *member's* rights
+    # and this is a *plan's* declaration: nobody's record is read and no person id is taken,
+    # which is also why the read is its own permission rather than
+    # `membership.entitlement.read`.
+
+    @app.get("/memberships/plan-entitlements")
+    def list_plan_entitlements(
+        tenant_id: TenantId, session: Session, correlation_id: str, variant_id: str,
+        include_withdrawn: bool = False,
+    ) -> dict[str, Any]:
+        """What a plan grants: ADM-MSH-09's entitlements column and ADM-MSH-06's loss panel.
+
+        **This is the plan's declaration, not any member's grants**, and the response says so
+        rather than leaving a reader to assume the two are the same list. A member's are
+        `GET /member-entitlements`, which needs a different permission for a different reason.
+        """
+        permit(session, "membership.plan_entitlement.read", correlation_id)
+        return commercial.list_plan_entitlements(
+            tenant_pool, tenant_id, variant_id=require_uuid(variant_id, "variant_id"),
+            include_withdrawn=include_withdrawn)
+
+    @app.post("/memberships/plan-entitlements", status_code=201)
+    def define_plan_entitlement(
+        tenant_id: TenantId, session: Session, body: PlanEntitlementBody
+    ) -> dict[str, Any]:
+        """Declare a right a plan grants. COM-01-R03's missing producer.
+
+        **Financial class, because a mistake here is wholesale.**
+        `membership.entitlement.grant` hands a right to one named member; this decides what
+        every member who joins the plan from now on receives, so an unlimited all-clubs right
+        added to the cheapest plan gives the product away.
+
+        **Not retroactive.** Members already on the plan keep what they were granted at
+        activation, which the response states because it is the opposite of what a reader
+        would assume from a table called "what this plan grants".
+        """
+        permit(session, "membership.plan_entitlement.write", body.correlation_id)
+        return commercial.define_plan_entitlement(
+            tenant_pool, tenant_id,
+            variant_id=require_uuid(body.variant_id, "variant_id"),
+            policy_id=require_uuid(body.policy_id, "policy_id"),
+            quantity=body.quantity,
+            brand_id=optional_uuid(body.brand_id, "brand_id"),
+            location_id=optional_uuid(body.location_id, "location_id"),
+            usable_from_minute=body.usable_from_minute,
+            usable_to_minute=body.usable_to_minute,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id)
+
+    @app.post("/memberships/plan-entitlements/{plan_entitlement_id}/withdraw")
+    def withdraw_plan_entitlement(
+        tenant_id: TenantId, session: Session, plan_entitlement_id: str,
+        body: WithdrawPlanEntitlementBody,
+    ) -> dict[str, Any]:
+        """Stop a plan granting a right, leaving every grant already written alone.
+
+        A withdrawal rather than a delete, and final by trigger: "did this plan grant PT in
+        August, and who stopped it" is asked exactly when a member disputes what they bought.
+        """
+        permit(session, "membership.plan_entitlement.write", body.correlation_id)
+        return commercial.withdraw_plan_entitlement(
+            tenant_pool, tenant_id,
+            require_uuid(plan_entitlement_id, "plan_entitlement_id"),
+            reason=body.reason, actor_id=session["identity_id"],
+            correlation_id=body.correlation_id)
+
+    # **Declared before `/memberships/{membership_id}`, and that is not cosmetic.** FastAPI
+    # matches routes in declaration order, so with these below it `/memberships/plan-
+    # entitlements` was read as a membership id and answered `bad_membership_id` -- a 422
+    # naming a field the caller never sent, which reads as a client bug. `/memberships/plans`
+    # sits above that route for the same reason.
     @app.get("/memberships/{membership_id}")
     def get_membership(
         tenant_id: TenantId, session: Session, membership_id: str

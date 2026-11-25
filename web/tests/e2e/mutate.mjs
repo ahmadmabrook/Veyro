@@ -42,6 +42,109 @@ const web = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
  * does not collect those files and so reported no failure rather than no test.
  */
 const MUTATIONS = [
+  // ------------------------------------------------- ADM-MSH-06, downgrade
+  {
+    id: "downgrade-the-refusal-is-a-sentence-not-an-enum",
+    why: "a vocabulary the backend stores is never a label -- the first version printed"
+      + " `an_upgrade_takes_effect_inside_the_current_period` onto the page",
+    file: "src/components/membership-panels.tsx",
+    from: "          {refusal === null ? (quote.refused_because ?? \"\") : text(refusal)}",
+    to: "          {quote.refused_because ?? \"\"}",
+    grep: "names the server's refusal rather than offering a dead control",
+  },
+  {
+    id: "downgrade-the-loss-comes-before-the-control",
+    why: "the canvas's own note is the requirement -- 'the loss is stated before the saving'"
+      + " -- and a sheet that put the confirmation first would satisfy every assertion about"
+      + " the text and still be the order the note forbids",
+    file: "src/components/membership-panels.tsx",
+    from: "      {/* **The loss first**, which is the canvas's instruction rather than a layout",
+    to: "      {false && /* **The loss first**, which is the canvas's instruction rather than a layout",
+    grep: "puts the loss above the confirmation",
+  },
+  {
+    id: "downgrade-excludes-the-current-plan",
+    why: "`change_membership_plan` refuses an agreement on the same plan outright, so"
+      + " offering it would be a control the server answers 409 to -- FD-06's rule",
+    file: "src/lib/downgrade.ts",
+    from: "    (one) => one.variant_id !== currentVariantId && !one.is_a_trial_product);",
+    to: "    (one) => !one.is_a_trial_product);",
+    grep: "excludes the plan they are on",
+    runner: "vitest",
+  },
+  {
+    id: "downgrade-excludes-a-trial",
+    why: "ADR-0010 D7: a product declaring `trial_days` is what somebody converts *from*, so"
+      + " moving a member onto one would be a downgrade into a seven-day clock",
+    file: "src/lib/downgrade.ts",
+    from: "    (one) => one.variant_id !== currentVariantId && !one.is_a_trial_product);",
+    to: "    (one) => one.variant_id !== currentVariantId);",
+    grep: "excludes a trial",
+    runner: "vitest",
+  },
+  {
+    id: "downgrade-two-silences-are-two-facts",
+    why: "an empty loss panel is either a tenant that declares no plan rights or two plans"
+      + " granting the same ones, and rendering both as 'nothing changes' is exactly the"
+      + " quiet charge the canvas's own note is about",
+    file: "src/lib/downgrade.ts",
+    from: "  if (!move.the_leaving_plan_declares_rights && !move.the_joining_plan_declares_rights) {",
+    to: "  if (false) {",
+    grep: "says nothing is declared where neither plan declares",
+    runner: "vitest",
+  },
+  {
+    id: "downgrade-a-requantified-right-is-a-move",
+    why: "four sessions becoming two is the half a member argues about, and leaving it out of"
+      + " the loss count makes the panel say nothing changed",
+    file: "src/lib/downgrade.ts",
+    from: "  const moves = move.lost.length + move.gained.length + move.requantified.length;",
+    to: "  const moves = move.lost.length + move.gained.length;",
+    grep: "says there is a loss for each of the three kinds of move",
+    runner: "vitest",
+  },
+  {
+    id: "downgrade-a-booking-is-not-lost",
+    why: "`reserve` is a negative ledger movement so the balance is already net of a hold --"
+      + " a member told they lose four when one is a class they are in has been given the"
+      + " wrong number in the direction the canvas's note is about",
+    file: "src/lib/downgrade.ts",
+    from: "    (one) => one.is_counted && (one.held ?? 0) > 0);",
+    to: "    (one) => one.is_counted);",
+    grep: "names the booked ones separately",
+    runner: "vitest",
+  },
+  {
+    id: "downgrade-the-keeps-it-reason-is-only-a-downgrades",
+    why: "the canvas states the reason rather than the rule -- 'not today, she has paid for"
+      + " August at the higher rate and keeps it' -- and that is false of an upgrade, which"
+      + " charges the difference",
+    file: "src/lib/downgrade.ts",
+    from: "  return quote.kind === \"downgrade\"",
+    to: "  return true",
+    grep: "does not borrow that reason for a future upgrade",
+    runner: "vitest",
+  },
+  {
+    id: "downgrade-the-confirmation-is-the-plan-not-a-word",
+    why: "on a downgrade the figure is zero, so a typed amount would be '0.00' to confirm"
+      + " losing access to two clubs -- the canvas's button names the plan change",
+    file: "src/lib/downgrade.ts",
+    from: "  return fold(typed) !== \"\" && fold(typed) === fold(planName);",
+    to: "  return fold(typed) !== \"\";",
+    grep: "refuses a different plan, a word and nothing",
+    runner: "vitest",
+  },
+  {
+    id: "downgrade-the-refusal-comes-before-the-confirmation",
+    why: "a reader asked to type a plan name into a form the server will refuse has been"
+      + " given a control instead of a reason",
+    file: "src/lib/downgrade.ts",
+    from: "  if (!quote.may_change) {",
+    to: "  if (false) {",
+    grep: "names the refusal before asking for the confirmation",
+    runner: "vitest",
+  },
   // ------------------------------------------------- ADM-MSH-09, plans and pricing
   {
     id: "plans-dead-book-keeps-its-figure",
