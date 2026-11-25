@@ -141,11 +141,14 @@ export function hourLabel(hour: number): string {
 /**
  * The hours the grid draws, derived from the data rather than from opening hours.
  *
- * **Nothing in this build records when a club is open** — the attendance report refuses a
- * capacity comparison for a neighbouring reason — so the span is the union of everything this
- * resource's own week touches: its rota rows and the sessions it holds. A rota *is* the
- * opening-hours statement for a resource, which is why deriving it here is honest and
- * deriving a club's from it would not be.
+ * **This grid does not read the club's opening hours** — they *are* recorded, per location, in
+ * MOD-026's business calendar; this comment used to say nothing in the build held them, which
+ * was false for a module — so the span is the union of everything this resource's own week
+ * touches: its rota rows and the sessions it holds. A rota *is* the opening-hours statement for
+ * a resource, which is why deriving it here is honest and deriving a club's from it would not
+ * be. Reading the club's hours to bound the grid instead is work, and it would be the wrong
+ * bound anyway: a coach's week is theirs, and a club open at seven says nothing about whether
+ * this person is.
  *
  * `null` where there is nothing to draw at all, so the page shows an empty state rather than
  * twenty-four rows of "not working" for a room nobody wrote a rota for.

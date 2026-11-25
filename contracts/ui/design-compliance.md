@@ -333,7 +333,7 @@ corresponds to them. The others map loosely:
 | `/login` | ADM-AUTH-01 Admin sign-in | **rebuilt** — the lockup, the note box; the tenant field is a stated deviation |
 | `/step-up` | ADM-AUTH-02 Sensitive action re-auth | **rebuilt** — names the action from MOD-008's catalogue; a page rather than an overlay |
 | `/people` | ADM-MEM-11 Merge duplicate members (partially) | partial — the duplicate queue only |
-| `/organization` | ADM-SET-01, ADM-SET-02 | the hierarchy, with a figures line; the opening hours and floor capacity ADM-SET-02 draws have no read -- **and that one read is also what `GET /reports/attendance` refuses to assume**, since it returns all twenty-four hours and will not label a day set "weekdays" because nothing here records a working week. ADM-SET-02 draws it: "Sun-Thu 06:00-23:00 · Fri 14:00-22:00 · Sat 08:00-22:00 · FLOOR CAPACITY 180". One missing read, two screens |
+| `/organization` | ADM-SET-01, ADM-SET-02 | the hierarchy, with a figures line; ADM-SET-02's opening hours and floor capacity have no read **here** -- the hours are recorded, in MOD-026's `plt01.tsk_business_hours` with a writer and a read route, so what is missing on this screen is the composed read and the floor capacity. `GET /reports/attendance` does not consult them either, and whether a club's opening hours are a *tasks* fact is this screen's question: the read is gated on `tasks.calendar.read`, which neither an access reader nor a tenancy reader holds |
 | `/access` | **none** | a zone list, which the design has no canvas for |
 | `/catalog` | ADM-POS-01, ADM-POS-03 | partial, and the three absent columns are named on the screen |
 | `/finance` | **none** | MOD-018's general ledger. It was counted as ADM-PAY-01 and is a different subject; `/payments` is that screen now |
@@ -647,12 +647,16 @@ Six decisions carry the screen:
   cross-runtime parity test behind it, so the figure is whole hours; across a week that is
   immaterial and below one it is not, and the exact minutes are on the route.
 - **The week starts on Sunday, because the canvas draws SUN–SAT** and dates its sample week
-  to a Sunday, which is the working week in this product's own market. `Window.weekday` is
-  0-Monday and that is a *storage* convention — the rota rows are keyed by weekday number
-  whichever day the grid begins on, so only the order of the seven dates moved.
-  `availability.week_from` carries the reason. This is not a declaration of which days anybody
-  works: `GET /reports/attendance` still refuses to label a day set "weekdays", because
-  nothing in this build records one.
+  to a Sunday — and the canvas named for that was the wrong one, which `availability.week_from`
+  now records: ADM-SCH-04 templates its day labels and draws none, ADM-SCH-03's `REPEATS · S M
+  T W Th F S` is the real evidence, and CON-04 is decisive because it derives the week start
+  from the region ("Jordan sets ... a Sunday week start"). `Window.weekday` is 0-Monday and
+  that is a *storage* convention — the rota rows are keyed by weekday number whichever day the
+  grid begins on, so only the order of the seven dates moved. This is not a declaration of
+  which days anybody works: `GET /reports/attendance` still refuses to label a day set
+  "weekdays", though **not** because nothing records one — `plt01.tsk_business_hours` holds
+  each club's open days — but because that report does not read them, and the chips are the
+  reader's choice rather than a claim about their business.
 
 **Verified against the canvas by photographing both and comparing**, at 1400px, light, English
 — and the comparison found four things no assertion in four layers could see:
