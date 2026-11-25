@@ -108,6 +108,10 @@ const PACKAGE = {
   "MOD-020": "booking",
   "MOD-021": "devices",
   "MOD-022": "access",
+  // Not built. The package name it would create, so a claim naming it is checkable --
+  // which is what this map is for: the day `backend/app/coaching/` exists, every reason
+  // that says MOD-023 is unbuilt fails, and somebody re-reads it.
+  "MOD-023": "coaching",
   "MOD-026": "tasks",
   "MOD-027": "crm",
   "MOD-057": "analytics",
@@ -250,13 +254,27 @@ const BACKLOG = {
     + "path with no freshness contract and no permission pre-filter",
   // `work:` -- a built module does not yet do what the screen draws. Each names the module
   // and what has to be written in it.
-  "ADM-CC-02": "work: MOD-008. ADR-0014 gave the gate a `where` answer, so a brand- or "
-    + "location-scoped role can sign in and work at all -- it was refused every gated read "
-    + "before -- and the rail is generated from the pages that would answer them rather "
-    + "than greyed, which is this canvas's own sentence. What is left is the Command "
-    + "Center's panels: each is a read that has not opted in, so a club manager sees the "
-    + "rail and an empty board. Opting one in is a predicate plus a case, and `permit` "
-    + "refuses such a caller until it happens, which is the behaviour they had before",
+  // **This entry was wrong and the canvas is what corrected it.** It said the work was
+  // opting ADM-CC-01's five panel reads in to scope, which assumed this screen is the
+  // owner's board narrowed to a club. It is not: the canvas draws a different metric row and
+  // different rows, and its closing card states the boundary as product -- "What Ziad does
+  // not see: group revenue, cross-location comparison, the JoFotara queue, or the recovery
+  // workflow itself." Three of the owner's panels are ones this reader must *not* see, so
+  // scoping them was never the task. A claimed gap is a claim to check.
+  "ADM-CC-02": "MOD-023: the canvas\u0027s lead row is \u0022PT sessions delivered but not "
+    + "verified\u0022, whose consequence it spells out -- unverified sessions are not billed "
+    + "and do not count against a package -- and nothing in `plt01` carries a verification "
+    + "outside a contact point and a DSAR, so the delivered-and-confirmed session is a model "
+    + "the Coach Workspace owns and CCH-17 is the screen the row links to. Six of the seven "
+    + "items are buildable on built modules today and are not waiting on it: four club "
+    + "metrics -- in the building against capacity, classes today with the one lacking a "
+    + "coach, staff on shift, memberships expiring in seven days -- a STAFFING row, and a "
+    + "MONEY row the design deliberately makes a pointer rather than a figure. Each can be "
+    + "bounded to a club now that ADR-0014 has the gate answering where: `acc_zones`, "
+    + "`sch_sessions` and `ppl_staff_profiles` carry `location_id`, and a membership reaches "
+    + "one through its person\u0027s `ppl_tenant_profiles.location_id`, which is nullable by "
+    + "design -- so a club count excludes members nobody has assigned and the board has to "
+    + "say so rather than imply it",
   "ADM-SCH-06": "work: MOD-019. The canvas draws name, capacity and equipment and says "
     + "'capacity here is the ceiling every class inherits'. `sch_resources` has `quantity` "
     + "-- how many of a thing there are -- capacity lives on a template's own policy per "

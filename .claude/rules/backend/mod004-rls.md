@@ -3207,6 +3207,26 @@ fifth distinct form of "a mutation that changes nothing is not evidence" here, a
 guard is the shape rather than a check: **mutate the value a branch returns, never the clauses
 around it.**
 
+**"Does this table carry a location" is not "can this be scoped", and I answered the first
+twice while believing I had answered the second.** Sizing ADM-CC-02 I checked
+`information_schema.columns` for `location_id` across the Command Center's five entities,
+found it on `acc_zones` and `sch_sessions` only, and concluded a membership cannot be bounded
+to a club -- then wrote that the money panels are therefore tenant-wide facts a club manager
+should be refused. Both halves were wrong. `ppl_tenant_profiles.location_id` is "where in the
+hierarchy this person belongs", one join away through the module that owns people, and FD-02's
+lookup already reads it and calls it "the club, which is a filter on this module and the only
+one it has". A second grep missed it as well, because the join and the projection sit on
+different lines.
+
+**The shape is the inverse of this build's most-repeated finding.** A column with a writer and
+no reader is found by grepping the writer; a *relation* that lives in another module is found
+only by asking which module owns the fact. So before concluding a figure cannot be scoped,
+name the entity that owns the scope and look there -- not at the table the read starts from.
+And the nullability is part of the answer rather than an afterthought: that column is optional
+by design, "because a person may be known to the tenant before anybody decides which location
+they belong to", so a club-bounded count excludes the unassigned and a board has to say so
+rather than imply it.
+
 **A boolean that answers "is this withheld" is not an answer to "what can the reader do about
 it", and a shared sentence makes the second one wrong everywhere at once.** This file already
 records the `reachable` version -- one field answering two questions is right only while the
