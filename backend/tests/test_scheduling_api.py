@@ -2025,3 +2025,530 @@ class ConflictCheckTests(SchedulingApiTestCase):
         self.assertGreater(self.generate(gym, template_id)["created"], 0)
         self.assertEqual(
             self.check(gym, requirements=requirements).json()["spare"], {"equipment": 12})
+
+
+class ResourceCapacityTests(SchedulingApiTestCase):
+    """ADM-SCH-06's two facts, through the routes. ADR-0018.
+
+    > Capacity here is the ceiling every class inherits. Double-booking is impossible because
+    > ADM-SCH-03 reads this list — the constraint lives in one place, not in each scheduler's
+    > memory.
+
+    **Three different numbers, and this build had one of them.** `quantity` is how many of a
+    thing there are, a policy's `capacity` is how many places a class offers, and what the
+    canvas draws is neither: how many *people* a space holds. These assert that the three stay
+    three, and that the ceiling refuses a class the room cannot take.
+    """
+
+    def space(self, gym: dict[str, Any], code: str, capacity: int | None) -> str:
+        body: dict[str, Any] = {"location_id": gym["location_id"]}
+        if capacity is not None:
+            body["capacity"] = capacity
+        return self.resource(gym["tenant_id"], "room", code, **body)
+
+    def listed(self, tenant_id: str, **params: Any) -> dict[str, Any]:
+        read = self.client.get("/scheduling/resources", params={
+            **params, **self.correlation()}, headers=self.headers(tenant_id))
+        self.assertEqual(read.status_code, 200, read.text)
+        return dict(read.json())
+
+    def one(self, tenant_id: str, resource_id: str) -> dict[str, Any]:
+        for row in self.listed(tenant_id)["resources"]:
+            if row["resource_id"] == resource_id:
+                return dict(row)
+        raise AssertionError(f"{resource_id} is not in the list")
+
+    # ---------------------------------------------------------------- the two facts
+
+    def test_a_room_states_how_many_people_it_holds(self):
+        gym = self.gym()
+        room = self.space(gym, f"CAP-{uuid.uuid4().hex[:6].upper()}", 30)
+        self.assertEqual(self.one(gym["tenant_id"], room)["capacity"], 30)
+
+    def test_a_coach_cannot_hold_people_because_the_number_has_no_reading(self):
+        gym = self.gym()
+        refused = self.client.post("/scheduling/resources", json={
+            "resource_code": f"CO-{uuid.uuid4().hex[:6].upper()}",
+            "resource_kind": "staff", "display_name": "A coach with a capacity",
+            "capacity": 10, "location_id": gym["location_id"], **self.correlation()},
+            headers=self.headers(gym["tenant_id"]))
+        self.assertEqual(refused.status_code, 422, refused.text)
+
+    def test_an_unstated_capacity_is_null_and_not_zero(self):
+        """ADR-0018 D1. A room nobody has described does not bind a class, and rendering it as
+        zero would say the room holds nobody -- a different fact, and the one a reader acts
+        on."""
+        gym = self.gym()
+        self.assertIsNone(self.one(gym["tenant_id"], gym["studio"])["capacity"])
+        listed = self.listed(gym["tenant_id"])
+        self.assertIn("unstated rather than zero", listed["capacity_is_a_ceiling"])
+
+    def test_equipment_goes_in_a_space_and_the_list_says_what_is_in_each(self):
+        gym = self.gym()
+        suffix = uuid.uuid4().hex[:6].upper()
+        room = self.space(gym, f"SP-{suffix}", 30)
+        bikes = self.resource(
+            gym["tenant_id"], "equipment", f"BK-{suffix}", quantity=20,
+            location_id=gym["location_id"], parent_resource_id=room)
+        self.assertEqual(self.one(gym["tenant_id"], bikes)["parent_resource_id"], room)
+        contains = self.one(gym["tenant_id"], room)["contains"]
+        self.assertEqual(
+            [(c["resource_code"], c["quantity"]) for c in contains],
+            [(f"BK-{suffix}", 20)],
+            "twenty bikes are one row with a quantity of twenty, which is what makes '20 "
+            "bikes' a figure rather than a row count")
+
+    def test_only_equipment_goes_inside_a_space(self):
+        gym = self.gym()
+        room = self.space(gym, f"RM-{uuid.uuid4().hex[:6].upper()}", 30)
+        refused = self.client.post("/scheduling/resources", json={
+            "resource_code": f"IN-{uuid.uuid4().hex[:6].upper()}",
+            "resource_kind": "room", "display_name": "A room inside a room",
+            "location_id": gym["location_id"], "parent_resource_id": room,
+            **self.correlation()}, headers=self.headers(gym["tenant_id"]))
+        self.assertEqual(refused.status_code, 422, refused.text)
+
+    def test_a_bike_cannot_be_inside_a_coach(self):
+        """The trigger, not a CHECK: what the parent *is* lives in another row."""
+        gym = self.gym()
+        refused = self.client.post("/scheduling/resources", json={
+            "resource_code": f"BC-{uuid.uuid4().hex[:6].upper()}",
+            "resource_kind": "equipment", "display_name": "A bike inside a coach",
+            "location_id": gym["location_id"], "parent_resource_id": gym["coach"],
+            **self.correlation()}, headers=self.headers(gym["tenant_id"]))
+        self.assertEqual(refused.status_code, 422, refused.text)
+        self.assertIn("staff", refused.text)
+
+    def test_equipment_cannot_be_in_another_clubs_space(self):
+        """Twenty bikes in Khalda are not twenty bikes in Sweifieh, and a ceiling computed
+        across clubs is a number about bikes nobody at this site can reach."""
+        gym = self.gym()
+        elsewhere = self.location(gym["tenant_id"], timezone="Asia/Amman")
+        far_room = self.resource(
+            gym["tenant_id"], "room", f"FAR-{uuid.uuid4().hex[:6].upper()}",
+            location_id=elsewhere, capacity=30)
+        refused = self.client.post("/scheduling/resources", json={
+            "resource_code": f"BF-{uuid.uuid4().hex[:6].upper()}",
+            "resource_kind": "equipment", "display_name": "A bike in another club",
+            "location_id": gym["location_id"], "parent_resource_id": far_room,
+            **self.correlation()}, headers=self.headers(gym["tenant_id"]))
+        self.assertEqual(refused.status_code, 422, refused.text)
+        self.assertIn("different locations", refused.text)
+
+    # ---------------------------------------------------------------- the ceiling
+
+    def test_a_class_may_not_offer_more_places_than_its_named_room_holds(self):
+        gym = self.gym()
+        code = f"SM-{uuid.uuid4().hex[:6].upper()}"
+        room = self.space(gym, code, 20)
+        refused = self.client.post("/scheduling/templates", json={
+            "template_code": f"BIG-{uuid.uuid4().hex[:6].upper()}",
+            "display_name": "A class bigger than its room",
+            "service_resource_id": gym["service"],
+            "location_id": gym["location_id"],
+            "rule": {"frequency": "weekly", "local_time": "18:00",
+                     "duration_minutes": 60, "starts_on": day(1), "until": day(60),
+                     "weekdays": [BOOKABLE_WEEKDAY]},
+            "policy": {"capacity": 30},
+            "requirements": [
+                {"kind": "service", "quantity": 1, "resource_id": gym["service"]},
+                {"kind": "room", "quantity": 1, "resource_id": room},
+            ],
+            "restrictions": [], **self.correlation()},
+            headers=self.headers(gym["tenant_id"]))
+        self.assertEqual(refused.status_code, 422, refused.text)
+
+    def test_a_class_inside_its_room_is_accepted_and_the_ceiling_comes_back(self):
+        gym = self.gym()
+        room = self.space(gym, f"OK-{uuid.uuid4().hex[:6].upper()}", 20)
+        created = self.client.post("/scheduling/templates", json={
+            "template_code": f"FIT-{uuid.uuid4().hex[:6].upper()}",
+            "display_name": "A class that fits",
+            "service_resource_id": gym["service"],
+            "location_id": gym["location_id"],
+            "rule": {"frequency": "weekly", "local_time": "18:00",
+                     "duration_minutes": 60, "starts_on": day(1), "until": day(60),
+                     "weekdays": [BOOKABLE_WEEKDAY]},
+            "policy": {"capacity": 20},
+            "requirements": [
+                {"kind": "service", "quantity": 1, "resource_id": gym["service"]},
+                {"kind": "room", "quantity": 1, "resource_id": room},
+            ],
+            "restrictions": [], **self.correlation()},
+            headers=self.headers(gym["tenant_id"]))
+        self.assertEqual(created.status_code, 201, created.text)
+        self.assertEqual(created.json()["capacity_ceiling"], 20)
+        self.assertEqual(created.json()["ceiling_bound_kind"], "space")
+
+    def test_an_anonymous_room_requirement_is_bounded_by_the_smallest_candidate(self):
+        """**The slice's hardest decision.** "A room" means the generator may pick any room of
+        that kind at the site, so the class has to fit in whichever it picks -- and taking the
+        largest would let a class of fifty be assigned a studio holding twenty, which is the
+        failure this whole slice exists to prevent. The cost is real and stated: naming the
+        hall is the remedy, which is a requirement that says what it means.
+        """
+        gym = self.gym()
+        suffix = uuid.uuid4().hex[:6].upper()
+        self.space(gym, f"SMALL-{suffix}", 20)
+        self.space(gym, f"HALL-{suffix}", 50)
+        body: dict[str, Any] = {
+            "template_code": f"ANY-{suffix}",
+            "display_name": "A class in any room",
+            "service_resource_id": gym["service"],
+            "location_id": gym["location_id"],
+            "rule": {"frequency": "weekly", "local_time": "18:00",
+                     "duration_minutes": 60, "starts_on": day(1), "until": day(60),
+                     "weekdays": [BOOKABLE_WEEKDAY]},
+            "policy": {"capacity": 30},
+            "requirements": [
+                {"kind": "service", "quantity": 1, "resource_id": gym["service"]},
+                {"kind": "room", "quantity": 1},
+            ],
+            "restrictions": [],
+        }
+        refused = self.client.post(
+            "/scheduling/templates", json={**body, **self.correlation()},
+            headers=self.headers(gym["tenant_id"]))
+        self.assertEqual(refused.status_code, 422, refused.text)
+        # And twenty is accepted, which is the smallest candidate rather than the largest.
+        body["policy"] = {"capacity": 20}
+        body["template_code"] = f"ANY2-{suffix}"
+        created = self.client.post(
+            "/scheduling/templates", json={**body, **self.correlation()},
+            headers=self.headers(gym["tenant_id"]))
+        self.assertEqual(created.status_code, 201, created.text)
+        self.assertEqual(created.json()["capacity_ceiling"], 20)
+
+    def test_a_bike_per_attendee_bounds_the_class_at_the_bikes_in_that_room(self):
+        """ADM-SCH-03's own named gap: "Studio 2 holds 20 bikes. Capacity cannot exceed the
+        room" needs the one fact nothing recorded -- that a format takes one unit of equipment
+        per attendee."""
+        gym = self.gym()
+        suffix = uuid.uuid4().hex[:6].upper()
+        room = self.space(gym, f"SPIN-{suffix}", 40)
+        self.resource(gym["tenant_id"], "equipment", f"BIKE-{suffix}", quantity=20,
+                      location_id=gym["location_id"], parent_resource_id=room)
+        body: dict[str, Any] = {
+            "template_code": f"CYC-{suffix}",
+            "display_name": "A spin class",
+            "service_resource_id": gym["service"],
+            "location_id": gym["location_id"],
+            "rule": {"frequency": "weekly", "local_time": "18:00",
+                     "duration_minutes": 60, "starts_on": day(1), "until": day(60),
+                     "weekdays": [BOOKABLE_WEEKDAY]},
+            "policy": {"capacity": 25},
+            "requirements": [
+                {"kind": "service", "quantity": 1, "resource_id": gym["service"]},
+                {"kind": "room", "quantity": 1, "resource_id": room},
+                {"kind": "equipment", "quantity": 1, "per_attendee": True},
+            ],
+            "restrictions": [],
+        }
+        refused = self.client.post(
+            "/scheduling/templates", json={**body, **self.correlation()},
+            headers=self.headers(gym["tenant_id"]))
+        self.assertEqual(refused.status_code, 422, refused.text)
+        self.assertIn("20", refused.text)
+        body["policy"] = {"capacity": 20}
+        body["template_code"] = f"CYC2-{suffix}"
+        created = self.client.post(
+            "/scheduling/templates", json={**body, **self.correlation()},
+            headers=self.headers(gym["tenant_id"]))
+        self.assertEqual(created.status_code, 201, created.text)
+        self.assertEqual(created.json()["ceiling_bound_kind"], "equipment")
+
+    def test_equipment_at_the_club_and_in_no_room_bounds_no_room(self):
+        """The fixture's own bikes have no parent, so a per-attendee requirement against a
+        room with nothing in it holds nobody. Uncomfortable, correct, and the reason the
+        containment is a relation rather than a label."""
+        gym = self.gym()
+        suffix = uuid.uuid4().hex[:6].upper()
+        room = self.space(gym, f"BARE-{suffix}", 40)
+        refused = self.client.post("/scheduling/templates", json={
+            "template_code": f"NOB-{suffix}",
+            "display_name": "A spin class with no bikes in the room",
+            "service_resource_id": gym["service"],
+            "location_id": gym["location_id"],
+            "rule": {"frequency": "weekly", "local_time": "18:00",
+                     "duration_minutes": 60, "starts_on": day(1), "until": day(60),
+                     "weekdays": [BOOKABLE_WEEKDAY]},
+            "policy": {"capacity": 1},
+            "requirements": [
+                {"kind": "service", "quantity": 1, "resource_id": gym["service"]},
+                {"kind": "room", "quantity": 1, "resource_id": room},
+                {"kind": "equipment", "quantity": 1, "per_attendee": True},
+            ],
+            "restrictions": [], **self.correlation()},
+            headers=self.headers(gym["tenant_id"]))
+        self.assertEqual(refused.status_code, 422, refused.text)
+        self.assertIn("allows 0", refused.text)
+
+    def test_a_retired_room_does_not_bound_a_class(self):
+        gym = self.gym()
+        suffix = uuid.uuid4().hex[:6].upper()
+        tiny = self.space(gym, f"TINY-{suffix}", 5)
+        self.space(gym, f"BIG-{suffix}", 40)
+        retired = self.client.post(
+            f"/scheduling/resources/{tiny}/retire",
+            json={"reason": "knocked through", **self.correlation()},
+            headers=self.headers(gym["tenant_id"]))
+        self.assertEqual(retired.status_code, 200, retired.text)
+        created = self.client.post("/scheduling/templates", json={
+            "template_code": f"RET-{suffix}",
+            "display_name": "A class in the room that is left",
+            "service_resource_id": gym["service"],
+            "location_id": gym["location_id"],
+            "rule": {"frequency": "weekly", "local_time": "18:00",
+                     "duration_minutes": 60, "starts_on": day(1), "until": day(60),
+                     "weekdays": [BOOKABLE_WEEKDAY]},
+            "policy": {"capacity": 40},
+            "requirements": [
+                {"kind": "service", "quantity": 1, "resource_id": gym["service"]},
+                {"kind": "room", "quantity": 1},
+            ],
+            "restrictions": [], **self.correlation()},
+            headers=self.headers(gym["tenant_id"]))
+        self.assertEqual(created.status_code, 201, created.text)
+
+    def test_the_fixture_template_is_unaffected_because_nothing_states_a_capacity(self):
+        """**The default is what this build already did**, which is load-bearing: every
+        resource registered before `0035` states no capacity, so no template already written
+        changes verdict. ADR-0011's reasoning about the billing anchor, applied to a ceiling.
+        """
+        gym = self.gym()
+        self.template(gym)
+
+    def test_a_named_resource_cannot_also_be_required_per_attendee(self):
+        gym = self.gym()
+        refused = self.client.post("/scheduling/templates", json={
+            "template_code": f"NM-{uuid.uuid4().hex[:6].upper()}",
+            "display_name": "A named per-attendee requirement",
+            "service_resource_id": gym["service"],
+            "location_id": gym["location_id"],
+            "rule": {"frequency": "weekly", "local_time": "18:00",
+                     "duration_minutes": 60, "starts_on": day(1), "until": day(60),
+                     "weekdays": [BOOKABLE_WEEKDAY]},
+            "policy": {"capacity": 10},
+            "requirements": [
+                {"kind": "service", "quantity": 1, "resource_id": gym["service"]},
+                {"kind": "equipment", "quantity": 1, "resource_id": gym["bikes"],
+                 "per_attendee": True},
+            ],
+            "restrictions": [], **self.correlation()},
+            headers=self.headers(gym["tenant_id"]))
+        self.assertEqual(refused.status_code, 422, refused.text)
+
+    def test_an_anonymous_room_counts_the_bikes_in_the_poorest_of_them(self):
+        """**The case that separates a minimum from a sum**, which the mutation sweep asked
+        for: with one required space the two agree, so a club-wide sum passed every other test
+        here. Two candidate rooms with different counts is the shape where they differ -- and
+        the smaller has to win, because the generator may pick either.
+
+        **Its own site**, because the ceiling is over *every* active room there: the shared
+        fixture's studio holds no bikes, so any site that includes it is bounded at zero. That
+        is the rule working rather than a wrinkle to design around -- a spin class assigned a
+        room with no bikes in it can hold nobody -- and it is the subject of the test below.
+        """
+        gym = self.gym()
+        suffix = uuid.uuid4().hex[:6].upper()
+        site = self.location(gym["tenant_id"])
+        poor = self.resource(gym["tenant_id"], "room", f"POOR-{suffix}",
+                             location_id=site, capacity=40)
+        rich = self.resource(gym["tenant_id"], "room", f"RICH-{suffix}",
+                             location_id=site, capacity=40)
+        self.resource(gym["tenant_id"], "equipment", f"BP-{suffix}", quantity=5,
+                      location_id=site, parent_resource_id=poor)
+        self.resource(gym["tenant_id"], "equipment", f"BR-{suffix}", quantity=25,
+                      location_id=site, parent_resource_id=rich)
+        body: dict[str, Any] = {
+            "template_code": f"MIX-{suffix}",
+            "display_name": "A spin class in any room",
+            "service_resource_id": gym["service"],
+            "location_id": site,
+            "rule": {"frequency": "weekly", "local_time": "18:00",
+                     "duration_minutes": 60, "starts_on": day(1), "until": day(60),
+                     "weekdays": [BOOKABLE_WEEKDAY]},
+            "policy": {"capacity": 6},
+            "requirements": [
+                {"kind": "service", "quantity": 1, "resource_id": gym["service"]},
+                {"kind": "room", "quantity": 1},
+                {"kind": "equipment", "quantity": 1, "per_attendee": True},
+            ],
+            "restrictions": [],
+        }
+        refused = self.client.post(
+            "/scheduling/templates", json={**body, **self.correlation()},
+            headers=self.headers(gym["tenant_id"]))
+        self.assertEqual(refused.status_code, 422, refused.text)
+        # Five is the poorer room's own count, and it is accepted. A club-wide sum would be
+        # thirty, and this is the assertion that says which one the ceiling is.
+        body["policy"] = {"capacity": 5}
+        body["template_code"] = f"MIX2-{suffix}"
+        created = self.client.post(
+            "/scheduling/templates", json={**body, **self.correlation()},
+            headers=self.headers(gym["tenant_id"]))
+        self.assertEqual(created.status_code, 201, created.text)
+        self.assertEqual(created.json()["capacity_ceiling"], 5)
+        self.assertEqual(created.json()["ceiling_bound_kind"], "equipment")
+
+    def test_a_room_with_no_bikes_in_it_bounds_an_anonymous_spin_class_at_nobody(self):
+        """Uncomfortable, correct, and the reason to name the room instead.
+
+        "Any room" means the generator may pick the yoga studio, where there are no bikes --
+        so a format taking one each cannot run there, and the honest answer is to refuse the
+        template rather than to publish a class that cannot be held. The remedy is a
+        requirement that says which room, which is what naming one means.
+        """
+        gym = self.gym()
+        suffix = uuid.uuid4().hex[:6].upper()
+        spin = self.space(gym, f"SPIN-{suffix}", 40)
+        self.resource(gym["tenant_id"], "equipment", f"BS-{suffix}", quantity=20,
+                      location_id=gym["location_id"], parent_resource_id=spin)
+        body: dict[str, Any] = {
+            "template_code": f"ANYB-{suffix}",
+            "display_name": "A spin class in any room",
+            "service_resource_id": gym["service"],
+            "location_id": gym["location_id"],
+            "rule": {"frequency": "weekly", "local_time": "18:00",
+                     "duration_minutes": 60, "starts_on": day(1), "until": day(60),
+                     "weekdays": [BOOKABLE_WEEKDAY]},
+            "policy": {"capacity": 1},
+            "requirements": [
+                {"kind": "service", "quantity": 1, "resource_id": gym["service"]},
+                {"kind": "room", "quantity": 1},
+                {"kind": "equipment", "quantity": 1, "per_attendee": True},
+            ],
+            "restrictions": [],
+        }
+        refused = self.client.post(
+            "/scheduling/templates", json={**body, **self.correlation()},
+            headers=self.headers(gym["tenant_id"]))
+        self.assertEqual(refused.status_code, 422, refused.text)
+        self.assertIn("allows 0", refused.text)
+        # Naming the spin studio is the remedy, and twenty is then what it holds.
+        body["requirements"][1] = {"kind": "room", "quantity": 1, "resource_id": spin}
+        body["policy"] = {"capacity": 20}
+        body["template_code"] = f"NAMED-{suffix}"
+        created = self.client.post(
+            "/scheduling/templates", json={**body, **self.correlation()},
+            headers=self.headers(gym["tenant_id"]))
+        self.assertEqual(created.status_code, 201, created.text)
+        self.assertEqual(created.json()["capacity_ceiling"], 20)
+
+    def test_retired_equipment_stops_counting_toward_the_ceiling(self):
+        """Bikes taken out of service are bikes nobody can ride, so a class sized against them
+        would be a class the room cannot hold. The sweep asked for this one: with no case,
+        dropping the status filter from the equipment count changed nothing.
+        """
+        gym = self.gym()
+        suffix = uuid.uuid4().hex[:6].upper()
+        room = self.space(gym, f"RET-{suffix}", 40)
+        kept = self.resource(gym["tenant_id"], "equipment", f"KEEP-{suffix}", quantity=5,
+                             location_id=gym["location_id"], parent_resource_id=room)
+        broken = self.resource(gym["tenant_id"], "equipment", f"BRK-{suffix}", quantity=15,
+                               location_id=gym["location_id"], parent_resource_id=room)
+        self.assertNotEqual(kept, broken)
+        gone = self.client.post(
+            f"/scheduling/resources/{broken}/retire",
+            json={"reason": "rusted through", **self.correlation()},
+            headers=self.headers(gym["tenant_id"]))
+        self.assertEqual(gone.status_code, 200, gone.text)
+        body: dict[str, Any] = {
+            "template_code": f"RB-{suffix}",
+            "display_name": "A spin class on the bikes that still work",
+            "service_resource_id": gym["service"],
+            "location_id": gym["location_id"],
+            "rule": {"frequency": "weekly", "local_time": "18:00",
+                     "duration_minutes": 60, "starts_on": day(1), "until": day(60),
+                     "weekdays": [BOOKABLE_WEEKDAY]},
+            "policy": {"capacity": 20},
+            "requirements": [
+                {"kind": "service", "quantity": 1, "resource_id": gym["service"]},
+                {"kind": "room", "quantity": 1, "resource_id": room},
+                {"kind": "equipment", "quantity": 1, "per_attendee": True},
+            ],
+            "restrictions": [],
+        }
+        refused = self.client.post(
+            "/scheduling/templates", json={**body, **self.correlation()},
+            headers=self.headers(gym["tenant_id"]))
+        self.assertEqual(refused.status_code, 422, refused.text)
+        self.assertIn("allows 5", refused.text)
+        # And the five that are left are what it holds.
+        body["policy"] = {"capacity": 5}
+        body["template_code"] = f"RB2-{suffix}"
+        created = self.client.post(
+            "/scheduling/templates", json={**body, **self.correlation()},
+            headers=self.headers(gym["tenant_id"]))
+        self.assertEqual(created.status_code, 201, created.text)
+        self.assertEqual(created.json()["capacity_ceiling"], 5)
+        # The retired row is also out of the room's own contents, which is what ADM-SCH-06
+        # draws: a reader counting bikes on the screen counts the ones that work.
+        contains = self.one(gym["tenant_id"], room)["contains"]
+        self.assertEqual([c["resource_code"] for c in contains], [f"KEEP-{suffix}"])
+
+    def test_the_live_check_reports_the_ceiling_and_does_not_refuse_it(self):
+        """ADM-SCH-03's own half: "Studio 2 holds 20 bikes. Capacity cannot exceed the room".
+
+        **Reported, not refused**, which is that canvas's rule -- "it warns, it does not
+        block" -- and from `_ceiling_for`, the same function the write refuses by. A figure
+        this read computed its own way would be a screen clearing a capacity the publish then
+        rejected, which is this build's one-module-two-definitions finding pointed at a form.
+        """
+        gym = self.gym()
+        suffix = uuid.uuid4().hex[:6].upper()
+        room = self.space(gym, f"LIVE-{suffix}", 20)
+        asked = self.client.post("/scheduling/conflict-check", json={
+            "location_id": gym["location_id"],
+            "rule": {"frequency": "weekly", "local_time": "18:00",
+                     "duration_minutes": 60, "starts_on": day(1), "until": day(60),
+                     "weekdays": [BOOKABLE_WEEKDAY]},
+            "policy": {"capacity": 30},
+            "requirements": [
+                {"kind": "service", "quantity": 1, "resource_id": gym["service"]},
+                {"kind": "room", "quantity": 1, "resource_id": room},
+            ],
+            **self.correlation()}, headers=self.headers(gym["tenant_id"]))
+        self.assertEqual(asked.status_code, 200, asked.text)
+        body = asked.json()
+        self.assertEqual(body["capacity_ceiling"], 20)
+        self.assertEqual(body["ceiling_bound_by"], f"LIVE-{suffix}")
+        self.assertEqual(body["ceiling_bound_kind"], "space")
+        self.assertTrue(body["capacity_over_the_ceiling"])
+
+    def test_the_live_check_and_the_write_agree_about_the_number(self):
+        """The property the shared function exists for: whatever the check reports, the write
+        accepts -- and one over it, the write refuses."""
+        gym = self.gym()
+        suffix = uuid.uuid4().hex[:6].upper()
+        room = self.space(gym, f"AGR-{suffix}", 17)
+        requirements = [
+            {"kind": "service", "quantity": 1, "resource_id": gym["service"]},
+            {"kind": "room", "quantity": 1, "resource_id": room},
+        ]
+        rule = {"frequency": "weekly", "local_time": "18:00", "duration_minutes": 60,
+                "starts_on": day(1), "until": day(60), "weekdays": [BOOKABLE_WEEKDAY]}
+        asked = self.client.post("/scheduling/conflict-check", json={
+            "location_id": gym["location_id"], "rule": rule,
+            "policy": {"capacity": 1}, "requirements": requirements,
+            **self.correlation()}, headers=self.headers(gym["tenant_id"]))
+        self.assertEqual(asked.status_code, 200, asked.text)
+        ceiling = asked.json()["capacity_ceiling"]
+        self.assertEqual(ceiling, 17)
+        self.assertFalse(asked.json()["capacity_over_the_ceiling"])
+        created = self.client.post("/scheduling/templates", json={
+            "template_code": f"AG-{suffix}", "display_name": "At the ceiling",
+            "service_resource_id": gym["service"],
+            "location_id": gym["location_id"], "rule": rule,
+            "policy": {"capacity": ceiling}, "requirements": requirements,
+            "restrictions": [], **self.correlation()},
+            headers=self.headers(gym["tenant_id"]))
+        self.assertEqual(created.status_code, 201, created.text)
+        refused = self.client.post("/scheduling/templates", json={
+            "template_code": f"AG2-{suffix}", "display_name": "One over it",
+            "service_resource_id": gym["service"],
+            "location_id": gym["location_id"], "rule": rule,
+            "policy": {"capacity": ceiling + 1}, "requirements": requirements,
+            "restrictions": [], **self.correlation()},
+            headers=self.headers(gym["tenant_id"]))
+        self.assertEqual(refused.status_code, 422, refused.text)

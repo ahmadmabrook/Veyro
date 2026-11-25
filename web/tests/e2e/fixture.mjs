@@ -1040,10 +1040,23 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
   // with three double-booking conflicts -- correctly, since the yoga class holds that room
   // from 17:50 to 19:10 with its margins. A gym with a studio and a spin room is also the
   // ordinary arrangement, so the fixture matches it rather than moving the class.
+  // **With a stated capacity and bikes in it**, which is ADM-SCH-06's whole card: the room
+  // holds twenty-four people and contains twenty bikes, so the screen renders all three of
+  // its columns and the ceiling is a real figure rather than `null`. `0035` adds both facts.
+  // The studio above deliberately keeps *no* capacity, because "not stated" is the other half
+  // of the distinction and a list with one of each is what demonstrates it -- a board with one
+  // kind of row demonstrates nothing.
   const spinRoom = await call("/scheduling/resources", {
     method: "POST", ...as(token),
     body: { resource_code: "ROOM-SPIN", resource_kind: "room",
             display_name: "Spin room", location_id: location.location_id,
+            capacity: 24, correlation_id: cid() },
+  });
+  const spinBikes = await call("/scheduling/resources", {
+    method: "POST", ...as(token),
+    body: { resource_code: "BIKES-SPIN", resource_kind: "equipment",
+            display_name: "Spin bikes", location_id: location.location_id,
+            quantity: 20, parent_resource_id: spinRoom.resource_id,
             correlation_id: cid() },
   });
   const unstaffed = await call("/scheduling/templates", {
@@ -3236,6 +3249,8 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
   }
 
   return {
+    spinRoomId: spinRoom.resource_id,
+    spinBikesId: spinBikes.resource_id,
     invitedEmail: invited.email,
     withdrawnEmail: withdrawn.email,
     templateId: template.template_id,
@@ -3382,6 +3397,7 @@ if (invokedDirectly) {
       `VEYRO_E2E_READER_EMAIL=${fixture.publisherEmail}`,
       `VEYRO_E2E_READER_PASSWORD=${fixture.publisherPassword}`,
       `VEYRO_E2E_DESK_EMAIL=${fixture.deskEmail}`,
+      `VEYRO_E2E_SPIN_ROOM_ID=${fixture.spinRoomId}`,
       `VEYRO_E2E_INVITED_EMAIL=${fixture.invitedEmail}`,
       `VEYRO_E2E_WITHDRAWN_EMAIL=${fixture.withdrawnEmail}`,
       `VEYRO_E2E_CLUB_EMAIL=${fixture.clubEmail}`,

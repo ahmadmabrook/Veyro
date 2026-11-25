@@ -44,6 +44,12 @@ KINDS: dict[str, str] = {
 #: to are.
 EXCLUSIVE_KINDS: frozenset[str] = frozenset({"staff", "room", "zone", "court"})
 
+#: The kinds that are *places*: three of OPS-01-R01's seven. A place is the only thing that
+#: holds people, so it is the only thing that carries a capacity (ADR-0018 D1) and the only
+#: thing equipment can be inside (D3). A capacity on a coach is a number no reader could
+#: interpret, which is why the schema refuses it rather than leaving it to a convention.
+SPACE_KINDS: frozenset[str] = frozenset({"room", "zone", "court"})
+
 
 @dataclass(frozen=True)
 class Resource:
@@ -57,6 +63,16 @@ class Resource:
     #: Where it is. A room cannot move; a member of staff can, which is what the travel buffer
     #: in `availability` is about.
     location_id: str | None = None
+    #: How many **people** this space holds, where the tenant has stated one. ADM-SCH-06's
+    #: middle column, and a third number beside `quantity` (how many of a thing there are) and
+    #: a policy's `capacity` (how many places a class offers). `None` means unstated, which is
+    #: not the same as zero: an unstated space does not bind, and a space holding nobody is a
+    #: room no class can run in.
+    capacity: int | None = None
+    #: The space this equipment is in. ADM-SCH-06's third column, and the relation that makes
+    #: "Studio 2 holds 20 bikes" answerable -- `location_id` is a club, so without this the
+    #: bikes are at Khalda and in no particular studio.
+    parent_resource_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -67,11 +83,28 @@ class Requirement:
     quantity: int = 1
     #: Set to require *that* resource: the senior instructor, court three.
     resource_id: str | None = None
+    #: Whether `quantity` is per *attendee* rather than per session: one bike each. ADR-0018
+    #: D4, and the one fact `web/src/lib/new-class.ts` names as missing for ADM-SCH-03's
+    #: ceiling. A flag rather than a second integer, because two numbers about one requirement
+    #: can disagree.
+    per_attendee: bool = False
 
 
 def check_resource(resource: Resource) -> None:
     if resource.kind not in KINDS:
         raise ScheduleError(f"{resource.kind!r} is not a resource kind")
+    if resource.capacity is not None:
+        if resource.kind not in SPACE_KINDS:
+            raise ScheduleError(
+                f"a capacity is how many people a place holds, and a {resource.kind} is not "
+                f"a place")
+        if resource.capacity < 1:
+            raise ScheduleError("a space holds at least one person")
+        if resource.capacity > 10_000:
+            raise ScheduleError("a space holds at most 10000 people")
+    if resource.parent_resource_id is not None and resource.kind != "equipment":
+        raise ScheduleError(
+            f"only equipment goes inside a space, and a {resource.kind} is not equipment")
     if resource.quantity < 1:
         raise ScheduleError("a resource exists at least once")
     if resource.quantity > 1 and resource.kind in EXCLUSIVE_KINDS:
@@ -108,6 +141,12 @@ def check_requirement(requirement: Requirement) -> None:
         raise ScheduleError(
             f"a {requirement.kind} requirement names which one, because the kind alone "
             f"describes nothing a session can hold")
+    if requirement.per_attendee and requirement.resource_id is not None:
+        # The rule above already holds a named requirement to one of it, so per-attendee
+        # against it is a figure with no reading. ADR-0018 D4.
+        raise ScheduleError(
+            "a requirement naming a particular resource is for that one resource, so it "
+            "cannot also be one per attendee")
 
 
 def check_requirements(requirements: list[Requirement]) -> None:

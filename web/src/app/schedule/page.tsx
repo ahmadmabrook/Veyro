@@ -207,6 +207,14 @@ export default async function SchedulePage({
         <Link href={`/rota?site=${chosen}`} className="ds-filter-chip">
           {text("schedule.coaches")}
         </Link>
+        {/* **`Rooms` is ADM-SCH-06**, and it belongs in this bar for the reason the canvas
+            draws it as a card beside the week: "double-booking is impossible because
+            ADM-SCH-03 reads this list", so the list a scheduler is told the constraint lives
+            in has to be reachable from the schedule. A route nothing links to is a route
+            nobody finds. */}
+        <Link href={`/schedule/resources?site=${chosen}`} className="ds-filter-chip">
+          {text("rooms.view")}
+        </Link>
       </nav>
 
       {calendar.sessions.length === 0 ? (

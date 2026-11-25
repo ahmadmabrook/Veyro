@@ -189,6 +189,8 @@ const surfaces: [string, string][] = [
   // A form of three fields over a grid of four, which is the pair most likely to force a
   // width: the chips wrap and the table drops, and only one of those is measurable here.
   ["inviting someone", "/staff/invite"],
+  // Three columns one of which is a mono list, which is the shape that forces a width.
+  ["rooms and resources", "/schedule/resources"],
   ["your account", "/account"],
 ];
 

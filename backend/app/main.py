@@ -2656,6 +2656,10 @@ class RequirementBody(BaseModel):
     kind: Literal["staff", "room", "zone", "court", "equipment", "service", "composite"]
     quantity: int = Field(default=1, ge=1, le=10000)
     resource_id: str | None = None
+    #: Whether `quantity` is per attendee rather than per session: one bike each. ADR-0018 D4,
+    #: and the fact ADM-SCH-03's "capacity cannot exceed the room" needs. Refused against a
+    #: named resource, which is for one of it.
+    per_attendee: bool = False
 
 
 class RestrictionBody(BaseModel):
@@ -2675,6 +2679,13 @@ class SchedulingResourceBody(BaseModel):
     quantity: int = Field(default=1, ge=1, le=10000)
     location_id: str | None = None
     person_id: str | None = None
+    #: ADM-SCH-06's middle column: how many **people** this space holds. Only a room, a zone
+    #: or a court may state one, and it is a ceiling on every class in it rather than a
+    #: default for one (ADR-0018 D1, D2).
+    capacity: int | None = Field(default=None, ge=1, le=10000)
+    #: ADM-SCH-06's third column, from the other end: the space this equipment is in. Only
+    #: equipment may have one, and the space must be at the same location.
+    parent_resource_id: str | None = None
     correlation_id: str
 
 
@@ -9012,6 +9023,9 @@ def create_app(
             quantity=body.quantity,
             location_id=optional_uuid(body.location_id, "location_id"),
             person_id=optional_uuid(body.person_id, "person_id"),
+            capacity=body.capacity,
+            parent_resource_id=optional_uuid(
+                body.parent_resource_id, "parent_resource_id"),
             actor_id=session["identity_id"], correlation_id=body.correlation_id,
         )
 
@@ -9123,7 +9137,8 @@ def create_app(
             rule=_recurrence(body.rule), policy=body.policy.model_dump(),
             requirements=[
                 {"kind": r.kind, "quantity": r.quantity,
-                 "resource_id": optional_uuid(r.resource_id, "resource_id")}
+                 "resource_id": optional_uuid(r.resource_id, "resource_id"),
+                 "per_attendee": r.per_attendee}
                 for r in body.requirements],
             restrictions=[{"kind": r.kind, "value": r.value} for r in body.restrictions],
             actor_id=session["identity_id"], correlation_id=body.correlation_id)
@@ -9155,7 +9170,8 @@ def create_app(
             rule=_recurrence(body.rule), policy=body.policy.model_dump(),
             requirements=[
                 {"kind": r.kind, "quantity": r.quantity,
-                 "resource_id": optional_uuid(r.resource_id, "resource_id")}
+                 "resource_id": optional_uuid(r.resource_id, "resource_id"),
+                 "per_attendee": r.per_attendee}
                 for r in body.requirements],
             limit=body.limit)
 

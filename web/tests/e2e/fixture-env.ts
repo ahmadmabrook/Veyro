@@ -116,6 +116,8 @@ export type Fixture = {
    */
   deskEmail: string;
   /** ADM-STF-03: a pending invitation and a withdrawn one, both drawn in the list. */
+  /** ADM-SCH-06: a room with a stated capacity and bikes in it. */
+  spinRoomId: string;
   invitedEmail: string;
   withdrawnEmail: string;
   /** ADR-0014: a location-scoped session, the first this build can answer. */
@@ -240,6 +242,7 @@ export function fixture(): Fixture {
     "VEYRO_E2E_STAFF_NO_LOGIN_PERSON_ID",
     "VEYRO_E2E_STAFF_NEVER_SIGNED_IN_PERSON_ID",
     "VEYRO_E2E_INVITED_EMAIL",
+    "VEYRO_E2E_SPIN_ROOM_ID",
     "VEYRO_E2E_WITHDRAWN_EMAIL",
   ] as const;
   for (const key of required) {
@@ -300,6 +303,7 @@ export function fixture(): Fixture {
     readerEmail: env.VEYRO_E2E_READER_EMAIL!,
     readerPassword: env.VEYRO_E2E_READER_PASSWORD!,
     deskEmail: env.VEYRO_E2E_DESK_EMAIL!,
+    spinRoomId: env.VEYRO_E2E_SPIN_ROOM_ID!,
     invitedEmail: env.VEYRO_E2E_INVITED_EMAIL!,
     withdrawnEmail: env.VEYRO_E2E_WITHDRAWN_EMAIL!,
     clubEmail: env.VEYRO_E2E_CLUB_EMAIL!,

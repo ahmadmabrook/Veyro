@@ -117,18 +117,27 @@ def create_resource(
     pool: Pool, tenant_id: str, *, resource_code: str, resource_kind: str,
     display_name: str, actor_id: str, correlation_id: str, quantity: int = 1,
     location_id: str | None = None, person_id: str | None = None,
+    capacity: int | None = None, parent_resource_id: str | None = None,
 ) -> dict[str, Any]:
-    """CreateResource. OPS-01-R01.
+    """CreateResource. OPS-01-R01, and ADM-SCH-06's two facts. ADR-0018.
 
     **The brand is derived from the location**, which is MOD-008's "derive a scope, never accept
     one" applied here: a caller sending both could put a location-scoped resource under a brand
     that does not own it, and a brand-scoped reader would then see a resource at a site outside
     their scope -- or miss one inside it.
+
+    **A capacity and a containment are stated here and nowhere else**, because neither column
+    carries an UPDATE grant: `sch_resources` grants `display_name` and the four retirement
+    columns and nothing more, so these two follow `quantity`'s own arrangement. ADR-0018 says
+    what that costs -- a refit that re-rates a room needs a route that does not exist -- and
+    the alternative was a grant no service writes, which is this build's `cat_prices
+    .effective_to` finding for the third time.
     """
     try:
         resources.check_resource(resources.Resource(
             resource_id="pending", kind=resource_kind, quantity=quantity,
-            location_id=location_id))
+            location_id=location_id, capacity=capacity,
+            parent_resource_id=parent_resource_id))
     except recurrence.ScheduleError as e:
         raise InvalidRequest(str(e)) from None
     if not display_name.strip():
@@ -142,12 +151,14 @@ def create_resource(
                 """
                 INSERT INTO plt01.sch_resources
                     (tenant_id, resource_code, resource_kind, display_name, brand_id,
-                     location_id, quantity, person_id, created_by, correlation_id)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                     location_id, quantity, person_id, capacity, parent_resource_id,
+                     created_by, correlation_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING resource_id
                 """,
                 (tenant_id, resource_code.upper(), resource_kind, display_name.strip(),
-                 brand_id, location_id, quantity, person_id, actor_id, correlation_id),
+                 brand_id, location_id, quantity, person_id, capacity,
+                 parent_resource_id, actor_id, correlation_id),
             ).fetchone()
         except errors.UniqueViolation:
             raise Conflict("this_resource_code_already_exists") from None
@@ -155,10 +166,17 @@ def create_resource(
             raise NotFound(_fk_subject(e)) from None
         except errors.CheckViolation as e:
             raise InvalidRequest(_check_name(e)) from None
+        except errors.RaiseException as e:
+            # The containment trigger: what the parent *is* and where. A CHECK cannot see
+            # another row, so this is the only thing that can say "that is a coach" or "that
+            # studio is at another club" -- and its sentence is the answer, because a
+            # constraint name would say nothing a reader could act on.
+            raise InvalidRequest(str(e).strip().splitlines()[0]) from None
         assert row is not None
     return {"resource_id": str(row[0]), "resource_code": resource_code.upper(),
             "resource_kind": resource_kind, "quantity": quantity,
-            "location_id": location_id, "brand_id": brand_id, "status": "active"}
+            "location_id": location_id, "brand_id": brand_id, "status": "active",
+            "capacity": capacity, "parent_resource_id": parent_resource_id}
 
 
 def retire_resource(
@@ -361,6 +379,17 @@ def draft_template(
             generates = recurrence.occurrence_count(parsed_rule)
         except recurrence.ScheduleError as e:
             raise InvalidRequest(str(e)) from None
+        # **The room's ceiling, before anything is written.** ADM-SCH-06: "capacity here is
+        # the ceiling every class inherits ... the constraint lives in one place, not in each
+        # scheduler's memory." Checked here rather than at the insert for the reason the
+        # comment above gives about the rule walk -- a refusal after the template has
+        # committed takes its code for ever, since `sch_templates` has a unique index on it
+        # and no DELETE grant.
+        limit = _ceiling_for(conn, parsed_requirements, location_id=location_id)
+        try:
+            capacity.check_against_ceiling(parsed_policy, limit)
+        except recurrence.ScheduleError as e:
+            raise InvalidRequest(str(e)) from None
         try:
             created = conn.execute(
                 """
@@ -395,7 +424,13 @@ def draft_template(
     return {"template_id": template_id, "template_code": template_code.upper(),
             "status": "draft", "rule_id": rule_id, "policy_id": policy_id,
             "version": 1, "timezone": where["timezone"],
-            "would_generate": generates}
+            "would_generate": generates,
+            # What the rooms and equipment allow, and what bound it. Returned so a surface
+            # can say "capacity cannot exceed the room" with the room's own name in it
+            # rather than re-deriving a figure the write already computed.
+            "capacity_ceiling": limit.places,
+            "ceiling_bound_by": limit.bound_by,
+            "ceiling_bound_kind": limit.bound_kind}
 
 
 def _parse_rule(rule: dict[str, Any], *, timezone: str) -> recurrence.Rule:
@@ -451,7 +486,8 @@ def _parse_requirements(raw: list[dict[str, Any]]) -> list[resources.Requirement
                 kind=str(item["kind"]),
                 quantity=int(item.get("quantity", 1)),
                 resource_id=(str(item["resource_id"])
-                             if item.get("resource_id") is not None else None)))
+                             if item.get("resource_id") is not None else None),
+                per_attendee=bool(item.get("per_attendee", False))))
         except (KeyError, TypeError, ValueError) as e:
             raise InvalidRequest(str(e) or "a_requirement_is_malformed") from None
     try:
@@ -502,6 +538,99 @@ def _insert_rule(
         raise InvalidRequest(_check_name(e)) from None
     assert row is not None
     return str(row[0])
+
+
+def _ceiling_for(
+    conn: Connection[Any], requirements: list[resources.Requirement], *,
+    location_id: str | None,
+) -> capacity.Ceiling:
+    """The most a class with these requirements may offer. ADR-0018 D5.
+
+    **An anonymous space requirement is bounded by the smallest candidate, not the largest.**
+    "A room" means the generator may pick any room of that kind at the site, so the class has
+    to fit in whichever it picks -- and a ceiling taken from the largest would let a class of
+    fifty be assigned a studio holding twenty, which is the failure the whole slice exists to
+    prevent. The cost is stated rather than hidden: a tenant with one small studio and one
+    large hall cannot declare a fifty-person class against "a room", and the remedy is to name
+    the hall, which is a requirement that says what it means.
+
+    **A space that states no capacity does not bind**, which is D1's own reading: `NULL` is
+    unstated rather than zero. So the minimum is over the stated ones, and a tenant that has
+    described none of its rooms is unbounded -- exactly where this build was before `0035`.
+
+    **The equipment is counted inside the spaces the template requires**, which is the relation
+    `0035` adds and the only reading of "Studio 2 holds 20 bikes" that is about Studio 2. The
+    consequence is in ADR-0018's "what this does not do": `_assign` takes countable equipment
+    from anywhere at the location, so the ceiling is *stricter* than the assignment. That is the
+    fail-closed direction -- a class is refused a capacity the room's own bikes cannot serve,
+    and the generator may still reach for the room next door -- and it is a question that could
+    not be asked at all before, because nothing recorded which room equipment was in.
+    """
+    spaces: list[capacity.Space] = []
+    space_ids: list[str] = []
+    for requirement in requirements:
+        if requirement.kind not in resources.SPACE_KINDS:
+            continue
+        if requirement.resource_id is not None:
+            row = conn.execute(
+                "SELECT resource_code, capacity FROM plt01.sch_resources"
+                " WHERE resource_id = %s",
+                (requirement.resource_id,),
+            ).fetchone()
+            if row is None:
+                raise NotFound("schedule_resource_not_found")
+            spaces.append(capacity.Space(
+                resource_id=requirement.resource_id, resource_code=str(row[0]),
+                capacity=None if row[1] is None else int(row[1])))
+            space_ids.append(requirement.resource_id)
+            continue
+        candidates = conn.execute(
+            "SELECT resource_id, resource_code, capacity FROM plt01.sch_resources"
+            " WHERE resource_kind = %s AND status = 'active'"
+            "   AND (%s::uuid IS NULL OR location_id IS NULL OR location_id = %s)"
+            " ORDER BY resource_id",
+            (requirement.kind, location_id, location_id),
+        ).fetchall()
+        space_ids.extend(str(r[0]) for r in candidates)
+        stated = [r for r in candidates if r[2] is not None]
+        if stated:
+            smallest = min(stated, key=lambda r: int(r[2]))
+            spaces.append(capacity.Space(
+                resource_id=str(smallest[0]), resource_code=str(smallest[1]),
+                capacity=int(smallest[2])))
+
+    per_attendee: list[capacity.PerAttendee] = []
+    for requirement in requirements:
+        if not requirement.per_attendee:
+            continue
+        if not space_ids:
+            # Nothing says where the equipment is, so nothing bounds the class by it. An
+            # equipment requirement with no space at all is a format that needs no room,
+            # which is the service and composite case.
+            continue
+        counts = conn.execute(
+            "SELECT p.resource_id, coalesce(sum(e.quantity), 0)"
+            " FROM unnest(%s::uuid[]) AS p(resource_id)"
+            " LEFT JOIN plt01.sch_resources e"
+            "   ON e.parent_resource_id = p.resource_id AND e.resource_kind = %s"
+            "      AND e.status = 'active'"
+            " GROUP BY p.resource_id",
+            (space_ids, requirement.kind),
+        ).fetchall()
+        if not counts:
+            continue
+        # **The smallest space's own count**, for the anonymous-room reason above: whichever
+        # room the generator picks has to serve the class.
+        fewest = min(int(r[1]) for r in counts)
+        label = next((s.resource_code for s in spaces), requirement.kind)
+        per_attendee.append(capacity.PerAttendee(
+            resource_code=f"the {requirement.kind} in {label}", available=fewest,
+            per_person=requirement.quantity))
+
+    try:
+        return capacity.ceiling(spaces, per_attendee)
+    except recurrence.ScheduleError as e:
+        raise InvalidRequest(str(e)) from None
 
 
 def _insert_policy(
@@ -564,11 +693,12 @@ def _insert_requirements(
                 """
                 INSERT INTO plt01.sch_template_requirements
                     (tenant_id, template_id, requirement_kind, quantity, resource_id,
-                     created_by, correlation_id)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                     per_attendee, created_by, correlation_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 (tenant_id, template_id, requirement.kind, requirement.quantity,
-                 requirement.resource_id, actor_id, correlation_id))
+                 requirement.resource_id, requirement.per_attendee, actor_id,
+                 correlation_id))
         except errors.UniqueViolation:
             raise Conflict("this_requirement_is_already_on_the_template") from None
         except errors.ForeignKeyViolation as e:
@@ -927,6 +1057,13 @@ def check_schedule(
                     location_id=location_id)
             if not spare:
                 spare = _spare_of(needs, chart, held, window, location_id=location_id)
+        # **The ceiling, from the same function the write refuses by.** ADM-SCH-06: "capacity
+        # here is the ceiling every class inherits ... the constraint lives in one place, not
+        # in each scheduler's memory", and ADM-SCH-03 is where a manager types the number --
+        # so a figure this read computed its own way would be a screen that cleared a capacity
+        # the publish then refused. Reported rather than refused, like every other answer
+        # here: the canvas's rule is that this warns.
+        limit_places = _ceiling_for(conn, needs, location_id=location_id)
     weekly = (len(proposed.weekdays) if proposed.frequency == "weekly" else None)
     return {
         "location_id": location_id, "timezone": where["timezone"],
@@ -955,6 +1092,14 @@ def check_schedule(
             "nothing in this build stores a skill, so these are the staff whose rota admits "
             "the hour and who hold nothing else over it -- whether they can teach this class "
             "is not a fact any table here carries"),
+        # ADM-SCH-03's "Studio 2 holds 20 bikes. Capacity cannot exceed the room", from the
+        # rooms and equipment the requirements name. `null` means nothing states a ceiling,
+        # which is not a ceiling of zero.
+        "capacity_ceiling": limit_places.places,
+        "ceiling_bound_by": limit_places.bound_by,
+        "ceiling_bound_kind": limit_places.bound_kind,
+        "capacity_over_the_ceiling": (
+            limit_places.places is not None and wanted.capacity > limit_places.places),
     }
 
 
@@ -2160,12 +2305,23 @@ def list_resources(
     location_id: str | None = None, include_retired: bool = False,
     limit: int = 200,
 ) -> dict[str, Any]:
-    """The resource list. OPS-01-R01."""
+    """The resource list. OPS-01-R01, and ADM-SCH-06's three columns. ADR-0018.
+
+    **The equipment inside each space comes back with it**, because the canvas draws it on the
+    same row and a page that asked per room would be the round-trip problem the staff list paid
+    for once. It is the equipment's own `quantity` summed per kind, which is what makes "20
+    bikes" a figure rather than a row count -- twenty bikes are one row with a quantity of
+    twenty, deliberately.
+
+    **A capacity of `None` is unstated and the surface has to say which.** ADR-0018 D1: a room
+    nobody has described does not bind a class, and rendering it as zero would say the room
+    holds nobody -- which is a different fact and the one a reader would act on.
+    """
     bounded = max(1, min(limit, 1000))
     with tenant_scope(pool, tenant_id) as conn:
         rows = conn.execute(
             "SELECT resource_id, resource_code, resource_kind, display_name, quantity,"
-            " brand_id, location_id, person_id, status"
+            " brand_id, location_id, person_id, status, capacity, parent_resource_id"
             " FROM plt01.sch_resources"
             # **Every placeholder in a NULL test is cast.** `%s IS NULL` with a NULL text
             # parameter is `IndeterminateDatatype` at the server, which reaches the caller as
@@ -2178,13 +2334,39 @@ def list_resources(
             " ORDER BY resource_kind, resource_code LIMIT %s",
             (kind, kind, location_id, location_id, include_retired, bounded),
         ).fetchall()
+        inside: dict[str, list[dict[str, Any]]] = {}
+        spaces = [str(r[0]) for r in rows if str(r[2]) in resources.SPACE_KINDS]
+        if spaces:
+            for held in conn.execute(
+                "SELECT parent_resource_id, resource_kind, resource_code,"
+                " sum(quantity) AS total"
+                " FROM plt01.sch_resources"
+                " WHERE parent_resource_id = ANY(%s) AND status = 'active'"
+                " GROUP BY parent_resource_id, resource_kind, resource_code"
+                " ORDER BY resource_kind, resource_code",
+                (spaces,),
+            ).fetchall():
+                inside.setdefault(str(held[0]), []).append({
+                    "resource_kind": str(held[1]), "resource_code": str(held[2]),
+                    "quantity": int(held[3])})
     return {"count": len(rows), "resources": [
         {"resource_id": str(r[0]), "resource_code": str(r[1]),
          "resource_kind": str(r[2]), "display_name": str(r[3]), "quantity": int(r[4]),
          "brand_id": str(r[5]) if r[5] else None,
          "location_id": str(r[6]) if r[6] else None,
-         "person_id": str(r[7]) if r[7] else None, "status": str(r[8])}
-        for r in rows]}
+         "person_id": str(r[7]) if r[7] else None, "status": str(r[8]),
+         "capacity": None if r[9] is None else int(r[9]),
+         "parent_resource_id": str(r[10]) if r[10] else None,
+         "contains": inside.get(str(r[0]), [])}
+        for r in rows],
+        "capacity_is_a_ceiling": (
+            "A space's capacity is the most a class in it may offer, not a default for one: "
+            "a template states its own and this refuses a figure above the room. A capacity "
+            "of null is unstated rather than zero, so that space does not bind."),
+        "contains_is_what_is_in_the_space": (
+            "Equipment is in a space, not merely at the club, which is what makes a bike "
+            "per attendee a figure about this room. Equipment nobody has placed is in no "
+            "room and bounds none of them.")}
 
 
 def session_detail(

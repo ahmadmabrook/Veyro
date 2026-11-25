@@ -317,6 +317,7 @@ corresponds to them. The others map loosely:
 | `/plans` | ADM-MSH-09 Plans & pricing · owner only | **built from the canvas, and the count it is for needed a server read and the names needed another** — the blast radius is stated before the save, the typed confirmation is re-checked in the action, and the `deadBook` state refuses a write `create_price` would accept. Rendering it found that `sellable_plans` returned the *variant's* name, so six of eight rows read "Monthly" |
 | `/schedule` | ADM-SCH-01 Class schedule · week grid | **built from the canvas** |
 | `/rota` | ADM-SCH-04 Coach availability · week grid | **built from the canvas** — the schedule board's own missing third view, over a read that did not exist |
+| `/schedule/resources` | ADM-SCH-06 Rooms and resources | **built from the canvas, and it closes ADM-SCH-03's own named gap** — the three columns are three different numbers and this build had one of them, so `0035` adds a space's capacity and the relation that puts equipment *in* a room; the ceiling they impose is one function the capacity-policy write refuses by and the live clash check reports |
 | `/desk/*` (layout) | FD-08 Device strip | **built from the canvas** — always visible above the Front Desk surface, worst row first, and every degraded row names what to do instead; the canvas's own "type the name instead" is replaced because this product has no member search, and the receipt printer and card terminal it draws are not kinds of device this build registers |
 | `/schedule/new` | ADM-SCH-03 Create a class | **built from the canvas** — type, coach, room, capacity, time, the weekday chips and the waitlist, with the clash reported as the fields change rather than on save and the two answers the canvas draws (use somebody free, or keep them with the written reason paragraph 1842 requires); the capacity ceiling, the waitlist's other two settings and editing a class that already has bookings are each named as absent with what they need |
 | `/desk/trial` | FD-05 Walk-in trial | **built from the canvas** — two fields and a button that creates a person, opens a lead, signs an agreement on the trial product and activates it in one request; the duplicate panel is borrowed from ADM-MEM-10 because this screen creates a `ppl_persons` row exactly as that one does, the heading names the plan's own `trial_days`, and the credential and the app invitation the canvas promises are each named as absent with what they wait on |
@@ -3303,6 +3304,67 @@ nothing: MOD-013 authors a message and has no dispatcher, and before that the me
 is `member.contact.read`'s question rather than a scheduling caller's. The canvas calls the
 notification the action, and that half is named on the confirmation rather than implied.
 
+
+## ADM-SCH-06 — a room has a capacity, and three numbers stay three
+
+**The canvas is a read-only card**: a label, a table templated as `{{ r.name }} · {{ r.cap }} ·
+{{ r.equip }}`, and one sentence — *"capacity here is the ceiling every class inherits.
+Double-booking is impossible because ADM-SCH-03 reads this list — the constraint lives in one
+place, not in each scheduler's memory."* No header, no action, no add control. ADR-0018 is the
+record; `/schedule/resources` is the screen.
+
+**The backlog entry was right about all three columns, which is worth saying because a claimed
+gap is a claim to check.** `sch_resources.quantity` is how many of a thing there are — the
+migration that added it says so: *twenty bikes is one row with a quantity of twenty* — a
+policy's `capacity` is how many places a class offers, and what the middle column draws is
+neither. The third column had nothing at all behind it: `location_id` is a *club*, so twenty
+bikes were at Khalda and in no particular studio.
+
+Six things are decisions rather than rendering:
+
+- **A ceiling, not a default.** A class keeps its own capacity, which is what a session
+  snapshots; what the room adds is a refusal. Inheriting the room's figure where a template
+  states none would make the class's own number optional and leave two columns able to disagree
+  about how many places a session has — this build's most-repeated finding, created on purpose.
+  The canvas's word is *ceiling*.
+- **One function, two callers.** The capacity-policy write refuses a policy above the ceiling
+  and ADM-SCH-03's live clash check reports it before anybody saves. A figure a screen shows
+  and a write then refuses is the one-module-two-definitions finding on the single field that
+  decides how many people a class takes, so there is one `capacity.ceiling` and both read it.
+- **An anonymous space requirement is bounded by the *smallest* candidate.** "A room" means
+  the generator may pick any room of that kind at the site, so the class has to fit in whichever
+  it picks — and taking the largest would let a class of fifty be assigned a studio holding
+  twenty, which is the failure the slice exists to prevent. The cost is stated rather than
+  hidden: naming the hall is the remedy, which is a requirement that says what it means.
+- **A capacity of null is unstated and the screen says so.** A room nobody has described does
+  not bind a class; "holds 0" is a different fact and the one a reader would act on. That is
+  also what keeps every template already written unaffected — every resource registered before
+  `0035` states no capacity, which is ADR-0011's billing-anchor reasoning applied to a ceiling.
+- **Equipment counts where it *is*.** A format taking one bike per attendee is bounded by the
+  bikes in that room, not by the bikes in the building — which is the only reading of "Studio 2
+  holds 20 bikes" that is about Studio 2. Equipment nobody has placed bounds no room, which is
+  uncomfortable and correct, and it is the reason the containment is a relation rather than a
+  label.
+- **No action, because the canvas draws none.** Neither column carries an UPDATE grant, so both
+  are stated when a resource is registered — `quantity`'s own arrangement, where twenty bikes
+  becoming eighteen has no route either. Granting the column for a form nobody has written
+  would be a grant no service writes, which is `cat_prices.effective_to` for the third time;
+  the screen names the two routes that do not exist instead.
+
+**And a new sweep found a defect in a committed migration.** `0035` adds a trigger function and
+a mutation against its pinned `search_path` came back uncaught — because MOD-019 had no
+`proconfig`/`prosecdef`/`tgenabled` sweep at all: MOD-020's CHECK 96, MOD-021's and MOD-022's
+each read all three over their own prefix and `sch_%` was never added, so ten trigger functions'
+pinned search path and closing `REVOKE` were verified by nothing. Adding the sweep found that
+`0017`'s own function never got its `REVOKE` and was PUBLIC-executable, alone among eleven.
+Corrected in `0035`, because a committed migration does not change.
+
+**What the screen cannot do** is change either fact, and the two routes that would are named on
+it. The other limitation is named too and is the honest cost of the containment: the ceiling
+counts the equipment inside the required space while `_assign` still takes countable equipment
+from anywhere at the club, so the ceiling is *stricter* than the assignment — the fail-closed
+direction, and a question nothing could ask before, because nothing recorded which room
+equipment was in.
 
 ## ADM-STF-03 — invite someone, and the week that outlives a grant
 

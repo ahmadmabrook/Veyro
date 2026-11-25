@@ -3747,3 +3747,76 @@ that distinction exists, so the mutation moved to the component runner and is ca
 is a fifth reading of an uncaught mutation, beside guard-subsumed, case-missing,
 assertion-cannot-see-it and exists-for-a-writer-the-service-is-not: **the case exists and the
 layer is wrong.**
+
+
+**A prefix-scoped sweep that every later module copied is a gap in every *earlier* one, and the
+way it surfaces is a mutation against new code coming back uncaught.** `0035` added a trigger
+function and `ALTER FUNCTION ... RESET search_path` against it passed all 116 checks -- not
+because the new function was unprotected, but because **MOD-019 had no
+`proconfig`/`prosecdef`/`tgenabled` sweep at all.** This file already records that nothing read
+those three until MOD-020's CHECK 96; what it did not record is that the fix was scoped to
+`bkg_%` and then copied to `dev_%` and `acc_%` as those modules landed, leaving `sch_%` -- ten
+trigger functions whose pinned `search_path` and closing `REVOKE ALL ... FROM PUBLIC` the
+migration asserts in as many words -- verified by nothing, with the definition pin blind to all
+three because `md5(prosrc)` reads the body and none of them is in it.
+
+**Adding the sweep found a real omission in a committed migration**: `0017`'s own
+`sch_availability_window_withdrawal_is_final` never got the `REVOKE` its ten siblings have, so
+it was PUBLIC-executable. Exploitability is low -- the body is schema-qualified and trigger
+invocation does not check EXECUTE -- and rule 5 forbids a PUBLIC privilege on a function
+outright, so it is a violation of a stated rule with no evidence behind it. **Corrected in the
+migration in hand rather than in `0017`**, because a committed migration does not change: the
+database somebody has already applied is the one a fix has to reach. The general rule:
+**when a sweep is added for one module's prefix, add it for every prefix that already exists**
+-- and when a mutation against new code comes back uncaught, ask whether the gap is the new
+code's or the module's.
+
+**A guard that sits behind an equivalent CHECK is proven at the decision layer or not at all.**
+`0035`'s four new rules each exist twice on purpose -- a `check_resource`/`check_requirement`
+refusal and a constraint -- which is this module's established shape. Four behaviour mutations
+against the Python halves came back UNCAUGHT and were right to: with the guard removed the
+schema answers and the route still returns 422, and this application's 422 never names the
+field, so **no HTTP case can distinguish them**. Deleting the guards would have been
+inconsistent with the module and would have lost the pure layer's own testability; the answer
+is a domain-suite class that asserts each rule and mutations pointed at *that*. That is the
+fifth reading of an uncaught mutation, beside guard-subsumed, case-missing,
+assertion-cannot-see-it and exists-for-a-writer-the-service-is-not: **the case exists and the
+layer is wrong.** (`pendingCount`'s browser mutation moving to the component runner is the same
+move on the surface.)
+
+**A hand-built dict between a typed request body and a typed dataclass is invisible to both
+typecheckers.** `RequirementBody` grew `per_attendee`, `resources.Requirement` grew it, `mypy`
+and `tsc` were both green -- and two route hand-offs built `{"kind": ..., "quantity": ...,
+"resource_id": ...}` by hand and dropped it, so the flag was silently `False` on every request.
+Three tests failed at once with the field absent, which is the loud version; the quiet version
+is one route of two keeping it. This is `AccessDecision.masked` and `QueueRow.name` one layer
+in -- a hand-written type over an untyped JSON response -- and the same remedy applies in
+reverse: **when a body grows a field, grep every hand-built dict that carries that body's
+fields**, because `dict[str, Any]` is where a typechecker stops looking.
+
+**A ceiling for an anonymous requirement has to be the smallest candidate, and that choice is
+what keeps the engine unchanged.** "A room" means the generator may pick any room of that kind
+at the site, so a capacity bounded by the *largest* would let a class of fifty be assigned a
+studio holding twenty -- and the fix for that would be threading the session's capacity through
+`_assign`'s three callers. Bounded by the smallest, no policy can exist above the smallest room
+it may land in, so the assignment never needs to know a capacity at all. **Fail-closed is
+sometimes the cheaper design as well as the safer one**, and the cost is stated rather than
+hidden: naming the hall is the remedy, which is a requirement that says what it means.
+
+**A case that needs two of something cannot be written against a fixture that has one, and the
+sweep is what asks for it.** The per-attendee ceiling is the *minimum* equipment count over the
+required spaces, and with one required space a minimum and a club-wide sum are the same number
+-- so a sum passed every test until the mutation for it came back uncaught. The case needs two
+candidate rooms holding different counts, at a site of its own: the shared fixture's studio
+holds no bikes, so any site including it is bounded at zero, which is the rule working rather
+than a wrinkle to design around and is the subject of its own test.
+
+**A dev server can cache a module hard enough that an appended export is `not a function`.**
+Turbopack served `listSchedulingResources is not a function` from an RSC chunk for
+`scheduling.ts` after the function was appended to it -- the page's own `catch` turned that into
+`error.unexpected`, which reads exactly like a failing API. Touching both files did not clear
+it; a restart would have, and the dev server was the user's. Moving the read into its own module
+cleared it **and was the better shape anyway** (a module per screen, as `rota.ts` already does),
+which is the resolution to prefer: a stale cache is a reason to look at the structure, not a
+reason to restart somebody's server. The decisive diagnostic was a one-line probe rendering the
+caught error's own message, which took one request where reading the error class took three.

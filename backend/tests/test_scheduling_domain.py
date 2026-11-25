@@ -964,3 +964,178 @@ class RotaWeekTests(unittest.TestCase):
                                         starts_at=time(9), ends_at=time(17))):
             with self.assertRaises(ScheduleError):
                 availability.windows_on([bad], date(2026, 8, 17))
+
+
+class CeilingTests(unittest.TestCase):
+    """ADM-SCH-06's sentence, as the function both its callers read. ADR-0018.
+
+    > Capacity here is the ceiling every class inherits. Double-booking is impossible because
+    > ADM-SCH-03 reads this list — the constraint lives in one place, not in each scheduler's
+    > memory.
+
+    **One function, because two callers would be two answers to the number a manager types.**
+    The capacity-policy write refuses a policy above the ceiling and ADM-SCH-03's live check
+    reports it before anybody saves; a figure a screen shows and a write then refuses is this
+    build's one-module-two-definitions finding on the one field that decides how many people a
+    class takes.
+    """
+
+    def space(self, code: str, cap: int | None) -> capacity.Space:
+        return capacity.Space(resource_id=f"id-{code}", resource_code=code, capacity=cap)
+
+    def test_nothing_stated_binds_nothing(self):
+        """Where this build was before `0035`, and where a tenant that has described no room
+        still is: unbound rather than unable to run a class. `None` is not zero."""
+        self.assertFalse(capacity.ceiling([]).binds)
+        self.assertIsNone(capacity.ceiling([self.space("STUDIO-A", None)]).places)
+        self.assertIsNone(capacity.ceiling([self.space("STUDIO-A", None)]).bound_by)
+
+    def test_the_room_that_binds_is_named(self):
+        """ADR-0018 D6: "capacity 30 exceeds Studio 2, which holds 20" is actionable and
+        "capacity too high" sends somebody to guess."""
+        limit = capacity.ceiling([self.space("STUDIO-A", 30), self.space("STUDIO-B", 20)])
+        self.assertEqual(limit.places, 20)
+        self.assertEqual(limit.bound_by, "STUDIO-B")
+        self.assertEqual(limit.bound_kind, "space")
+        self.assertTrue(limit.binds)
+
+    def test_a_space_holding_nobody_is_refused_rather_than_treated_as_unstated(self):
+        self.assertRaises(ScheduleError, capacity.ceiling, [self.space("VOID", 0)])
+
+    def test_equipment_per_attendee_can_bind_below_the_room(self):
+        """"Studio 2 holds 20 bikes" — the fact ADM-SCH-03 names as absent."""
+        limit = capacity.ceiling(
+            [self.space("STUDIO-A", 30)],
+            [capacity.PerAttendee(resource_code="the bikes in STUDIO-A", available=20)])
+        self.assertEqual(limit.places, 20)
+        self.assertEqual(limit.bound_kind, "equipment")
+
+    def test_two_of_a_thing_each_halves_the_room(self):
+        """The division is in the decision module so the arithmetic has a test, and it rounds
+        down: nineteen dumbbells at two each serve nine people, not nine and a half."""
+        limit = capacity.ceiling(
+            [], [capacity.PerAttendee(
+                resource_code="the equipment in STUDIO-A", available=19, per_person=2)])
+        self.assertEqual(limit.places, 9)
+
+    def test_a_tie_leaves_the_space_named_because_a_wall_is_not_moved(self):
+        """A bike is bought and a room is not rebuilt, so naming the equipment on a tie would
+        send a reader to the cheaper remedy for a problem the room also has."""
+        limit = capacity.ceiling(
+            [self.space("STUDIO-A", 20)],
+            [capacity.PerAttendee(resource_code="the bikes in STUDIO-A", available=20)])
+        self.assertEqual(limit.places, 20)
+        self.assertEqual(limit.bound_kind, "space")
+
+    def test_equipment_nobody_placed_bounds_the_class_at_nobody(self):
+        """Uncomfortable and correct: a format taking a bike each, in a room with no bikes in
+        it, holds nobody. Equipment at the club and in no room is in no room."""
+        limit = capacity.ceiling(
+            [self.space("STUDIO-A", 30)],
+            [capacity.PerAttendee(resource_code="the equipment in STUDIO-A", available=0)])
+        self.assertEqual(limit.places, 0)
+
+    def test_a_negative_quantity_is_refused(self):
+        self.assertRaises(
+            ScheduleError, capacity.ceiling, [],
+            [capacity.PerAttendee(resource_code="x", available=-1)])
+
+    def test_zero_each_is_refused_rather_than_dividing_by_it(self):
+        self.assertRaises(
+            ScheduleError, capacity.ceiling, [],
+            [capacity.PerAttendee(resource_code="x", available=10, per_person=0)])
+
+    # ---------------------------------------------------------------- the refusal
+
+    def policy(self, places: int) -> capacity.Policy:
+        return capacity.Policy(capacity=places)
+
+    def test_a_policy_inside_the_ceiling_is_accepted(self):
+        limit = capacity.ceiling([self.space("STUDIO-A", 20)])
+        capacity.check_against_ceiling(self.policy(20), limit)
+
+    def test_a_policy_above_the_ceiling_names_the_room_and_the_figure(self):
+        limit = capacity.ceiling([self.space("STUDIO-A", 20)])
+        with self.assertRaises(ScheduleError) as caught:
+            capacity.check_against_ceiling(self.policy(21), limit)
+        self.assertIn("STUDIO-A", str(caught.exception))
+        self.assertIn("20", str(caught.exception))
+
+    def test_an_unbound_ceiling_refuses_nothing(self):
+        capacity.check_against_ceiling(self.policy(10_000), capacity.ceiling([]))
+
+    def test_overbooking_is_not_counted_against_the_room(self):
+        """**The capacity, not the capacity plus overbooking.** Overbooking is a deliberate
+        decision to admit more holds than places; a ceiling that counted it would make the two
+        settings fight -- a tenant raising overbooking by two would find the class's own figure
+        refused, which is not what either number means."""
+        limit = capacity.ceiling([self.space("STUDIO-A", 20)])
+        capacity.check_against_ceiling(
+            capacity.Policy(capacity=20, overbook_places=2), limit)
+
+    def test_the_policy_is_still_checked_on_its_own_terms(self):
+        """The ceiling check does not replace `check_policy`: a capacity of zero is refused
+        whether or not a room binds."""
+        self.assertRaises(
+            ScheduleError, capacity.check_against_ceiling,
+            capacity.Policy(capacity=0), capacity.ceiling([]))
+
+
+class ResourceFactTests(unittest.TestCase):
+    """`0035`'s three facts at the decision layer. ADR-0018.
+
+    **These are where the four guards behind an equivalent CHECK are proven.** Each of them --
+    a capacity only on a place, a place holding somebody, only equipment inside a space, and no
+    per-attendee requirement against a named resource -- has a constraint behind it, so with
+    the Python guard removed the schema answers and the route still returns 422. An HTTP case
+    cannot tell the two apart; this layer can, and the schema's own evidence is CHECK 90b.
+    """
+
+    def resource(self, kind: str, **extra: object) -> resources.Resource:
+        return resources.Resource(resource_id="r", kind=kind, **extra)  # type: ignore[arg-type]
+
+    def test_a_place_may_state_how_many_people_it_holds(self):
+        for kind in sorted(resources.SPACE_KINDS):
+            resources.check_resource(self.resource(kind, capacity=30))
+
+    def test_only_a_place_may(self):
+        """A capacity on a coach is a number no reader could interpret."""
+        for kind in ("staff", "equipment", "service", "composite"):
+            with self.assertRaises(ScheduleError, msg=kind):
+                resources.check_resource(self.resource(kind, capacity=30))
+
+    def test_a_place_holds_somebody_or_states_nothing(self):
+        """`None` is unstated and does not bind; zero would say the room holds nobody, which is
+        a different fact and the one a reader would act on."""
+        resources.check_resource(self.resource("room"))
+        self.assertIsNone(self.resource("room").capacity)
+        self.assertRaises(ScheduleError, resources.check_resource,
+                          self.resource("room", capacity=0))
+        self.assertRaises(ScheduleError, resources.check_resource,
+                          self.resource("room", capacity=10_001))
+
+    def test_only_equipment_goes_inside_a_space(self):
+        resources.check_resource(self.resource("equipment", parent_resource_id="space"))
+        for kind in ("room", "zone", "court", "staff", "service", "composite"):
+            with self.assertRaises(ScheduleError, msg=kind):
+                resources.check_resource(self.resource(kind, parent_resource_id="space"))
+
+    def test_a_requirement_may_be_one_each(self):
+        resources.check_requirement(
+            resources.Requirement(kind="equipment", quantity=1, per_attendee=True))
+
+    def test_but_not_against_a_named_resource(self):
+        """Its sibling already holds a named requirement to one of it, so per-attendee against
+        it is a figure with no reading."""
+        self.assertRaises(
+            ScheduleError, resources.check_requirement,
+            resources.Requirement(kind="equipment", quantity=1, resource_id="bike",
+                                  per_attendee=True))
+
+    def test_per_attendee_is_off_unless_somebody_says_so(self):
+        """The default is what this build already did, which is what keeps every template
+        already written unaffected."""
+        self.assertFalse(resources.Requirement(kind="equipment").per_attendee)
+        self.assertIsNone(resources.Resource(resource_id="r", kind="room").capacity)
+        self.assertIsNone(
+            resources.Resource(resource_id="r", kind="equipment").parent_resource_id)

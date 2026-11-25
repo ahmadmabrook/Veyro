@@ -113,6 +113,127 @@ def check_policy(policy: Policy) -> None:
             "meaningless")
 
 
+@dataclass(frozen=True)
+class Space:
+    """A room, zone or court a template requires, and how many people it holds.
+
+    `capacity` is `None` where the tenant has not stated one, which is the ordinary case for
+    every resource registered before `0035` -- and it means this space does not bind rather
+    than that it holds nobody. ADR-0018 D1.
+    """
+
+    resource_id: str
+    resource_code: str
+    capacity: int | None
+
+
+@dataclass(frozen=True)
+class PerAttendee:
+    """Equipment a format takes per attendee, and how much of it is in the space.
+
+    `available` is the sum of the `quantity` of the equipment rows *inside* the spaces the
+    template requires -- which is the relation `0035` adds, because `location_id` is a club and
+    a ceiling computed across clubs is a number about bikes nobody at this site can reach.
+
+    `per_person` is the requirement's own quantity: two dumbbells each halves the room. The
+    division is here rather than in the caller so the arithmetic has a test.
+    """
+
+    resource_code: str
+    available: int
+    per_person: int = 1
+
+    def attendees(self) -> int:
+        """How many people this equipment serves, rounded down."""
+        if self.per_person < 1:
+            raise ScheduleError("a per-attendee requirement is for at least one each")
+        return self.available // self.per_person
+
+
+@dataclass(frozen=True)
+class Ceiling:
+    """The most a class in these spaces with this equipment may offer, and what bound it.
+
+    **The binding resource is part of the answer, not a lookup the caller repeats.** ADR-0018
+    D6: "capacity 30 exceeds Studio 2, which holds 20" is actionable and "capacity too high"
+    sends somebody to guess -- so the refusal and ADM-SCH-03's live check read the same two
+    fields rather than each deciding how to word it.
+    """
+
+    #: `None` means nothing states a ceiling, which is not the same as a ceiling of zero: the
+    #: canvas's sentence is about the rooms a tenant has described, and a tenant that has
+    #: described none is unbound rather than unable to run a class.
+    places: int | None
+    #: The code of the space or the equipment that bound it, where one did.
+    bound_by: str | None
+    #: `space` or `equipment`, so a surface can word the two differently -- a room is rebuilt
+    #: and a bike is bought, which are different remedies.
+    bound_kind: str | None
+
+    @property
+    def binds(self) -> bool:
+        return self.places is not None
+
+
+def ceiling(
+    spaces: list[Space], per_attendee: list[PerAttendee] | None = None,
+) -> Ceiling:
+    """The lowest ceiling these spaces and their per-attendee equipment impose. ADR-0018 D5.
+
+    **ADM-SCH-06's sentence is the specification**: "capacity here is the ceiling every class
+    inherits ... the constraint lives in one place, not in each scheduler's memory." So this is
+    one function with two callers -- the capacity-policy write refuses a policy above it, and
+    ADM-SCH-03's live check reports it before anybody saves. A figure a screen shows and a
+    write then refuses is this build's one-module-two-definitions finding on the number a
+    manager types.
+
+    **A ceiling is not a default** (D2). This answers the most a class *may* offer; what it
+    offers is its own policy's figure, which is what a session snapshots. Returning this as a
+    capacity where a template states none would leave two columns able to disagree about how
+    many places a session has.
+
+    **The lowest wins, and ties go to the space.** Where a room holding twenty and twenty bikes
+    both bind, the room is the one a reader can act on: a bike is bought and a wall is not
+    moved, so naming the equipment first would send somebody to the cheaper remedy for a
+    problem the room also has.
+    """
+    best: Ceiling = Ceiling(places=None, bound_by=None, bound_kind=None)
+    for space in spaces:
+        if space.capacity is None:
+            continue
+        if space.capacity < 1:
+            raise ScheduleError("a space holds at least one person")
+        if best.places is None or space.capacity < best.places:
+            best = Ceiling(places=space.capacity, bound_by=space.resource_code,
+                           bound_kind="space")
+    for item in per_attendee or []:
+        if item.available < 0:
+            raise ScheduleError("equipment is not a negative quantity")
+        serves = item.attendees()
+        # **Strictly lower, so a tie leaves the space named**, which is the reading above.
+        if best.places is None or serves < best.places:
+            best = Ceiling(places=serves, bound_by=item.resource_code,
+                           bound_kind="equipment")
+    return best
+
+
+def check_against_ceiling(policy: Policy, limit: Ceiling) -> None:
+    """Refuse a policy that offers more places than the rooms and equipment allow.
+
+    **The capacity, not the capacity plus overbooking.** Overbooking is a deliberate decision
+    to admit more holds than places -- paragraph 1888's "controlled overbooking" -- and a
+    ceiling that counted it would make the two settings fight: a tenant raising overbooking by
+    two would find the class's own figure refused. What the room bounds is how many the class
+    says it holds; whether the tenant then chooses to overbook it is theirs, and the honest
+    place to say so is here rather than in a second ceiling.
+    """
+    check_policy(policy)
+    if limit.places is not None and policy.capacity > limit.places:
+        raise ScheduleError(
+            f"a capacity of {policy.capacity} exceeds {limit.bound_by}, which allows "
+            f"{limit.places}")
+
+
 def check_restriction(restriction: Restriction) -> None:
     if restriction.kind not in RESTRICTION_KINDS:
         raise ScheduleError(f"{restriction.kind!r} is not a restriction kind")

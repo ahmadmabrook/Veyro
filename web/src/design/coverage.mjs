@@ -275,11 +275,12 @@ const BACKLOG = {
     + "one through its person\u0027s `ppl_tenant_profiles.location_id`, which is nullable by "
     + "design -- so a club count excludes members nobody has assigned and the board has to "
     + "say so rather than imply it",
-  "ADM-SCH-06": "work: MOD-019. The canvas draws name, capacity and equipment and says "
-    + "'capacity here is the ceiling every class inherits'. `sch_resources` has `quantity` "
-    + "-- how many of a thing there are -- capacity lives on a template's own policy per "
-    + "class, and there is no equipment column at all, so the screen needs two columns "
-    + "written before it has anything but the name to draw",
+  // **ADM-SCH-06 was here and is built.** `/schedule/resources` is the screen and
+  // ADR-0018 is the record. The backlog entry was right about all three columns: the
+  // capacity and the equipment-in-a-space relation did not exist, and `quantity` is a
+  // third number. `0035` adds the two that were missing, and the ceiling they impose is
+  // one function the capacity-policy write refuses by and ADM-SCH-03's live check
+  // reports -- which closes that screen's own named gap as well.
   // **ADM-SCH-03 was here and is built.** Its reason named the two halves correctly -- the
   // template writes existed with no form, and 'qualified' needs a skill nothing stores -- and
   // what it did not name is the read that was actually missing: `preview_publish` takes a

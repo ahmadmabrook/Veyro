@@ -31560,6 +31560,10 @@ BEGIN
         ('plt01.sch_resources: tenant_id -> plt01_platform.tenants'),
         ('plt01.sch_resources: tenant_id,brand_id -> plt01.brands'),
         ('plt01.sch_resources: tenant_id,location_id -> plt01.locations'),
+        -- `0035`: the space a piece of equipment is in, which is the one self-reference in
+        -- this module. What the parent *is* and where, the trigger says; that it is in this
+        -- tenant, this key says.
+        ('plt01.sch_resources: tenant_id,parent_resource_id -> plt01.sch_resources'),
         ('plt01.sch_resources: tenant_id,person_id -> plt01.ppl_persons'),
         ('plt01.sch_restrictions: tenant_id -> plt01_platform.tenants'),
         ('plt01.sch_restrictions: tenant_id,policy_id -> plt01.sch_capacity_policies'),
@@ -31661,9 +31665,12 @@ BEGIN
          'effective_from,excluded_dates,frequency,local_time,rule_id,'
          'starts_on,template_id,tenant_id,timezone,until_date,version,'
          'week_of_month,weekdays'),
+        -- `0035` adds `capacity` (how many people a space holds) and
+        -- `parent_resource_id` (the space equipment is in). Neither is `quantity`, which is
+        -- how many of a thing there are, and the three being different numbers is the slice.
         ('plt01.sch_resources',
-         'brand_id,correlation_id,created_at,created_by,display_name,'
-         'location_id,person_id,quantity,resource_code,resource_id,'
+         'brand_id,capacity,correlation_id,created_at,created_by,display_name,'
+         'location_id,parent_resource_id,person_id,quantity,resource_code,resource_id,'
          'resource_kind,retire_correlation_id,retired_at,retired_by,'
          'status,tenant_id'),
         ('plt01.sch_restrictions',
@@ -31684,7 +31691,7 @@ BEGIN
          'location_id,overbook_places,policy_id,rule_id,session_id,'
          'starts_at,status,template_id,tenant_id,timezone'),
         ('plt01.sch_template_requirements',
-         'correlation_id,created_at,created_by,quantity,'
+         'correlation_id,created_at,created_by,per_attendee,quantity,'
          'requirement_id,requirement_kind,resource_id,template_id,'
          'tenant_id'),
         ('plt01.sch_templates',
@@ -31753,7 +31760,7 @@ BEGIN
          'rule_id,session_id,starts_at,status,template_id,tenant_id,'
          'timezone'),
         ('plt01.sch_template_requirements',
-         'correlation_id,created_at,created_by,quantity,'
+         'correlation_id,created_at,created_by,per_attendee,quantity,'
          'requirement_id,requirement_kind,template_id,tenant_id'),
         ('plt01.sch_templates',
          'correlation_id,created_at,created_by,display_name,'
@@ -31940,6 +31947,42 @@ BEGIN
       AND has_column_privilege('public', att.attrelid, att.attnum, 'SELECT');
     IF wrong IS NOT NULL THEN
         RAISE EXCEPTION 'CHECK 89 FAILED: a MOD-019 column carries a PUBLIC grant: %', wrong;
+    END IF;
+    -- **The trigger functions' own properties, which this module had no sweep for.** MOD-020's
+    -- CHECK 96, MOD-021's and MOD-022's each read `proconfig`, `prosecdef` and `tgenabled`
+    -- over their own prefix, and `sch\_%` was never added -- so ten trigger functions whose
+    -- pinned `search_path` and closing `REVOKE ALL ... FROM PUBLIC` this module's migration
+    -- asserts in as many words were verified by nothing, and the definition pin in check 91
+    -- cannot see any of the three (`md5(prosrc)` reads the body and none of them is in it).
+    --
+    -- **Found by a mutation coming back uncaught**: `ALTER FUNCTION ... RESET search_path`
+    -- against `0035`'s new trigger passed every check, and the gap was the module's rather
+    -- than the new function's. Swept over the catalogue, so the next trigger here is covered
+    -- without an edit.
+    SELECT string_agg(p.proname, ', ' ORDER BY p.proname) INTO wrong
+    FROM pg_proc p
+    WHERE p.pronamespace = 'plt01'::regnamespace AND p.proname LIKE 'sch\_%'
+      AND NOT ('search_path=pg_catalog, public' = ANY (coalesce(p.proconfig, '{}')));
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 89 FAILED: a MOD-019 trigger function has no pinned search_path: %', wrong;
+    END IF;
+    SELECT string_agg(p.proname, ', ' ORDER BY p.proname) INTO wrong
+    FROM pg_proc p
+    WHERE p.pronamespace = 'plt01'::regnamespace AND p.proname LIKE 'sch\_%'
+      AND (p.prosecdef OR has_function_privilege('public', p.oid, 'EXECUTE'));
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 89 FAILED: a MOD-019 trigger function is SECURITY DEFINER or '
+            'PUBLIC-executable: %', wrong;
+    END IF;
+    -- And a trigger that is present and disabled is a rule the catalogue still lists.
+    SELECT string_agg(g.tgname, ', ' ORDER BY g.tgname) INTO wrong
+    FROM pg_trigger g JOIN pg_class t ON t.oid = g.tgrelid
+    WHERE t.relnamespace = 'plt01'::regnamespace AND t.relname LIKE 'sch\_%'
+      AND NOT g.tgisinternal AND g.tgenabled <> 'O';
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION 'CHECK 89 FAILED: a MOD-019 trigger is disabled: %', wrong;
     END IF;
 END $$;
 
@@ -35700,6 +35743,232 @@ END $$;
 ROLLBACK;
 
 
+-- ------------------------------------- 90b. a room's capacity and the equipment inside it
+-- **`0035`'s rules, one case each, and two of them are permissions.** ADR-0018. A pin says a
+-- rule is still written down -- check 91 carries the text of all five and the trigger's body
+-- digest -- and only a case says it still bites. Every case names the constraint that refused
+-- it and records a different one as a *confusion*, so a sibling answering fails on a clean
+-- database rather than at the next sweep.
+--
+-- **The two permissions are the half no refusal can see.** A capacity on a room and bikes
+-- inside a studio are the ordinary rows this slice exists to make writable; tighten either
+-- rule until they are not -- "no resource carries a capacity", "nothing goes inside anything"
+-- -- and every refusal probe below still passes while ADM-SCH-06 has nothing to draw.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+DECLARE
+    probe integer := 0;
+    offender text;
+    state text;
+    confused text[] := ARRAY[]::text[];
+    tenant constant uuid := '11111111-1111-4111-8111-111111111111';
+    actor constant uuid := '33333333-3333-4333-8333-333333333333';
+    studio constant uuid := 'eeeeeeee-1000-4000-8000-00000000000a';
+    khalda constant uuid := 'eeeeeeee-1000-4000-8000-000000000001';
+    coach constant uuid := 'eeeeeeee-1000-4000-8000-00000000000b';
+    far_room constant uuid := 'eeeeeeee-1000-4000-8000-000000000010';
+    template constant uuid := 'eeeeeeee-2000-4000-8000-000000000001';
+BEGIN
+    -- 1. The permission: a room holds thirty people, which is what the canvas draws.
+    BEGIN
+        INSERT INTO plt01.sch_resources
+            (tenant_id, resource_code, resource_kind, display_name, brand_id, location_id,
+             capacity, created_by, correlation_id)
+        VALUES (tenant, 'STUDIO-CAP', 'room', 'Studio with a stated capacity',
+                (SELECT brand_id FROM plt01.locations WHERE location_id = khalda),
+                khalda, 30, actor, actor);
+        probe := probe + 1;
+    EXCEPTION
+        WHEN others THEN
+            GET STACKED DIAGNOSTICS state = RETURNED_SQLSTATE;
+            RAISE EXCEPTION
+                'CHECK 90 FAILED: a room could not state its capacity (%): %', state, SQLERRM;
+    END;
+
+    -- 2. The permission: twenty bikes inside that studio, at the same club.
+    BEGIN
+        INSERT INTO plt01.sch_resources
+            (tenant_id, resource_code, resource_kind, display_name, brand_id, location_id,
+             quantity, parent_resource_id, created_by, correlation_id)
+        VALUES (tenant, 'BIKES-IN-A', 'equipment', 'Twenty bikes in Studio A',
+                (SELECT brand_id FROM plt01.locations WHERE location_id = khalda),
+                khalda, 20, studio, actor, actor);
+        probe := probe + 1;
+    EXCEPTION
+        WHEN others THEN
+            GET STACKED DIAGNOSTICS state = RETURNED_SQLSTATE;
+            RAISE EXCEPTION
+                'CHECK 90 FAILED: bikes could not be placed in a studio (%): %',
+                state, SQLERRM;
+    END;
+
+    -- 3. A coach does not hold a capacity: the number would have no reading.
+    BEGIN
+        INSERT INTO plt01.sch_resources
+            (tenant_id, resource_code, resource_kind, display_name, capacity,
+             created_by, correlation_id)
+        VALUES (tenant, 'COACH-CAP', 'staff', 'A coach with a capacity', 10, actor, actor);
+        RAISE EXCEPTION 'CHECK 90 FAILED: a member of staff was given a capacity';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'sch_resources_capacity_is_a_space' THEN probe := probe + 1;
+            ELSE confused := array_append(
+                confused, 'a coach''s capacity answered by ' || offender); END IF;
+    END;
+
+    -- 4. And a capacity above the largest expressible class cannot bind one.
+    BEGIN
+        INSERT INTO plt01.sch_resources
+            (tenant_id, resource_code, resource_kind, display_name, capacity,
+             created_by, correlation_id)
+        VALUES (tenant, 'HUGE-ROOM', 'room', 'A room holding a city', 10001, actor, actor);
+        RAISE EXCEPTION 'CHECK 90 FAILED: a room holding ten thousand and one people';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'sch_resources_capacity_sane' THEN probe := probe + 1;
+            ELSE confused := array_append(
+                confused, 'the oversized room answered by ' || offender); END IF;
+    END;
+
+    -- 5. Only equipment goes inside a space. A room inside a room makes "which capacity
+    -- binds" a walk rather than a comparison, and nothing in the design draws one.
+    BEGIN
+        INSERT INTO plt01.sch_resources
+            (tenant_id, resource_code, resource_kind, display_name, brand_id, location_id,
+             parent_resource_id, created_by, correlation_id)
+        VALUES (tenant, 'ROOM-IN-ROOM', 'room', 'A room inside a room',
+                (SELECT brand_id FROM plt01.locations WHERE location_id = khalda),
+                khalda, studio, actor, actor);
+        RAISE EXCEPTION 'CHECK 90 FAILED: a room was placed inside another room';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'sch_resources_parent_is_equipment' THEN probe := probe + 1;
+            ELSE confused := array_append(
+                confused, 'the nested room answered by ' || offender); END IF;
+    END;
+
+    -- 6. The trigger's first branch: a space that is not there. **The foreign key is the
+    -- control and this branch only names which resource is missing**, which it can because a
+    -- BEFORE trigger runs ahead of the key -- so the probe asserts the sentence rather than
+    -- the exception class, or it would be proving the key.
+    --
+    -- **This is also the only path self-containment can take**, which is why there is no
+    -- `parent <> resource_id` constraint: on an insert the row is not there yet and this
+    -- branch answers, and on an update equipment inside itself is equipment inside equipment,
+    -- which branch 2 refuses by name.
+    BEGIN
+        INSERT INTO plt01.sch_resources
+            (tenant_id, resource_code, resource_kind, display_name,
+             parent_resource_id, created_by, correlation_id)
+        VALUES (tenant, 'BIKE-NOWHERE', 'equipment', 'A bike in a studio nobody registered',
+                'eeeeeeee-0035-4000-8000-00000000000f', actor, actor);
+        RAISE EXCEPTION 'CHECK 90 FAILED: equipment was placed in a space that does not exist';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 90 FAILED%' THEN RAISE; END IF;
+            IF SQLERRM LIKE '%does not exist%' THEN probe := probe + 1;
+            ELSE confused := array_append(
+                confused, 'the missing space answered: ' || SQLERRM); END IF;
+        WHEN foreign_key_violation THEN
+            RAISE EXCEPTION
+                'CHECK 90 FAILED: a missing space was refused by the foreign key, not by the '
+                'trigger that names it';
+    END;
+
+    -- 7. The trigger's second branch: a parent that is not a space. **The CHECK above cannot
+    -- see this**, because the row itself is equipment and what is wrong is the other row.
+    BEGIN
+        INSERT INTO plt01.sch_resources
+            (tenant_id, resource_code, resource_kind, display_name, brand_id, location_id,
+             parent_resource_id, created_by, correlation_id)
+        VALUES (tenant, 'BIKE-IN-COACH', 'equipment', 'A bike inside a coach',
+                (SELECT brand_id FROM plt01.locations WHERE location_id = khalda),
+                khalda, coach, actor, actor);
+        RAISE EXCEPTION 'CHECK 90 FAILED: equipment was placed inside a member of staff';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 90 FAILED%' THEN RAISE; END IF;
+            IF SQLERRM LIKE '%is a staff%' THEN probe := probe + 1;
+            ELSE confused := array_append(
+                confused, 'the coach as a container answered: ' || SQLERRM); END IF;
+        WHEN foreign_key_violation THEN
+            RAISE EXCEPTION
+                'CHECK 90 FAILED: a bike inside a coach was refused by the foreign key, not '
+                'by the trigger';
+    END;
+
+    -- 8. The trigger's third branch: a parent at another club. Twenty bikes in Khalda are not
+    -- twenty bikes in Sweifieh, and a ceiling computed across clubs is the whole reason this
+    -- branch exists.
+    BEGIN
+        INSERT INTO plt01.sch_resources
+            (tenant_id, resource_code, resource_kind, display_name, brand_id, location_id,
+             parent_resource_id, created_by, correlation_id)
+        VALUES (tenant, 'BIKE-ELSEWHERE', 'equipment', 'A bike in another club''s studio',
+                (SELECT brand_id FROM plt01.locations WHERE location_id = khalda),
+                khalda, far_room, actor, actor);
+        RAISE EXCEPTION 'CHECK 90 FAILED: equipment was placed in another club''s space';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 90 FAILED%' THEN RAISE; END IF;
+            IF SQLERRM LIKE '%different locations%' THEN probe := probe + 1;
+            ELSE confused := array_append(
+                confused, 'the far studio answered: ' || SQLERRM); END IF;
+    END;
+
+    -- 9. Per-attendee is meaningless against a requirement naming *that* resource, which its
+    -- sibling already holds to one of it.
+    BEGIN
+        INSERT INTO plt01.sch_template_requirements
+            (tenant_id, template_id, requirement_kind, quantity, resource_id, per_attendee,
+             created_by, correlation_id)
+        VALUES (tenant, template, 'equipment', 1, studio, true, actor, actor);
+        RAISE EXCEPTION 'CHECK 90 FAILED: a named resource was required per attendee';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'sch_template_requirements_per_attendee_is_anonymous'
+                THEN probe := probe + 1;
+            ELSE confused := array_append(
+                confused, 'the named per-attendee requirement answered by ' || offender);
+            END IF;
+    END;
+
+    -- 10. The permission: a requirement for one of a thing each, which is the fact
+    -- ADM-SCH-03's ceiling needs. **Tighten the rule to "no requirement may be per
+    -- attendee" and every refusal above still passes** while the bike-per-attendee ceiling
+    -- becomes unwritable, which is what this case is for.
+    BEGIN
+        INSERT INTO plt01.sch_template_requirements
+            (tenant_id, template_id, requirement_kind, quantity, per_attendee,
+             created_by, correlation_id)
+        VALUES (tenant, template, 'equipment', 1, true, actor, actor);
+        probe := probe + 1;
+    EXCEPTION
+        WHEN others THEN
+            GET STACKED DIAGNOSTICS state = RETURNED_SQLSTATE;
+            RAISE EXCEPTION
+                'CHECK 90 FAILED: a requirement could not be one each (%): %',
+                state, SQLERRM;
+    END;
+
+    IF array_length(confused, 1) IS NOT NULL THEN
+        RAISE EXCEPTION 'CHECK 90 FAILED: %', array_to_string(confused, '; ');
+    END IF;
+    IF probe <> 10 THEN
+        RAISE EXCEPTION
+            'CHECK 90 FAILED: % of 10 capacity and containment cases ran -- a rule with no '
+            'isolating case is a rule nobody has tested', probe;
+    END IF;
+END $$;
+ROLLBACK;
+
+
 -- ------------------------------------- 90c. the session identity the grant already refuses
 -- **A session's instant, its rule and its capacity carry no UPDATE grant for any runtime
 -- role**, so check 89 already proves that this service cannot move them and these four probes
@@ -36010,10 +36279,17 @@ BEGIN
         ('sch_recurrence_rules_weekdays_match_frequency CHECK (((frequency = ANY (ARRAY[''weekly''::text, ''monthly_by_weekday''::text])) = (cardinality(weekdays) > 0)))'),
         ('sch_recurrence_rules_weekdays_shape CHECK ((weekdays <@ ARRAY[(0)::smallint, (1)::smallint, (2)::smallint, (3)::smallint, (4)::smallint, (5)::smallint, (6)::smallint]))'),
         ('sch_recurrence_rules_zone_shape CHECK ((timezone ~ ''^[A-Za-z][A-Za-z0-9+_/-]{1,63}$''::text))'),
+        -- `0035`'s four. The two `capacity` ones are the ceiling ADM-SCH-06 draws and the
+        -- bound it shares with a class's own figure, because the two are compared; the two
+        -- `parent` ones say only equipment goes inside a space, and nothing inside itself --
+        -- what the parent *is* and where is the trigger's, because a CHECK cannot see it.
+        ('sch_resources_capacity_is_a_space CHECK (((capacity IS NULL) OR (resource_kind = ANY (ARRAY[''room''::text, ''zone''::text, ''court''::text]))))'),
+        ('sch_resources_capacity_sane CHECK (((capacity IS NULL) OR ((capacity >= 1) AND (capacity <= 10000))))'),
         ('sch_resources_code_shape CHECK ((resource_code ~ ''^[A-Z0-9][A-Z0-9._-]{1,47}$''::text))'),
         ('sch_resources_kind_shape CHECK ((resource_kind ~ ''^[a-z][a-z0-9_]{1,31}$''::text))'),
         ('sch_resources_location_names_a_brand CHECK (((location_id IS NULL) OR (brand_id IS NOT NULL)))'),
         ('sch_resources_name_not_blank CHECK ((display_name ~ ''[^[:space:]]''::text))'),
+        ('sch_resources_parent_is_equipment CHECK (((parent_resource_id IS NULL) OR (resource_kind = ''equipment''::text)))'),
         ('sch_resources_quantity_sane CHECK (((quantity >= 1) AND (quantity <= 10000)))'),
         ('sch_resources_retired_is_retired CHECK (((status <> ''retired''::text) OR (retired_at IS NOT NULL)))'),
         ('sch_resources_retirement_attributed CHECK ((((retired_at IS NULL) AND (retired_by IS NULL) AND (retire_correlation_id IS NULL)) OR ((retired_at IS NOT NULL) AND (retired_by IS NOT NULL) AND (retire_correlation_id IS NOT NULL))))'),
@@ -36043,6 +36319,9 @@ BEGIN
         ('sch_template_requirements_kind_shape CHECK ((requirement_kind ~ ''^[a-z][a-z0-9_]{1,31}$''::text))'),
         ('sch_template_requirements_named_is_one CHECK (((resource_id IS NULL) OR (quantity = 1)))'),
         ('sch_template_requirements_offering_is_named CHECK (((requirement_kind <> ALL (ARRAY[''service''::text, ''composite''::text])) OR (resource_id IS NOT NULL)))'),
+        -- `0035`: per-attendee is meaningless against a requirement naming *that* resource,
+        -- which its sibling already holds to `quantity = 1`.
+        ('sch_template_requirements_per_attendee_is_anonymous CHECK (((NOT per_attendee) OR (resource_id IS NULL)))'),
         ('sch_template_requirements_quantity_sane CHECK (((quantity >= 1) AND (quantity <= 10000)))'),
         ('sch_templates_code_shape CHECK ((template_code ~ ''^[A-Z0-9][A-Z0-9._-]{1,47}$''::text))'),
         ('sch_templates_name_not_blank CHECK ((display_name ~ ''[^[:space:]]''::text))'),
@@ -36088,6 +36367,9 @@ BEGIN
         ('sch_resources_by_kind CREATE INDEX sch_resources_by_kind ON plt01.sch_resources USING btree (tenant_id, resource_kind, status)'),
         ('sch_resources_by_location CREATE INDEX sch_resources_by_location ON plt01.sch_resources USING btree (tenant_id, location_id) WHERE (location_id IS NOT NULL)'),
         ('sch_resources_by_person CREATE INDEX sch_resources_by_person ON plt01.sch_resources USING btree (tenant_id, person_id) WHERE (person_id IS NOT NULL)'),
+        -- `0035`: ADM-SCH-06 reads the equipment of every room on one page, and the
+        -- ceiling read asks the same question per space.
+        ('sch_resources_by_parent CREATE INDEX sch_resources_by_parent ON plt01.sch_resources USING btree (tenant_id, parent_resource_id) WHERE (parent_resource_id IS NOT NULL)'),
         ('sch_resources_pkey CREATE UNIQUE INDEX sch_resources_pkey ON plt01.sch_resources USING btree (tenant_id, resource_id)'),
         ('sch_resources_tenant_id_resource_code_key CREATE UNIQUE INDEX sch_resources_tenant_id_resource_code_key ON plt01.sch_resources USING btree (tenant_id, resource_code)'),
         ('sch_restrictions_by_policy CREATE INDEX sch_restrictions_by_policy ON plt01.sch_restrictions USING btree (tenant_id, policy_id)'),
@@ -36127,6 +36409,11 @@ BEGIN
         ('CREATE TRIGGER sch_capacity_holds_fit BEFORE INSERT ON plt01.sch_capacity_holds FOR EACH ROW EXECUTE FUNCTION plt01.sch_hold_fits_the_session()'),
         ('CREATE TRIGGER sch_capacity_holds_one_way BEFORE UPDATE ON plt01.sch_capacity_holds FOR EACH ROW EXECUTE FUNCTION plt01.sch_hold_is_settled_once()'),
         ('CREATE TRIGGER sch_availability_windows_one_way BEFORE UPDATE ON plt01.sch_availability_windows FOR EACH ROW EXECUTE FUNCTION plt01.sch_availability_window_withdrawal_is_final()'),
+        -- `0035`. **`UPDATE OF` the three columns the answer depends on**, not every update:
+        -- a resource's name is correctable and re-judging the containment on that write would
+        -- freeze a renamed row whose space was later retired -- MOD-026's escalation trigger
+        -- paid for exactly that, and its remedy is in this build's own sibling.
+        ('CREATE TRIGGER sch_resources_parent_is_a_space BEFORE INSERT OR UPDATE OF parent_resource_id, location_id, resource_kind ON plt01.sch_resources FOR EACH ROW EXECUTE FUNCTION plt01.sch_resource_parent_is_a_space()'),
         ('CREATE TRIGGER sch_resources_one_way BEFORE UPDATE ON plt01.sch_resources FOR EACH ROW EXECUTE FUNCTION plt01.sch_resource_retirement_is_final()'),
         ('CREATE TRIGGER sch_session_changes_live BEFORE INSERT ON plt01.sch_session_changes FOR EACH ROW EXECUTE FUNCTION plt01.sch_change_needs_a_live_session()'),
         ('CREATE TRIGGER sch_session_resources_fit BEFORE INSERT ON plt01.sch_session_resources FOR EACH ROW EXECUTE FUNCTION plt01.sch_assignment_fits_the_session()'),
@@ -36157,6 +36444,7 @@ BEGIN
         ('sch_hold_fits_the_session 789654600bff285bd0ada996f575267c'),
         ('sch_hold_is_settled_once fc1c498c9669d2f160eda858c88c620f'),
         ('sch_availability_window_withdrawal_is_final 2a1e70c1d6e798b79a38e93c47eaff15'),
+        ('sch_resource_parent_is_a_space eb40a1ea0ba234dd569ecc169b22c2b3'),
         ('sch_resource_retirement_is_final 442e00065517541ccab65802f4710657'),
         ('sch_session_is_one_way 2c88394606e3cdf3cccbbfbf8a962f37'),
         ('sch_template_is_one_way b514dfd290873212fc001084eccc5196'),

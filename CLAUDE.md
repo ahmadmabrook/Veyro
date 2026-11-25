@@ -4103,6 +4103,101 @@ Known gaps, deliberate:
   makes anybody do -- is six hours open and was reported as eight. That figure is the
   denominator of ADM-SCH-04's own "26 of 34 available hours booked", so inflating it makes
   somebody look less booked than they are. `availability._merge` is the fix.
+**A room has a capacity now, and three numbers that were one are three.** ADR-0018,
+ADM-SCH-06. `0035` adds `sch_resources.capacity` -- how many **people** a space holds -- and
+`parent_resource_id`, the space a piece of equipment is in, plus
+`sch_template_requirements.per_attendee`: whether a requirement's quantity is per session or
+one each. Before it the module had `quantity` ("how many of a thing there are", twenty bikes
+being one row with a quantity of twenty) and a policy's `capacity` ("how many places a class
+offers") and nothing for the middle fact the canvas draws. `location_id` is a *club*, so
+twenty bikes were at Khalda and in no particular studio -- which is why ADM-SCH-03's own
+"Studio 2 holds 20 bikes. Capacity cannot exceed the room" was unanswerable, and that gap is
+closed by the same slice. Proven: isolation checks 87, 88, 89, 90b and 91 -- ten behavioural
+cases of which **two are permissions**, a column-and-grant pin, the FK set, the NOT NULL set,
+the definition pin and the trigger's body digest -- 21 schema mutations and 17 behaviour
+mutations, all caught; 21 domain tests with no database; 20 HTTP tests; 8 component tests, 15
+browser tests and 4 browser mutations.
+
+Six decisions carry it, and the hardest is about a requirement nobody named:
+
+- **A ceiling, not a default.** A class keeps its own capacity, which is what a session
+  snapshots; what the room adds is a refusal. Inheriting the room's figure where a template
+  states none would make the class's own number optional and leave two columns able to
+  disagree about how many places a session has -- this build's most-repeated finding, created
+  on purpose. The canvas's word is *ceiling*.
+- **An anonymous space requirement is bounded by the *smallest* candidate.** "A room" means
+  the generator may pick any room of that kind at the site, so the class has to fit in
+  whichever it picks -- and the largest would let a class of fifty be assigned a studio
+  holding twenty, which is the failure the slice exists to prevent. The cost is stated: a
+  tenant with one small studio and one large hall cannot declare a fifty-person class against
+  "a room", and naming the hall is a requirement that says what it means. It also means the
+  generation needed no change at all: no policy can exist above the smallest room it may land
+  in, so `_assign` never has to know a capacity.
+- **A capacity of `NULL` is unstated and does not bind**, which is what keeps every template
+  already written unaffected -- every resource registered before `0035` states none. ADR-0011's
+  billing-anchor reasoning applied to a ceiling, and the mutation that makes an unstated space
+  bind at nothing is caught.
+- **Equipment counts where it *is*.** A format taking one bike per attendee is bounded by the
+  bikes in that room, not by the bikes in the building, and equipment nobody has placed bounds
+  no room -- uncomfortable, correct, and the reason the containment is a relation rather than a
+  label. The per-space *minimum* is what binds for an anonymous requirement, for the same
+  reason as the capacity, and the case that separates a minimum from a club-wide sum needs two
+  candidate rooms with different counts: with one required space the two agree, which is how a
+  sum passed every other test until the sweep asked.
+- **Only equipment goes inside a space, and only a place carries a capacity.** A capacity on a
+  coach is a number no reader could interpret; a space inside a space makes "which capacity
+  binds" a walk rather than a comparison, and nothing in the design draws one. Both are
+  CHECKs; what the parent *is* and *where* needs the trigger, because a CHECK cannot see
+  another row.
+- **One function, two callers.** `capacity.ceiling` and `check_against_ceiling`: the
+  capacity-policy write refuses by them and ADM-SCH-03's live clash check reports them. A
+  figure a screen shows and a write then refuses is the one-module-two-definitions finding on
+  the single field that decides how many people a class takes, and the HTTP test that matters
+  asserts the two **agree** -- whatever the check reports, the write accepts, and one over it
+  the write refuses.
+
+Three things to know before extending it:
+
+- **There is no `parent <> resource_id` constraint and the case is why.** One was written and
+  had no isolating path: a BEFORE trigger runs ahead of every CHECK, so on an insert the
+  trigger's own lookup answers ("that space does not exist", since the row is not there yet)
+  and on an update equipment inside itself is equipment inside equipment, which the kind
+  branch refuses by name. Deleted rather than tested harder.
+- **Neither new column carries an UPDATE grant**, so both are stated at registration --
+  `quantity`'s own arrangement, where twenty bikes becoming eighteen has no route either. A
+  refit that re-rates a room and a trolley wheeled into another studio each need a route that
+  does not exist, which the screen names; granting the column for a form nobody has written
+  would be a grant no service writes, which is `cat_prices.effective_to` for the third time.
+- **The ceiling is stricter than the assignment, and that is the fail-closed direction.**
+  `_assign` takes countable equipment from anywhere at the club while the ceiling counts what
+  is inside the required space -- so a class is refused a capacity the room's own bikes cannot
+  serve, and the generator may still reach for the room next door. It is a question nothing
+  could ask before, because nothing recorded which room equipment was in; fixing it means
+  threading the assigned spaces through `_assign`'s three callers, which is the generation
+  engine's own change.
+
+**And the slice found a defect in a committed migration, through an evidence gap in the
+module.** A mutation against the new trigger's pinned `search_path` came back uncaught, because
+**MOD-019 had no `proconfig`/`prosecdef`/`tgenabled` sweep at all** -- MOD-020's CHECK 96,
+MOD-021's and MOD-022's each read all three over their own prefix and `sch_%` was never added,
+so ten trigger functions' pinned search path and closing `REVOKE` were verified by nothing and
+`md5(prosrc)` can see none of the three. Adding the sweep found that `0017`'s own
+`sch_availability_window_withdrawal_is_final` never got its `REVOKE` and was PUBLIC-executable,
+alone among eleven. Corrected in `0035`, because a committed migration does not change.
+
+Known gaps from this slice, deliberate:
+
+- **A published session is not re-checked against a lowered ceiling.** A room's capacity can
+  be lowered after a class was generated, and the session keeps the policy it snapshotted --
+  which is this module's own premise. What is not built is a report of the sessions a lowering
+  would put over; the republish path's impact assessment is the nearest thing.
+- **Nothing counts bikes against holds.** The per-attendee figure bounds a class's *declared*
+  capacity; whether twenty people turned up with twenty bikes is attendance, and
+  `sch_capacity_holds` counts places. A hold per bike would be a second capacity mechanism
+  beside the one paragraph 4146 asks for.
+- **A space inside a space is refused**, so a zone inside a room is not expressible. Nothing in
+  the design draws one and a nested space makes the ceiling a walk.
+
 - **The booking window is not settable, and every tenant's is exactly one week.**
   `sch_capacity_policies.opens_hours_before` defaults to 168 with a CHECK behind it,
   `closes_minutes_before` to 0, `capacity.booking_window` takes both and decides -- and
@@ -6811,11 +6906,15 @@ MOD-019's section above; four things are the surface's own.
 
 **Four facts the canvas does not draw are derived and said**: the template's code and display
 name, the date range (because `recurrence.Rule` requires an end and "repeats weekly" has none),
-and the site from the link. **And the capacity ceiling it *does* draw is named as absent**,
-because "Studio 2 holds 20 bikes. Capacity cannot exceed the room" needs one fact nothing
-records -- that a class format takes one unit of equipment per attendee. Showing the spare
-figure as advice while not enforcing it would be a field explaining why the product did not do
-what it was asked, which this build calls the defect rather than the disclosure.
+and the site from the link. **And the capacity ceiling it draws is enforced now, which closed
+the gap this paragraph used to record.** It said the ceiling was "named as absent", because
+"Studio 2 holds 20 bikes. Capacity cannot exceed the room" needed one fact nothing recorded --
+that a class format takes one unit of equipment per attendee. ADR-0018 adds it as
+`sch_template_requirements.per_attendee`, beside a space's own capacity and the relation that
+puts equipment *in* a room, and `capacity.ceiling` is one function the capacity-policy write
+refuses by and this read reports: the live check answers `capacity_ceiling`,
+`ceiling_bound_by` and `capacity_over_the_ceiling`, so the screen says "capacity cannot exceed
+the room" with the room's name in it rather than showing a spare figure as advice.
 
 **FD-05 is the walk-in trial, and it is where a plural message's own strictness found two
 live 500s in screens that had shipped.** The canvas is the shortest in the inventory -- two
@@ -7606,7 +7705,8 @@ MOD-007, MOD-008, MOD-009, MOD-010, MOD-011, MOD-012, MOD-013, MOD-014, MOD-016,
 MOD-018, MOD-019, MOD-021, MOD-022, MOD-026 and MOD-027's board, table, profile and add form, plus
 MOD-020's roster on a session,
 ADM-SCH-03's create-a-class form at `/schedule/new`, ADM-SCH-04's availability grid at `/rota`,
-ADM-SET-07's localization at `/localization`, ADM-SCH-07's cancellation sheet at
+ADM-SET-07's localization at `/localization`, ADM-SCH-06's rooms and resources at
+`/schedule/resources`, ADM-SCH-07's cancellation sheet at
 `/schedule/{id}?cancel=1`, FD-07's shift open and close at `/desk/shift`,
 FD-02's member lookup at `/desk/lookup`, ADM-MSH-07's cancellation sheet at
 `/people/{id}?tab=membership&cancel=1`, ADM-MSH-09's plans and pricing at `/plans`, ADM-PAY-06's dunning rules at
@@ -7621,9 +7721,12 @@ under `/reports`, ADM-PAY-07's wallet on a member's billing tab and ADM-MEM-07's
 tab, and MOD-026's task list, attention item and resolved board under `/tasks`.
 MOD-015 is the one
 implemented module with no screen at all, which is the bulk of the remaining work; MOD-019's
-own surface is read-only -- publishing a schedule, substituting an instructor and cancelling a
-session are all built on the server and none has a form, which is the same gap the hierarchy
-has and for the same reason: every one of those writes is stepped-up; the staff screens are
+own surface writes in two places and reads in four -- `/schedule/new` creates a class and
+`/rota` adds an exception, while the board, one session, the rota grid and
+`/schedule/resources` are reads -- and substituting an instructor still has no form, which is
+the same gap the hierarchy has: that write is stepped-up and nobody has built the form that
+offers the step-up first, which is a priority rather than an obstacle now that three screens
+do exactly that; the staff screens are
 read-only too **except for the invitation**, which is ADM-STF-03: `Invite someone` writes,
 and `End access` is the one control left whose server half exists without a form --
 `set_identity_status` is built and tested, and revoking an assignment takes a written reason,
@@ -7662,16 +7765,16 @@ specified V1 screens and leaves `owning_module` null for every one of them -- it
 `unresolved_policy` says no owning implementation module has been inferred, and that null is
 not a pass. So nothing maps a screen to a module, and any statement of the form "module X's
 frontend is complete" is an assertion about a mapping that does not exist here. What the
-artefacts do support is per *surface*: `design:coverage` reports 60 screens in the inventory
-across Admin and Front Desk, 6 states of those, 12 blocked on something external and 13 in the
+artefacts do support is per *surface*: `design:coverage` reports 61 screens in the inventory
+across Admin and Front Desk, 6 states of those, 12 blocked on something external and 12 in the
 backlog, and Member, Coach, Console and POS have no implementation at all. **Closing this honestly means
 resolving the mapping before claiming a module is done**, not counting routes -- and the
 backlog is now the half of that mapping which exists: every unbuilt screen on those two
 surfaces names the module that owns it, checked against the catalogue, so the modules with
 Admin and Front Desk screens still owed are MOD-055 (3), MOD-023 (1), MOD-058 (1) and
-MOD-059 (1), plus 6 screens that are work inside modules already built, and one that is a
-service worker. **ADM-SET-07, ADM-PAY-06 and ADM-STF-03 came off that list**, which leaves
-MOD-005, MOD-008 and MOD-017 with no owed screen at all.
+MOD-059 (1), plus 5 screens that are work inside modules already built, and one that is a
+service worker. **ADM-SET-07, ADM-PAY-06, ADM-STF-03 and ADM-SCH-06 came off that list**,
+which leaves MOD-005, MOD-008 and MOD-017 with no owed screen at all.
 **MOD-026 came off that list by building its three**, which is the first time a module has: its backlog entries had been rewritten twice
 as the slices landed, because the check validates the module id and cannot read the sentence
 beside it. **MOD-027 came off it a different way** -- its first slice landed, so its eight
@@ -7793,10 +7896,16 @@ read was the finding: `set_availability` had had a writer and no reader since MO
 built, so a rota could be set and the only way to learn what it said was to publish a template
 against it and read the refusal. `/rota` is also where the standing claim that every form here
 is blocked turned out to be wrong -- `scheduling.availability.write` is routine, so the
-design's "Add an exception" is buildable today. **ADM-SCH-06 did not come off it**, and for a
-reason worth recording: the canvas draws capacity and equipment columns, `sch_resources` has
-`quantity` -- how many of a thing there are -- and capacity lives on a template's own policy,
-so the screen as drawn would have one real column and two invented ones.
+design's "Add an exception" is buildable today. **ADM-SCH-06 has come off it since, and the
+reason it was on it was correct**: the canvas draws capacity and equipment columns,
+`sch_resources` has `quantity` -- how many of a thing there are -- and capacity lives on a
+template's own policy, so the screen as drawn would have had one real column and two invented
+ones. ADR-0018 adds the two that were missing rather than drawing them anyway: a space's own
+capacity, and the relation that puts equipment *in* a room. **The three numbers are the
+slice** -- how many of a thing there are, how many people a space holds, how many places a
+class offers -- and the ceiling the first two impose is one function the capacity-policy write
+refuses by and ADM-SCH-03's live check reports, which closes that screen's own named gap as
+well. `/schedule/resources` is the screen, drawn as the canvas's read-only card.
 **ADM-MEM-10 came off that list the same way, and the read it needed is the one worth
 naming**: `find_duplicates` scores pairs that already exist, so the moment a duplicate is
 cheapest to prevent had nothing to ask, and the index that would answer it has been in

@@ -42,6 +42,45 @@ const web = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
  * does not collect those files and so reported no failure rather than no test.
  */
 const MUTATIONS = [
+  // ------------------------------------------------- ADM-SCH-06, rooms and resources
+  {
+    id: "rooms-an-unstated-capacity-is-not-zero",
+    why: "a room nobody has described does not bind a class, and 'holds 0' is a different"
+      + " fact -- the one a reader would act on. ADR-0018 D1, and the distinction the whole"
+      + " middle column rests on",
+    file: "src/app/schedule/resources/page.tsx",
+    from: "                row.capacity === null ? (",
+    to: "                false ? (",
+    grep: "tells an unstated capacity from a room that holds nobody",
+  },
+  {
+    id: "rooms-the-equipment-column-counts-bikes-not-rows",
+    why: "twenty bikes are one row with a quantity of twenty, deliberately -- so a column"
+      + " rendering the row count would say '1' about a room holding twenty",
+    file: "src/lib/rooms.ts",
+    from: "  return resource.contains.map((one) => `${one.quantity} × ${one.resource_code}`);",
+    to: "  return resource.contains.map((one) => one.resource_code);",
+    grep: "states what the spin room holds, and what is in it",
+  },
+  {
+    id: "rooms-only-spaces-are-listed",
+    why: "only a place holds people or contains equipment, so a table listing the coach and"
+      + " the service would be three columns two of which are blank for most rows",
+    file: "src/lib/rooms.ts",
+    from: "  return (SPACE_KINDS as readonly string[]).includes(resource.resource_kind);",
+    to: "  return true;",
+    grep: "lists only spaces, because only a place holds people",
+  },
+  {
+    id: "rooms-the-way-in-is-on-the-schedule-board",
+    why: "'double-booking is impossible because ADM-SCH-03 reads this list' -- so the list a"
+      + " scheduler is told the constraint lives in has to be reachable from the schedule,"
+      + " and a route nothing links to is a route nobody finds",
+    file: "src/app/schedule/page.tsx",
+    from: "        <Link href={`/schedule/resources?site=${chosen}`} className=\"ds-filter-chip\">",
+    to: "        <Link href={`/schedule?site=${chosen}`} className=\"ds-filter-chip\">",
+    grep: "is on the schedule board, which is the list the canvas points at",
+  },
   // ------------------------------------------------- ADM-STF-03, invite someone
   {
     id: "invite-the-form-is-reachable-by-a-reader-who-could-step-up",
