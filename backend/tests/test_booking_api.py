@@ -1355,3 +1355,400 @@ class RosterContextTests(BookingApiTestCase):
             headers=self.headers(gym["tenant_id"])).json()
         row = next(b for b in roster["bookings"] if b["person_id"] == person_id)
         self.assertEqual(row["prior_no_shows"], 0, roster)
+
+
+class CancellationRemedyApiTests(BookingApiTestCase):
+    """ADM-SCH-07 over HTTP. ADR-0016.
+
+    **The layer that matters**, which is MOD-014's finding: a service test passing a remedy
+    object proves the service and not that the route reads the body, charges the right
+    permissions and turns a bad id into a 422.
+    """
+
+    def _credit_policy(self, tenant_id: str, **kwargs: Any) -> str:
+        body: dict[str, Any] = {
+            "policy_key": f"p{uuid.uuid4().hex[:8]}", "display_name": "Class credit",
+            "entitlement_type": "class_credit", **self.correlation()}
+        body.update(kwargs)
+        created = self.client.post(
+            "/member-entitlements/policies", json=body,
+            headers=self.headers(tenant_id))
+        self.assertEqual(created.status_code, 201, created.text)
+        return str(created.json()["policy_id"])
+
+    def _cancel(self, gym: dict[str, Any], **body: Any) -> Any:
+        return self.client.post(
+            f"/scheduling/sessions/{gym['session_id']}/cancel-with-remedy",
+            json={"cancellation_reason": "instructor_unavailable",
+                  "reason": "no coach available", **body, **self.correlation()},
+            headers=self.headers(gym["tenant_id"]))
+
+    def _preview(self, gym: dict[str, Any], **body: Any) -> Any:
+        return self.client.post(
+            f"/scheduling/sessions/{gym['session_id']}/cancel-preview",
+            json={"cancellation_reason": "instructor_unavailable",
+                  "reason": "no coach available", **body, **self.correlation()},
+            headers=self.headers(gym["tenant_id"]))
+
+    # ----------------------------------------------------------------- the disclosure
+
+    def test_the_preview_writes_nothing_and_counts_who_is_affected(self) -> None:
+        gym = self.gym(capacity=12, waitlist_capacity=3)
+        for n in range(3):
+            self.booked(gym, self.person(gym["tenant_id"], f"Member {n}"))
+        self._credit_policy(gym["tenant_id"])
+        seen = self._preview(gym, remedy="credit")
+        self.assertEqual(seen.status_code, 200, seen.text)
+        body = seen.json()
+        self.assertEqual(body["booked"], 3)
+        self.assertEqual(body["to_notify"], 3)
+        self.assertTrue(body["wrote_nothing"])
+        self.assertEqual(body["credit"]["days"], 30)
+        # And the class is still running, which is the point of a preview.
+        still = self.client.get(f"/scheduling/sessions/{gym['session_id']}",
+                                headers=self.headers(gym["tenant_id"]))
+        self.assertEqual(still.json()["status"], "scheduled", still.text)
+
+    def test_the_preview_discloses_the_shortfall_the_canvas_names(self) -> None:
+        """"6 places free · 12 would need to choose another" -- the figure that makes the
+        screen honest, at the smaller scale a test can seed."""
+        gym = self.gym(capacity=4)
+        people = [self.person(gym["tenant_id"], f"Member {n}") for n in range(4)]
+        for person_id in people:
+            self.booked(gym, person_id)
+        elsewhere = gym["sessions"][1]
+        # Two of the destination's four places are already taken, so two of the four
+        # cancelled members fit and two do not.
+        for person_id in people[:2]:
+            self.booked(gym, person_id, session_id=elsewhere)
+        seen = self._preview(gym, remedy="move", to_session_id=elsewhere)
+        self.assertEqual(seen.status_code, 200, seen.text)
+        body = seen.json()
+        self.assertEqual(body["destination"]["places_free"], 2)
+        # The two who booked both classes are already there; the other two take the places.
+        self.assertEqual(body["moved_count"], 2)
+        self.assertEqual(
+            [m["reason"] for m in body["must_choose"]],
+            ["already_booked", "already_booked"])
+
+    # -------------------------------------------------------------------- the credit
+
+    def test_a_credit_is_granted_to_every_member_in_one_act(self) -> None:
+        gym = self.gym(capacity=12)
+        people = [self.person(gym["tenant_id"], f"Member {n}") for n in range(3)]
+        for person_id in people:
+            self.booked(gym, person_id)
+        self._credit_policy(gym["tenant_id"])
+        done = self._cancel(gym, remedy="credit")
+        self.assertEqual(done.status_code, 200, done.text)
+        body = done.json()
+        self.assertEqual(body["status"], "cancelled")
+        self.assertEqual(body["released"], 3)
+        self.assertEqual(len(body["credited"]), 3)
+        self.assertFalse(body["notified"])
+        owner = self.headers(gym["tenant_id"])
+        for person_id in people:
+            held = self.client.get(
+                f"/member-entitlements?person_id={person_id}", headers=owner)
+            self.assertEqual(held.status_code, 200, held.text)
+            kinds = [g["source_kind"] for g in held.json()["grants"]]
+            self.assertIn("goodwill", kinds, held.text)
+
+    def test_a_credit_needs_a_policy_the_tenant_declared(self) -> None:
+        """A remedy granted against a policy nobody declared is a right nothing can draw, so
+        the refusal names it rather than inventing a policy."""
+        gym = self.gym(capacity=12)
+        self.booked(gym, self.person(gym["tenant_id"]))
+        refused = self._cancel(gym, remedy="credit")
+        self.assertEqual(refused.status_code, 409, refused.text)
+        self.assertIn("class_credit", refused.json()["error"])
+
+    def test_two_class_credit_policies_are_refused_with_both_named(self) -> None:
+        """MOD-027's trial-plan precedent: picking between two would be choosing which right
+        the members get on the strength of whichever row sorted first."""
+        gym = self.gym(capacity=12)
+        self.booked(gym, self.person(gym["tenant_id"]))
+        first = self._credit_policy(gym["tenant_id"], policy_key="credit.a")
+        second = self._credit_policy(gym["tenant_id"], policy_key="credit.b")
+        self.assertNotEqual(first, second)
+        refused = self._cancel(gym, remedy="credit")
+        self.assertEqual(refused.status_code, 409, refused.text)
+        self.assertIn("credit.a", refused.json()["error"])
+        self.assertIn("credit.b", refused.json()["error"])
+
+    # ---------------------------------------------------------------------- the move
+
+    def test_a_move_books_the_members_onto_the_replacement_class(self) -> None:
+        gym = self.gym(capacity=12)
+        people = [self.person(gym["tenant_id"], f"Member {n}") for n in range(2)]
+        was = {person_id: self.booked(gym, person_id) for person_id in people}
+        elsewhere = gym["sessions"][1]
+        done = self._cancel(gym, remedy="move", to_session_id=elsewhere)
+        self.assertEqual(done.status_code, 200, done.text)
+        body = done.json()
+        self.assertEqual(len(body["moved"]), 2, body)
+        self.assertEqual(body["must_choose"], [])
+        owner = self.headers(gym["tenant_id"])
+        for entry in body["moved"]:
+            detail = self.client.get(f"/booking/bookings/{entry['booking_id']}",
+                                     headers=owner)
+            self.assertEqual(detail.status_code, 200, detail.text)
+            self.assertEqual(detail.json()["session_id"], elsewhere, detail.text)
+            self.assertEqual(entry["moved_from_booking_id"], was[entry["person_id"]])
+            # And the place they came off is released rather than cancelled by them.
+            before = self.client.get(f"/booking/bookings/{was[entry['person_id']]}",
+                                     headers=owner)
+            self.assertEqual(before.json()["state"], "released", before.text)
+
+    def test_a_full_replacement_class_moves_nobody_and_says_who(self) -> None:
+        gym = self.gym(capacity=2)
+        people = [self.person(gym["tenant_id"], f"Member {n}") for n in range(2)]
+        for person_id in people:
+            self.booked(gym, person_id)
+        elsewhere = gym["sessions"][1]
+        others = [self.person(gym["tenant_id"], f"Other {n}") for n in range(2)]
+        for person_id in others:
+            self.booked(gym, person_id, session_id=elsewhere)
+        done = self._cancel(gym, remedy="move", to_session_id=elsewhere)
+        self.assertEqual(done.status_code, 200, done.text)
+        body = done.json()
+        self.assertEqual(body["moved"], [])
+        self.assertEqual([m["reason"] for m in body["must_choose"]],
+                         ["no_place", "no_place"])
+        # The cancellation still happened: a remedy that reaches nobody is not a refusal.
+        self.assertEqual(body["status"], "cancelled")
+        self.assertEqual(body["released"], 2)
+
+    def test_a_class_cannot_be_moved_to_itself(self) -> None:
+        gym = self.gym(capacity=4)
+        self.booked(gym, self.person(gym["tenant_id"]))
+        refused = self._cancel(
+            gym, remedy="move", to_session_id=gym["session_id"])
+        self.assertEqual(refused.status_code, 422, refused.text)
+
+    def test_a_move_names_a_class_and_a_credit_does_not(self) -> None:
+        gym = self.gym(capacity=4)
+        self.assertEqual(self._preview(gym, remedy="move").status_code, 422)
+        self.assertEqual(
+            self._preview(gym, remedy="credit",
+                          to_session_id=gym["sessions"][1]).status_code, 422)
+
+    def test_a_malformed_destination_is_refused_at_the_boundary(self) -> None:
+        """MOD-009's finding: an id shape-checked nowhere answers 500 from psycopg."""
+        gym = self.gym(capacity=4)
+        refused = self._cancel(gym, remedy="move", to_session_id="not-a-uuid")
+        self.assertEqual(refused.status_code, 422, refused.text)
+
+    def test_a_cancelled_replacement_class_is_refused(self) -> None:
+        gym = self.gym(capacity=4)
+        self.booked(gym, self.person(gym["tenant_id"]))
+        elsewhere = gym["sessions"][1]
+        gone = self.client.post(
+            f"/scheduling/sessions/{elsewhere}/cancel",
+            json={"cancellation_reason": "weather", "reason": "storm",
+                  **self.correlation()}, headers=self.headers(gym["tenant_id"]))
+        self.assertEqual(gone.status_code, 200, gone.text)
+        refused = self._cancel(gym, remedy="move", to_session_id=elsewhere)
+        self.assertEqual(refused.status_code, 409, refused.text)
+        self.assertIn("cancelled", refused.json()["error"])
+
+    # ------------------------------------------------------------------ the waitlist
+
+    def test_the_waitlist_lapses_with_the_class(self) -> None:
+        """ADR-0016 D9, and `lapsed`'s first writer. Leaving three people `waiting` for a
+        class that will never run is this build's declared-state-nothing-writes shape."""
+        gym = self.gym(capacity=1, waitlist_capacity=3)
+        self.booked(gym, self.person(gym["tenant_id"], "In the class"))
+        waiting = self.person(gym["tenant_id"], "Waiting")
+        joined = self.client.post(
+            f"/booking/sessions/{gym['session_id']}/waitlist",
+            json={"person_id": waiting, "policy_key": gym["policy_key"],
+                  "idempotency_key": str(uuid.uuid4()), **self.correlation()},
+            headers=self.headers(gym["tenant_id"]))
+        self.assertEqual(joined.status_code, 201, joined.text)
+        self._credit_policy(gym["tenant_id"])
+        done = self._cancel(gym, remedy="credit")
+        self.assertEqual(done.status_code, 200, done.text)
+        self.assertEqual(done.json()["waitlist_lapsed"], 1, done.text)
+        self.assertEqual(done.json()["to_notify"], 2, done.text)
+        # **Read through the pool, because MOD-020 has no waitlist listing route.** `3 on the
+        # waitlist` is what ADM-SCH-07 needs and the preview answers it; a general queue read
+        # is another screen's. Named rather than worked around.
+        with self._tenant_pool.connection() as conn:
+            conn.execute("SELECT set_config('app.tenant_id', %s, true)",
+                         (gym["tenant_id"],))
+            states = [str(r[0]) for r in conn.execute(
+                "SELECT state FROM plt01.bkg_waitlist_entries WHERE session_id = %s",
+                (gym["session_id"],)).fetchall()]
+        self.assertEqual(states, ["lapsed"])
+
+    # --------------------------------------------------------------------- the retry
+
+    def test_the_same_request_twice_is_answered_from_what_was_recorded(self) -> None:
+        """MOD-017's review found three commands answering 409 to their own success. Here the
+        report is rebuilt from the rows, which is why it needs no column."""
+        gym = self.gym(capacity=12)
+        people = [self.person(gym["tenant_id"], f"Member {n}") for n in range(2)]
+        for person_id in people:
+            self.booked(gym, person_id)
+        self._credit_policy(gym["tenant_id"])
+        correlation = str(uuid.uuid4())
+        body = {"cancellation_reason": "instructor_unavailable",
+                "reason": "no coach available", "remedy": "credit",
+                "correlation_id": correlation}
+        url = f"/scheduling/sessions/{gym['session_id']}/cancel-with-remedy"
+        owner = self.headers(gym["tenant_id"])
+        first = self.client.post(url, json=body, headers=owner)
+        self.assertEqual(first.status_code, 200, first.text)
+        again = self.client.post(url, json=body, headers=owner)
+        self.assertEqual(again.status_code, 200, again.text)
+        self.assertTrue(again.json()["repeated"])
+        self.assertEqual(len(again.json()["credited"]), 2, again.text)
+        # And nothing was granted twice, which is what the partial unique index is for.
+        for person_id in people:
+            held = self.client.get(
+                f"/member-entitlements?person_id={person_id}", headers=owner)
+            goodwill = [g for g in held.json()["grants"]
+                        if g["source_kind"] == "goodwill"]
+            self.assertEqual(len(goodwill), 1, held.text)
+
+    def test_a_different_request_on_a_cancelled_class_is_refused(self) -> None:
+        gym = self.gym(capacity=12)
+        self.booked(gym, self.person(gym["tenant_id"]))
+        self._credit_policy(gym["tenant_id"])
+        self.assertEqual(self._cancel(gym, remedy="credit").status_code, 200)
+        refused = self._cancel(gym, remedy="credit")
+        self.assertEqual(refused.status_code, 409, refused.text)
+
+    def test_a_member_the_replacement_class_refuses_is_named_not_moved(self) -> None:
+        """D3. A fourteen-year-old moved onto an 18+ class is a booking MOD-019's own hold
+        trigger refuses -- and refusing the whole cancellation because one member of eighteen
+        is too young would leave a class running with no coach.
+
+        **`ineligible` is read from the verdict's own key**, not from `eligible`: that one
+        folds in the room being full and the booking window being shut, so reading it made
+        every member of a full destination ineligible and `free_places` decoration.
+        """
+        tenant_id = self.tenant()
+        gym = self.gym_for(tenant_id, capacity=4)
+        grown_ups = self.gym_for(
+            tenant_id, capacity=4,
+            restrictions=[{"kind": "min_age", "value": "18"}])
+        child = self.person(tenant_id, "Young Member", born=day(-365 * 14))
+        adult = self.person(tenant_id, "Older Member", born=day(-365 * 40))
+        self.booked(gym, child)
+        self.booked(gym, adult)
+        done = self._cancel(
+            gym, remedy="move", to_session_id=grown_ups["session_id"])
+        self.assertEqual(done.status_code, 200, done.text)
+        body = done.json()
+        self.assertEqual([m["person_id"] for m in body["moved"]], [adult], body)
+        self.assertEqual(len(body["must_choose"]), 1, body)
+        self.assertEqual(body["must_choose"][0]["person_id"], child)
+        self.assertEqual(body["must_choose"][0]["reason"], "ineligible")
+        self.assertIsNotNone(body["must_choose"][0]["ineligible_because"])
+
+    def test_the_earliest_bookings_take_the_places_that_are_left(self) -> None:
+        """D4, through the routes: the order is the order they booked, which is what makes
+        the `ORDER BY booked_at` in the candidate read observable at all."""
+        gym = self.gym(capacity=4)
+        people = [self.person(gym["tenant_id"], f"Member {n}") for n in range(4)]
+        for person_id in people:
+            self.booked(gym, person_id)
+        elsewhere = gym["sessions"][1]
+        filler = [self.person(gym["tenant_id"], f"Filler {n}") for n in range(2)]
+        for person_id in filler:
+            self.booked(gym, person_id, session_id=elsewhere)
+        done = self._cancel(gym, remedy="move", to_session_id=elsewhere)
+        self.assertEqual(done.status_code, 200, done.text)
+        body = done.json()
+        self.assertEqual([m["person_id"] for m in body["moved"]], people[:2], body)
+        self.assertEqual([m["person_id"] for m in body["must_choose"]], people[2:], body)
+
+    def test_an_offered_place_lapses_with_the_class(self) -> None:
+        """The one entry that *has* a place was the one entry the state machine could not
+        settle: `offered -> lapsed` was not an admitted edge, so the queue had to be settled
+        before the cancellation released the hold -- and both halves are what this proves."""
+        gym = self.gym(capacity=1, waitlist_capacity=3)
+        self.booked(gym, self.person(gym["tenant_id"], "In the class"))
+        waiting = self.person(gym["tenant_id"], "Waiting")
+        owner = self.headers(gym["tenant_id"])
+        joined = self.client.post(
+            f"/booking/sessions/{gym['session_id']}/waitlist",
+            json={"person_id": waiting, "policy_key": gym["policy_key"],
+                  "idempotency_key": str(uuid.uuid4()), **self.correlation()},
+            headers=owner)
+        self.assertEqual(joined.status_code, 201, joined.text)
+        # A place frees, so the entry is offered one and holds it.
+        booked_out = self.client.get(
+            f"/booking/sessions/{gym['session_id']}/roster", headers=owner).json()
+        self.client.post(
+            f"/booking/bookings/{booked_out['bookings'][0]['booking_id']}/cancel",
+            json={"reason": "cannot make it", **self.correlation()}, headers=owner)
+        promoted = self.client.post(
+            f"/booking/sessions/{gym['session_id']}/waitlist/promote",
+            json=self.correlation(), headers=owner)
+        self.assertEqual(promoted.status_code, 200, promoted.text)
+        with self._tenant_pool.connection() as conn:
+            conn.execute("SELECT set_config('app.tenant_id', %s, true)",
+                         (gym["tenant_id"],))
+            state = conn.execute(
+                "SELECT state FROM plt01.bkg_waitlist_entries WHERE session_id = %s",
+                (gym["session_id"],)).fetchone()
+        self.assertEqual(str(state[0]), "offered")
+        self._credit_policy(gym["tenant_id"])
+        done = self._cancel(gym, remedy="credit")
+        self.assertEqual(done.status_code, 200, done.text)
+        self.assertEqual(done.json()["waitlist_lapsed"], 1, done.text)
+        with self._tenant_pool.connection() as conn:
+            conn.execute("SELECT set_config('app.tenant_id', %s, true)",
+                         (gym["tenant_id"],))
+            row = conn.execute(
+                "SELECT state, hold_id, settle_reason FROM plt01.bkg_waitlist_entries"
+                " WHERE session_id = %s", (gym["session_id"],)).fetchone()
+        self.assertEqual(str(row[0]), "lapsed")
+        self.assertIsNone(row[1], "the place goes back with the cancellation")
+        self.assertIn("cancelled", str(row[2]))
+
+    def test_a_moved_booking_keeps_the_entitlement_the_member_already_spent(self) -> None:
+        """D3. The member paid once: drawing a second grant for a class the gym moved would
+        charge them for the gym's own change of plan."""
+        tenant_id = self.tenant()
+        gym = self.gym_for(tenant_id, capacity=4)
+        person_id = self.person(tenant_id, "Pass Holder")
+        policy_id = self._credit_policy(tenant_id, policy_key="passes")
+        granted = self.client.post("/member-entitlements/grants", json={
+            "person_id": person_id, "policy_id": policy_id, "source_kind": "goodwill",
+            "quantity": 4, "valid_from": datetime.now(UTC).isoformat(),
+            "reason": "a book of passes", **self.correlation()},
+            headers=self.headers(tenant_id))
+        self.assertEqual(granted.status_code, 201, granted.text)
+        was = self.booked(gym, person_id, entitlement_key="passes")
+        owner = self.headers(tenant_id)
+        before = self.client.get(f"/booking/bookings/{was}", headers=owner).json()
+        self.assertIsNotNone(before["entitlement_grant_id"], before)
+        done = self._cancel(
+            gym, remedy="move", to_session_id=gym["sessions"][1])
+        self.assertEqual(done.status_code, 200, done.text)
+        moved = done.json()["moved"][0]["booking_id"]
+        after = self.client.get(f"/booking/bookings/{moved}", headers=owner).json()
+        self.assertEqual(after["entitlement_grant_id"],
+                         before["entitlement_grant_id"], after)
+
+    def test_the_preview_refuses_a_cancelled_replacement_class(self) -> None:
+        """**The reader the guard is actually for.** On the write path MOD-019's own hold
+        refuses a cancelled session, so the service's check is subsumed there -- the mutation
+        sweep said so by coming back uncaught. The preview takes no hold at all, so without
+        the check it would report a cancelled class as having places free, which is a figure
+        the screen puts in front of a manager."""
+        gym = self.gym(capacity=4)
+        self.booked(gym, self.person(gym["tenant_id"]))
+        elsewhere = gym["sessions"][1]
+        gone = self.client.post(
+            f"/scheduling/sessions/{elsewhere}/cancel",
+            json={"cancellation_reason": "weather", "reason": "storm",
+                  **self.correlation()}, headers=self.headers(gym["tenant_id"]))
+        self.assertEqual(gone.status_code, 200, gone.text)
+        refused = self._preview(gym, remedy="move", to_session_id=elsewhere)
+        self.assertEqual(refused.status_code, 409, refused.text)
+        self.assertIn("cancelled", refused.json()["error"])

@@ -4257,6 +4257,105 @@ Known gaps, deliberate:
   rather than a second computation, because a screen that offered the button outside it
   handed a desk a control the module answers 409 to.
 
+**A cancellation names what the members get, which is ADM-SCH-07 and the one act this module
+can commit across three others.** ADR-0016.
+`POST /scheduling/sessions/{id}/cancel-with-remedy` cancels the class, releases its bookings,
+lapses its queue and either moves the members to a replacement class or credits each of them
+-- **in one transaction**, because the session, its holds, the bookings, the waitlist and the
+grants are all in `plt01` under `veyro_cp_app`. That is the opposite call from MOD-027's
+walk-in, and the difference is that this one *can*: a cancellation that landed with the
+credits rolled back is eighteen members with a cancelled class and nothing, which is the harm
+the canvas's own last sentence names. `cancel-preview` is the disclosure, so a screen does
+not have to commit the most consequential act in the schedule to see its consequence. Proven:
+21 Python mutations in `tests/mutate_cancellation_remedy.py` and 17 schema mutations in
+`tests/sql/sweep_cancellation_remedy.py`, all caught; 11 domain tests with no database; 19
+HTTP tests; `0034`'s rules with one probe per branch in CHECK 97d and two per direction in
+CHECK 78b.
+
+Five decisions carry it, and three of them are refusals:
+
+- **A move is not a new booking.** The member already held a place, so it is not re-evaluated
+  against their weekly quota or concurrent limit -- doing that would refuse the members whose
+  quota *the cancelled class itself* consumed, which is the product punishing somebody for a
+  class the gym called off. What is still evaluated is the destination's own capacity
+  (MOD-019's `FOR UPDATE` count) and its own eligibility, and both helpers were already
+  connection-taking, which is what made one transaction affordable.
+- **Earliest booking first, and the shortfall is disclosed rather than resolved.** The canvas
+  states the arithmetic -- "6 places free · 12 would need to choose another" -- so nobody who
+  does not fit is quietly credited instead: the manager chose to move them, and doing
+  something else to two thirds of them would make the drawn message, which says a place has
+  been held, false for twelve of eighteen people.
+- **A member already on the replacement class is reported, not refused.**
+  `bkg_bookings_one_live_per_person` would refuse the move, and somebody who booked both
+  classes is the ordinary case rather than an edge -- so the whole cancellation would have
+  failed on a member doing nothing unusual.
+- **The message is not rendered by the server.** "Sent in each member's language" is the
+  canvas's requirement and this process has no message catalogue, so the command returns the
+  facts a message is made of and the screen renders one preview in the reader's own language.
+  Prose on the wire in a bilingual product is a field an Arabic reader can never be shown,
+  which is ADR-0015's own finding.
+- **Nothing is authored into `ntf_notifications`, and the reason is a permission rather than a
+  cost.** `request_notification` requires an address digest per recipient; nothing in this
+  build binds one from a person record, and a scheduling command that read eighteen members'
+  contact points to compute one would be a lateral read path around `member.contact.read` --
+  MOD-010's `events.event.read` finding, in a command whose caller need hold nothing about a
+  member's address.
+
+**And five findings came out of building it, four of them in code that was already there.**
+
+- **`lapsed` was a declared waitlist state nothing wrote, and the flag disclosing that was
+  read by nothing either.** `waitlist.py`'s own comment says `lapsed` is "where an entry goes
+  when the session it was waiting for is cancelled"; cancelling a session left its queue
+  reading `waiting` for a class that would never run. Beside it sat
+  `LAPSED_HAS_NO_WRITER = True`, which the whole repository referenced nowhere -- a comment
+  with a type rather than a disclosure, which is this build's writer-with-no-reader shape
+  arriving *inside a gap note*. The cancellation is the writer; the flag is deleted rather
+  than flipped; and the half still missing is named -- a session that simply *happened* with
+  people still queued, which wants the settlement sweep that deliberately takes no
+  caller-supplied instant.
+- **`offered -> lapsed` was not an admitted edge, so the one entry that *had* a place was the
+  one entry that could not be settled.** `0034` widens the trigger and `waitlist.EDGES` with
+  it, and the queue is settled **before** the cancellation releases the holds -- because
+  `bkg_entry_hold_matches` requires an offered entry's place to be live, so lapsing afterwards
+  is refused on exactly the entry that matters. Both the ordering and the edge are mutations
+  and both are caught.
+- **Reading an eligibility verdict's summary field made the capacity arithmetic decoration.**
+  `check_eligibility_on` returns `eligible`, which folds in the room being full and the
+  booking window being shut, *and* `ineligible` on its own key -- with a comment saying it
+  exists so "a caller that needs to know whether the *member* is eligible ... was left
+  matching the start of a sentence". The first version read `eligible`, so every member of a
+  full destination came back `ineligible`, `plan_moves` never reached its own `no_place`
+  branch and `free_places` decided nothing. **The field built for the distinction was already
+  there**, and the test that caught it asserted the *reason* each member was not moved rather
+  than the count.
+- **The same free-places expression existed four times.** MOD-020 computed it inline in its
+  eligibility path and again in its waitlist promotion, MOD-019 inside `take_hold_on`, and
+  this slice needed it a fifth -- which is MOD-018's one-module-two-definitions finding
+  waiting for the day somebody edits one of them. `capacity.places_free` is the pure half and
+  `scheduling.held_places_on` the one SQL expression, in the module that owns capacity.
+- **`goodwill` was a declared grant source nothing wrote, and `mem_entitlement_grants` had no
+  idempotency of any kind.** Both were invisible while the only writers granted one right to
+  one named member; a command granting eighteen would hand everybody a second credit on a
+  retry. The answer is structural rather than a caller's key -- one goodwill grant per person
+  per policy per source, partial on the source and on the status, so a free-standing gesture
+  is outside it and a credit revoked by mistake is re-grantable.
+
+Known gaps from this slice, deliberate:
+
+- **Nobody is told.** The canvas calls the notification the action rather than a follow-up,
+  and the command reports who is to be told and sends nothing. Two things are in the way and
+  only one is external: MOD-013's dispatcher is the messaging provider, and the address is a
+  permission this caller need not hold.
+- **"Find a coach instead" is ADM-SCH-03's conflict check**, which is built, and substituting
+  an instructor from a surface is not -- so the screen links rather than reimplementing it.
+- **A `moved` booking's quota is never re-evaluated**, which is the decision above and will
+  surprise a tenant that reads the quota as a hard ceiling: a member moved onto a replacement
+  class can end the week one class over their limit. The alternative refuses the members the
+  cancelled class itself pushed to their limit, which is worse.
+- **The credit is one unit per member.** The canvas says "a class credit" and nothing in the
+  build records what a cancelled class was worth, so a member who had booked with a
+  ten-session pass gets one credit rather than the session back. Stated rather than guessed.
+
 **MOD-021 (HW-01 hardware, edge bridge and device fleet) -- implemented, gated and
 reviewed.** Twelve `dev_` tables in `plt01` under the same forced RLS, fourteen trigger
 functions, `app/devices/` beside them, and twenty-five HTTP routes under `/fleet`. Working:

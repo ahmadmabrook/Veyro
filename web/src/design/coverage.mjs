@@ -289,11 +289,15 @@ const BACKLOG = {
   "ADM-SCH-05": "work: MOD-019 does not distinguish a personal-training session from a class "
     + "-- a session comes from a template, and a template is a service and a place. A PT "
     + "kind, and a booking that is one member rather than a roster, is what this needs",
-  "ADM-SCH-07": "work: MOD-019 cancels a session and MOD-019's impact assessment already "
-    + "counts the members affected. The canvas refuses to commit without choosing what they "
-    + "get -- moving all eighteen to another session, or crediting each of them -- and "
-    + "neither bulk remedy is a built operation in MOD-019 or MOD-020. MOD-013's dispatcher "
-    + "is the seam the notification stops at, behind both",
+  // **Both bulk remedies are built now** (ADR-0016): `cancel-with-remedy` cancels the
+  // class, releases its bookings, lapses its queue and either moves the members to a
+  // replacement class or credits each of them, in one transaction. What is left is the
+  // screen itself, and the notification the canvas calls the action -- which stops at
+  // MOD-013's dispatcher and, before that, at an address this command deliberately does
+  // not resolve.
+  "ADM-SCH-07": "work: MOD-020 cancels a class with its remedy and reports what each "
+    + "member got, and no surface calls it -- the sheet over a session is this screen. "
+    + "MOD-013's dispatcher is the seam the notification stops at",
   // **ADM-PAY-06 was here and is built.** `/payments/dunning` sets the two figures that have
   // readers -- the retry budget `recovery_treatment` sorts by, and the access grace on
   // `STAGES`' `restrict` stage -- and names the other three the canvas draws with what each

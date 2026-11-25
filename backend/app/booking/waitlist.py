@@ -58,7 +58,14 @@ LIVE_STATES: tuple[str, ...] = ("waiting", "offered", "expired")
 #: for happened without them. Each edge is a thing the member is told.
 EDGES: dict[str, tuple[str, ...]] = {
     "waiting": ("offered", "withdrawn", "lapsed"),
-    "offered": ("confirmed", "declined", "expired"),
+    # **`lapsed` is here because a cancelled class settles the offer with it** (ADR-0016
+    # D9): the one entry that *has* a place was the one entry that could not be settled
+    # at all, so an offer on a cancelled session kept a hold the cancellation had
+    # already released. The trigger in `0034` admits the same edge, and a test compares
+    # the two encodings -- this module shipped them agreeing with each other and
+    # neither agreeing with the service once, and from that moment nobody was promoted
+    # again while places sat free.
+    "offered": ("confirmed", "declined", "expired", "lapsed"),
     # **An expired offer keeps its place and can be offered again.** A member asleep at six in
     # the morning did not decline, and sending them to the back would make the waitlist a
     # lottery about who is awake. A *declined* offer is a choice and does end it.
@@ -76,14 +83,18 @@ EDGES: dict[str, tuple[str, ...]] = {
     "lapsed": (),
 }
 
-#: **`lapsed` has no writer in this build**, and that is a disclosed gap rather than an
-#: oversight: it is where an entry goes when the session has started and the queue is moot,
-#: which wants something sweeping closed sessions on a schedule -- the worker runtime this
-#: build does not have. Said here because this is where somebody reads the state list; an
-#: enumeration is a claim about what the software does, and a value with no writer is either a
-#: gap to name or a defect wearing a design decision's clothes. MOD-020 shipped four of the
-#: second kind, the worst of which recorded every member of a cancelled class as a no-show.
-LAPSED_HAS_NO_WRITER = True
+#: **`lapsed` has a writer now, and only for half of what it means.** ADM-SCH-07's
+#: cancellation settles every live entry on the class it called off (ADR-0016 D9), which is the
+#: half a person asks for. The other half is a session that simply *happened* with people still
+#: queued: nothing sweeps that, and `settle_session_bookings` -- which is where it would go --
+#: deliberately takes no caller-supplied instant, so driving it needs a decision about which
+#: sessions are due. Said here because this is where somebody reads the state list; an
+#: enumeration is a claim about what the software does. MOD-020 shipped four values with no
+#: writer at all, the worst of which recorded every member of a cancelled class as a no-show.
+#:
+#: The flag that used to sit here -- `LAPSED_HAS_NO_WRITER = True` -- is gone rather than
+#: flipped: nothing in the repository ever read it, so it was a comment with a type rather than
+#: a disclosure, which is this build's own writer-with-no-reader shape inside a gap note.
 
 
 @dataclass(frozen=True)

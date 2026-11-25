@@ -167,6 +167,25 @@ def check_hold(policy: Policy, *, held: int, wanted: int = 1) -> None:
             f"this session has {room} places, {held} are held and {wanted} more was asked for")
 
 
+def places_free(policy: Policy, *, held: int) -> int:
+    """How many places are left, given what is held. The read half of `check_hold`.
+
+    **One expression, because three callers had their own.** MOD-020 computed it inline in its
+    eligibility path and again in its waitlist promotion, and ADM-SCH-07's cancellation needed
+    it a third time -- which is this build's one-module-two-definitions finding waiting for the
+    day somebody edits one of them. `held` is still the caller's, counted inside whatever
+    transaction is about to act on the answer: the figure is only as fresh as the lock the
+    caller holds, and that is `take_hold_on`'s business rather than this function's.
+
+    **Never negative.** Overbooking can be *reduced* after the holds were taken, so a session
+    can legitimately hold more places than it now has -- and a surface that printed a negative
+    free count would be describing a mechanism this module does not have.
+    """
+    if held < 0:
+        raise ScheduleError("a session cannot hold a negative number of places")
+    return max(0, places(policy) - held)
+
+
 def eligibility(
     restrictions: list[Restriction], candidate: Candidate,
 ) -> str | None:

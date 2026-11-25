@@ -12,7 +12,15 @@ import unittest
 from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from app.booking import appeals, attendance, consequence, denial, policy, waitlist
+from app.booking import (
+    appeals,
+    attendance,
+    cancellation,
+    consequence,
+    denial,
+    policy,
+    waitlist,
+)
 from app.booking.denial import BookingError
 
 
@@ -689,3 +697,94 @@ class ReviewRegressionTests(unittest.TestCase):
         number comes back."""
         with self.assertRaises(BookingError):
             consequence.predicted_no_show_risk(no_show_count=5, bookings=10)
+
+
+class CancellationRemedyTests(unittest.TestCase):
+    """ADM-SCH-07's own decisions. ADR-0016."""
+
+    def _candidates(self, n: int, **kw: object) -> list[cancellation.Candidate]:
+        return [cancellation.Candidate(f"b{i}", f"p{i}", **kw)  # type: ignore[arg-type]
+                for i in range(n)]
+
+    def test_a_remedy_is_one_of_two_things(self) -> None:
+        self.assertEqual(cancellation.Remedy("credit").kind, "credit")
+        with self.assertRaises(cancellation.CancellationError):
+            cancellation.Remedy("nothing")
+
+    def test_a_move_names_where_and_a_credit_does_not(self) -> None:
+        with self.assertRaises(cancellation.CancellationError):
+            cancellation.Remedy("move")
+        with self.assertRaises(cancellation.CancellationError):
+            cancellation.Remedy("credit", to_session_id="s1")
+        self.assertEqual(cancellation.Remedy("move", to_session_id="s1").to_session_id, "s1")
+
+    def test_the_canvas_arithmetic(self) -> None:
+        """"18 booked ... 6 places free · 12 would need to choose another"."""
+        plan = cancellation.plan_moves(self._candidates(18), free_places=6)
+        self.assertEqual(plan.moved_count, 6)
+        self.assertEqual(plan.must_choose_count, 12)
+        self.assertEqual(
+            {p.reason for p in plan.must_choose}, {"no_place"})
+
+    def test_the_earliest_bookings_move(self) -> None:
+        """The order is the order they booked, which is the waitlist's own position rule."""
+        plan = cancellation.plan_moves(self._candidates(5), free_places=2)
+        self.assertEqual([p.person_id for p in plan.moving], ["p0", "p1"])
+
+    def test_a_member_already_there_is_reported_and_takes_no_place(self) -> None:
+        """D5. Somebody who booked both classes is the ordinary case, not an edge -- and
+        counting them against the free places would shorten the list for everybody behind
+        them on the strength of a place nobody took."""
+        candidates = [
+            cancellation.Candidate("b0", "p0", already_there=True),
+            cancellation.Candidate("b1", "p1"),
+            cancellation.Candidate("b2", "p2"),
+        ]
+        plan = cancellation.plan_moves(candidates, free_places=2)
+        self.assertEqual([p.person_id for p in plan.moving], ["p1", "p2"])
+        self.assertEqual(plan.must_choose[0].reason, "already_booked")
+
+    def test_an_ineligible_member_is_skipped_and_the_place_goes_to_the_next(self) -> None:
+        candidates = [
+            cancellation.Candidate(
+                "b0", "p0", eligible=False, ineligible_because="min_age"),
+            cancellation.Candidate("b1", "p1"),
+        ]
+        plan = cancellation.plan_moves(candidates, free_places=1)
+        self.assertEqual([p.person_id for p in plan.moving], ["p1"])
+        self.assertEqual(plan.must_choose[0].reason, "ineligible")
+        self.assertEqual(plan.must_choose[0].ineligible_because, "min_age")
+
+    def test_nobody_moves_into_a_full_class(self) -> None:
+        plan = cancellation.plan_moves(self._candidates(3), free_places=0)
+        self.assertEqual(plan.moved_count, 0)
+        self.assertEqual(plan.must_choose_count, 3)
+
+    def test_a_negative_number_of_places_is_refused(self) -> None:
+        """MOD-019 keeps no `held_count`, so free places is a derived figure -- and a negative
+        one means the caller subtracted something it should have asked for."""
+        with self.assertRaises(cancellation.CancellationError):
+            cancellation.plan_moves(self._candidates(1), free_places=-1)
+
+    def test_every_reason_is_from_the_closed_set(self) -> None:
+        candidates = [
+            cancellation.Candidate("b0", "p0", already_there=True),
+            cancellation.Candidate("b1", "p1", eligible=False),
+            cancellation.Candidate("b2", "p2"),
+        ]
+        plan = cancellation.plan_moves(candidates, free_places=0)
+        for placement in plan.must_choose:
+            self.assertIn(placement.reason, cancellation.NOT_MOVED)
+
+    def test_a_credit_lasts_thirty_days_from_the_cancellation(self) -> None:
+        """"Usable on any class within 30 days", from the moment the member is told."""
+        at = datetime(2026, 11, 25, 18, 0, tzinfo=UTC)
+        self.assertEqual(
+            cancellation.credit_expires(at), datetime(2026, 12, 25, 18, 0, tzinfo=UTC))
+
+    def test_a_credit_window_is_bounded(self) -> None:
+        at = datetime(2026, 11, 25, 18, 0, tzinfo=UTC)
+        with self.assertRaises(cancellation.CancellationError):
+            cancellation.credit_expires(at, days=0)
+        with self.assertRaises(cancellation.CancellationError):
+            cancellation.credit_expires(at, days=366)

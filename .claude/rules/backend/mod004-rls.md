@@ -1938,6 +1938,46 @@ case that inserts a row it touches. Here the suite refused to start at all, whic
 version; the quiet version is a case that still passes and proves the wrong rule.
 
 
+
+**A guard subsumed on the write path can be load-bearing on the read path, and an uncaught
+mutation does not say which.** This file already lists three readings of an uncaught mutation
+and a fourth for a guard that exists for input the current producer cannot emit. ADM-SCH-07
+produced a fifth: the check refusing a *cancelled* replacement class came back uncaught,
+because on the write path MOD-019's own hold refuses a cancelled session anyway -- so the
+service's check is genuinely redundant there. It is not redundant on the **preview**, which
+takes no hold at all and would otherwise report a cancelled class as having places free, which
+is a figure the screen puts in front of a manager. So the guard stays and the case that proves
+it is a *read*. **The question is not "is this guard redundant" but "which reader is
+unguarded", and a command with a disclosure read beside it has two.**
+
+**Reading a verdict's summary field when it carries the breakdown makes the caller's own
+arithmetic decoration.** `check_eligibility_on` returns `eligible`, which folds together the
+member's restrictions, the booking window and the room being full, *and* `ineligible` on its
+own key -- with a comment saying it exists so "a caller that needs to know whether the *member*
+is eligible ... was left matching the start of a sentence". MOD-020's cancellation read
+`eligible`, so every member of a full destination came back ineligible, the allocator never
+reached its own `no_place` branch, and the free-places figure decided nothing. **The field
+built for the distinction was already there.** What caught it was a test asserting the *reason*
+each member was not moved rather than the count -- a count is identical under both readings,
+which is the weaker of the two available assertions again.
+
+**A CHECK that compares a row to itself is subsumed by any correspondence trigger on the same
+column.** `moved_from_booking_id <> booking_id` looks like the obvious companion to a
+self-reference and has no isolating case: on an INSERT the row's own id does not exist yet, so
+the trigger's "cites a booking that does not exist" answers; on an UPDATE by the owner it
+answers "that booking is on this same session". Deleted rather than tested harder, which is
+MOD-016's judgement for a kind domain its operand constraint already named -- and worth
+checking for whenever a self-referencing pointer gets a trigger beside it.
+
+**Widening a state machine means widening both encodings and re-pinning the digest, and the
+test is what stops them drifting.** MOD-020's worst shipped defect was `waitlist.EDGES` and its
+trigger agreeing with each other while neither agreed with the service. Adding
+`offered -> lapsed` touches the Python table, the trigger body, CHECK 98's `md5(prosrc)` pin
+and the branch probes -- and the *ordering* it implies is a separate protection: an offered
+entry's hold has to still be live when the entry is settled, so the queue is lapsed before the
+cancellation releases the places. Both are mutations and both are caught; neither is visible
+from reading either encoding alone.
+
 **A probe that proves a *permission* needs a handler as much as one that proves a refusal.**
 Check 113's branch for "a policy that permits self-approval still may" was written as a bare
 INSERT expected to succeed. When the trigger was wrong the block aborted with the *trigger's*

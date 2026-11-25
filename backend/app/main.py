@@ -51,6 +51,7 @@ from app.authorization import decision as authz_decision
 from app.authorization import gate as authz_gate
 from app.authorization import service as authz
 from app.billing import service as billing
+from app.booking import cancellation as booking_cancellation
 from app.booking import service as booking
 from app.catalog import service as catalog
 from app.commercial import collections
@@ -2511,6 +2512,21 @@ def _currency(value: str) -> str:
     return code
 
 
+def _remedy(body: Any) -> booking_cancellation.Remedy:
+    """ADM-SCH-07's remedy, from the body and refused at the boundary.
+
+    **The id is validated here rather than inside the decision**, because an unvalidated uuid
+    reaching the service answers 500 with a database exception rather than 422 -- which is
+    MOD-009's finding and what `tests/test_id_validation.py` sweeps for.
+    """
+    try:
+        return booking_cancellation.Remedy(
+            kind=body.remedy,
+            to_session_id=optional_uuid(body.to_session_id, "to_session_id"))
+    except booking_cancellation.CancellationError as error:
+        raise InvalidRequest(str(error)) from None
+
+
 def require_uuids(values: list[str], field: str, *, limit: int) -> list[str]:
     """Shape-check a repeated query parameter, and bound how many may be sent.
 
@@ -2690,6 +2706,26 @@ class SubstituteBody(BaseModel):
     replacement_resource_id: str
     reason: str = Field(min_length=1, max_length=500)
     override_reason: str | None = Field(default=None, min_length=1, max_length=500)
+    correlation_id: str
+
+
+class CancelWithRemedyBody(BaseModel):
+    """ADM-SCH-07. **The remedy is required and has no default** (ADR-0016 D1), because the
+    canvas will not let a manager commit without it: "a cancellation that notifies nobody is
+    the most damaging thing this screen could permit".
+
+    **There is no field saying which permissions this needs** -- the route reads the remedy and
+    charges accordingly (D12), so a credit cannot be given on a move's permissions.
+    """
+
+    cancellation_reason: Literal[
+        "instructor_unavailable", "resource_unavailable", "insufficient_bookings",
+        "facility_closed", "weather", "other"]
+    reason: str = Field(min_length=1, max_length=500)
+    remedy: Literal["move", "credit"]
+    #: The replacement class, for a move and for nothing else. A credit names no session,
+    #: because the policy it is granted against is the tenant's own and is derived.
+    to_session_id: str | None = None
     correlation_id: str
 
 
@@ -9171,6 +9207,53 @@ def create_app(
             tenant_pool, tenant_id, require_uuid(session_id, "session_id"),
             cancellation_reason=body.cancellation_reason, reason=body.reason,
             actor_id=session["identity_id"], correlation_id=body.correlation_id)
+
+    @app.post("/scheduling/sessions/{session_id}/cancel-preview")
+    def preview_schedule_session_cancellation(
+        tenant_id: TenantId, session: Session, session_id: str,
+        body: CancelWithRemedyBody,
+    ) -> dict[str, Any]:
+        """What cancelling this class would cost its members. ADM-SCH-07, ADR-0016.
+
+        **A read, charged as a read.** It discloses who is booked and what each would get, so
+        it needs the schedule and the roster -- MOD-017's `cancellation-preview` precedent,
+        where the disclosure read is the routine permission and the act is the financial one.
+        A screen that had to cancel the class to see the consequence would be committing the
+        most consequential act in the schedule in order to read it.
+        """
+        permit(session, "scheduling.schedule.read", body.correlation_id)
+        permit(session, "booking.booking.read", body.correlation_id)
+        if body.remedy == "credit":
+            permit(session, "membership.entitlement.read", body.correlation_id)
+        return booking.preview_session_cancellation(
+            tenant_pool, tenant_id, require_uuid(session_id, "session_id"),
+            remedy=_remedy(body))
+
+    @app.post("/scheduling/sessions/{session_id}/cancel-with-remedy")
+    def cancel_schedule_session_with_remedy(
+        tenant_id: TenantId, session: Session, session_id: str,
+        body: CancelWithRemedyBody,
+    ) -> dict[str, Any]:
+        """Cancel a class and give its members what was chosen. ADM-SCH-07, ADR-0016.
+
+        **Four permissions, two of them financial, and which ones depends on the remedy**
+        (D12). Cancelling the class and settling its queue are always charged; moving eighteen
+        members is acting on their behalf; crediting them creates a right nobody bought.
+        Charging all four whatever was chosen would make the screen demand a stepped-up
+        permission for an act the request does not perform, which is MOD-009's
+        `consent_subject` precedent for the route reading the body.
+        """
+        permit(session, "scheduling.session.change", body.correlation_id)
+        permit(session, "booking.waitlist.manage", body.correlation_id)
+        if body.remedy == "move":
+            permit(session, "booking.booking.act_for_another", body.correlation_id)
+        else:
+            permit(session, "membership.entitlement.grant", body.correlation_id)
+        return booking.cancel_session_with_remedy(
+            tenant_pool, tenant_id, require_uuid(session_id, "session_id"),
+            cancellation_reason=body.cancellation_reason, reason=body.reason,
+            remedy=_remedy(body), actor_id=session["identity_id"],
+            correlation_id=body.correlation_id)
 
     @app.post("/scheduling/sessions/{session_id}/relocate")
     def relocate_schedule_session(

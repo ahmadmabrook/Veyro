@@ -2190,8 +2190,9 @@ def define_entitlement_policy(
             "entitlement_type": entitlement_type, "is_counted": is_counted}
 
 
-def grant_entitlement(
-    pool: Pool, tenant_id: str, *, person_id: str, policy_id: str, source_kind: str,
+def grant_entitlement_on(
+    conn: Connection[Any], tenant_id: str, *, person_id: str, policy_id: str,
+    source_kind: str,
     valid_from: datetime, reason: str, actor_id: str, correlation_id: str,
     quantity: int | None = None, valid_to: datetime | None = None,
     membership_id: str | None = None, source_id: str | None = None,
@@ -2208,54 +2209,78 @@ def grant_entitlement(
 
     `is_counted` comes from the policy, not from the caller: a caller able to send it could
     make an unlimited grant of something the tenant sells by the ten.
+
+    **In the caller's transaction**, which ADM-SCH-07 is why (ADR-0016 D2): cancelling a class
+    and crediting its eighteen members are one act, and a credit written in a second
+    transaction can fail on its own -- leaving a cancelled class and nobody credited, which is
+    the harm that canvas's own last sentence names. `grant_entitlement` is the pool-taking
+    wrapper, correct where the grant is the whole act.
     """
-    with tenant_scope(pool, tenant_id) as conn:
-        policy = conn.execute(
-            "SELECT is_counted, status, entitlement_type FROM plt01.mem_entitlement_policies"
-            " WHERE policy_id = %s",
-            (policy_id,),
+    policy = conn.execute(
+        "SELECT is_counted, status, entitlement_type FROM plt01.mem_entitlement_policies"
+        " WHERE policy_id = %s",
+        (policy_id,),
+    ).fetchone()
+    if policy is None:
+        raise NotFound("entitlement_policy_not_found")
+    if str(policy[1]) != "active":
+        raise Conflict("this_entitlement_policy_is_retired")
+    is_counted = bool(policy[0])
+    if is_counted and quantity is None:
+        raise InvalidRequest("a_counted_entitlement_is_granted_in_a_quantity")
+    if not is_counted and quantity is not None:
+        raise InvalidRequest("an_unlimited_entitlement_takes_no_quantity")
+    try:
+        row = conn.execute(
+            """
+            INSERT INTO plt01.mem_entitlement_grants
+                (tenant_id, person_id, policy_id, source_kind, source_id,
+                 membership_id, is_counted, granted_quantity, valid_from, valid_to,
+                 brand_id, location_id, usable_from_minute, usable_to_minute,
+                 created_by, correlation_id)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING grant_id
+            """,
+            (tenant_id, person_id, policy_id, source_kind, source_id, membership_id,
+             is_counted, quantity, valid_from, valid_to, brand_id, location_id,
+             usable_from_minute, usable_to_minute, actor_id, correlation_id),
         ).fetchone()
-        if policy is None:
-            raise NotFound("entitlement_policy_not_found")
-        if str(policy[1]) != "active":
-            raise Conflict("this_entitlement_policy_is_retired")
-        is_counted = bool(policy[0])
-        if is_counted and quantity is None:
-            raise InvalidRequest("a_counted_entitlement_is_granted_in_a_quantity")
-        if not is_counted and quantity is not None:
-            raise InvalidRequest("an_unlimited_entitlement_takes_no_quantity")
-        try:
-            row = conn.execute(
-                """
-                INSERT INTO plt01.mem_entitlement_grants
-                    (tenant_id, person_id, policy_id, source_kind, source_id,
-                     membership_id, is_counted, granted_quantity, valid_from, valid_to,
-                     brand_id, location_id, usable_from_minute, usable_to_minute,
-                     created_by, correlation_id)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                RETURNING grant_id
-                """,
-                (tenant_id, person_id, policy_id, source_kind, source_id, membership_id,
-                 is_counted, quantity, valid_from, valid_to, brand_id, location_id,
-                 usable_from_minute, usable_to_minute, actor_id, correlation_id),
-            ).fetchone()
-        except errors.ForeignKeyViolation as e:
-            raise NotFound(_fk_subject(e)) from None
-        except errors.CheckViolation as e:
-            raise InvalidRequest(_check_name(e)) from None
-        assert row is not None
-        grant_id = str(row[0])
-        if is_counted:
-            assert quantity is not None
-            _movement(conn, tenant_id, grant_id=grant_id, movement_kind="grant",
-                      delta=quantity, reason=reason, actor_id=actor_id,
-                      correlation_id=correlation_id)
-        _append(conn, tenant_id, "entitlement.granted", "entitlement", grant_id,
-                {"grant_id": grant_id, "person_id": person_id, "policy_id": policy_id,
-                 "entitlement_type": str(policy[2]), "is_counted": is_counted},
-                correlation_id=correlation_id, actor_id=actor_id)
+    except errors.ForeignKeyViolation as e:
+        raise NotFound(_fk_subject(e)) from None
+    except errors.CheckViolation as e:
+        raise InvalidRequest(_check_name(e)) from None
+    assert row is not None
+    grant_id = str(row[0])
+    if is_counted:
+        assert quantity is not None
+        _movement(conn, tenant_id, grant_id=grant_id, movement_kind="grant",
+                  delta=quantity, reason=reason, actor_id=actor_id,
+                  correlation_id=correlation_id)
+    _append(conn, tenant_id, "entitlement.granted", "entitlement", grant_id,
+            {"grant_id": grant_id, "person_id": person_id, "policy_id": policy_id,
+             "entitlement_type": str(policy[2]), "is_counted": is_counted},
+            correlation_id=correlation_id, actor_id=actor_id)
     return {"grant_id": grant_id, "person_id": person_id, "is_counted": is_counted,
             "granted_quantity": quantity}
+
+
+def grant_entitlement(
+    pool: Pool, tenant_id: str, *, person_id: str, policy_id: str, source_kind: str,
+    valid_from: datetime, reason: str, actor_id: str, correlation_id: str,
+    quantity: int | None = None, valid_to: datetime | None = None,
+    membership_id: str | None = None, source_id: str | None = None,
+    brand_id: str | None = None, location_id: str | None = None,
+    usable_from_minute: int | None = None, usable_to_minute: int | None = None,
+) -> dict[str, Any]:
+    """`grant_entitlement_on` in a transaction of its own."""
+    with tenant_scope(pool, tenant_id) as conn:
+        return grant_entitlement_on(
+            conn, tenant_id, person_id=person_id, policy_id=policy_id,
+            source_kind=source_kind, valid_from=valid_from, reason=reason,
+            actor_id=actor_id, correlation_id=correlation_id, quantity=quantity,
+            valid_to=valid_to, membership_id=membership_id, source_id=source_id,
+            brand_id=brand_id, location_id=location_id,
+            usable_from_minute=usable_from_minute, usable_to_minute=usable_to_minute)
 
 
 def _movement(

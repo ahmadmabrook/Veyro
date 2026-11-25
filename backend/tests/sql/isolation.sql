@@ -23586,6 +23586,7 @@ DECLARE
     policy constant uuid := 'dddddddd-1000-4000-8000-000000000009';
     actor constant uuid := '33333333-3333-4333-8333-333333333333';
     spare uuid[];
+    somewhere uuid;
 BEGIN
     -- **A policy per insert-case, because the live index is on (variant, policy, scope).**
     -- Without them, a mutation that drops the quantity bound lets the zero case *succeed* --
@@ -23595,7 +23596,7 @@ BEGIN
     -- sweep reports ten mutations as MUTERR for one ordering. That is this repository's "one
     -- bad probe aborts the block" trap, found by the sweep rather than by reading.
     spare := ARRAY[]::uuid[];
-    FOR i IN 1..7 LOOP
+    FOR i IN 1..8 LOOP
         INSERT INTO plt01.mem_entitlement_policies
             (tenant_id, policy_key, display_name, entitlement_type, is_counted,
              created_by, correlation_id)
@@ -23605,6 +23606,9 @@ BEGIN
         spare := array_append(spare, offender::uuid);
     END LOOP;
     offender := NULL;
+    -- The seed's one location, whose id is generated per rebuild, so it is read rather
+    -- than written down -- a scope is what makes two grants of one policy legitimate.
+    SELECT location_id INTO somewhere FROM plt01.locations LIMIT 1;
 
     -- **The permission first**, so a tightening that makes an ordinary plan entitlement
     -- unwritable fails here rather than in a service test. A counted class credit with a
@@ -23885,12 +23889,135 @@ BEGIN
                 confused, 'the goodwill provenance answered by ' || offender); END IF;
     END;
 
+    -- **One goodwill credit per source** (0034, ADR-0016 D7). `mem_entitlement_grants`
+    -- carried no idempotency of any kind, which was invisible while the only writers granted
+    -- one right to one named member -- ADM-SCH-07 grants one per member of a cancelled class,
+    -- so a retry after a timeout handed everybody a second credit.
+    BEGIN
+        INSERT INTO plt01.mem_entitlement_grants
+            (tenant_id, grant_id, person_id, policy_id, source_kind, source_id, is_counted,
+             granted_quantity, valid_from, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'eeeeeeee-0034-4000-8000-000000000001',
+                'bbbbbbbb-1000-4000-8000-000000000001', spare[8], 'goodwill',
+                'eeeeeeee-0034-4000-8000-00000000000f', true, 1, now(), actor, actor);
+        INSERT INTO plt01.mem_entitlement_grants
+            (tenant_id, grant_id, person_id, policy_id, source_kind, source_id, is_counted,
+             granted_quantity, valid_from, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'eeeeeeee-0034-4000-8000-000000000002',
+                'bbbbbbbb-1000-4000-8000-000000000001', spare[8], 'goodwill',
+                'eeeeeeee-0034-4000-8000-00000000000f', true, 1, now(), actor, actor);
+        RAISE EXCEPTION 'CHECK 78b FAILED: a second goodwill credit for one source';
+    EXCEPTION
+        WHEN unique_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'mem_entitlement_grants_one_goodwill_per_source' THEN
+                probe := probe + 1;
+            ELSE confused := array_append(
+                confused, 'the repeated goodwill credit answered by ' || offender); END IF;
+        WHEN raise_exception THEN
+            IF SQLERRM LIKE 'CHECK 78b FAILED%' THEN RAISE; END IF;
+            confused := array_append(
+                confused, 'the repeated goodwill credit raised ' || SQLERRM);
+    END;
+
+    -- **And a revoked credit frees its slot**, which only a case the index must *admit* can
+    -- see: the index is partial on `status <> 'revoked'` so a credit revoked by mistake is
+    -- re-grantable, and a drop-only case would pass with the whole partial clause removed.
+    -- `0025`'s own precedent, where a voided successor frees the supersession slot.
+    BEGIN
+        INSERT INTO plt01.mem_entitlement_grants
+            (tenant_id, grant_id, person_id, policy_id, source_kind, source_id, is_counted,
+             granted_quantity, valid_from, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'eeeeeeee-0034-4000-8000-000000000003',
+                'bbbbbbbb-1000-4000-8000-000000000001', spare[8], 'goodwill',
+                'eeeeeeee-0034-4000-8000-00000000000e', true, 1, now(), actor, actor);
+        UPDATE plt01.mem_entitlement_grants
+        SET status = 'revoked', revoked_at = now(), revoked_by = actor,
+            revoke_reason = 'issued against the wrong class'
+        WHERE grant_id = 'eeeeeeee-0034-4000-8000-000000000003';
+        INSERT INTO plt01.mem_entitlement_grants
+            (tenant_id, grant_id, person_id, policy_id, source_kind, source_id, is_counted,
+             granted_quantity, valid_from, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'eeeeeeee-0034-4000-8000-000000000004',
+                'bbbbbbbb-1000-4000-8000-000000000001', spare[8], 'goodwill',
+                'eeeeeeee-0034-4000-8000-00000000000e', true, 1, now(), actor, actor);
+        probe := probe + 1;
+    EXCEPTION
+        WHEN others THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME, state = RETURNED_SQLSTATE;
+            confused := array_append(
+                confused, 'replacing a revoked goodwill credit was refused by '
+                || coalesce(offender, '(none)') || ' sqlstate ' || state);
+    END;
+
+    -- **A gesture with no source is outside the index, deliberately** (ADR-0016 D7): a tenant
+    -- may give the same person two unrelated credits, and refusing the second would make the
+    -- index a rule about generosity rather than about retries. Only a case the index must
+    -- *admit* can see the `source_id IS NOT NULL` clause removed.
+    BEGIN
+        INSERT INTO plt01.mem_entitlement_grants
+            (tenant_id, grant_id, person_id, policy_id, source_kind, is_counted,
+             granted_quantity, valid_from, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'eeeeeeee-0034-4000-8000-000000000005',
+                'bbbbbbbb-1000-4000-8000-000000000001', spare[8], 'goodwill', true,
+                1, now(), actor, actor);
+        INSERT INTO plt01.mem_entitlement_grants
+            (tenant_id, grant_id, person_id, policy_id, source_kind, is_counted,
+             granted_quantity, valid_from, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'eeeeeeee-0034-4000-8000-000000000006',
+                'bbbbbbbb-1000-4000-8000-000000000001', spare[8], 'goodwill', true,
+                1, now(), actor, actor);
+        probe := probe + 1;
+    EXCEPTION
+        WHEN others THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME, state = RETURNED_SQLSTATE;
+            confused := array_append(
+                confused, 'two sourceless goodwill credits were refused by '
+                || coalesce(offender, '(none)') || ' sqlstate ' || state);
+    END;
+
+    -- **And the index is about goodwill only**, which is ADR-0013's own shape from the other
+    -- side: "all-clubs access is a row with no location and access to Abdoun and Sweifieh is
+    -- two rows each naming one", so one membership legitimately produces two grants of one
+    -- policy from one source. Broadening the index past `goodwill` would refuse the second.
+    BEGIN
+        INSERT INTO plt01.mem_entitlement_grants
+            (tenant_id, grant_id, person_id, policy_id, source_kind, source_id, membership_id,
+             is_counted, granted_quantity, valid_from, location_id, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'eeeeeeee-0034-4000-8000-000000000007',
+                'bbbbbbbb-1000-4000-8000-000000000001', spare[8], 'membership',
+                'dddddddd-1000-4000-8000-000000000006', 'dddddddd-1000-4000-8000-000000000006',
+                true, 1, now(), NULL, actor, actor);
+        INSERT INTO plt01.mem_entitlement_grants
+            (tenant_id, grant_id, person_id, policy_id, source_kind, source_id, membership_id,
+             is_counted, granted_quantity, valid_from, location_id, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'eeeeeeee-0034-4000-8000-000000000008',
+                'bbbbbbbb-1000-4000-8000-000000000001', spare[8], 'membership',
+                'dddddddd-1000-4000-8000-000000000006', 'dddddddd-1000-4000-8000-000000000006',
+                true, 1, now(), somewhere, actor, actor);
+        probe := probe + 1;
+    EXCEPTION
+        WHEN others THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME, state = RETURNED_SQLSTATE;
+            confused := array_append(
+                confused, 'two scoped membership grants from one source were refused by '
+                || coalesce(offender, '(none)') || ' sqlstate ' || state);
+    END;
+
     IF array_length(confused, 1) IS NOT NULL THEN
         RAISE EXCEPTION 'CHECK 78b FAILED: %', array_to_string(confused, '; ');
     END IF;
-    IF probe <> 14 THEN
+    IF probe <> 18 THEN
         RAISE EXCEPTION
-            'CHECK 78b FAILED: expected 14 probes of 0033, counted % -- a rule with no '
+            'CHECK 78b FAILED: expected 18 probes of 0033 and 0034, counted % -- a rule with no '
             'isolating case is a rule nobody has tested', probe;
     END IF;
 END $$;
@@ -36413,6 +36540,7 @@ BEGIN
         ('plt01.bkg_bookings: tenant_id -> plt01_platform.tenants'),
         ('plt01.bkg_bookings: tenant_id,entitlement_grant_id -> plt01.mem_entitlement_grants'),
         ('plt01.bkg_bookings: tenant_id,hold_id -> plt01.sch_capacity_holds'),
+        ('plt01.bkg_bookings: tenant_id,moved_from_booking_id -> plt01.bkg_bookings'),
         ('plt01.bkg_bookings: tenant_id,person_id -> plt01.ppl_persons'),
         ('plt01.bkg_bookings: tenant_id,policy_id -> plt01.bkg_policies'),
         ('plt01.bkg_bookings: tenant_id,session_id -> plt01.sch_sessions'),
@@ -36502,8 +36630,8 @@ BEGIN
          'cancellation_reason,cancelled_at,cancelled_by,checked_in_at,'
          'checked_in_by,checkin_correlation_id,checkin_source,'
          'correlation_id,entitlement_grant_id,hold_id,idempotency_key,'
-         'person_id,policy_id,session_id,settled_at,source_kind,state,'
-         'tenant_id'),
+         'moved_from_booking_id,person_id,policy_id,session_id,'
+         'settled_at,source_kind,state,tenant_id'),
         ('plt01.bkg_cancellations',
          'booking_id,cancellation_id,cancelled_at,cancelled_by,'
          'correlation_id,credit_forfeit,fee_due,hours_given,occasion,'
@@ -40779,6 +40907,197 @@ ROLLBACK;
 
 
 
+-- ------------------------------- 97d. 0034's moved booking, one probe per branch
+-- **ADM-SCH-07's own rules** (ADR-0016 D8). A booking can be the replacement for one the gym
+-- cancelled, and the pointer plus `source_kind = 'moved'` are two halves of one control: a
+-- `moved` booking with no predecessor is a member the product says was moved from nothing, and
+-- a predecessor on any other source kind is a pointer no reader of `source_kind` consults.
+--
+-- The fixture is in-transaction, because every branch needs a row that *only* it refuses --
+-- which here means a second scheduled session and a live hold per probe. Reusing the seed's
+-- single scheduled session cannot reach the "on another session" branch at all.
+--
+-- **The permission runs first and keeps a hold of its own**, so a tightening that makes an
+-- ordinary move unwritable fails here rather than in a service test; the refusal probes share
+-- a second hold, which is safe because each rolls back to its own block.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+DECLARE
+    probe integer := 0;
+    offender text;
+    state text;
+    confused text[] := ARRAY[]::text[];
+    tenant constant uuid := '11111111-1111-4111-8111-111111111111';
+    actor constant uuid := '33333333-3333-4333-8333-333333333333';
+    friday constant uuid := 'eeeeeeee-0034-4000-8000-000000000001';
+    thursday constant uuid := 'eeeeeeee-2000-4000-8000-000000000005';
+    -- Person ...0005's booking on Thursday is `cancelled` and person ...0007's is `released`,
+    -- so neither is covered by the one-live-booking index -- which is what lets a probe insert
+    -- on Thursday without a *second* control answering when the branch under test is gone.
+    moving constant uuid := 'dddddddd-0000-4000-8000-000000000007';
+    other constant uuid := 'dddddddd-0000-4000-8000-000000000005';
+    was_moving constant uuid := 'dddddddd-3000-4000-8000-000000000007';
+    was_other constant uuid := 'dddddddd-3000-4000-8000-000000000005';
+    someone_elses constant uuid := 'dddddddd-3000-4000-8000-000000000001';
+    policy constant uuid := 'dddddddd-2000-4000-8000-000000000001';
+    hold_live constant uuid := 'dddddddd-0034-4000-8000-000000000001';
+    hold_spare constant uuid := 'dddddddd-0034-4000-8000-000000000002';
+    hold_same constant uuid := 'dddddddd-0034-4000-8000-000000000003';
+BEGIN
+    -- Friday's class: the seed has one scheduled session with room, and "another session" is
+    -- the whole point of the rule, so the destination is cloned from Thursday with its own
+    -- instant -- `UNIQUE (tenant_id, rule_id, starts_at)` is the generation idempotency.
+    INSERT INTO plt01.sch_sessions
+        (tenant_id, session_id, template_id, rule_id, policy_id, location_id, starts_at,
+         ends_at, local_date, timezone, dst_adjusted, capacity, overbook_places, status,
+         created_by, correlation_id)
+    SELECT tenant, friday, template_id, rule_id, policy_id, location_id,
+           starts_at + interval '301 days', ends_at + interval '301 days',
+           local_date + 301, timezone, dst_adjusted, capacity, overbook_places, 'scheduled',
+           actor, actor
+      FROM plt01.sch_sessions WHERE session_id = thursday;
+
+    -- **The moving member's Thursday place is released first**, which is what the real
+    -- cancellation does and what the same-session probe needs: `sch_capacity_holds` admits one
+    -- live hold per person per session, so there is no second Thursday place to be had while
+    -- the first is held. The seed leaves it `held` because it only moved the booking's state.
+    UPDATE plt01.sch_capacity_holds
+    SET status = 'released', released_at = now(), released_by = actor,
+        release_reason = 'session cancelled: instructor_unavailable',
+        release_correlation_id = actor
+    WHERE session_id = thursday AND person_id = moving AND status = 'held';
+
+    INSERT INTO plt01.sch_capacity_holds
+        (tenant_id, hold_id, session_id, person_id, places, source_kind, source_ref,
+         taken_by, idempotency_key, correlation_id)
+    VALUES (tenant, hold_live, friday, moving, 1, 'booking', 'mv-1', actor, '0034-h1', actor),
+           (tenant, hold_spare, friday, other, 1, 'booking', 'mv-2', actor, '0034-h2', actor),
+           (tenant, hold_same, thursday, moving, 1, 'booking', 'mv-3', actor, '0034-h3',
+            actor);
+
+    -- **The permission.** The canvas's own row: a member whose Thursday booking the gym
+    -- released, moved to Friday, naming what they came from.
+    BEGIN
+        INSERT INTO plt01.bkg_bookings
+            (tenant_id, session_id, person_id, hold_id, policy_id, source_kind,
+             moved_from_booking_id, booked_by, idempotency_key, correlation_id)
+        VALUES (tenant, friday, moving, hold_live, policy, 'moved', was_moving,
+                actor, '0034-move', actor);
+        probe := probe + 1;
+    EXCEPTION
+        WHEN others THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME, state = RETURNED_SQLSTATE;
+            confused := array_append(
+                confused, 'an ordinary move was refused by '
+                || coalesce(offender, '(none)') || ' sqlstate ' || state);
+    END;
+
+    -- 1. The predecessor exists. The foreign key would refuse this too, so a probe that
+    -- counted any failure would prove the key; the trigger is BEFORE INSERT and answers
+    -- first, which is what makes the message a sentence rather than a constraint name.
+    BEGIN
+        INSERT INTO plt01.bkg_bookings
+            (tenant_id, session_id, person_id, hold_id, policy_id, source_kind,
+             moved_from_booking_id, booked_by, idempotency_key, correlation_id)
+        VALUES (tenant, friday, other, hold_spare, policy, 'moved',
+                'dddddddd-3000-4000-8000-0000000000ff', actor, '0034-p1', actor);
+        RAISE EXCEPTION 'CHECK 97 FAILED: a moved booking cited a booking that does not exist';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 97 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+        WHEN foreign_key_violation THEN
+            RAISE EXCEPTION
+                'CHECK 97 FAILED: a moved booking citing a missing predecessor was refused by '
+                'the foreign key, not the trigger';
+    END;
+
+    -- 2. The predecessor is this member's. The key proves the row exists and says nothing
+    -- about whose it is -- MOD-021's rule, and here it would attribute somebody else's
+    -- cancelled class to this member.
+    BEGIN
+        INSERT INTO plt01.bkg_bookings
+            (tenant_id, session_id, person_id, hold_id, policy_id, source_kind,
+             moved_from_booking_id, booked_by, idempotency_key, correlation_id)
+        VALUES (tenant, friday, other, hold_spare, policy, 'moved', someone_elses,
+                actor, '0034-p2', actor);
+        RAISE EXCEPTION 'CHECK 97 FAILED: a moved booking cited another member''s place';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 97 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+
+    -- 3. And on another session, because a member moved to the class they were already on
+    -- makes the figures ADM-SCH-07 discloses wrong.
+    BEGIN
+        INSERT INTO plt01.bkg_bookings
+            (tenant_id, session_id, person_id, hold_id, policy_id, source_kind,
+             moved_from_booking_id, booked_by, idempotency_key, correlation_id)
+        VALUES (tenant, thursday, moving, hold_same, policy, 'moved', was_moving,
+                actor, '0034-p3', actor);
+        RAISE EXCEPTION 'CHECK 97 FAILED: a moved booking cited a place on its own session';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 97 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+
+    -- 4. `moved` with nothing to have moved from. The trigger returns early on a NULL pointer,
+    -- so the CHECK is what answers -- and this is the side of the biconditional a reader
+    -- expects.
+    BEGIN
+        INSERT INTO plt01.bkg_bookings
+            (tenant_id, session_id, person_id, hold_id, policy_id, source_kind,
+             booked_by, idempotency_key, correlation_id)
+        VALUES (tenant, friday, other, hold_spare, policy, 'moved',
+                actor, '0034-p4', actor);
+        RAISE EXCEPTION 'CHECK 97 FAILED: a moved booking that moved from nothing';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'bkg_bookings_moved_names_its_predecessor' THEN
+                probe := probe + 1;
+            ELSE confused := array_append(
+                confused, 'a moved booking with no predecessor answered by '
+                || offender); END IF;
+    END;
+
+    -- 5. And the other side: a predecessor on a booking nobody moved. A case catches a
+    -- weakening only if the weakened constraint admits the row, so an implication would pass
+    -- probe 4 and let this one through.
+    BEGIN
+        INSERT INTO plt01.bkg_bookings
+            (tenant_id, session_id, person_id, hold_id, policy_id, source_kind,
+             moved_from_booking_id, booked_by, idempotency_key, correlation_id)
+        VALUES (tenant, friday, other, hold_spare, policy, 'member', was_other,
+                actor, '0034-p5', actor);
+        RAISE EXCEPTION
+            'CHECK 97 FAILED: a booking nobody moved named what it replaced';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'bkg_bookings_moved_names_its_predecessor' THEN
+                probe := probe + 1;
+            ELSE confused := array_append(
+                confused, 'a predecessor on an unmoved booking answered by '
+                || offender); END IF;
+    END;
+
+    IF array_length(confused, 1) IS NOT NULL THEN
+        RAISE EXCEPTION 'CHECK 97 FAILED: %', array_to_string(confused, '; ');
+    END IF;
+    IF probe <> 6 THEN
+        RAISE EXCEPTION
+            'CHECK 97 FAILED: 0034''s rules fired for % of 6 probes -- a rule with no '
+            'isolating case is a rule nobody has tested', probe;
+    END IF;
+END $$;
+ROLLBACK;
+
+
 -- --------------------------------- 98. MOD-020's rules are pinned, bodies included
 -- **The text of every CHECK, index, trigger and trigger function body on this module's
 -- tables, compared against the pinned set in both directions.** Check 90 proves that each rule
@@ -40826,9 +41145,10 @@ BEGIN
         ('bkg_bookings_checkin_attributed CHECK ((((checked_in_at IS NULL) AND (checked_in_by IS NULL) AND (checkin_source IS NULL) AND (checkin_correlation_id IS NULL)) OR ((checked_in_at IS NOT NULL) AND (checked_in_by IS NOT NULL) AND (checkin_source IS NOT NULL) AND (checkin_correlation_id IS NOT NULL))))'),
         ('bkg_bookings_checkin_source CHECK (((checkin_source IS NULL) OR (checkin_source = ANY (ARRAY[''front_desk''::text, ''self_service''::text, ''device''::text, ''migration''::text]))))'),
         ('bkg_bookings_key_not_blank CHECK ((idempotency_key ~ ''[^[:space:]]''::text))'),
+        ('bkg_bookings_moved_names_its_predecessor CHECK (((source_kind = ''moved''::text) = (moved_from_booking_id IS NOT NULL)))'),
         ('bkg_bookings_no_show_was_absent CHECK (((state <> ''no_show''::text) OR (checked_in_at IS NULL)))'),
         ('bkg_bookings_settled_is_settled CHECK (((state = ANY (ARRAY[''attended''::text, ''no_show''::text])) = (settled_at IS NOT NULL)))'),
-        ('bkg_bookings_source_kind CHECK ((source_kind = ANY (ARRAY[''member''::text, ''waitlist''::text, ''front_desk''::text, ''migration''::text])))'),
+        ('bkg_bookings_source_kind CHECK ((source_kind = ANY (ARRAY[''member''::text, ''waitlist''::text, ''front_desk''::text, ''migration''::text, ''moved''::text])))'),
         ('bkg_bookings_state CHECK ((state = ANY (ARRAY[''booked''::text, ''attended''::text, ''no_show''::text, ''cancelled''::text, ''released''::text])))'),
         ('bkg_cancellations_gym_cancellation_is_free CHECK (((occasion <> ''session_cancelled''::text) OR ((fee_due = false) AND (credit_forfeit = false))))'),
         ('bkg_cancellations_hours_given_sane CHECK (((hours_given >= ''-8760''::integer) AND (hours_given <= 8760)))'),
@@ -40892,6 +41212,7 @@ BEGIN
         ('bkg_attendance_intents_pkey CREATE UNIQUE INDEX bkg_attendance_intents_pkey ON plt01.bkg_attendance_intents USING btree (tenant_id, intent_id)'),
         ('bkg_attendance_intents_tenant_id_idempotency_key_key CREATE UNIQUE INDEX bkg_attendance_intents_tenant_id_idempotency_key_key ON plt01.bkg_attendance_intents USING btree (tenant_id, idempotency_key)'),
         ('bkg_bookings_by_person CREATE INDEX bkg_bookings_by_person ON plt01.bkg_bookings USING btree (tenant_id, person_id, booked_at DESC)'),
+        ('bkg_bookings_by_predecessor CREATE INDEX bkg_bookings_by_predecessor ON plt01.bkg_bookings USING btree (tenant_id, moved_from_booking_id) WHERE (moved_from_booking_id IS NOT NULL)'),
         ('bkg_bookings_by_session CREATE INDEX bkg_bookings_by_session ON plt01.bkg_bookings USING btree (tenant_id, session_id, state)'),
         ('bkg_bookings_one_live_per_person CREATE UNIQUE INDEX bkg_bookings_one_live_per_person ON plt01.bkg_bookings USING btree (tenant_id, session_id, person_id) WHERE (state = ANY (ARRAY[''booked''::text, ''attended''::text]))'),
         ('bkg_bookings_pkey CREATE UNIQUE INDEX bkg_bookings_pkey ON plt01.bkg_bookings USING btree (tenant_id, booking_id)'),
@@ -40932,6 +41253,7 @@ BEGIN
         ('CREATE TRIGGER bkg_attendance_intents_booking_matches BEFORE INSERT ON plt01.bkg_attendance_intents FOR EACH ROW EXECUTE FUNCTION plt01.bkg_intent_booking_matches()'),
         ('CREATE TRIGGER bkg_bookings_hold_matches BEFORE INSERT OR UPDATE ON plt01.bkg_bookings FOR EACH ROW EXECUTE FUNCTION plt01.bkg_booking_hold_matches()'),
         ('CREATE TRIGGER bkg_bookings_one_way BEFORE UPDATE ON plt01.bkg_bookings FOR EACH ROW EXECUTE FUNCTION plt01.bkg_booking_is_one_way()'),
+        ('CREATE TRIGGER bkg_bookings_predecessor_matches BEFORE INSERT OR UPDATE ON plt01.bkg_bookings FOR EACH ROW EXECUTE FUNCTION plt01.bkg_booking_predecessor_matches()'),
         ('CREATE TRIGGER bkg_cancellations_matches_its_booking BEFORE INSERT ON plt01.bkg_cancellations FOR EACH ROW EXECUTE FUNCTION plt01.bkg_cancellation_matches_its_booking()'),
         ('CREATE TRIGGER bkg_no_shows_matches_its_booking BEFORE INSERT ON plt01.bkg_no_shows FOR EACH ROW EXECUTE FUNCTION plt01.bkg_no_show_matches_its_booking()'),
         ('CREATE TRIGGER bkg_waitlist_entries_hold_matches BEFORE INSERT OR UPDATE ON plt01.bkg_waitlist_entries FOR EACH ROW EXECUTE FUNCTION plt01.bkg_entry_hold_matches()'),
@@ -40957,9 +41279,10 @@ BEGIN
         ('bkg_appeal_subject_matches f553553d79bde6ba1cda18b2282591d0'),
         ('bkg_booking_hold_matches 2e9ecd83bcbed4d9fa7ac3dfbcc3fe4f'),
         ('bkg_booking_is_one_way e6b5a59eee353111b275d76c83673dc5'),
+        ('bkg_booking_predecessor_matches 92601a2a02d89460c26f6ca706b48d8e'),
         ('bkg_cancellation_matches_its_booking 996b6ca717d3a3278fd027ff4dabf00b'),
         ('bkg_entry_hold_matches bbfd7c6846ff06943e6c5258204b22f8'),
-        ('bkg_entry_is_one_way 463cf4f85da2da8f63641805da5872e2'),
+        ('bkg_entry_is_one_way a6907a6d941d785e6e87f3c001eed5a8'),
         ('bkg_intent_booking_matches 7fe050953c8ad9df9ce8bebd6e275d96'),
         ('bkg_no_show_matches_its_booking 38062bdb464f4ab67ee8eb8e8ab22845')
     ), actual(rule) AS (

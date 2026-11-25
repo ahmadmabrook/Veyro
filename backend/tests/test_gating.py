@@ -620,6 +620,18 @@ WRITE_ROUTES = [
      {"replacement_resource_id": _ID, "reason": "sweep", **_CORR}),
     ("post", f"/scheduling/sessions/{_ID}/cancel",
      {"cancellation_reason": "weather", "reason": "sweep", **_CORR}),
+    # ADM-SCH-07. **Both remedies, because the route charges a different permission for
+    # each** (ADR-0016 D12): sweeping only one would leave the other's financial
+    # permission unproved on the path that uses it.
+    ("post", f"/scheduling/sessions/{_ID}/cancel-preview",
+     {"cancellation_reason": "weather", "reason": "sweep", "remedy": "credit",
+      **_CORR}),
+    ("post", f"/scheduling/sessions/{_ID}/cancel-with-remedy",
+     {"cancellation_reason": "weather", "reason": "sweep", "remedy": "credit",
+      **_CORR}),
+    ("post", f"/scheduling/sessions/{_ID}/cancel-with-remedy",
+     {"cancellation_reason": "weather", "reason": "sweep", "remedy": "move",
+      "to_session_id": _ID, **_CORR}),
     ("post", f"/scheduling/sessions/{_ID}/relocate",
      {"to_location_id": _ID, "reason": "sweep", **_CORR}),
     ("post", f"/scheduling/sessions/{_ID}/handoff",

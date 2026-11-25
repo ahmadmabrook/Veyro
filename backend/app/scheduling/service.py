@@ -1565,17 +1565,25 @@ def _record_change(
     return str(row[0])
 
 
-def cancel_session(
-    pool: Pool, tenant_id: str, session_id: str, *, cancellation_reason: str,
+def cancel_session_on(
+    conn: Connection[Any], tenant_id: str, session_id: str, *, cancellation_reason: str,
     reason: str, actor_id: str, correlation_id: str,
 ) -> dict[str, Any]:
-    """Cancel one session. OPS-01-R07.
+    """Cancel one session, **in the caller's transaction**. OPS-01-R07.
 
     **The held places are released and the reason says whether they come back.** A declared
     reason rather than prose, because what a member is owed depends on it -- and `other` is the
     one that returns nothing, which is why it needs somebody to decide rather than being a
     default. MOD-020's booking reads the released holds; this module does not know what a
     booking is.
+
+    **This form exists for ADM-SCH-07** (ADR-0016 D2), where cancelling the class and giving
+    the members their remedy are one act: the canvas's own "cannot commit without choosing what
+    the members get" is false the moment the two can commit separately, because a cancellation
+    that landed with the credits rolled back is eighteen members with nothing. Everything it
+    touches is in `plt01` under one role, so one transaction is available -- which is the
+    difference from MOD-027's walk-in, where the planes make it impossible. `cancel_session` is
+    the pool-taking wrapper, correct where nothing else has to be atomic with it.
     """
     change = substitution.Change(
         kind="cancellation", reason=reason, cancellation_reason=cancellation_reason)
@@ -1585,46 +1593,61 @@ def cancel_session(
         raise InvalidRequest(str(e)) from None
     returns = substitution.places_are_returned(change)
     moment = _now()
-    with tenant_scope(pool, tenant_id) as conn:
-        session = _session(conn, session_id)
-        try:
-            substitution.check_session_transition(session["status"], "cancelled")
-        except recurrence.ScheduleError as e:
-            raise Conflict(str(e)) from None
-        released = conn.execute(
-            "SELECT coalesce(sum(places), 0), count(*) FROM plt01.sch_capacity_holds"
-            " WHERE session_id = %s AND status = 'held'",
-            (session_id,),
-        ).fetchone()
-        try:
-            conn.execute(
-                "UPDATE plt01.sch_sessions SET status = 'cancelled', cancelled_at = %s,"
-                " cancelled_by = %s, cancellation_reason = %s,"
-                " cancel_correlation_id = %s"
-                " WHERE session_id = %s AND status = 'scheduled'",
-                (moment, actor_id, cancellation_reason, correlation_id, session_id))
-        except errors.RaiseException as e:
-            raise Conflict(str(e).strip().splitlines()[0]) from None
-        except errors.CheckViolation as e:
-            raise InvalidRequest(_check_name(e)) from None
+    session = _session(conn, session_id)
+    try:
+        substitution.check_session_transition(session["status"], "cancelled")
+    except recurrence.ScheduleError as e:
+        raise Conflict(str(e)) from None
+    released = conn.execute(
+        "SELECT coalesce(sum(places), 0), count(*) FROM plt01.sch_capacity_holds"
+        " WHERE session_id = %s AND status = 'held'",
+        (session_id,),
+    ).fetchone()
+    try:
         conn.execute(
-            "UPDATE plt01.sch_capacity_holds SET status = 'released', released_at = %s,"
-            " released_by = %s, release_reason = %s, release_correlation_id = %s"
-            " WHERE session_id = %s AND status = 'held'",
-            (moment, actor_id, f"session cancelled: {cancellation_reason}",
-             correlation_id, session_id))
-        change_id = _record_change(
-            conn, tenant_id, session_id=session_id, kind="cancellation", reason=reason,
-            actor_id=actor_id, correlation_id=correlation_id)
-        _append(conn, tenant_id, "session.changed", "session", session_id,
-                {"session_id": session_id, "template_id": session["template_id"],
-                 "change_kind": "cancellation"},
-                correlation_id=correlation_id, actor_id=actor_id)
+            "UPDATE plt01.sch_sessions SET status = 'cancelled', cancelled_at = %s,"
+            " cancelled_by = %s, cancellation_reason = %s,"
+            " cancel_correlation_id = %s"
+            " WHERE session_id = %s AND status = 'scheduled'",
+            (moment, actor_id, cancellation_reason, correlation_id, session_id))
+    except errors.RaiseException as e:
+        raise Conflict(str(e).strip().splitlines()[0]) from None
+    except errors.CheckViolation as e:
+        raise InvalidRequest(_check_name(e)) from None
+    conn.execute(
+        "UPDATE plt01.sch_capacity_holds SET status = 'released', released_at = %s,"
+        " released_by = %s, release_reason = %s, release_correlation_id = %s"
+        " WHERE session_id = %s AND status = 'held'",
+        (moment, actor_id, f"session cancelled: {cancellation_reason}",
+         correlation_id, session_id))
+    change_id = _record_change(
+        conn, tenant_id, session_id=session_id, kind="cancellation", reason=reason,
+        actor_id=actor_id, correlation_id=correlation_id)
+    _append(conn, tenant_id, "session.changed", "session", session_id,
+            {"session_id": session_id, "template_id": session["template_id"],
+             "change_kind": "cancellation"},
+            correlation_id=correlation_id, actor_id=actor_id)
     return {"session_id": session_id, "status": "cancelled", "change_id": change_id,
             "cancellation_reason": cancellation_reason,
             "places_released": int(released[0]) if released else 0,
             "holds_released": int(released[1]) if released else 0,
             "places_returned": returns}
+
+
+def cancel_session(
+    pool: Pool, tenant_id: str, session_id: str, *, cancellation_reason: str,
+    reason: str, actor_id: str, correlation_id: str,
+) -> dict[str, Any]:
+    """`cancel_session_on` in a transaction of its own.
+
+    MOD-019's own route, where cancelling the class is the whole act and MOD-020 settles the
+    bookings afterwards. ADM-SCH-07 does not use this one: it has a remedy to commit with the
+    cancellation, which is what `cancel_session_on` is for.
+    """
+    with tenant_scope(pool, tenant_id) as conn:
+        return cancel_session_on(
+            conn, tenant_id, session_id, cancellation_reason=cancellation_reason,
+            reason=reason, actor_id=actor_id, correlation_id=correlation_id)
 
 
 def relocate_session(
@@ -1777,6 +1800,23 @@ def hand_off_attendance(
 
 # ------------------------------------------------------------------ capacity holds
 
+def held_places_on(conn: Connection[Any], session_id: str) -> int:
+    """Places held on a session, in the caller's transaction.
+
+    **The one expression, because four call sites had their own.** It is a sum over the hold
+    rows rather than a stored counter: there is no `held_count` column anywhere in this module
+    and the forbidden-name sweep is what keeps it that way, because a counter two bookings can
+    both read before either writes is paragraph 4146 defeated. `attended` counts as well as
+    `held` -- somebody who has walked in is occupying the place.
+    """
+    row = conn.execute(
+        "SELECT coalesce(sum(places), 0) FROM plt01.sch_capacity_holds"
+        " WHERE session_id = %s AND status IN ('held', 'attended')",
+        (session_id,),
+    ).fetchone()
+    return int(row[0]) if row else 0
+
+
 def take_hold_on(
     conn: Connection[Any], tenant_id: str, session_id: str, *, person_id: str,
     source_kind: str, source_ref: str, idempotency_key: str, actor_id: str,
@@ -1868,16 +1908,11 @@ def take_hold_on(
             closes_minutes_before=int(policy[1]))
         if shut is not None:
             raise Conflict(shut)
-    taken = conn.execute(
-        "SELECT coalesce(sum(places), 0) FROM plt01.sch_capacity_holds"
-        " WHERE session_id = %s AND status IN ('held', 'attended')",
-        (session_id,),
-    ).fetchone()
     policy_object = capacity.Policy(
         capacity=session["capacity"], overbook_places=session["overbook_places"])
     try:
         capacity.check_hold(
-            policy_object, held=int(taken[0]) if taken else 0, wanted=places)
+            policy_object, held=held_places_on(conn, session_id), wanted=places)
     except recurrence.ScheduleError as e:
         raise Conflict(str(e)) from None
     restriction_rows = conn.execute(

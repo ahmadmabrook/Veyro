@@ -23,11 +23,20 @@ from typing import Any
 from psycopg import Connection, errors
 
 from app.authorization.service import Forbidden
-from app.booking import appeals, attendance, consequence, policy, waitlist
+from app.booking import (
+    appeals,
+    attendance,
+    cancellation,
+    consequence,
+    policy,
+    waitlist,
+)
 from app.booking.denial import Denial
+from app.commercial import service as commercial
 from app.db import Pool, tenant_scope
 from app.errors import Conflict, InvalidRequest, NotFound
 from app.events import service as events
+from app.scheduling import capacity
 from app.scheduling import service as scheduling
 
 
@@ -443,13 +452,8 @@ def _evaluate(
                 reason="no_entitlement",
                 detail=(f"this member holds no live {entitlement_key} entitlement over "
                         f"this session"))
-    taken = conn.execute(
-        "SELECT coalesce(sum(places), 0) FROM plt01.sch_capacity_holds"
-        " WHERE session_id = %s AND status IN ('held', 'attended')",
-        (session_id,),
-    ).fetchone()
     room = session["capacity"] + session["overbook_places"]
-    if int(taken[0] if taken else 0) >= room:
+    if scheduling.held_places_on(conn, session_id) >= room:
         # **Full offers the waitlist, and a full waitlist does not.** The two are different
         # offers and a surface switching on the reason needs to tell them apart.
         return Denial(
@@ -973,13 +977,10 @@ def promote_waitlist(
         # **As many as there are free places.** Counted here rather than assumed to be one:
         # five cancellations two hours before a class used to fill two seats, because the
         # promotion refused to look past a single outstanding offer.
-        taken = conn.execute(
-            "SELECT coalesce(sum(places), 0) FROM plt01.sch_capacity_holds"
-            " WHERE session_id = %s AND status IN ('held', 'attended')",
-            (session_id,),
-        ).fetchone()
-        free = max(0, session["capacity"] + session["overbook_places"]
-                   - int(taken[0] if taken else 0))
+        free = capacity.places_free(
+            capacity.Policy(capacity=session["capacity"],
+                            overbook_places=session["overbook_places"]),
+            held=scheduling.held_places_on(conn, session_id))
         candidates = waitlist.next_to_offer(
             entries, policy=queue_rules["policy"], at=moment, places=free)
         if not candidates:
@@ -1487,6 +1488,38 @@ def _release_booking(
             "credit_forfeit": outcome.credit_forfeit, "sanction": outcome.sanction}
 
 
+def release_open_bookings_on(
+    conn: Connection[Any], tenant_id: str, session_id: str, *, session: dict[str, Any],
+    at: datetime, actor_id: str, correlation_id: str,
+) -> list[dict[str, Any]]:
+    """Release every open booking on a session the gym cancelled, in the caller's transaction.
+
+    **The state and the occasion are what stop a sanction**, which is the defect a reviewer
+    found and this module's worst: `released` and `session_cancelled` were both declared, both
+    documented as existing "so somebody does not get a strike for a class the gym called off",
+    and nothing wrote either -- so settling a cancelled session recorded every member of it as
+    absent, with a fee and a strike, permanently.
+
+    **This form exists for ADM-SCH-07** (ADR-0016 D2): the bookings have to be released in the
+    same transaction as the cancellation and the members' remedy, because the three together
+    are the one act the canvas will not let a manager commit half of. `settle_session_bookings`
+    calls it too, so there is one definition of what happens to a booking on a cancelled class.
+    """
+    out: list[dict[str, Any]] = []
+    rows = conn.execute(
+        "SELECT booking_id, person_id, policy_id FROM plt01.bkg_bookings"
+        " WHERE session_id = %s AND state = 'booked' ORDER BY booked_at",
+        (session_id,),
+    ).fetchall()
+    for row in rows:
+        rules = _policy_row(conn, str(row[2]))
+        out.append(_release_booking(
+            conn, tenant_id, str(row[0]), person_id=str(row[1]), session_id=session_id,
+            session=session, rules=rules, at=at, actor_id=actor_id,
+            correlation_id=correlation_id))
+    return out
+
+
 def settle_session_bookings(
     pool: Pool, tenant_id: str, session_id: str, *, actor_id: str, correlation_id: str,
     at: datetime | None = None,
@@ -1516,17 +1549,22 @@ def settle_session_bookings(
             " ORDER BY booked_at",
             (session_id,),
         ).fetchall()
+        if session["status"] == "cancelled":
+            # **A cancelled session settles to nothing but releases**, so the decision is made
+            # once for the session rather than per row. The interleaved form was equivalent and
+            # read as though a cancelled session might still produce a no-show.
+            released = release_open_bookings_on(
+                conn, tenant_id, session_id, session=session, at=moment,
+                actor_id=actor_id, correlation_id=correlation_id)
+            return {"session_id": session_id, "settled": len(released),
+                    "bookings": released, "as_of": moment.isoformat(),
+                    "charged": False,
+                    "note": ("fees and forfeited entitlements are decisions here; the "
+                             "modules that own money and entitlements act on them")}
         for row in rows:
             booking_id = str(row[0])
             person_id = str(row[1])
             rules = _policy_row(conn, str(row[3]))
-            if session["status"] == "cancelled":
-                settled.append(_release_booking(
-                    conn, tenant_id, booking_id, person_id=person_id,
-                    session_id=session_id, session=session, rules=rules, at=moment,
-                    actor_id=actor_id,
-                    correlation_id=correlation_id))
-                continue
             facts = attendance.Attendance(
                 booking_state="booked", session_starts_at=session["starts_at"],
                 session_ends_at=session["ends_at"], checked_in_at=row[4])
@@ -2068,3 +2106,430 @@ def open_appeals(pool: Pool, tenant_id: str, *, limit: int = 100) -> dict[str, A
          "grounds": str(r[3]), "raised_at": r[4].isoformat(),
          "no_show_id": None if r[5] is None else str(r[5]),
          "cancellation_id": None if r[6] is None else str(r[6])} for r in rows]}
+
+
+# ---------------------------------------------------- ADM-SCH-07: cancel, and the remedy
+
+def _class_credit_policy(conn: Connection[Any]) -> dict[str, Any]:
+    """The tenant's own class-credit policy, derived rather than named by the caller.
+
+    **Refused where a tenant has none, and where it has two** -- MOD-027's trial-plan
+    precedent, and for the same reason: a remedy granted against a policy nobody declared is a
+    right nothing can draw, and picking between two would be choosing which right the members
+    get on the strength of whichever row sorted first. The refusal names what is there.
+    """
+    rows = conn.execute(
+        "SELECT policy_id, policy_key, display_name, is_counted"
+        " FROM plt01.mem_entitlement_policies"
+        " WHERE entitlement_type = 'class_credit' AND status = 'active'"
+        " ORDER BY policy_key",
+    ).fetchall()
+    if not rows:
+        raise Conflict("this_tenant_has_declared_no_class_credit_entitlement")
+    if len(rows) > 1:
+        raise Conflict(
+            "this_tenant_has_more_than_one_class_credit_entitlement: "
+            + ", ".join(str(r[1]) for r in rows))
+    return {"policy_id": str(rows[0][0]), "policy_key": str(rows[0][1]),
+            "display_name": str(rows[0][2]), "is_counted": bool(rows[0][3])}
+
+
+def _candidates_on(
+    conn: Connection[Any], session_id: str, *, to_session_id: str | None, at: datetime,
+) -> list[cancellation.Candidate]:
+    """The open bookings on the class being cancelled, and what the destination says of each.
+
+    **In `booked_at` order** (ADR-0016 D4), which is `release_open_bookings_on`'s own order and
+    the waitlist's position rule.
+
+    **Eligibility is asked of the destination rather than inherited** (D3): it is a different
+    session with its own restrictions, so a fourteen-year-old moved onto an 18+ class is a
+    booking MOD-019's hold trigger would refuse -- and refusing the whole cancellation because
+    one member of eighteen is too young would leave a class running with no coach.
+    """
+    rows = conn.execute(
+        "SELECT booking_id, person_id FROM plt01.bkg_bookings"
+        " WHERE session_id = %s AND state = 'booked' ORDER BY booked_at",
+        (session_id,),
+    ).fetchall()
+    if to_session_id is None:
+        return [cancellation.Candidate(str(r[0]), str(r[1])) for r in rows]
+    there = {
+        str(r[0]) for r in conn.execute(
+            "SELECT person_id FROM plt01.bkg_bookings"
+            " WHERE session_id = %s AND state IN ('booked', 'attended')",
+            (to_session_id,),
+        ).fetchall()}
+    out: list[cancellation.Candidate] = []
+    for row in rows:
+        person_id = str(row[1])
+        if person_id in there:
+            out.append(cancellation.Candidate(str(row[0]), person_id, already_there=True))
+            continue
+        # **`ineligible`, not `eligible`.** The verdict's own `eligible` folds in the room
+        # being full and the booking window being shut, and both are wrong here: capacity is
+        # what `plan_moves` allocates against, and a window about members booking themselves
+        # has nothing to say about a gym moving somebody off a class it cancelled. Reading the
+        # whole verdict made every member of a full destination `ineligible`, which made
+        # `free_places` decoration -- and that key exists precisely so a caller does not have
+        # to match the start of a sentence to tell the three apart.
+        verdict = scheduling.check_eligibility_on(
+            conn, to_session_id, person_id=person_id, at=at)
+        refused = verdict.get("ineligible")
+        out.append(cancellation.Candidate(
+            str(row[0]), person_id, eligible=refused is None,
+            ineligible_because=refused))
+    return out
+
+
+def _destination_on(
+    conn: Connection[Any], session_id: str, to_session_id: str,
+) -> dict[str, Any]:
+    """The replacement class, refused where it cannot take anybody.
+
+    `places_free` is MOD-019's own arithmetic over MOD-019's own count, which is what makes the
+    figure the screen shows the same figure `take_hold_on` will act on. It is still a read
+    outside the lock: six places free is what is true now, and the hold is what settles it.
+    """
+    if to_session_id == session_id:
+        raise InvalidRequest("a_class_cannot_be_moved_to_itself")
+    there = _session(conn, to_session_id)
+    if there["status"] != "scheduled":
+        raise Conflict(f"the_replacement_class_is_{there['status']}")
+    there["session_id"] = to_session_id
+    there["places_free"] = capacity.places_free(
+        capacity.Policy(capacity=there["capacity"],
+                        overbook_places=there["overbook_places"]),
+        held=scheduling.held_places_on(conn, to_session_id))
+    return there
+
+
+def _booking_terms_of(conn: Connection[Any], booking_id: str) -> tuple[str, str | None]:
+    """The policy a booking was made under and the entitlement it drew on.
+
+    **Both travel with a move** (ADR-0016 D3). The policy because what a member owes for
+    cancelling late was agreed when they booked, and a replacement class is the same agreement;
+    the entitlement because the member paid once -- drawing a second grant for a class the gym
+    moved would charge them for the gym's own change of plan.
+    """
+    row = conn.execute(
+        "SELECT policy_id, entitlement_grant_id FROM plt01.bkg_bookings"
+        " WHERE booking_id = %s",
+        (booking_id,),
+    ).fetchone()
+    if row is None:
+        raise NotFound("booking_not_found")
+    return str(row[0]), (None if row[1] is None else str(row[1]))
+
+
+def _move_booking_on(
+    conn: Connection[Any], tenant_id: str, placement: cancellation.Placement, *,
+    session_id: str, to_session_id: str, starts_at: datetime, actor_id: str,
+    correlation_id: str, at: datetime,
+) -> dict[str, Any]:
+    """One member's place on the replacement class, in the caller's transaction.
+
+    **The hold is MOD-019's and the booking cites it**, as every booking here does: the place
+    is counted under its `FOR UPDATE` and its fit trigger, which is paragraph 4142 and the one
+    thing a move cannot borrow from the booking it replaces.
+
+    **The idempotency key is derived from the cancellation rather than taken from a caller**,
+    so a retry of the whole command finds this booking rather than making a second one --
+    `UNIQUE (tenant_id, idempotency_key)` is the control and the key is hashed for the reason
+    every derived key in this module is: two long keys differing at the end once produced one
+    hold key, and one member's booking refused another's as a duplicate.
+    """
+    policy_id, grant_id = _booking_terms_of(conn, placement.booking_id)
+    key = f"cancel-move-{_short(session_id + placement.booking_id)}"
+    hold = scheduling.take_hold_on(
+        conn, tenant_id, to_session_id, person_id=placement.person_id,
+        source_kind="booking", source_ref=f"moved from {session_id}",
+        idempotency_key=key, actor_id=actor_id, correlation_id=correlation_id, at=at)
+    try:
+        row = conn.execute(
+            """
+            INSERT INTO plt01.bkg_bookings
+                (tenant_id, session_id, person_id, hold_id, policy_id, source_kind,
+                 moved_from_booking_id, entitlement_grant_id, booked_by, idempotency_key,
+                 correlation_id)
+            VALUES (%s, %s, %s, %s, %s, 'moved', %s, %s, %s, %s, %s)
+            RETURNING booking_id
+            """,
+            (tenant_id, to_session_id, placement.person_id, hold["hold_id"], policy_id,
+             placement.booking_id, grant_id, actor_id, key, correlation_id),
+        ).fetchone()
+    except errors.UniqueViolation:
+        raise Conflict("this_member_was_already_moved_to_that_class") from None
+    except errors.RaiseException as e:
+        raise Conflict(str(e).strip().splitlines()[0]) from None
+    except errors.CheckViolation as e:
+        raise InvalidRequest(_check_name(e)) from None
+    assert row is not None
+    booking_id = str(row[0])
+    _append(conn, tenant_id, "booking.created", "booking", booking_id,
+            {"booking_id": booking_id, "session_id": to_session_id,
+             "person_id": placement.person_id, "source_kind": "moved",
+             "starts_at": starts_at.isoformat()},
+            correlation_id=correlation_id, actor_id=actor_id)
+    return {"person_id": placement.person_id, "booking_id": booking_id,
+            "moved_from_booking_id": placement.booking_id,
+            "hold_id": hold["hold_id"]}
+
+
+def _lapse_waitlist_on(
+    conn: Connection[Any], session_id: str, *, at: datetime, actor_id: str,
+    correlation_id: str, reason: str,
+) -> int:
+    """Settle every live waitlist entry on a class that is being called off. ADR-0016 D9.
+
+    **Before the cancellation, which is what makes an offered entry settleable.** An offer
+    holds a place, `bkg_entry_hold_matches` requires that place to be live while the entry says
+    `offered`, and `cancel_session_on` releases every hold on the session -- so lapsing
+    afterwards would be refused by the trigger on the one entry that has a seat. Clearing
+    `hold_id` here leaves the hold for the cancellation to release, as a declined offer does.
+
+    **A waitlist entry is not a place, so nothing else is owed.** There is nothing to move and
+    no credit to grant: what the member is owed is being told, which is MOD-013's.
+    """
+    done = conn.execute(
+        "UPDATE plt01.bkg_waitlist_entries SET state = 'lapsed', hold_id = NULL,"
+        " settled_at = %s, settled_by = %s, settle_reason = %s,"
+        " settle_correlation_id = %s"
+        " WHERE session_id = %s AND state IN ('waiting', 'offered', 'expired')",
+        (at, actor_id, reason, correlation_id, session_id))
+    return done.rowcount
+
+
+def _cancellation_report(
+    conn: Connection[Any], session_id: str, *, remedy: cancellation.Remedy,
+    correlation_id: str,
+) -> dict[str, Any]:
+    """What a cancelled class's members got, rebuilt from the rows.
+
+    **This is the retry path, and it needs no column of its own.** The session carries the
+    correlation id of the request that cancelled it, so the same request arriving twice -- a
+    client whose first attempt timed out after the commit -- is told what happened. MOD-017's
+    review found three commands answering 409 to their own success; what makes the honest
+    answer cheap here is that every part of the remedy is readable: a moved booking names the
+    one it replaced and a credit names the class it was given for.
+
+    A *different* request on a cancelled class is a genuine refusal, because the class has been
+    called off and its members have already been given something.
+    """
+    row = conn.execute(
+        "SELECT cancel_correlation_id, cancellation_reason FROM plt01.sch_sessions"
+        " WHERE session_id = %s",
+        (session_id,),
+    ).fetchone()
+    if row is None or str(row[0]) != correlation_id:
+        raise Conflict("this_session_is_cancelled")
+    moved = conn.execute(
+        "SELECT b.person_id, b.booking_id, b.moved_from_booking_id FROM plt01.bkg_bookings b"
+        " JOIN plt01.bkg_bookings was ON was.booking_id = b.moved_from_booking_id"
+        " WHERE was.session_id = %s ORDER BY was.booked_at",
+        (session_id,),
+    ).fetchall()
+    credited = conn.execute(
+        "SELECT person_id, grant_id FROM plt01.mem_entitlement_grants"
+        " WHERE source_kind = 'goodwill' AND source_id = %s AND status <> 'revoked'"
+        " ORDER BY created_at",
+        (session_id,),
+    ).fetchall()
+    released = conn.execute(
+        "SELECT count(*) FROM plt01.bkg_bookings"
+        " WHERE session_id = %s AND state = 'released'",
+        (session_id,),
+    ).fetchone()
+    lapsed = conn.execute(
+        "SELECT count(*) FROM plt01.bkg_waitlist_entries"
+        " WHERE session_id = %s AND state = 'lapsed'",
+        (session_id,),
+    ).fetchone()
+    went = {str(r[0]) for r in moved}
+    stayed = conn.execute(
+        "SELECT person_id FROM plt01.bkg_bookings"
+        " WHERE session_id = %s AND state = 'released' ORDER BY booked_at",
+        (session_id,),
+    ).fetchall()
+    return {
+        "session_id": session_id, "status": "cancelled",
+        "cancellation_reason": None if row[1] is None else str(row[1]),
+        "change_id": None,
+        "remedy": remedy.kind,
+        "released": int(released[0]) if released else 0,
+        "waitlist_lapsed": int(lapsed[0]) if lapsed else 0,
+        "to_notify": ((int(released[0]) if released else 0)
+                      + (int(lapsed[0]) if lapsed else 0)),
+        "moved": [{"person_id": str(r[0]), "booking_id": str(r[1]),
+                   "moved_from_booking_id": str(r[2])} for r in moved],
+        "credited": [{"person_id": str(r[0]), "grant_id": str(r[1])} for r in credited],
+        "must_choose": [{"person_id": str(r[0]), "reason": "no_place",
+                         "ineligible_because": None}
+                        for r in stayed if str(r[0]) not in went] if moved else [],
+        "notified": False,
+        "note": ("rebuilt from the rows: this request had already been carried out, so nothing "
+                 "was written a second time"),
+        "repeated": True,
+    }
+
+
+def preview_session_cancellation(
+    pool: Pool, tenant_id: str, session_id: str, *, remedy: cancellation.Remedy,
+    at: datetime | None = None,
+) -> dict[str, Any]:
+    """What cancelling this class would cost its members, before anything is written.
+
+    **The canvas's own figures**: "18 booked, 3 on the waitlist" and "6 places free · 12 would
+    need to choose another". A screen that could only find this out by cancelling would be
+    asking a manager to commit the most consequential act in the schedule in order to see its
+    consequence, which is the order ADM-MSH-06's note forbids one module over.
+
+    It writes nothing, and says so on its own response.
+    """
+    moment = at or _now()
+    with tenant_scope(pool, tenant_id) as conn:
+        session = _session(conn, session_id)
+        if session["status"] != "scheduled":
+            raise Conflict(f"this_session_is_{session['status']}")
+        destination = (
+            None if remedy.to_session_id is None
+            else _destination_on(conn, session_id, remedy.to_session_id))
+        candidates = _candidates_on(
+            conn, session_id, to_session_id=remedy.to_session_id, at=moment)
+        plan = (
+            None if destination is None
+            else cancellation.plan_moves(
+                candidates, free_places=destination["places_free"]))
+        waiting_row = conn.execute(
+            "SELECT count(*) FROM plt01.bkg_waitlist_entries"
+            " WHERE session_id = %s AND state IN ('waiting', 'offered', 'expired')",
+            (session_id,),
+        ).fetchone()
+        credit = None
+        if remedy.kind == "credit":
+            policy = _class_credit_policy(conn)
+            credit = {"policy_key": policy["policy_key"],
+                      "display_name": policy["display_name"],
+                      "days": cancellation.CREDIT_DAYS,
+                      "expires_at": cancellation.credit_expires(moment).isoformat(),
+                      "each": 1 if policy["is_counted"] else None}
+    waiting = int(waiting_row[0]) if waiting_row else 0
+    return {
+        "session_id": session_id, "remedy": remedy.kind,
+        "starts_at": session["starts_at"].isoformat(), "timezone": session["timezone"],
+        "booked": len(candidates), "waiting": waiting,
+        "to_notify": len(candidates) + waiting,
+        "destination": None if destination is None else {
+            "session_id": destination["session_id"],
+            "starts_at": destination["starts_at"].isoformat(),
+            "timezone": destination["timezone"],
+            "places_free": destination["places_free"]},
+        "credit": credit,
+        "moving": [p.person_id for p in plan.moving] if plan else [],
+        "moved_count": plan.moved_count if plan else 0,
+        "must_choose": [
+            {"person_id": p.person_id, "reason": p.reason,
+             "ineligible_because": p.ineligible_because}
+            for p in plan.must_choose] if plan else [],
+        "must_choose_count": plan.must_choose_count if plan else 0,
+        "wrote_nothing": True,
+        "message_is_the_surface_s": (
+            "the members are written to in their own language, and this process has no "
+            "message catalogue; these are the facts a message is made of"),
+    }
+
+
+def cancel_session_with_remedy(
+    pool: Pool, tenant_id: str, session_id: str, *, cancellation_reason: str,
+    reason: str, remedy: cancellation.Remedy, actor_id: str, correlation_id: str,
+    at: datetime | None = None,
+) -> dict[str, Any]:
+    """Cancel a class and give its members what the manager chose. ADM-SCH-07, ADR-0016.
+
+    **One transaction, because this is one plane and one role** (D2). The session, its holds,
+    the bookings, the waitlist and the grants are all in `plt01` under `veyro_cp_app`, so the
+    cancellation and the remedy commit together -- which is the opposite call from MOD-027's
+    walk-in, and the difference is that this one *can*: a cancellation that landed with the
+    credits rolled back is eighteen members with a cancelled class and nothing, which is the
+    harm the canvas's own last sentence names.
+
+    **The remedy is required and there is no default** (D1): `Remedy` has no absent value, so a
+    caller that has not decided is refused before anything is written.
+
+    **The waitlist is settled first** (D9), because an offer holds a place and the cancellation
+    releases it -- so lapsing afterwards would be refused by the trigger on the one entry that
+    has a seat.
+    """
+    moment = at or _now()
+    with tenant_scope(pool, tenant_id) as conn:
+        session = _session(conn, session_id)
+        if session["status"] == "cancelled":
+            return _cancellation_report(
+                conn, session_id, remedy=remedy, correlation_id=correlation_id)
+        if session["status"] != "scheduled":
+            raise Conflict(f"this_session_is_{session['status']}")
+        destination = (
+            None if remedy.to_session_id is None
+            else _destination_on(conn, session_id, remedy.to_session_id))
+        policy = _class_credit_policy(conn) if remedy.kind == "credit" else None
+        candidates = _candidates_on(
+            conn, session_id, to_session_id=remedy.to_session_id, at=moment)
+        plan = (
+            None if destination is None
+            else cancellation.plan_moves(
+                candidates, free_places=destination["places_free"]))
+
+        lapsed = _lapse_waitlist_on(
+            conn, session_id, at=moment, actor_id=actor_id,
+            correlation_id=correlation_id,
+            reason=f"the class was cancelled: {cancellation_reason}")
+        cancelled = scheduling.cancel_session_on(
+            conn, tenant_id, session_id, cancellation_reason=cancellation_reason,
+            reason=reason, actor_id=actor_id, correlation_id=correlation_id)
+        session = _session(conn, session_id)
+        released = release_open_bookings_on(
+            conn, tenant_id, session_id, session=session, at=moment,
+            actor_id=actor_id, correlation_id=correlation_id)
+
+        moved: list[dict[str, Any]] = []
+        credited: list[dict[str, Any]] = []
+        if plan is not None:
+            assert destination is not None
+            for placement in plan.moving:
+                moved.append(_move_booking_on(
+                    conn, tenant_id, placement, session_id=session_id,
+                    to_session_id=destination["session_id"],
+                    starts_at=destination["starts_at"], actor_id=actor_id,
+                    correlation_id=correlation_id, at=moment))
+        else:
+            assert policy is not None
+            for candidate in candidates:
+                grant = commercial.grant_entitlement_on(
+                    conn, tenant_id, person_id=candidate.person_id,
+                    policy_id=policy["policy_id"], source_kind="goodwill",
+                    source_id=session_id, valid_from=moment,
+                    valid_to=cancellation.credit_expires(moment),
+                    quantity=1 if policy["is_counted"] else None,
+                    reason=(f"the class on {session['local_date'].isoformat()} was "
+                            f"cancelled: {cancellation_reason}"),
+                    actor_id=actor_id, correlation_id=correlation_id)
+                credited.append({"person_id": candidate.person_id,
+                                 "grant_id": grant["grant_id"]})
+    return {
+        "session_id": session_id, "status": "cancelled",
+        "cancellation_reason": cancellation_reason,
+        "change_id": cancelled["change_id"],
+        "remedy": remedy.kind,
+        "released": len(released), "waitlist_lapsed": lapsed,
+        "to_notify": len(released) + lapsed,
+        "moved": moved, "credited": credited,
+        "must_choose": [
+            {"person_id": p.person_id, "reason": p.reason,
+             "ineligible_because": p.ineligible_because}
+            for p in plan.must_choose] if plan else [],
+        "notified": False,
+        "note": ("nobody has been told: MOD-013 authors a notification and sends nothing, and "
+                 "this command does not resolve a member's address, which is "
+                 "`member.contact.read`'s question rather than a scheduling caller's"),
+        "repeated": False,
+    }
