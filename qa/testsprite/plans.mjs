@@ -127,11 +127,19 @@ const PLANS = [
           "that they have left. Verify those two rows say different things about access.",
       },
       {
+        // **This step asserted two gaps and both have since closed**, which is the rule
+        // this repository records for a test working one layer out: a plan is a claim
+        // about the product, so building the thing it says is absent makes the plan fail
+        // against a product that is right. It said there was no invitation in this build
+        // at all and that a club manager seeing only their own club's staff was not true
+        // here; ADM-STF-03 is built and ADR-0014 made the second one true.
         type: "assertion",
         description:
-          "Verify the page offers no button to invite anybody, and explains that there is " +
-          "no invitation in this build at all. Verify it also states that a club manager " +
-          "seeing only their own club's staff is not true in this build.",
+          "Verify the page offers a control to invite somebody, and that it explains the " +
+          "invitation works while sending the link does not — the link is shown once on " +
+          "the screen that creates it. Verify the page states that a club manager seeing " +
+          "only their own club's staff is true on this screen, and says that every other " +
+          "read in the app refuses such a reader instead.",
       },
     ],
   },
@@ -772,6 +780,104 @@ const PLANS = [
         description:
           "Verify the page lists what it cannot do, and that renewing the membership and " +
           "selling a day pass are among them with a reason given for each.",
+      },
+    ],
+  },
+  {
+    // **ADM-STF-03, as the one question the screen is for.** The link is shown once and
+    // never again -- only its digest is stored -- so the failure this is worst at noticing
+    // from the inside is a screen that reads as a success without showing the link, which
+    // the in-repo spec cannot see because it asserts the link's presence by selector. An
+    // agent that has to *find* the link to report it is the right check.
+    name: "An invitation ends in a link the screen shows once, and says nobody was emailed",
+    description:
+      "Inviting somebody creates their login-to-be and the role it will carry, and this " +
+      "build cannot send the link: there is no messaging provider. So the screen is the " +
+      "only place the invitation reaches a person, and it has to say so rather than imply " +
+      "an email went out. This signs in as the owner, who holds every permission.",
+    priority: "p1",
+    planSteps: [
+      ...signIn,
+      { type: "action", description: "Navigate to /staff." },
+      {
+        type: "action",
+        description:
+          "Use the control in the page header for inviting somebody to open the invitation " +
+          "screen.",
+      },
+      {
+        type: "assertion",
+        description:
+          "Verify the form asks for an email address, a role and where the person will " +
+          "work, and asks for NO name of any kind. Verify the page states that the link " +
+          "expires in 7 days before any role is chosen.",
+      },
+      {
+        type: "action",
+        description:
+          "Fill the email field with a brand-new address nobody could already have, chosen " +
+          "freshly by you, at the domain nadi.test. Choose any role offered. Choose the " +
+          "option for every club rather than naming one. Then read the sentence the page " +
+          "shows about what that role grants, and submit the form.",
+      },
+      {
+        type: "assertion",
+        description:
+          "Verify that either (a) the invitation was created and the page now shows the " +
+          "invitation link itself, says the link is shown once and cannot be shown again, " +
+          "and states that nothing has been emailed and the link has to reach the person " +
+          "another way; or (b) the page says this action needs a stronger sign-in and " +
+          "offers a link to sign in more strongly, in which case verify that it does NOT " +
+          "also complain about the address, the role or the clubs. Report which of the two " +
+          "happened.",
+      },
+    ],
+  },
+  {
+    // **ADM-SCH-06, and the distinction the whole card rests on.** "Not stated" and "holds
+    // nobody" are different facts and only one of them is actionable; a screen that
+    // rendered an unstated capacity as 0 would be telling a manager a room cannot be used.
+    // An independent reader is the right check for that, because the in-repo assertion was
+    // written by the same hand that chose the wording.
+    name: "A room with no stated capacity is not a room that holds nobody",
+    description:
+      "The rooms list is where a class's capacity ceiling comes from: a class may not offer " +
+      "more places than the room holds. A room nobody has described does not limit a class " +
+      "at all, which is a different thing from a room that holds nobody — and the screen " +
+      "has to make the two distinguishable. This signs in as the owner.",
+    priority: "p1",
+    planSteps: [
+      ...signIn,
+      {
+        type: "action",
+        description:
+          "Open the Schedule section, then switch to the view that lists the rooms and " +
+          "resources rather than the classes or one coach's week.",
+      },
+      {
+        type: "assertion",
+        description:
+          "Verify the page lists spaces with, for each one, a capacity and what equipment " +
+          "is inside it. Verify there is a space called Spin room whose capacity reads 24 " +
+          "people and whose equipment reads a quantity of 20 of something. Verify there is " +
+          "another space whose capacity is shown as not stated rather than as zero or as a " +
+          "blank cell, and whose equipment says nothing is recorded in it.",
+      },
+      {
+        type: "assertion",
+        description:
+          "Verify the page explains that a space's capacity is a ceiling on every class in " +
+          "it rather than a default for one, and that a capacity which is not stated does " +
+          "not limit anything. Verify it also says equipment counts where it is — in the " +
+          "room rather than in the building.",
+      },
+      {
+        type: "assertion",
+        description:
+          "Verify the page lists only spaces: no coach, no member of staff and no " +
+          "standalone equipment row appears in the table. Verify the page offers no button " +
+          "to change a capacity or to move equipment, and explains why each of those is " +
+          "not possible here.",
       },
     ],
   },
