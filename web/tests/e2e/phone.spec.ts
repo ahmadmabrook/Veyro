@@ -84,6 +84,11 @@ const surfaces: [string, string][] = [
   // somebody added it by hand.
   ["the plan-change sheet",
    `/people/${creds.personId}?tab=membership&plan=1`],
+  // ADM-SCH-07's sheet: a select, a chip group, a consequence banner and a message body, all
+  // above the roster that stays rendered -- and reached by a query string, which is the kind
+  // of route a list of paths leaves out.
+  ["the class-cancellation sheet",
+   `/schedule/${creds.bookedSessionId}?cancel=1`],
   ["a member's billing", `/people/${creds.personId}?tab=billing`],
   // MOD-018's board is the widest table in the app -- four money columns over a chart of
   // thirteen accounts -- so it is the one most likely to push the page sideways.

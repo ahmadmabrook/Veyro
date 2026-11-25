@@ -5830,6 +5830,57 @@ starts ten days ago at JOD 90.00, above every published plan, because with the o
 every plan in the fixture is dearer and the canvas's own *downgrade* had no case. Proven: 11
 browser tests, 28 component tests, 10 browser mutations, all caught.
 
+**ADM-SCH-07 is the cancellation sheet at `/schedule/{id}?cancel=1`, and its act spans four
+modules.** The canvas's last sentence is the screen -- "Cannot commit without choosing what the
+members get. A cancellation that notifies nobody is the most damaging thing this screen could
+permit, so the notification is the action rather than a follow-up" -- so there is no bare cancel
+control: the sheet asks why, asks what the members get, shows what that costs, and shows the
+message before the button. ADR-0016 is the record and the server half is in MOD-020 above.
+Proven: 15 component tests, 13 browser tests, 5 browser mutations and the phone sweep's 73.
+
+Five things on it are the surface's own decisions:
+
+- **The consequence is the server's and is re-read whenever the choice changes.** "6 places
+  free · 12 would need to choose another" is a statement about *one* destination, so a panel
+  left from a previous choice is a figure a manager would act on; the answer carries what it was
+  about, so a reply about an edited choice is simply not the one on screen -- the derivation
+  `@/lib/walk-in` needed a ref to catch.
+- **The declared reason is the only reason field, because the canvas draws one.** MOD-019
+  requires non-blank prose on the change record, and a client composing it would put *one
+  locale's* sentence into a column both locales read -- ADR-0015's finding from the writing
+  side. The code is locale-free and renders beside `change_kind`, which is already a code.
+- **The message is rendered here and said to be one of many**, because "sent in each member's
+  language" is the canvas's requirement and the backend has no catalogue.
+- **"Find a coach instead" names what is missing rather than being a dead control**: ADM-SCH-03's
+  clash check is about a class being *created* and substituting an instructor on a published one
+  has no form, so a button here would answer nothing.
+- **The way in is shown by the gate's verdict rather than by `allowed`**, so a reader who could
+  step up is offered the sheet and the sheet offers the step-up.
+
+**And four findings came out of building it, three of them in traps this file already records.**
+
+- **Gating the sheet on `allowed` made the step-up it offers unreachable.**
+  `scheduling.session.change` is financial class, so `allowed` is false for every
+  password-only session -- the link appeared, the sheet did not, and ten browser tests failed
+  on a page that rendered correctly. One expression now, read by the link and by the sheet, so
+  the two cannot disagree about who gets in.
+- **The client/server boundary, for the fifth time, and the first where every static check
+  passed.** The sheet is a client component and `@/lib/cancel-class` reached `@/lib/api` at its
+  top, so `next/headers` was in a client bundle: `tsc` and the linter were green and the dev
+  server answered **500 on every page in the app, including sign-in**. `npm run build` is the
+  step that sees it and running the browser suite is what caught it. A pure name in an impure
+  module is still impure to a bundler.
+- **A plural message passed `waiting` instead of `count` threw on the rendered page**, which
+  `npm test`'s own sweep catches -- and I had run only my new test file. "Run the whole suite,
+  not the test you wrote", for the second time here. **And an English `zero` plural form is a
+  declared form the language never picks**: English CLDR has `one` and `other`, so the Command
+  Center's plural test refuses a third, and the empty-waitlist case is a different sentence
+  rather than a form nothing selects.
+- **Three locator traps in one spec**, each in the rules file and each hit anyway: an unscoped
+  `getByText` on a phrase the sheet says twice on purpose, `getByLabel("Move them to")` matching
+  the chip whose label starts with those words, and `toBeVisible` on an `<option>` inside a
+  closed `<select>`.
+
 **ADM-MSH-09 is `/plans`, and rendering it found three defects none of which any assertion
 could see.** The canvas is a table and a sheet whose argument is one disclosure -- "2,140
 members are on this plan. 890 are inside a fixed-term commitment and keep 55.00 until it ends.
@@ -7435,7 +7486,8 @@ MOD-007, MOD-008, MOD-009, MOD-010, MOD-011, MOD-012, MOD-013, MOD-014, MOD-016,
 MOD-018, MOD-019, MOD-021, MOD-022, MOD-026 and MOD-027's board, table, profile and add form, plus
 MOD-020's roster on a session,
 ADM-SCH-03's create-a-class form at `/schedule/new`, ADM-SCH-04's availability grid at `/rota`,
-ADM-SET-07's localization at `/localization`, FD-07's shift open and close at `/desk/shift`,
+ADM-SET-07's localization at `/localization`, ADM-SCH-07's cancellation sheet at
+`/schedule/{id}?cancel=1`, FD-07's shift open and close at `/desk/shift`,
 FD-02's member lookup at `/desk/lookup`, ADM-MSH-07's cancellation sheet at
 `/people/{id}?tab=membership&cancel=1`, ADM-MSH-09's plans and pricing at `/plans`, ADM-PAY-06's dunning rules at
 `/payments/dunning`, ADM-MSH-06's plan change at `/people/{id}?tab=membership&plan=1`, ADM-MEM-10's walk-in form at

@@ -1939,6 +1939,32 @@ version; the quiet version is a case that still passes and proves the wrong rule
 
 
 
+
+**A `zero` plural form in English is a declared form the language never picks.** English CLDR
+has `one` and `other`; Arabic has all six. So an empty-count case belongs in its own message
+with the component choosing, not in a `zero` form a locale will never select -- which is this
+build's declared-value-nothing-writes finding inside a message catalogue, and which the
+Command Center's own plural test refuses outright. The reverse also holds: an Arabic plural
+missing a category falls back to `other` and renders a plural where Arabic wants a dual, so
+all six are required there.
+
+**Three locator traps, all recorded here already and all hit in one spec.** Worth listing
+together, because each reads as a product failure: an **unscoped `getByText`** on a phrase a
+screen renders twice on purpose (a consequence and the message it explains) is a strict-mode
+violation reported against the thing under test; **`getByLabel` matches a substring**, so a
+select named "Move them to" is also matched by the chip labelled "Move them to another class";
+and **`toBeVisible` on an `<option>` inside a closed `<select>`** fails for a list that is
+plainly there -- count it or select it. The first of those also has a nesting form: a panel
+inside a sheet means both sections *have* the panel's heading, so a `filter({ has: heading })`
+needs `.last()`.
+
+**A control whose own remedy is a step-up must be reachable by a session that needs one.**
+`gate.allowed` is false for a financial action on every password-only session, so gating the
+*form* on it hides the step-up the form offers: ADM-SCH-07's entry link used the gate's verdict
+and the sheet used `allowed`, so the link appeared, the sheet did not, and ten browser tests
+failed on a page that rendered correctly. One expression for both, or the two disagree about
+who gets in.
+
 **A guard subsumed on the write path can be load-bearing on the read path, and an uncaught
 mutation does not say which.** This file already lists three readings of an uncaught mutation
 and a fourth for a guard that exists for input the current producer cannot emit. ADM-SCH-07

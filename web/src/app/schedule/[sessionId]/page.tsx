@@ -7,12 +7,22 @@ import { MetricCell, MetricRow } from "@/components/ds/metric-cell";
 import { PageHeader } from "@/components/ds/page-header";
 import { RecordHeader } from "@/components/ds/record-header";
 import { fill, formatInteger, t, type MessageKey, type Numbering } from "@/i18n/locale";
-import { ApiError, currentSession, gateAll, gateMessage } from "@/lib/api";
+import { ApiError, currentSession, gateAll, gateMessage, gateVerdict } from "@/lib/api";
 import { numerals } from "@/lib/display";
 import { presentation } from "@/lib/preferences";
 import { heldBeyondRoster, readRoster } from "@/lib/booking";
-import { readSession, type SessionResource } from "@/lib/scheduling";
+import { offerable } from "@/lib/cancel-class";
+import { readCalendar, readSession, type SessionResource } from "@/lib/scheduling";
 import { inZone } from "@/lib/time";
+
+import { CancelClassSheet } from "./cancel-form";
+
+/** A calendar date a fortnight on, in the same frame the club's own dates are in. */
+function addDays(date: string, days: number): string {
+  const at = new Date(`${date}T00:00:00Z`);
+  at.setUTCDate(at.getUTCDate() + days);
+  return at.toISOString().slice(0, 10);
+}
 
 /**
  * One session: what it holds, what it used to hold, and what changed about it.
@@ -32,8 +42,10 @@ import { inZone } from "@/lib/time";
  */
 export default async function SessionPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ sessionId: string }>;
+  searchParams: Promise<{ cancel?: string }>;
 }) {
   const { locale } = await presentation();
   // **The tenant's numerals** -- ADR-0015. Every quantity on this page follows
@@ -89,6 +101,30 @@ export default async function SessionPage({
   const local = inZone(session.starts_at, session.timezone);
   const ends = inZone(session.ends_at, session.timezone);
 
+  // **ADM-SCH-07 is a sheet over this page, not a screen of its own**, which is ADM-MSH-07's
+  // precedent: the canvases "are side sheets over Member 360, so the member's context stays
+  // visible while you change their agreement". A query parameter rather than a modal, so
+  // "Keep it" has somewhere to go -- a permanently-open destructive form has no way out and
+  // gets confirmed by somebody reaching for the exit.
+  const { cancel } = await searchParams;
+  // **Offered to a reader who could step up, not only to one already stepped up.**
+  // `scheduling.session.change` is financial class, so `allowed` is false for every
+  // password-only session -- and gating the sheet on it made the step-up the sheet itself
+  // offers unreachable: the link appeared, the sheet did not, and ten browser tests failed on
+  // a page that rendered correctly. One expression, read by the link and by the sheet, so the
+  // two cannot disagree about who gets in.
+  const mayAsk = !["denied", "unreachable_level"].includes(gateVerdict(mayChange));
+  const asking = cancel === "1" && session.status === "scheduled" && mayAsk;
+  // The destinations are the club's other scheduled classes in the fortnight after this one.
+  // **Not restricted to this template**: moving a cancelled Spin onto Friday's Spin is the
+  // canvas's case and the commonest, and a template filter would hide a legitimate move onto
+  // the same format run from another template. Each option names its own coach and free
+  // places, so the choice is made on facts rather than on a filter nobody can see.
+  const week = asking
+    ? await readCalendar(
+      session.location_id, local.date, addDays(local.date, 14)).catch(toNull)
+    : null;
+
   return (
     <Shell>
       <RecordHeader
@@ -96,6 +132,24 @@ export default async function SessionPage({
         {...(hasCoach || session.status === "cancelled"
           ? {}
           : { band: { text: text("schedule.noCoach"), tone: "critical" as const } })}
+        // **The way into ADM-SCH-07, and the only way there is.** A route nothing links to is
+        // a route nobody finds -- ADM-MEM-05 specified a button, rendered none, and this app
+        // shipped that for as long as the screen existed. Shown by the gate's verdict rather
+        // than by `allowed`, so a reader who could step up is offered the sheet and one the
+        // gate denies outright is not: the sheet itself offers the step-up. Absent on a class
+        // already cancelled, because there is nothing to cancel.
+        {...(session.status !== "scheduled" || !mayAsk
+          ? {}
+          : {
+            actions: (
+              <Link
+                href={`/schedule/${session.session_id}?cancel=1`}
+                className="ds-panel-action"
+              >
+                {text("cancelClass.open")}
+              </Link>
+            ),
+          })}
         subline={
           <>
             <span className="data" dir="ltr">{local.date} {local.time}–{ends.time}</span>
@@ -171,6 +225,35 @@ export default async function SessionPage({
           here repeated every figure a second time: the date, the zone and the status are the
           sub-line, and taken-of-places is the BOOKED cell. The canvas has no such list --
           ADM-SCH-02 goes straight from the four cells to the roster. */}
+
+      {/* **The sheet leads, because it is the act the reader came for.** Everything below
+          stays rendered: the canvases are sheets over a record, and the roster and the
+          resources are the context a manager checks while deciding. */}
+      {asking ? (
+        <CancelClassSheet
+          sessionId={session.session_id}
+          displayName={session.display_name}
+          startsAt={session.starts_at}
+          timezone={session.timezone}
+          localDate={local.date}
+          todayLocalDate={inZone(new Date().toISOString(), session.timezone).date}
+          booked={roster === null ? session.held : roster.bookings.length}
+          waiting={roster === null ? 0 : roster.waitlist.length}
+          destinations={(week?.sessions ?? [])
+            .filter((other) => offerable(other, session.session_id))
+            .map((other) => ({
+              session_id: other.session_id,
+              display_name: other.display_name,
+              date: inZone(other.starts_at, session.timezone).date,
+              time: inZone(other.starts_at, session.timezone).time,
+              staff: other.staff,
+              free: other.free,
+            }))}
+          locale={locale}
+          numbering={numbering}
+          back={`/schedule/${session.session_id}`}
+        />
+      ) : null}
 
       {session.dst_adjusted ? <Banner severity="info">{text("schedule.dstExplained")}</Banner> : null}
       {session.cancellation_reason !== null ? (

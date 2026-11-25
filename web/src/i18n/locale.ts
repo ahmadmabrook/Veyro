@@ -439,6 +439,98 @@ const MESSAGES = {
     "member.raiseSession": "Raise this session to read them",
     "nav.members": "Members",
     "roster.checkPeopleIn": "Check people in",
+
+    // ADM-SCH-07 · CANCEL A CLASS. The remedy is required, and the message is one preview of
+    // a message each member gets in their own language.
+    "cancelClass.open": "Cancel this class",
+    "cancelClass.title": "Cancel {name}",
+    "cancelClass.counts": "{booked} booked, {waiting} on the waitlist.",
+    "cancelClass.noticePast": "This class has already started.",
+    "cancelClass.noticeToday": "This is today.",
+    "cancelClass.noticeTomorrow": "This is tomorrow.",
+    "cancelClass.noticeDays": {
+      one: "This is in {count} day.",
+      other: "This is in {count} days."
+    },
+    "cancelClass.keepIt": "Keep it",
+    "cancelClass.why": "Why",
+    "cancelClass.whyGoesIntoTheMessage": "This goes into the message the members receive.",
+    "cancelClass.whyChoose": "Choose a reason",
+    "cancelClass.whyNeeded": "Say why: it is what the members are told.",
+    "cancelClass.whyUnstated": "we could not run the class",
+    "cancelClass.reason.instructor_unavailable": "No coach available",
+    "cancelClass.reason.resource_unavailable": "The room is unavailable",
+    "cancelClass.reason.insufficient_bookings": "Not enough bookings",
+    "cancelClass.reason.facility_closed": "The club is closed",
+    "cancelClass.reason.weather": "Weather",
+    "cancelClass.reason.other": "Another reason",
+    "cancelClass.whatTheyGet": {
+      one: "What the {count} member gets",
+      other: "What the {count} members get"
+    },
+    "cancelClass.remedyMove": "Move them to another class",
+    "cancelClass.remedyCredit": "Give each a class credit",
+    "cancelClass.remedyNeeded": "Choose what the members get. A cancellation cannot be saved without it.",
+    "cancelClass.moveTo": "Move them to",
+    "cancelClass.moveToChoose": "Choose a class",
+    "cancelClass.moveToNeeded": "Choose the class they are moved to.",
+    "cancelClass.chooseFirst": "Choose what the members get, and the consequence is shown here.",
+    "cancelClass.reading": "Reading what this would cost the members…",
+    "cancelClass.creditEach": "Each member gets one class credit, usable on any class within {days} days.",
+    "cancelClass.creditUnavailable": "This tenant has not declared a class credit, so there is nothing to grant.",
+    "cancelClass.moveWithCoach": "{coach} is on, and {free} places are free.",
+    "cancelClass.moveNoCoach": "{free} places are free.",
+    "cancelClass.wouldChoose": {
+      one: "{count} would need to choose another class.",
+      other: "{count} would need to choose another class."
+    },
+    "cancelClass.someIneligible": {
+      one: "{count} of them cannot take a place on that class.",
+      other: "{count} of them cannot take a place on that class."
+    },
+    "cancelClass.someAlreadyThere": {
+      one: "{count} of them is already booked on that class.",
+      other: "{count} of them are already booked on that class."
+    },
+    "cancelClass.theyWillReceive": "They will receive",
+    "cancelClass.messageMove": "{name} is cancelled — {why}. We have held you a place on {day} at {time}. Reply if that does not work and we will credit you instead.",
+    "cancelClass.messageCredit": "{name} is cancelled — {why}. We have credited you a class, usable on any class within {days} days.",
+    // **Two keys rather than a `zero` form**, because English CLDR has no `zero` category: a
+    // form the language never picks is a declared value nothing writes, which the Command
+    // Center's own plural test refuses. So the empty queue is its own sentence and the
+    // component chooses.
+    "cancelClass.eachLanguage": "Sent in each member's language.",
+    "cancelClass.eachLanguageWaitlist": {
+      one: "Sent in each member's language. The {count} on the waitlist gets a shorter version.",
+      other: "Sent in each member's language. The {count} on the waitlist get a shorter version."
+    },
+    "cancelClass.commit": {
+      one: "Cancel and notify {count}",
+      other: "Cancel and notify {count}"
+    },
+    "cancelClass.findACoach": "Finding a coach instead is not a form in this build: the clash check runs when a class is created, and substituting an instructor on a published class has no screen yet.",
+    "cancelClass.raise": "Step up and cancel",
+    "cancelClass.refused": "That was refused. Check the class and what the members are being given.",
+    "cancelClass.conflict": "This class has changed since the page loaded. Open it again.",
+    "cancelClass.noCredit": "This tenant has not declared a class credit. Declare one, or move the members to another class.",
+    "cancelClass.twoCredits": "This tenant has two class credits declared, so there is no single one to grant. Retire one, or move the members instead.",
+    "cancelClass.needsStepUp": "Cancelling a class needs a stronger sign-in than this session has.",
+    "cancelClass.doneTitle": "The class is cancelled",
+    "cancelClass.doneCounts": "{released} bookings released, {waiting} waitlist places settled.",
+    "cancelClass.doneMoved": {
+      one: "{count} member was moved to the replacement class.",
+      other: "{count} members were moved to the replacement class."
+    },
+    "cancelClass.doneCredited": {
+      one: "{count} member was credited a class.",
+      other: "{count} members were credited a class."
+    },
+    "cancelClass.doneMustChoose": {
+      one: "{count} member has to choose another class.",
+      other: "{count} members have to choose another class."
+    },
+    "cancelClass.nobodyTold": "Nobody has been told. Sending the message needs a messaging provider this build does not have, and the members' addresses are a permission this screen does not hold.",
+    "cancelClass.backToSession": "Back to the class",
     "strip.title": "Hardware",
     "strip.allWell": "Everything this desk needs is responding.",
     "strip.state.working": "Working",
@@ -3357,6 +3449,133 @@ const MESSAGES = {
     "member.raiseSession": "ارفع هذه الجلسة لقراءتها",
     "nav.members": "الأعضاء",
     "roster.checkPeopleIn": "\u0633\u062c\u0651\u0644 \u0627\u0644\u062d\u0636\u0648\u0631",
+
+    // ADM-SCH-07
+    "cancelClass.open": "ألغِ هذه الحصة",
+    "cancelClass.title": "إلغاء {name}",
+    "cancelClass.counts": "{booked} محجوزون، و{waiting} على قائمة الانتظار.",
+    "cancelClass.noticePast": "هذه الحصة بدأت بالفعل.",
+    "cancelClass.noticeToday": "هذه اليوم.",
+    "cancelClass.noticeTomorrow": "هذه غدًا.",
+    "cancelClass.noticeDays": {
+      zero: "هذه اليوم.",
+      one: "هذه بعد يوم واحد.",
+      two: "هذه بعد يومين.",
+      few: "هذه بعد {count} أيام.",
+      many: "هذه بعد {count} يومًا.",
+      other: "هذه بعد {count} يوم."
+    },
+    "cancelClass.keepIt": "أبقِها",
+    "cancelClass.why": "السبب",
+    "cancelClass.whyGoesIntoTheMessage": "يظهر هذا في الرسالة التي يستلمها الأعضاء.",
+    "cancelClass.whyChoose": "اختر سببًا",
+    "cancelClass.whyNeeded": "اذكر السبب: هو ما يُقال للأعضاء.",
+    "cancelClass.whyUnstated": "لم نستطع تشغيل الحصة",
+    "cancelClass.reason.instructor_unavailable": "لا مدرّب متاح",
+    "cancelClass.reason.resource_unavailable": "القاعة غير متاحة",
+    "cancelClass.reason.insufficient_bookings": "الحجوزات غير كافية",
+    "cancelClass.reason.facility_closed": "النادي مغلق",
+    "cancelClass.reason.weather": "الأحوال الجوية",
+    "cancelClass.reason.other": "سبب آخر",
+    "cancelClass.whatTheyGet": {
+      zero: "ما يحصل عليه الأعضاء",
+      one: "ما يحصل عليه العضو الواحد",
+      two: "ما يحصل عليه العضوان",
+      few: "ما يحصل عليه {count} أعضاء",
+      many: "ما يحصل عليه {count} عضوًا",
+      other: "ما يحصل عليه {count} عضو"
+    },
+    "cancelClass.remedyMove": "انقلهم إلى حصة أخرى",
+    "cancelClass.remedyCredit": "امنح كل واحد رصيد حصة",
+    "cancelClass.remedyNeeded": "اختر ما يحصل عليه الأعضاء؛ لا يمكن حفظ الإلغاء بدونه.",
+    "cancelClass.moveTo": "انقلهم إلى",
+    "cancelClass.moveToChoose": "اختر حصة",
+    "cancelClass.moveToNeeded": "اختر الحصة التي سيُنقلون إليها.",
+    "cancelClass.chooseFirst": "اختر ما يحصل عليه الأعضاء، وستظهر النتيجة هنا.",
+    "cancelClass.reading": "جارٍ قراءة ما يعنيه هذا للأعضاء…",
+    "cancelClass.creditEach": "يحصل كل عضو على رصيد حصة واحدة، صالح لأي حصة خلال {days} يومًا.",
+    "cancelClass.creditUnavailable": "لم يعلن هذا المستأجر رصيد حصص، فلا شيء يُمنح.",
+    "cancelClass.moveWithCoach": "{coach} موجود، و{free} مقاعد متاحة.",
+    "cancelClass.moveNoCoach": "{free} مقاعد متاحة.",
+    "cancelClass.wouldChoose": {
+      zero: "لا أحد يحتاج إلى اختيار حصة أخرى.",
+      one: "واحد سيحتاج إلى اختيار حصة أخرى.",
+      two: "اثنان سيحتاجان إلى اختيار حصة أخرى.",
+      few: "{count} سيحتاجون إلى اختيار حصة أخرى.",
+      many: "{count} سيحتاجون إلى اختيار حصة أخرى.",
+      other: "{count} سيحتاج إلى اختيار حصة أخرى."
+    },
+    "cancelClass.someIneligible": {
+      zero: "لا أحد منهم يُمنع من تلك الحصة.",
+      one: "واحد منهم لا يمكنه أخذ مقعد في تلك الحصة.",
+      two: "اثنان منهم لا يمكنهما أخذ مقعد في تلك الحصة.",
+      few: "{count} منهم لا يمكنهم أخذ مقعد في تلك الحصة.",
+      many: "{count} منهم لا يمكنهم أخذ مقعد في تلك الحصة.",
+      other: "{count} منهم لا يمكنه أخذ مقعد في تلك الحصة."
+    },
+    "cancelClass.someAlreadyThere": {
+      zero: "لا أحد منهم محجوز على تلك الحصة.",
+      one: "واحد منهم محجوز بالفعل على تلك الحصة.",
+      two: "اثنان منهم محجوزان بالفعل على تلك الحصة.",
+      few: "{count} منهم محجوزون بالفعل على تلك الحصة.",
+      many: "{count} منهم محجوزون بالفعل على تلك الحصة.",
+      other: "{count} منهم محجوز بالفعل على تلك الحصة."
+    },
+    "cancelClass.theyWillReceive": "ما سيستلمونه",
+    "cancelClass.messageMove": "أُلغيت {name} — {why}. حفظنا لك مقعدًا في {day} الساعة {time}. أخبرنا إن لم يناسبك فنمنحك رصيدًا بدلًا من ذلك.",
+    "cancelClass.messageCredit": "أُلغيت {name} — {why}. منحناك رصيد حصة صالحًا لأي حصة خلال {days} يومًا.",
+    "cancelClass.eachLanguage": "تُرسل بلغة كل عضو.",
+    "cancelClass.eachLanguageWaitlist": {
+      zero: "تُرسل بلغة كل عضو. لا أحد على قائمة الانتظار.",
+      one: "تُرسل بلغة كل عضو. ومن على قائمة الانتظار يستلم نسخة أقصر.",
+      two: "تُرسل بلغة كل عضو. والاثنان على قائمة الانتظار يستلمان نسخة أقصر.",
+      few: "تُرسل بلغة كل عضو. و{count} على قائمة الانتظار يستلمون نسخة أقصر.",
+      many: "تُرسل بلغة كل عضو. و{count} على قائمة الانتظار يستلمون نسخة أقصر.",
+      other: "تُرسل بلغة كل عضو. و{count} على قائمة الانتظار يستلم نسخة أقصر."
+    },
+    "cancelClass.commit": {
+      zero: "ألغِ الحصة",
+      one: "ألغِ وأبلغ {count}",
+      two: "ألغِ وأبلغ {count}",
+      few: "ألغِ وأبلغ {count}",
+      many: "ألغِ وأبلغ {count}",
+      other: "ألغِ وأبلغ {count}"
+    },
+    "cancelClass.findACoach": "إيجاد مدرّب بديل ليس نموذجًا في هذا الإصدار: فحص التعارض يعمل عند إنشاء حصة، وتبديل المدرّب على حصة منشورة لا شاشة له بعد.",
+    "cancelClass.raise": "عزّز الدخول وألغِ",
+    "cancelClass.refused": "رُفض ذلك. راجع الحصة وما يُمنح للأعضاء.",
+    "cancelClass.conflict": "تغيّرت هذه الحصة بعد تحميل الصفحة. افتحها مرة أخرى.",
+    "cancelClass.noCredit": "لم يعلن هذا المستأجر رصيد حصص. أعلن واحدًا، أو انقل الأعضاء إلى حصة أخرى.",
+    "cancelClass.twoCredits": "لدى هذا المستأجر رصيدا حصص معلنان، فلا يوجد واحد بعينه ليُمنح. أوقف أحدهما، أو انقل الأعضاء بدلًا من ذلك.",
+    "cancelClass.needsStepUp": "إلغاء حصة يتطلب دخولًا أقوى من هذه الجلسة.",
+    "cancelClass.doneTitle": "أُلغيت الحصة",
+    "cancelClass.doneCounts": "حُرّر {released} حجزًا، وسُوّيت {waiting} من مقاعد الانتظار.",
+    "cancelClass.doneMoved": {
+      zero: "لم يُنقل أحد.",
+      one: "نُقل عضو واحد إلى الحصة البديلة.",
+      two: "نُقل عضوان إلى الحصة البديلة.",
+      few: "نُقل {count} أعضاء إلى الحصة البديلة.",
+      many: "نُقل {count} عضوًا إلى الحصة البديلة.",
+      other: "نُقل {count} عضو إلى الحصة البديلة."
+    },
+    "cancelClass.doneCredited": {
+      zero: "لم يُمنح أحد رصيدًا.",
+      one: "مُنح عضو واحد رصيد حصة.",
+      two: "مُنح عضوان رصيد حصة.",
+      few: "مُنح {count} أعضاء رصيد حصة.",
+      many: "مُنح {count} عضوًا رصيد حصة.",
+      other: "مُنح {count} عضو رصيد حصة."
+    },
+    "cancelClass.doneMustChoose": {
+      zero: "لا أحد يحتاج إلى اختيار حصة أخرى.",
+      one: "عضو واحد يحتاج إلى اختيار حصة أخرى.",
+      two: "عضوان يحتاجان إلى اختيار حصة أخرى.",
+      few: "{count} أعضاء يحتاجون إلى اختيار حصة أخرى.",
+      many: "{count} عضوًا يحتاجون إلى اختيار حصة أخرى.",
+      other: "{count} عضو يحتاج إلى اختيار حصة أخرى."
+    },
+    "cancelClass.nobodyTold": "لم يُبلَّغ أحد. إرسال الرسالة يحتاج مزوّد مراسلة لا يملكه هذا الإصدار، وعناوين الأعضاء صلاحية لا تحملها هذه الشاشة.",
+    "cancelClass.backToSession": "عودة إلى الحصة",
     "strip.title": "\u0627\u0644\u0623\u062c\u0647\u0632\u0629",
     "strip.allWell": "\u0643\u0644 \u0645\u0627 \u064a\u062d\u062a\u0627\u062c\u0647 \u0647\u0630\u0627 \u0627\u0644\u0645\u0643\u062a\u0628 \u064a\u0633\u062a\u062c\u064a\u0628.",
     "strip.state.working": "\u064a\u0639\u0645\u0644",

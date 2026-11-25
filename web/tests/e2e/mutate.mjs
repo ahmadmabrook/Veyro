@@ -42,6 +42,58 @@ const web = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
  * does not collect those files and so reported no failure rather than no test.
  */
 const MUTATIONS = [
+  // ------------------------------------------------- ADM-SCH-07, cancel a class
+  {
+    id: "cancel-class-the-sheet-is-reachable-by-a-reader-who-could-step-up",
+    why: "`scheduling.session.change` is financial class, so `allowed` is false for every"
+      + " password-only session -- gating the sheet on it made the step-up the sheet itself"
+      + " offers unreachable, which is what ten browser tests reported on a page that"
+      + " rendered correctly",
+    file: "src/app/schedule/[sessionId]/page.tsx",
+    from: "  const mayAsk = ![\"denied\", \"unreachable_level\"].includes(gateVerdict(mayChange));",
+    to: "  const mayAsk = mayChange.allowed;",
+    grep: "leads with the class, its counts and how much notice",
+  },
+  {
+    id: "cancel-class-the-way-in-is-on-the-class",
+    why: "a route nothing links to is a route nobody finds -- ADM-MEM-05 specified a button,"
+      + " rendered none, and this app shipped that for as long as the screen existed",
+    file: "src/app/schedule/[sessionId]/page.tsx",
+    from: "        {...(session.status !== \"scheduled\" || !mayAsk",
+    to: "        {...(true || session.status !== \"scheduled\" || !mayAsk",
+    grep: "the way in is on the class itself",
+  },
+  {
+    id: "cancel-class-the-consequence-is-about-the-choice-on-screen",
+    why: "'6 places free · 12 would need to choose another' is a statement about one"
+      + " destination, so an answer left behind from a previous choice is a figure a manager"
+      + " would act on -- the race `@/lib/walk-in` needed a ref to catch",
+    file: "src/app/schedule/[sessionId]/cancel-form.tsx",
+    from: "    peek.previewFor !== null\n      && peek.previewFor.remedy === remedy\n"
+      + "      && peek.previewFor.toSessionId === (remedy === \"move\" ? destination : \"\")\n"
+      + "      ? peek.preview\n      : null;",
+    to: "    peek.preview;",
+    grep: "the consequence follows the choice rather than the previous one",
+  },
+  {
+    id: "cancel-class-a-credit-states-its-own-window",
+    why: "the credit's branch is what renders the canvas's 'usable on any class within 30"
+      + " days', from the server's own figure rather than a constant here",
+    file: "src/app/schedule/[sessionId]/cancel-form.tsx",
+    from: "  if (answer.remedy === \"credit\") {",
+    to: "  if (false) {",
+    grep: "a credit states the window the canvas names",
+  },
+  {
+    id: "cancel-class-finding-a-coach-is-named-rather-than-offered",
+    why: "'never a locked control with no route' -- ADM-SCH-03's clash check is about a class"
+      + " being created, and substituting an instructor on a published one has no form, so a"
+      + " button here would answer nothing",
+    file: "src/app/schedule/[sessionId]/cancel-form.tsx",
+    from: "            {text(\"cancelClass.findACoach\")}",
+    to: "            {\"\"}",
+    grep: "names finding a coach instead rather than offering a dead control",
+  },
   // ------------------------------------------------- ADM-MSH-06, downgrade
   {
     id: "downgrade-the-refusal-is-a-sentence-not-an-enum",

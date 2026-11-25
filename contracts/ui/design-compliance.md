@@ -325,6 +325,7 @@ corresponds to them. The others map loosely:
 | `/desk/shift` | FD-07 Shift open and close | **built from the canvas, and the open is the half this build had no notion of** — the previous shift's own figure, the float count, the canvas's "a discrepancy found at open belongs to the previous shift" as a real attribution rather than a sentence, and the handover note that travels between the two ends; the close is ADM-PAY-09's own form rather than a second one, and the shift report, the variance threshold and the abandoned till are each named as absent with a reason |
 | `/desk/classes/{id}` | FD-06 Class check-in | **built from the canvas, and the first Front Desk screen** — Touch density, the roster composed with MOD-014's batched names, the only working write form here that is not behind a step-up; the automatic release and the waitlist notification the canvas promises are named as absent |
 | `/schedule/{id}` | ADM-SCH-02 Class detail and roster | **rebuilt** — the band, four MetricCells, the roster; the three actions are stepped-up writes with no form |
+| `/schedule/{id}?cancel=1` | ADM-SCH-07 Cancel a class · 18 people affected | **built from the canvas** — a sheet over the class, so the roster and the resources stay visible while a manager decides; the remedy is required and the consequence is the server's, re-read whenever the choice changes; the message is one preview of a message each member gets in their own language. "Find a coach instead" names what is missing rather than being a dead control, and the notification is named as the one thing this screen cannot do |
 | `/payments` | ADM-PAY-01 Payments ledger | **built from the canvas** — four kinds on one axis, signed; refund and export are named as absent |
 | `/payments/cash` | ADM-PAY-09 Cash reconciliation · shift close | **built from the canvas** — the expected figure before the count, over a read that did not exist; the co-sign and the tolerance are named as absent, the second being stricter here than drawn |
 | `/payments/dunning` | ADM-PAY-06 Dunning rules · owner & accountant | **built from the canvas, and reading it against the code first changed what the work was** — of the five settings it draws, two have readers and three configure machinery this build does not have, so those three are named with what each waits on rather than given controls. Sentence form through `Field`'s decorative prefix and suffix, the journey rendered from `collections.stages` rather than described, and the NEVER block rendered as the floor the canvas says it is — with the two of four rules that are structural marked apart from the two that are intentions |
@@ -3250,3 +3251,50 @@ door.
 **What is still owed is the schedule.** Nothing runs the journey on its own, so a case advances
 when somebody asks — which is why the retry hour has nothing to read it, and why that absence
 is the first of the three.
+
+
+## ADM-SCH-07 — cancel a class, and the remedy that cannot be skipped
+
+**The canvas's last sentence is the screen**: "Cannot commit without choosing what the members
+get. A cancellation that notifies nobody is the most damaging thing this screen could permit,
+so the notification is the action rather than a follow-up." So there is no bare cancel control
+here: the sheet asks why, asks what the members get, shows what that costs, and shows the
+message before the button. ADR-0016 is the server half's record.
+
+**A sheet over the class rather than a screen of its own**, which is ADM-MSH-07's precedent —
+those canvases "are side sheets over Member 360, so the member's context stays visible while
+you change their agreement", and here the roster and the held resources are exactly the context
+a manager checks while deciding. A query parameter rather than a modal, so "Keep it" has
+somewhere to go: a permanently-open destructive form has no way out and gets confirmed by
+somebody reaching for the exit.
+
+Five things on it are decisions rather than rendering:
+
+- **The consequence is the server's and is re-read whenever the choice changes.** "6 places
+  free · 12 would need to choose another" is a statement about *one* destination, so a panel
+  left behind from a previous choice is a figure a manager would act on. The answer carries
+  what it was about — `previewFor` — so a reply about an edited choice is simply not the answer
+  to the one on screen, which is the derivation `@/lib/walk-in` needed a ref to catch.
+- **The declared reason is the only reason field, because the canvas draws one.** MOD-019
+  requires a non-blank prose reason on the change record, and a client composing one would put
+  *one locale's* sentence into a column both locales read — ADR-0015's own finding about prose
+  on the wire, from the writing side. The code is locale-free and renders beside `change_kind`
+  on the session page, which is already a code. The select has no default, so an unanswered one
+  is refused rather than sent as `other`, which is a different thing a member is told.
+- **The message is rendered here and said to be one of many.** "Sent in each member's language"
+  is the canvas's requirement and the backend has no message catalogue, so the command returns
+  the facts and this renders one preview in the reader's own language. Two bodies, one per
+  remedy, plus the note that the waitlist gets a shorter version.
+- **"Find a coach instead" names what is missing rather than being a dead control.**
+  ADM-SCH-03's clash check is built and is about a class being *created*; substituting an
+  instructor on a published session has no form, so a button here would answer nothing. "Never
+  a locked control with no route."
+- **The way in is shown by the gate's verdict rather than by `allowed`**, so a reader who could
+  step up is offered the sheet and the sheet offers the step-up, while one the gate denies
+  outright sees no control at all. A route nothing links to is a route nobody finds, which is
+  ADM-MEM-05's own finding and one this app shipped once.
+
+**What the sheet cannot do is tell anybody.** The command reports who is to be told and sends
+nothing: MOD-013 authors a message and has no dispatcher, and before that the member's address
+is `member.contact.read`'s question rather than a scheduling caller's. The canvas calls the
+notification the action, and that half is named on the confirmation rather than implied.

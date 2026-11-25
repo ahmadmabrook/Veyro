@@ -1461,7 +1461,12 @@ class CancellationRemedyApiTests(BookingApiTestCase):
         self.booked(gym, self.person(gym["tenant_id"]))
         refused = self._cancel(gym, remedy="credit")
         self.assertEqual(refused.status_code, 409, refused.text)
-        self.assertIn("class_credit", refused.json()["error"])
+        # **The whole code**, because the surface tells this refusal from the next one by its
+        # prefix: a rename here would leave the screen showing the generic conflict sentence
+        # instead of "declare a class credit", which is the one next step a reader can take.
+        self.assertEqual(
+            refused.json()["error"],
+            "this_tenant_has_declared_no_class_credit_entitlement")
 
     def test_two_class_credit_policies_are_refused_with_both_named(self) -> None:
         """MOD-027's trial-plan precedent: picking between two would be choosing which right
@@ -1473,6 +1478,10 @@ class CancellationRemedyApiTests(BookingApiTestCase):
         self.assertNotEqual(first, second)
         refused = self._cancel(gym, remedy="credit")
         self.assertEqual(refused.status_code, 409, refused.text)
+        self.assertTrue(
+            refused.json()["error"].startswith(
+                "this_tenant_has_more_than_one_class_credit_entitlement"),
+            refused.text)
         self.assertIn("credit.a", refused.json()["error"])
         self.assertIn("credit.b", refused.json()["error"])
 
