@@ -1701,13 +1701,22 @@ class ProcessGroupAndHeartbeatTests(Env):
         self.task("w", verify_cmd=[sys.executable, "-c", "import time; time.sleep(1.6)"])
         phases = {}
 
+        # **The elapsed time is sampled too, because the count alone misreports the fault.**
+        # `heartbeat_at` has 1 s resolution, so a phase that really lasts 1.6 s crosses a
+        # second boundary and must show at least two distinct values -- there is no timing
+        # slack that yields one. Seeing one therefore means the tick returned *instantly* and
+        # the fake orchestrator never ran, which is a different fault from a late beat and the
+        # opposite of what "1 not greater than or equal to 2" reads as. CI reported exactly
+        # that: `{'agent+verify': 5, 'planner': 1}`, a healthy first phase and an empty second.
         def sample(label):
             seen.clear()
-            end = time.time() + 30
+            started = time.time()
+            end = started + 30
             while th.is_alive() and time.time() < end:
                 seen.add(R.Store(self.home).load()["runner"]["heartbeat_at"])
                 time.sleep(0.05)
             phases[label] = len(seen)
+            phases[f"{label}_seconds"] = round(time.time() - started, 2)
 
         with mock.patch.object(R, "HEARTBEAT_S", 0.2):
             r = R.Runner(self.cfg)
@@ -1716,10 +1725,34 @@ class ProcessGroupAndHeartbeatTests(Env):
             th.start()
             sample("agent+verify")
             self.assertEqual(self.state()["w"]["status"], "COMPLETED")
+            # **Phase 2 is made independent of phase 1, which is why CI saw `planner: 1`.**
+            # One `Runner` serves both ticks and `handoff_idle` has three early returns that
+            # phase 1 can arm: the poll interval on `last_idle`, a settled handoff for this
+            # exact fingerprint ("ask OpenClaw once per distinct state"), and the writer lock.
+            # `handoff_poll` is 0 here so the first cannot bite, but if phase 1's tick reaches
+            # `handoff_idle` after completing the task it settles a handoff for the same
+            # state -- and phase 2 then returns before invoking anything, producing one
+            # heartbeat value and a failure that reads as a stale beat. Whether phase 1 gets
+            # there is timing, so it passed locally and failed on a slower runner. This is
+            # the SQL-probe rule in Python: a probe that depends on a sibling's committed
+            # state depends on that sibling.
             r.last_hb = 0
+            r.last_idle = 0
+            with R.Store(self.home).txn() as st:
+                st.pop("handoff", None)
             th = threading.Thread(target=r.tick)  # idle: planner CLI sleep
             th.start()
             sample("planner")
+        # **The phase ran at all, asserted before the beats.** Each is a child process this
+        # test asks to sleep -- 1.6 s twice for the agent and its verify, 1.6 s for the
+        # planner CLI -- so a phase that returns in a fraction of that did no work and the
+        # beat count is describing an absence rather than a stale heartbeat. Asserting the
+        # duration first makes the message name the real fault.
+        self.assertGreaterEqual(phases["agent+verify_seconds"], 2.0, phases)
+        self.assertGreaterEqual(
+            phases["planner_seconds"], 1.0,
+            f"the planner tick returned in {phases['planner_seconds']}s, so the fake "
+            f"orchestrator never ran -- this is not a heartbeat failure: {phases}")
         # heartbeat_at has 1 s resolution: without in-wait beats the agent+verify phase (~3.2 s) would show one value
         self.assertGreaterEqual(phases["agent+verify"], 3, phases)
         self.assertGreaterEqual(phases["planner"], 2, phases)

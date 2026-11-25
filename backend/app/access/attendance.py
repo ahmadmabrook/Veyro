@@ -72,11 +72,29 @@ NO_CAPACITY_PERCENTAGE = (
 )
 
 #: Said on every read, because the quietest hour is the figure a manager acts on.
+#:
+#: **Its first clause used to say "nothing in this build records when a club is open", and that
+#: has been false since MOD-026's third slice.** `plt01.tsk_business_hours` holds a location's
+#: weekly pattern and its dated overrides with a withdrawal trail, and `/tasks/business-hours`
+#: sets, withdraws and reads it -- a table, a writer and a route. MOD-026's own note says it
+#: built that calendar *because* nothing recorded when a club is open and cited this refusal
+#: for it, so the sentence outlived its reason by a module. It was returned to the caller on
+#: every read and rendered on ADM-RPT-04, which means the product was telling a manager it
+#: cannot know its own opening hours while a table held them.
+#:
+#: **What is still true is that this read does not consult them**, and that is a smaller and
+#: honest claim: the hours are gated on `tasks.calendar.read`, which an access reader does not
+#: hold, so consulting them is a composed second read whose availability depends on the
+#: reader -- and a club's opening hours being a *tasks* fact is the architecture question
+#: behind that, which ADM-SET-02 is the screen for. Until that is decided this read returns all
+#: twenty-four hours, and says why in terms that are true.
 OPENING_HOURS_ARE_NOT_RECORDED = (
-    "nothing in this build records when a club is open, so all 24 hours are returned and the "
+    "this read does not consult a club's opening hours, so all 24 hours are returned and the "
     "quietest hour is the quietest one that saw anybody at all. Its share of the peak is "
     "returned beside it: an hour at a few per cent of the busiest one is a stray entry "
-    "outside opening hours rather than a gap worth filling"
+    "outside opening hours rather than a gap worth filling. The hours themselves are recorded "
+    "per location in this build -- MOD-026's business calendar holds a weekly pattern and its "
+    "dated overrides -- and composing them here is work rather than a missing fact"
 )
 
 

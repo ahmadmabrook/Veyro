@@ -827,7 +827,28 @@ class AttendanceHistogramTests(unittest.TestCase):
         for signature in signatures:
             self.assertNotIn("capacity", signature, signature)
         self.assertIn("never of a zone's capacity", attendance.NO_CAPACITY_PERCENTAGE)
-        self.assertIn("opening", attendance.OPENING_HOURS_ARE_NOT_RECORDED)
+
+    def test_the_opening_hours_disclosure_does_not_claim_they_are_unrecorded(self) -> None:
+        """The hours *are* recorded in this build, so the disclosure may not say otherwise.
+
+        **This assertion used to be `assertIn("opening", ...)`, which a word satisfies.** The
+        sentence said "nothing in this build records when a club is open" for a whole module
+        after `plt01.tsk_business_hours` started holding exactly that -- a table, a writer, a
+        withdrawal and a read route, built by MOD-026 *because* nothing recorded a club's hours
+        and citing this report's refusal for it. The old test passed throughout and passes
+        against the corrected text too, so it was evidence of nothing in either direction.
+
+        What this asserts instead is the claim: the disclosure says this *read* does not consult
+        the hours, and does not say the build cannot know them. It is the narrower statement and
+        it is the true one -- and if somebody composes the second read, this test fails and sends
+        them here, which is the direction that matters.
+        """
+        said = attendance.OPENING_HOURS_ARE_NOT_RECORDED
+        self.assertIn("opening hours", said)
+        self.assertNotIn("nothing in this build records", said)
+        # The honest half: it names where they live rather than denying they exist.
+        self.assertIn("recorded", said)
+        self.assertIn("does not consult", said)
 
 
 if __name__ == "__main__":  # pragma: no cover

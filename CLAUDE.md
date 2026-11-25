@@ -140,6 +140,28 @@ The backend checks, each a separate command so one failure does not hide the res
 (cd backend && python3 -m unittest discover -s app/tenancy/domain/tests -t . -v)
 ```
 
+**And the one step a local run could not answer is the one that turned `main` red.**
+`tools/local_ci.sh`'s "MOD-000 runner suite" ran 49:49 on this machine without finishing and
+would not finish alone under a five-minute bound, so a commit went out with its other eighteen
+steps run individually and that hole stated in the message. **It is slow rather than stuck** --
+304 tests that spawn children and sleep in real time, 62 seconds on CI and tens of minutes on a
+machine also building Next and running a browser suite -- and calling it a hang took sampling
+`0.0%` CPU three times on the wrong process: the pipeline's parent was `timeout`, and the
+interpreter was a grandchild at 10.5%. CI failed on exactly that step --
+`test_heartbeat_stays_fresh_during_agent_verify_and_planner_waits`, with
+`1 not greater than or equal to 2 : {'agent+verify': 5, 'planner': 1}`.
+
+**The cause was a test reusing one `Runner` across two phases.** It resets `last_hb` between
+them and not the handoff record, and `handoff_idle` returns at once for a state it has already
+answered -- so if the first tick reaches that function after completing its task, the second
+returns before invoking anything and the phase meant to prove the runner beats *while waiting*
+did no waiting. Reproduced by pre-settling a handoff, fixed by resetting it, and proven in both
+directions. **And the count could not have meant what the message said**: `heartbeat_at` has
+one-second resolution, so a phase that really lasts 1.6 s must show at least two distinct
+values -- one means the phase was instant, which is a different fault from a late beat. The
+test samples the elapsed time now and asserts the duration first, so the message says "the
+planner tick returned in 0.05s, so the fake orchestrator never ran".
+
 **And those are not what CI runs.** CI runs eleven more steps -- the governance structural
 check, its own validator suite, the domain-closure check and suite, the runner and
 trusted-gate suites, the screen-contract identity check, and the web app's `audit:ci`,
@@ -2806,11 +2828,19 @@ the figure on the card was **not expressible**. `mem_membership_terms.billing_an
   rule would be a pair of dates that can disagree about when a member is billed, which is this
   build's most-repeated finding, and a test walks three periods forward to say the one rule is
   enough.
-- **`calendar` is refused for `weekly`, by the database.** A week has no calendar boundary this
-  build may name: whether one begins on Sunday or Monday is exactly the fact ADM-RPT-04 refuses
-  to assert, because no table or configuration key here records a working week -- and inventing
-  one to anchor a billing period would be that invention in the place it decides a charge.
-  `one_off` has no renewal to anchor. Both are a CHECK rather than a convention.
+- **`calendar` is refused for `weekly`, by the database -- and the reason recorded for it is
+  wrong, which is disclosed rather than quietly re-decided.** The note said "a week has no
+  calendar boundary this build may name: whether one begins on Sunday or Monday is exactly the
+  fact ADM-RPT-04 refuses to assert, because no table or configuration key here records a
+  working week". Two parts of that are false. CON-04 states the week's first day is *derived
+  from the region* -- "Jordan sets ... a Sunday week start" -- so the boundary is nameable; and
+  `plt01.tsk_business_hours` records a location's open days, so a working week is derivable
+  too. The refusal may still be right for a different reason -- a weekly period anchored to a
+  calendar week is a product decision about whether a Tuesday sale bills to Sunday -- but that
+  reason has not been written, so what stands is the CHECK and a reason that does not support
+  it. **Re-deriving it is the work; asserting the behaviour is still correct without doing that
+  would be the thing this build keeps finding.** `one_off` has no renewal to anchor, which is
+  unaffected. Both are a CHECK rather than a convention.
 - **The denominator is the full calendar unit, not the short period.** 21.29 is twelve days
   over thirty-one, and prorating over the short period instead is twelve over twelve -- the
   full price, disclosed as a pro-rata figure, which is the number a member would dispute.
@@ -3774,18 +3804,24 @@ Known gaps, deliberate:
   that provisions one region and wrong the day there is a second. Searching every batch canvas
   for the concept took one command and produced four hits; two sessions of arguing about
   Sunday against Monday had searched none of them.
-- **The same four hits closed a different gap, which is the better find.** ADM-SET-02 draws
-  "KHALDA OPENING HOURS · Sun-Thu 06:00-23:00 · Fri 14:00-22:00 · Sat 08:00-22:00 · FLOOR
-  CAPACITY 180", and the fidelity table already records that those two figures "have no read".
-  That is exactly the data `GET /reports/attendance` refuses to assume -- it returns all
-  twenty-four hours and will not label a day set "weekdays" "because nothing in this build
-  records a working week". The report's gap and that screen's partial are one missing read, not
-  two, and MOD-022's note saying a rota is not a site's opening hours was right to refuse to
-  derive it: the design puts it on a different screen. The first version started on Monday because `Window.weekday` is
-  0-Monday -- which is a *storage* convention and says nothing about how a week is read: the
-  rota rows are keyed by weekday number either way and only the order of the seven dates moved.
-  It is **not** a declaration of which days anybody works; `GET /reports/attendance` still
-  refuses to label a day set "weekdays", because nothing in this build records one.
+  The first version started on Monday because `Window.weekday` is 0-Monday -- a *storage*
+  convention that says nothing about how a week is read: the rota rows are keyed by weekday
+  number either way and only the order of the seven dates moved. It is **not** a declaration of
+  which days anybody works.
+- **The same four hits closed a different gap, and then a fifth check closed most of that
+  one too.** ADM-SET-02 draws "KHALDA OPENING HOURS · Sun-Thu 06:00-23:00 · Fri 14:00-22:00 ·
+  Sat 08:00-22:00 · FLOOR CAPACITY 180", and the fidelity table records that those two figures
+  "have no read" -- which looked like the data `GET /reports/attendance` refuses to assume. It
+  is not: **`plt01.tsk_business_hours` has held a location's weekly pattern and its dated
+  overrides since MOD-026's third slice**, with a writer, a withdrawal and a read route, and
+  MOD-026 built it *because* nothing recorded a club's hours, citing this report's refusal as
+  its evidence. So the report's note was stale rather than the data missing, the report was
+  **returning that false sentence to every caller**, and the genuinely unread figure is the
+  floor capacity alone. What is left is a composed read -- the hours are gated on
+  `tasks.calendar.read`, which an access reader does not hold -- and the question of whether a
+  club's opening hours are a *tasks* fact at all, which is ADM-SET-02's. MOD-022's refusal to
+  derive a site's hours from a resource's rota was right throughout: the design does put it on
+  a different screen.
 - **Two overlapping working rows double-counted their overlap**, found by the test written for
   the arithmetic rather than by a reviewer. A rota entered as 09:00-13:00 and then widened by
   adding 11:00-15:00 -- rather than by editing the first row, which nothing in this module
@@ -4459,7 +4495,17 @@ Known gaps, deliberate:
   rather than changed: "visits" counted per zone is what the event ledger holds, and picking
   one zone per club would be a read deciding which door is the door. Narrowing to one zone is
   the figure a manager wants for a building's own arrivals, and the surface offers it.
-- **Nothing in this build records when a club is open.** So the hourly read returns all
+- **This read does not consult a club's opening hours, and the note here used to say nothing
+  recorded them.** That was false for a module: `plt01.tsk_business_hours` holds a location's
+  weekly pattern and its dated overrides, and `/tasks/business-hours` sets, withdraws and reads
+  it -- MOD-026 built that calendar *because* nothing recorded a club's hours and cited this
+  refusal as its evidence, so closing the gap left behind the note that motivated it. The
+  sentence was **returned to the caller on every read** and rendered on ADM-RPT-04, which makes
+  it a defect rather than a stale comment, and its guard was `assertIn("opening", ...)` -- a
+  word both the false and the true sentence contain. What is still true is narrower: the hours
+  are gated on `tasks.calendar.read`, which an access reader does not hold, so marking the
+  closed hours is a composed second read, and whether a club's opening hours are a *tasks* fact
+  is ADM-SET-02's question. So the hourly read returns all
   twenty-four hours and the quietest hour is the quietest one that *saw anybody* -- taken over
   all twenty-four it is four in the morning in every club in the world. Its share of the peak
   rides beside it, which is what makes a stray 04:00 entry read as what it is rather than as
@@ -4973,8 +5019,14 @@ Four decisions carry the slice:
   `tenant_id`, which RLS already bounds.
 - **Business hours are this module's own table, and that is the one new fact the build
   needed.** INV-AUT-02 wants SLA arithmetic "time-zone and business-calendar aware", and
-  nothing here records when a club is open -- MOD-022's attendance report says so and refuses
-  to derive it, because MOD-019's rota is a *resource's* rather than a site's. The weekly and
+  nothing recorded when a club is open -- MOD-022's attendance report said so and refused to
+  derive it, because MOD-019's rota is a *resource's* rather than a site's. **This table is
+  what closed that, and the report's note outlived it by a module**: that sentence was still
+  being returned to every caller of `GET /reports/attendance` and rendered on ADM-RPT-04, so
+  the product was telling a manager it cannot know its own opening hours while this table held
+  them. Corrected where it is said; the composed read is work. And a club's opening hours
+  being a *tasks* fact is the architecture question ADM-SET-02 raises, since the read is gated
+  on `tasks.calendar.read` and an access reader does not hold it. The weekly and
   dated split is MOD-019's, reused rather than re-chosen. **A location with no rows has no
   business hours, which is not the same as being closed all week**: MOD-019's first version
   read an empty rota as "never available" and nothing could be scheduled in a tenant at all,

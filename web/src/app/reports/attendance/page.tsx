@@ -287,10 +287,19 @@ export default async function AttendanceReportPage({
 
       <section className="page-section" aria-labelledby="visits-by-hour">
         <h2 id="visits-by-hour">{text("attendanceReport.chartTitle")}</h2>
-        {/* **Twenty-four bars, including the empty ones.** Nothing in this build records
-            when a club is open, so trimming the axis to the hours that saw somebody would
-            be the surface inventing opening hours -- and a 03:00 entry is exactly the bar a
-            manager wants to see. Each bar carries its hour and count as text, because a bar
+        {/* **Twenty-four bars, including the empty ones.** This read does not consult the
+            club's opening hours, so trimming the axis to the hours that saw somebody would
+            be the surface inventing them -- and a 03:00 entry is exactly the bar a manager
+            wants to see.
+
+            **"Nothing in this build records when a club is open" is what this comment said,
+            and it had been false for a module.** `plt01.tsk_business_hours` holds a
+            location's weekly pattern and its dated overrides, and `/tasks/business-hours`
+            sets, withdraws and reads it -- MOD-026 built that calendar *because* nothing
+            recorded a club's hours, citing this report's own refusal. The hours are gated on
+            `tasks.calendar.read`, which an access reader does not hold, so marking the closed
+            bars is a composed second read rather than a missing fact; whether a club's
+            opening hours are a *tasks* fact at all is ADM-SET-02's question. Each bar carries its hour and count as text, because a bar
             is a colour-and-length signal and §15's rule is that nothing carries meaning
             alone; the three tones are tiers of the share of the busiest hour, never of a
             capacity. */}

@@ -793,19 +793,23 @@ numeric bound: the integer has to be the whole literal, or `'00:01:30'::interval
 `1000000:01:30'::interval` and the statement never runs.
 
 
-**The gate's "MOD-000 runner suite" step is minutes long and can hang, so a gate that has not
-printed its verdict is not a gate that is failing.** Measured on this machine: the whole gate
-finished in about eight minutes twice, and then that one step ran 49:49 at 9% CPU without
-finishing, and alone under `timeout 300` it did not finish either. Its output is JSON about
-`runner_alive` / `child_alive`, so it drives subprocesses and polls them -- which is the shape
-that hangs when something it spawned does not exit. Two monitors armed on the verdict line
-expired with no events, which reads exactly like a stuck watch rather than a stuck suite.
+**The gate's "MOD-000 runner suite" step is tens of minutes on a loaded machine and is sleepy
+rather than stuck -- and I called it a hang twice before measuring the right process.** It ran
+49:49 and did not finish; alone under `timeout 300` it did not finish either; CI runs the same
+304 tests in 62 seconds. The tests spawn children and sleep in real time (1.6 s at a stretch,
+repeatedly), so the suite is mostly waiting, and on a machine also building Next and running a
+browser suite it stretches badly.
 
-**What to do rather than skip the gate**: run its other eighteen steps individually -- each is
-seconds and the loop is seven `tools/` commands plus eight `npm run` ones -- and say which ran.
-That is honest where "I ran the gate" would not be, and it keeps the standard. And `pgrep -f`
-plus `ps -o etime,%cpu` on the step's own process is what distinguishes slow from stuck in one
-command; a log that has stopped growing says neither.
+**`ps` on the wrong process is what made it look stuck.** Sampling the pipeline's parent showed
+`0.0` CPU three times in a row -- but that parent was `timeout`, with `tail` and `cut` beside it;
+the real interpreter was a *grandchild* at 10.5%. `pgrep -P <pid>` down to the leaf is the check,
+and `tail` in the pipeline also keeps the output file empty until the end, so a zero-byte log
+says nothing either. Two independent reasons a slow step reads as a dead one.
+
+**What to do when the gate will not finish in the time available**: run its other eighteen steps
+individually -- seven `tools/` commands and eight `npm run` ones, each seconds -- and say which
+ran and which did not. That is honest where "I ran the gate" would not be. It is also what left
+`main` red once: the step that could not be run locally is the step that failed.
 
 **`tools/local_ci.sh` and the browser suite cannot run at the same time.** The gate's last
 step is `npm run build`, which writes `.next`, and the browser suite's `webServer` under `CI=1`
@@ -3220,6 +3224,62 @@ collected nothing and printed `Tests  no tests`, which reads as a gap the harnes
 fifth distinct form of "a mutation that changes nothing is not evidence" here, and the cheapest
 guard is the shape rather than a check: **mutate the value a branch returns, never the clauses
 around it.**
+
+**A test that reuses one object across two phases depends on what the first phase happened to
+do, and the failure names the wrong thing.** This file records the SQL version -- "a probe that
+depends on a sibling's committed state depends on that sibling passing" -- and `main` went red
+on the Python version. MOD-000's heartbeat test runs one `Runner` through two ticks and resets
+`last_hb` between them; it does not reset the handoff record, and `handoff_idle` returns at once
+for a state it has already answered ("ask OpenClaw once per distinct state"). If the first
+tick reaches that function after completing its task, the second returns before invoking
+anything -- so the phase meant to prove the runner beats *while waiting* did no waiting, and the
+assertion reported `1 not greater than or equal to 2`, which reads as a stale heartbeat.
+
+**The count could not have meant what the message said, and that is the part worth keeping.**
+`heartbeat_at` has one-second resolution, so a phase that genuinely lasts 1.6 s crosses a second
+boundary and must show at least two distinct values: there is no timing slack that yields one.
+*One* therefore means the phase was instant. The test now samples the elapsed time beside the
+count and asserts the duration first, so the message is "the planner tick returned in 0.05s, so
+the fake orchestrator never ran -- this is not a heartbeat failure". **Proven in both
+directions**: pre-settling a handoff with no reset reproduces CI exactly, and with the reset it
+passes.
+
+**And it was not CI-specific, which is the part that nearly sent the diagnosis wrong.** Run
+alone the test passes in six seconds; run inside its own suite the earlier tests leave the
+runner in a state where the first tick reaches `handoff_idle`, so the same failure reproduces
+locally. "Passes alone, fails on CI" is the signature of *suite* order, not of a slower
+machine -- and chasing the machine is what a reader does when the single-test run is the only
+one they try. Run the whole file before concluding anything about the environment.
+
+So: when an assertion about a count can only take one value under the fault it is written for,
+assert the thing that distinguishes them -- and when a test drives the same object twice, reset
+every piece of state the second pass reads, not just the one the first pass obviously wrote.
+
+**A gap note the product *returns to the caller* is a defect rather than a stale comment, and
+a test that asserts a word in it cannot catch either.** `attendance.OPENING_HOURS_ARE_NOT_
+RECORDED` opened with "nothing in this build records when a club is open", was returned on every
+`GET /reports/attendance` and rendered on ADM-RPT-04 -- and it had been false for a module.
+`plt01.tsk_business_hours` holds a location's weekly pattern and its dated overrides with a
+withdrawal trail, and `/tasks/business-hours` sets, withdraws and reads it. **MOD-026 built that
+calendar *because* nothing recorded a club's hours and cited this very refusal as its evidence**,
+so closing the gap left the note that motivated it behind, telling a manager the product cannot
+know its own opening hours.
+
+Three things to take from it:
+
+- **The guard was `assertIn("opening", said)`.** A word, which the false sentence and the true
+  one both contain -- so it passed for the whole module the claim was wrong and passes against
+  the correction too. It asserts the claim now (the read does not consult the hours; the build
+  does record them) and a mutation putting the old sentence back fails it.
+- **The honest correction was to narrow the claim, not to build the feature.** The hours are
+  gated on `tasks.calendar.read`, which an access reader does not hold, so consulting them is a
+  composed second read -- and whether a club's opening hours are a *tasks* fact at all is an
+  architecture question with a screen of its own. "This read does not consult them, and here is
+  where they live" is true today and points at the work.
+- **Grep the *consequence*, not the sentence.** The same claim sat in a JSX comment on the
+  screen, in the same words, because it was copied when the screen was built. One is returned
+  over the wire and one is read by the next author; both were wrong and only the first is a
+  product defect.
 
 **`veyro-product-experience-design/project/veyro-screen.js` is the prototype and the
 `Veyro V1 Batch *.dc.html` files are the deliverable, and the two differ on *which fields
