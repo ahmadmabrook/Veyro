@@ -294,21 +294,13 @@ const BACKLOG = {
     + "get -- moving all eighteen to another session, or crediting each of them -- and "
     + "neither bulk remedy is a built operation in MOD-019 or MOD-020. MOD-013's dispatcher "
     + "is the seam the notification stops at, behind both",
-  // **Read against the code before building to it, which changed what the work is.** The
-  // entry below used to say the four settings are simply unstored. Three of the five the
-  // canvas draws have no *reader* either, which is a different and larger thing: storing one
-  // would be this build's most-repeated finding, a value nothing acts on -- so the screen
-  // owes a sentence per setting rather than a control per setting.
-  "ADM-PAY-06": "work: MOD-017. The canvas sets five things in sentence form and two of them "
-    + "have readers today: the retry count is `may_retry`'s `max_attempts`, and the access "
-    + "grace is the day offset on `STAGES`' `restrict` stage -- both module constants, so "
-    + "making them tenant-settable means `next_step` taking the policy rather than closing "
-    + "over it, with MOD-005's typed registry holding the values. The other three configure "
-    + "machinery that does not exist: the hour a retry runs needs the dunning sweep MOD-017 "
-    + "lists as undriven, the drafted message held for approval needs a dispatcher MOD-013 "
-    + "does not have, and the exception threshold needs collections to write a MOD-026 case, "
-    + "which nothing does. The NEVER block is the floor the canvas says is not configurable, "
-    + "so it is rendered rather than stored",
+  // **ADM-PAY-06 was here and is built.** `/payments/dunning` sets the two figures that have
+  // readers -- the retry budget `recovery_treatment` sorts by, and the access grace on
+  // `STAGES`' `restrict` stage -- and names the other three the canvas draws with what each
+  // waits on, because storing a value nothing acts on is this build's most-repeated finding.
+  // The NEVER block is rendered rather than stored, which the canvas says outright: "it is
+  // the floor beneath every dunning policy". Two of its four rules are properties of this
+  // build rather than intentions and the screen says which.
   "ADM-STF-03": "work: MOD-007's registration is open, so there is no invitation in this "
     + "build at all -- no table, no token, no expiry, and nothing that accepts one. The role "
     + "and the clubs the canvas picks are MOD-008's assignment with its scope, which exists; "

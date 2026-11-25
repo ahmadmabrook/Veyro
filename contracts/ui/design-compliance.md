@@ -327,6 +327,7 @@ corresponds to them. The others map loosely:
 | `/schedule/{id}` | ADM-SCH-02 Class detail and roster | **rebuilt** — the band, four MetricCells, the roster; the three actions are stepped-up writes with no form |
 | `/payments` | ADM-PAY-01 Payments ledger | **built from the canvas** — four kinds on one axis, signed; refund and export are named as absent |
 | `/payments/cash` | ADM-PAY-09 Cash reconciliation · shift close | **built from the canvas** — the expected figure before the count, over a read that did not exist; the co-sign and the tolerance are named as absent, the second being stricter here than drawn |
+| `/payments/dunning` | ADM-PAY-06 Dunning rules · owner & accountant | **built from the canvas, and reading it against the code first changed what the work was** — of the five settings it draws, two have readers and three configure machinery this build does not have, so those three are named with what each waits on rather than given controls. Sentence form through `Field`'s decorative prefix and suffix, the journey rendered from `collections.stages` rather than described, and the NEVER block rendered as the floor the canvas says it is — with the two of four rules that are structural marked apart from the two that are intentions |
 | `/finance/invoices/{id}` | ADM-PAY-03 Invoice detail | **built from the canvas** — lines, the life, the filing; no edit at any permission, which is the canvas's own rule and this schema's property |
 | `/fleet` | ADM-ACC-01 Access control dashboard | **rebuilt** — the finding as the title, CLUB and TODAY columns |
 | `/access/{id}` | ADM-ACC-02 Access denial log | **rebuilt** — the policy/fault split, counted by MOD-022's own codes |
@@ -3185,3 +3186,67 @@ Gating first costs a request and writes nothing.
 twin -- a receipt's own figures go through `backend/app/l10n/conventions.py`, which implements
 `arab` in full and is never passed it, because nothing in the backend renders a figure for a
 tenant yet.
+
+## ADM-PAY-06 — dunning rules, and the two settings of five that have readers
+
+The canvas is four sentences and a floor: "Retry the card **twice**, one day apart, at
+**06:00**. Draft a message after the **final** failure and **hold it for approval**. Allow
+access for **14 days** past the due date. Raise a Command Center exception when **3 or more**
+fail in one run." Then "NEVER, WHATEVER THE RULES SAY", four rules, and its own note: "Sentence
+form, same as the automation builder. The NEVER block is not configurable per-tenant — it is
+the floor beneath every dunning policy."
+
+**Reading it against `collections.py` first is what changed the work.** The backlog entry said
+the four settings were unstored and MOD-005's registry was where a tenant-settable one would
+live — true, and understated. Of the five figures the canvas sets, **two have readers**: the
+retry budget is `recovery_treatment`'s `max_attempts`, which is what ADM-PAY-05's workspace
+sorts by, and the access grace is the day offset on `STAGES`' `restrict` stage — which is why
+the canvas's 14 and the table's 14 are the same number. The other three configure machinery
+this build does not have: the hour a retry runs needs the dunning sweep MOD-017 lists as
+undriven, the drafted message held for approval needs a dispatcher MOD-013 does not have, and
+the exception threshold needs collections to write a MOD-026 case, which nothing does.
+
+**So the screen is two controls and three named absences.** Storing a value nothing acts on is
+this build's most-repeated finding, and a control for one of the three would be worse than its
+absence: a tenant would believe they had configured something. Each absence carries the
+canvas's own sentence and what it waits on.
+
+**Sentence form is `Field`'s decorative prefix and suffix**, and the division is the component's
+own contract: both are excluded from the accessible name, so the `label` carries the whole
+meaning a screen reader hears ("Times to retry a failed card") while the halves draw the
+sentence a sighted reader reads ("Retry the card [2] times, one day apart."). A sentence
+assembled from spans with the control in the middle would be a field with no accessible name at
+all.
+
+**The journey is rendered rather than described.** The two figures produce five dated steps and
+`collections.stages` returns them, so what a reader checks is what the module will do — and the
+page holds no second copy of the stage table to disagree with. The `restrict` row is the one
+marked, because every other row is the product's own notice schedule and unremarkable.
+
+**The floor is rendered as the floor the canvas says it is, and two of its four rules are
+structural.** An access recommendation is recorded and never applied (paragraph 1496), and there
+is no stored card to charge; the other two — never message outside 09:00–20:00, never more than
+one reminder a week — are intentions, because nothing here sends. The list says which, since a
+floor a reader cannot tell from an intention is a floor they have to take on trust. It comes
+down as four codes rather than four sentences, for `GET /reports/attendance`'s reason: this
+application has two message catalogues and prose on the wire can only be read by one.
+
+**One finding from rendering it, and the sweep found it rather than a failure.** The first
+version of the form rendered its own `<input className="ds-input">`; the undefined-`ds-`-class
+sweep said that class styles nothing, and simplifying to the field shell is what surfaced the
+real question — **what should the value in the box be?** Every rendered figure in this app
+follows `localization.numerals`, and a form field is the one exception: on an `arab` tenant a
+formatted figure would be refused by the action's own `/^\d+$/`. `String(n)`, with the reason
+beside it.
+
+**The write is stepped-up and the page offers it rather than a button.**
+`finance.dunning.manage` is financial class because the figures decide when a member's access is
+recommended to be restricted, so an ordinary password session gets the sentence and the step-up
+— ADM-MSH-03's precedent. The route charges three permissions, because the act is three things:
+a dunning decision, a configuration publish, and a key registration where a tenant has none.
+Charging only the dunning one would let its holder write into MOD-005's registry by another
+door.
+
+**What is still owed is the schedule.** Nothing runs the journey on its own, so a case advances
+when somebody asks — which is why the retry hour has nothing to read it, and why that absence
+is the first of the three.

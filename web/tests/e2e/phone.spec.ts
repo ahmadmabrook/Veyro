@@ -32,6 +32,7 @@ const surfaces: [string, string][] = [
    `/rota?resource=${creds.coachResourceId}&from=${creds.rotaExceptionDay}`],
   ["the configuration board", "/configuration"],
   ["the localization screen", "/localization"],
+  ["the dunning rules", "/payments/dunning"],
   ["the operations board", "/operations"],
   ["the fleet board", "/fleet"],
   ["a device", `/fleet/${creds.deviceId}`],

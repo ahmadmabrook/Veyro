@@ -401,6 +401,14 @@ export default async function RecoveryPage({
         </>
       )}
 
+      {/* **The rules this sort is decided by**, which is the one link this screen owes: a
+          reader asking why one row wants a retry and another a link is asking about the retry
+          budget, and ADM-PAY-06 is where it is set. A screen with no route to it is
+          unreachable, and this is the screen its figures are about. */}
+      <p className="ds-note">
+        <Link href="/payments/dunning">{text("recovery.rulesLink")}</Link>
+      </p>
+
       {/* What this screen cannot do. */}
       <section className="page-section">
         <h2 style={{ margin: 0 }}>{text("recovery.notYet")}</h2>

@@ -78,6 +78,28 @@ STAGES: tuple[tuple[int, int, str, str], ...] = (
 #: step" without knowing the table.
 FINAL_STAGE = STAGES[-1][0]
 
+#: The stage whose own day offset is what ADM-PAY-06 calls the access grace -- "Allow access
+#: for 14 days past the due date" is this row's 14, which is why the canvas's number and the
+#: table's agree. Named rather than indexed, because a reader counting rows to find it is a
+#: reader who will miscount the day a stage is added.
+_ACCESS_STAGE = 4
+
+#: The default retry budget and the default access grace: exactly what this build ran before
+#: either was settable. **That is load-bearing rather than cautious** -- ADR-0011's reasoning
+#: about the billing anchor applied to a collections policy: a tenant that has declared
+#: nothing keeps the journey its cases were opened on, so adding the settings moves nobody's
+#: dates.
+DEFAULT_RETRY_ATTEMPTS = 4
+DEFAULT_ACCESS_GRACE_DAYS = 14
+
+#: The band the access grace may be set in, and the lower bound is the interesting half: the
+#: `warn` stage sits at seven days, so a grace shorter than that would restrict access *before*
+#: the member had been warned -- which is the one ordering in the journey that cannot be
+#: inverted. The upper bound matches `next_step`'s own per-account grace, because a figure in
+#: days that two functions bound differently is two answers to the same question.
+MIN_ACCESS_GRACE_DAYS = 8
+MAX_ACCESS_GRACE_DAYS = 180
+
 
 class CollectionsError(ValueError):
     """A collections input this module will not accept."""
@@ -105,9 +127,58 @@ class NextStep:
     is_final: bool
 
 
-def stage(number: int) -> Stage:
-    """One stage by number."""
-    for n, days, key, access in STAGES:
+@dataclass(frozen=True)
+class Policy:
+    """The two figures ADM-PAY-06 lets a tenant set, validated where they are decided.
+
+    **Two of the canvas's five settings, and the other three are named on the screen rather
+    than stored.** It sets the retry count, the hour a retry runs, whether a drafted message is
+    held for approval, the access grace and an exception threshold. The hour needs the dunning
+    sweep MOD-017 lists as undriven; the held message needs a dispatcher MOD-013 does not have;
+    the threshold needs collections to write a MOD-026 case, which nothing does. Storing a
+    value nothing acts on is this build's most-repeated finding, so this carries the two that
+    have readers and the screen says what the others wait on.
+
+    **`access_grace_days` is not `next_step`'s `grace_days`, and conflating them is the trap.**
+    This one is tenant policy: how long after a due date the journey keeps recommending access.
+    That one is the *account's* payment terms, read per billing account and added once at the
+    front of the whole journey -- so a corporate payer on thirty-day terms is not warned on day
+    three. Two figures in days, two different subjects, and the screen says so because a reader
+    seeing both would assume they were one.
+    """
+
+    retry_attempts: int = DEFAULT_RETRY_ATTEMPTS
+    access_grace_days: int = DEFAULT_ACCESS_GRACE_DAYS
+
+    def __post_init__(self) -> None:
+        if self.retry_attempts < 1 or self.retry_attempts > 20:
+            raise CollectionsError("a_retry_budget_is_between_one_and_twenty")
+        if not (MIN_ACCESS_GRACE_DAYS <= self.access_grace_days <= MAX_ACCESS_GRACE_DAYS):
+            raise CollectionsError("an_access_grace_is_between_eight_and_one_hundred_and_eighty")
+
+
+#: The policy a caller that states none gets: today's behaviour, unchanged.
+DEFAULT_POLICY = Policy()
+
+
+def stages(policy: Policy = DEFAULT_POLICY) -> tuple[tuple[int, int, str, str], ...]:
+    """`STAGES` with the tenant's access grace in it.
+
+    **The tail moves with it and the head does not.** The first three stages are the product's
+    own notice schedule -- day 0, day 3, day 7 -- and the canvas sets one number, so the
+    `restrict` stage lands on it and `suspend` keeps its seven days behind. Scaling the notices
+    too would make "allow access for 30 days" also mean "warn after 15", which the canvas does
+    not say; leaving `suspend` fixed would let it precede the stage it follows.
+    """
+    shift = policy.access_grace_days - DEFAULT_ACCESS_GRACE_DAYS
+    return tuple(
+        (n, days + shift if n >= _ACCESS_STAGE else days, key, access)
+        for n, days, key, access in STAGES)
+
+
+def stage(number: int, policy: Policy = DEFAULT_POLICY) -> Stage:
+    """One stage by number, under this tenant's policy."""
+    for n, days, key, access in stages(policy):
         if n == number:
             return Stage(n, days, key, access)
     raise CollectionsError(f"{number} is not a dunning stage this build runs")
@@ -124,7 +195,10 @@ def classify_failure(failure_code: str | None) -> str:
     return FAILURE_CLASSES.get(failure_code, UNKNOWN_CAUSE)
 
 
-def may_retry(failure_code: str | None, *, attempts: int, max_attempts: int = 4) -> bool:
+def may_retry(
+    failure_code: str | None, *, attempts: int,
+    max_attempts: int = DEFAULT_RETRY_ATTEMPTS,
+) -> bool:
     """Whether a failed payment should be attempted again.
 
     **A permanent failure is never retried, whatever the attempt count says**, and that is the
@@ -145,6 +219,7 @@ def may_retry(failure_code: str | None, *, attempts: int, max_attempts: int = 4)
 
 def next_step(
     *, current_stage: int, due_on: date, grace_days: int = 0,
+    policy: Policy = DEFAULT_POLICY,
 ) -> NextStep | None:
     """The next step of the journey, or None when it is over.
 
@@ -158,7 +233,7 @@ def next_step(
     following = current_stage + 1
     if following > FINAL_STAGE:
         return None
-    step = stage(following)
+    step = stage(following, policy)
     return NextStep(
         stage=step.stage,
         due_on=due_on + timedelta(days=grace_days + step.days_after_due),
@@ -167,9 +242,11 @@ def next_step(
         is_final=step.stage == FINAL_STAGE)
 
 
-def opening_step(*, due_on: date, grace_days: int = 0) -> NextStep:
+def opening_step(
+    *, due_on: date, grace_days: int = 0, policy: Policy = DEFAULT_POLICY,
+) -> NextStep:
     """The first step, taken when a case opens."""
-    step = stage(1)
+    step = stage(1, policy)
     return NextStep(
         stage=step.stage,
         due_on=due_on + timedelta(days=grace_days + step.days_after_due),
@@ -356,7 +433,7 @@ def recovery_treatment(
     *,
     attempts: int,
     membership_status: str | None,
-    max_attempts: int = 4,
+    max_attempts: int = DEFAULT_RETRY_ATTEMPTS,
 ) -> Treatment:
     """What to do about one failed payment, given why it failed and where the member stands.
 

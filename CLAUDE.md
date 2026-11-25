@@ -3252,6 +3252,74 @@ Known gaps, deliberate:
   Selling a membership, freezing one, cancelling one, issuing an invoice and taking a payment
   are all built on the server and none has a form, which is the same gap the hierarchy has and
   for the same reason: every one of those writes is a stepped-up financial permission.
+**ADM-PAY-06 is built: the two dunning figures a tenant can set, and the three the canvas
+draws that nothing here reads.** `/payments/dunning` and `GET`/`POST /finance/dunning-policy`.
+Proven: 7 domain tests with no database, 11 HTTP tests, 10 Python mutations in
+`tests/mutate_dunning_policy.py` (all caught), 6 component tests, 13 browser tests and 6
+browser mutations.
+
+**Reading the canvas against the code before building to it is what changed the work**, and the
+backlog entry had understated it: of the five settings ADM-PAY-06 sets in sentence form, **two
+have readers** -- the retry budget `collections.recovery_treatment` sorts ADM-PAY-05's
+workspace by, and the access grace which is the day offset on `STAGES`' `restrict` stage -- and
+three configure machinery that does not exist. The hour a retry runs needs the dunning sweep
+this file lists as undriven; the drafted message held for approval needs a dispatcher MOD-013
+does not have; the exception threshold needs collections to write a MOD-026 case, which nothing
+does. **Storing a value nothing acts on is this build's most-repeated finding**, so those three
+are named on the screen with what each waits on rather than given controls: a control for one
+would be worse than its absence, because a tenant would believe they had configured something.
+
+Five decisions carry it:
+
+- **`collections.Policy` validates the pair, and the bands are where the figures mean
+  something.** The access grace is 8 to 180 and the lower bound is the interesting half: the
+  `warn` stage sits at seven days, so a shorter grace would restrict access *before* the member
+  had been warned, which is the one ordering in the journey that cannot be inverted.
+- **The tail of the journey moves with the grace and the notices do not.** The canvas sets one
+  number, so `restrict` lands on it and `suspend` keeps its seven days behind; scaling the
+  notices too would make "allow access for 30 days" also mean "warn after 15", which the canvas
+  does not say.
+- **The default is what this build already ran**, which is load-bearing rather than cautious:
+  ADR-0011's reasoning about the billing anchor applied to a policy, so a tenant that has
+  declared nothing keeps the journey its open cases were opened on and adding the settings moves
+  nobody's dates. `declared` comes back on the read for the same reason the display read carries
+  it.
+- **`dunning_policy_on` takes a connection**, so the policy and the decision it bounds commit
+  together -- MOD-010's `append_event` argument applied to a journey. A case advanced on one
+  policy while another was being published is a date nobody can reconstruct.
+- **`access_grace_days` is not `next_step`'s `grace_days`, and the screen says so.** This one is
+  tenant policy about one stage; that one is the *account's* payment terms, read per billing
+  account and added once at the front of the whole journey. Two figures in days, two different
+  subjects, and a reader seeing both would assume they were one.
+
+Three things to know before extending it:
+
+- **The NEVER block is rendered, not stored.** The canvas says so outright -- "not configurable
+  per-tenant; it is the floor beneath every dunning policy" -- and two of its four rules are
+  properties of this build rather than intentions: an access recommendation is recorded and
+  never applied (paragraph 1496), and there is no stored card to charge. The read says which,
+  because a floor a reader cannot tell from an intention is a floor they have to take on trust.
+  It travels as four codes rather than four sentences, for `GET /reports/attendance`'s reason.
+- **The form's own value stays ASCII, which is the one place in this app the tenant's numerals
+  are deliberately not applied.** Every rendered figure follows `localization.numerals`; a form
+  field is typed back rather than rendered, and on an `arab` tenant a formatted figure in the
+  box would be refused by the action's own `/^\d+$/`. Found by the undefined-class sweep rather
+  than by a failure.
+- **`collections.CollectionsError` is a `ValueError`**, so `set_dunning_policy` wraps its
+  validation and raises `InvalidRequest` -- MOD-018's `month_bounds` finding, which cost four
+  money routes a 500 on a mistyped year. The route's own body bounds both figures as well,
+  which is why no request can reach it: a service is not safe because its only caller happens
+  to be.
+
+Known gaps, deliberate:
+
+- **The three settings above**, each named on the screen with what it waits on.
+- **Nothing runs the journey on a schedule**, which is the undriven dunning sweep this file
+  already records: a case advances when somebody asks, so the retry hour has nothing to read it.
+- **The policy is tenant-wide.** `dunning_policy_on` consults no brand and no location, because
+  a journey that differed by club would make "when is this member's access recommended to be
+  restricted" a question with one answer per site. A brand value is a mutation and is caught.
+
 - **The dunning journey is sorted now, and `recovery_treatment` is where.** ADM-PAY-05's
   canvas argues that a batch of failed payments is "one decision, not six" -- which is a
   claim nothing in the module could establish, because whether a case wants a payment link
@@ -7270,7 +7338,8 @@ MOD-020's roster on a session,
 ADM-SCH-03's create-a-class form at `/schedule/new`, ADM-SCH-04's availability grid at `/rota`,
 ADM-SET-07's localization at `/localization`, FD-07's shift open and close at `/desk/shift`,
 FD-02's member lookup at `/desk/lookup`, ADM-MSH-07's cancellation sheet at
-`/people/{id}?tab=membership&cancel=1`, ADM-MSH-09's plans and pricing at `/plans`, ADM-MSH-06's plan change at `/people/{id}?tab=membership&plan=1`, ADM-MEM-10's walk-in form at
+`/people/{id}?tab=membership&cancel=1`, ADM-MSH-09's plans and pricing at `/plans`, ADM-PAY-06's dunning rules at
+`/payments/dunning`, ADM-MSH-06's plan change at `/people/{id}?tab=membership&plan=1`, ADM-MEM-10's walk-in form at
 `/members/new`, FD-05's walk-in trial at `/desk/trial`, FD-06's class check-in at
 `/desk/classes/{id}`, FD-03's denial resolution at `/desk/denials/{id}`, FD-07's shift at
 `/desk/shift` and FD-02's member lookup at `/desk/lookup`, with FD-08's device strip above all
@@ -7321,16 +7390,16 @@ specified V1 screens and leaves `owning_module` null for every one of them -- it
 `unresolved_policy` says no owning implementation module has been inferred, and that null is
 not a pass. So nothing maps a screen to a module, and any statement of the form "module X's
 frontend is complete" is an assertion about a mapping that does not exist here. What the
-artefacts do support is per *surface*: `design:coverage` reports 57 screens in the inventory
-across Admin and Front Desk, 6 states of those, 12 blocked on something external and 16 in the
+artefacts do support is per *surface*: `design:coverage` reports 58 screens in the inventory
+across Admin and Front Desk, 6 states of those, 12 blocked on something external and 15 in the
 backlog, and Member, Coach, Console and POS have no implementation at all. **Closing this honestly means
 resolving the mapping before claiming a module is done**, not counting routes -- and the
 backlog is now the half of that mapping which exists: every unbuilt screen on those two
 surfaces names the module that owns it, checked against the catalogue, so the modules with
 Admin and Front Desk screens still owed are MOD-055 (3), MOD-023 (1), MOD-058 (1) and
-MOD-059 (1), plus 9 screens that are work inside modules already built, and one that is a
-service worker. **ADM-SET-07 came off that list**, which leaves MOD-005 with no owed screen at
-all.
+MOD-059 (1), plus 8 screens that are work inside modules already built, and one that is a
+service worker. **ADM-SET-07 and ADM-PAY-06 came off that list**, which leaves MOD-005 and
+MOD-017 with no owed screen at all.
 **MOD-026 came off that list by building its three**, which is the first time a module has: its backlog entries had been rewritten twice
 as the slices landed, because the check validates the module id and cannot read the sentence
 beside it. **MOD-027 came off it a different way** -- its first slice landed, so its eight
@@ -7420,8 +7489,8 @@ arguments is *built*, whatever route it is reached at. **Routes are not the unit
 work is**, and a shared route is the design's call rather than a reason to let a parent's
 section stand in for a screen somebody built.
 
-It reads **91 specified screens on Admin and Front desk: 57 in the inventory, 6 states of
-those, 12 blocked on something external, 16 in the backlog**, and it names the five surfaces
+It reads **91 specified screens on Admin and Front desk: 58 in the inventory, 6 states of
+those, 12 blocked on something external, 15 in the backlog**, and it names the five surfaces
 it does *not* cover with their counts. It checks both directions -- a reason for a screen the inventory now argues is a
 stale excuse and fails, which is the schedule board's "gap note that outlived its gap" caught
 structurally. My own hand audit had said 43 were missing; the truth was that most were built,

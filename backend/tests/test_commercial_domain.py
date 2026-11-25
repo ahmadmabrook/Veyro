@@ -9,7 +9,7 @@ are HTTP tests, because those are properties of a transaction and not of a funct
 from __future__ import annotations
 
 import unittest
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 
 from app.commercial import collections, entitlements, invoicing, lifecycle, reporting
 
@@ -1432,3 +1432,97 @@ class BillingAnchorTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DunningPolicyTests(unittest.TestCase):
+    """ADM-PAY-06's two figures, and the journey they produce.
+
+    The canvas sets five things in sentence form; two of them have readers in this build and
+    these are those two. What is pinned here is the shape of the change rather than the
+    numbers: the default is what this build ran before either was settable, the notices do not
+    move, and the one ordering in the journey that cannot be inverted is refused.
+    """
+
+    def test_a_tenant_that_states_nothing_gets_the_journey_it_already_had(self):
+        """**The default is load-bearing rather than cautious.** A tenant that has declared
+        nothing keeps the journey its open cases were opened on, so adding the settings moves
+        nobody's dates -- ADR-0011's reasoning about the billing anchor, applied to a policy."""
+        self.assertEqual(collections.stages(), collections.STAGES)
+        self.assertEqual(collections.stages(collections.DEFAULT_POLICY), collections.STAGES)
+        self.assertEqual(collections.DEFAULT_POLICY.retry_attempts, 4)
+        self.assertEqual(collections.DEFAULT_POLICY.access_grace_days, 14)
+
+    def test_the_tail_moves_with_the_grace_and_the_notices_do_not(self):
+        """The canvas sets one number -- "allow access for N days past the due date" -- so the
+        `restrict` stage lands on it and `suspend` keeps its seven days behind. Scaling the
+        notices too would make "allow access for 30 days" also mean "warn after 15", which the
+        canvas does not say."""
+        moved = collections.stages(collections.Policy(access_grace_days=30))
+        self.assertEqual([days for _, days, _, _ in moved], [0, 3, 7, 30, 37])
+        # The access column itself is untouched: the figure moves a date, not a recommendation.
+        self.assertEqual([access for _, _, _, access in moved],
+                         [access for _, _, _, access in collections.STAGES])
+
+    def test_a_grace_shorter_than_the_warning_is_refused(self):
+        """**The one ordering in the journey that cannot be inverted.** The `warn` stage sits
+        at seven days, so a grace shorter than that would restrict access before the member had
+        been warned -- which is the lower bound's whole reason, and it is why the band starts at
+        eight rather than at one."""
+        self.assertEqual(collections.MIN_ACCESS_GRACE_DAYS, 8)
+        for bad in (0, 1, 7, 181, -1):
+            with self.assertRaises(collections.CollectionsError):
+                collections.Policy(access_grace_days=bad)
+        # Eight is admitted, which is what makes the bound a bound rather than a rejection of
+        # every short grace.
+        self.assertEqual(collections.Policy(access_grace_days=8).access_grace_days, 8)
+
+    def test_the_retry_budget_is_bounded_where_it_is_decided(self):
+        """`may_retry` already refused a budget outside one to twenty; the policy refuses it
+        before anything is written, so a figure that could never be honoured is never stored."""
+        for bad in (0, -1, 21, 100):
+            with self.assertRaises(collections.CollectionsError):
+                collections.Policy(retry_attempts=bad)
+        self.assertEqual(collections.Policy(retry_attempts=1).retry_attempts, 1)
+        self.assertEqual(collections.Policy(retry_attempts=20).retry_attempts, 20)
+
+    def test_the_journey_a_tenant_set_is_the_journey_its_steps_are_dated_by(self):
+        """`next_step` and `opening_step` take the policy, so the two figures reach the dates
+        rather than only the sort. The opening step is day zero either way -- that is the stage
+        before the grace -- and the restricting step is where the setting shows."""
+        due = date(2026, 8, 1)
+        tight = collections.Policy(access_grace_days=9)
+        self.assertEqual(
+            collections.opening_step(due_on=due, policy=tight).due_on, due)
+        step = collections.next_step(current_stage=3, due_on=due, policy=tight)
+        assert step is not None
+        self.assertEqual(step.stage, 4)
+        self.assertEqual(step.access_recommendation, "restrict")
+        self.assertEqual(step.due_on, date(2026, 8, 10))
+        # And the default is nine days later, which is the difference the setting makes.
+        standard = collections.next_step(current_stage=3, due_on=due)
+        assert standard is not None
+        self.assertEqual(standard.due_on, date(2026, 8, 15))
+
+    def test_the_account_s_own_terms_are_added_on_top_rather_than_folded_in(self):
+        """**Two figures in days and two different subjects**, which is the conflation this
+        change could have introduced. `grace_days` is the *account's* payment terms, added once
+        at the front of the whole journey; `access_grace_days` is tenant policy about one
+        stage. A corporate payer on thirty-day terms shifts every date by thirty and still
+        restricts at the tenant's own offset after that."""
+        due = date(2026, 8, 1)
+        policy = collections.Policy(access_grace_days=20)
+        step = collections.next_step(
+            current_stage=3, due_on=due, grace_days=30, policy=policy)
+        assert step is not None
+        self.assertEqual(step.due_on, date(2026, 8, 1) + timedelta(days=30 + 20))
+
+    def test_the_retry_budget_decides_what_a_recovery_wants(self):
+        """The budget is not only a bound on retrying: it is what `recovery_treatment` sorts
+        on, so a tenant that retries twice sends a case to `link` where one that retries four
+        times still has it in `retry`. ADM-PAY-05's workspace is that sort."""
+        two = collections.recovery_treatment(
+            "insufficient_funds", attempts=2, membership_status="active", max_attempts=2)
+        four = collections.recovery_treatment(
+            "insufficient_funds", attempts=2, membership_status="active", max_attempts=4)
+        self.assertEqual((two.treatment, two.reason), ("link", "retries_exhausted"))
+        self.assertEqual((four.treatment, four.reason), ("retry", "retries_remain"))

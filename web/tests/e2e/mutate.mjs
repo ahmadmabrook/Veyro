@@ -3107,6 +3107,73 @@ const MUTATIONS = [
     grep: "marks which numeral system is in force",
     runner: "playwright",
   },
+
+  // ------------------------------------------------- ADM-PAY-06, dunning rules
+  {
+    id: "dunning-a-default-is-not-a-decision",
+    why: "the figures a tenant has not set are the journey this build already ran, and a"
+      + " screen that could not tell them from a decision would present its own constants as"
+      + " somebody's choice -- MOD-005's board had to learn the same thing about"
+      + " `scope_type: \"default\"`",
+    file: "src/lib/dunning.ts",
+    from: "  return !policy.declared.includes(key);",
+    to: "  return false;",
+    grep: "says the figures are defaults rather than a decision",
+    runner: "playwright",
+  },
+  {
+    id: "dunning-the-field-holds-the-figure-in-force",
+    why: "a form whose boxes are empty is a form that saves nothing a reader meant: the two"
+      + " figures are the policy in force, and typing over one is how it is changed",
+    file: "src/app/payments/dunning/policy-form.tsx",
+    from: "  const retry = state.echo.retry ?? String(retryAttempts);",
+    to: '  const retry = state.echo.retry ?? "";',
+    grep: "renders the two rules as sentences with the figures in them",
+    runner: "playwright",
+  },
+  {
+    id: "dunning-the-sentence-is-the-canvas-s",
+    why: "**`Field`'s prefix and suffix are what make it sentence form**, which the canvas's"
+      + " own note calls for -- 'sentence form, same as the automation builder'. Without them"
+      + " it is a labelled number box, which is a different screen",
+    file: "src/app/payments/dunning/policy-form.tsx",
+    from: '        prefix={text("dunning.retryPrefix")}\n        suffix={text("dunning.retrySuffix")}',
+    to: "",
+    grep: "renders the two rules as sentences with the figures in them",
+    runner: "playwright",
+  },
+  {
+    id: "dunning-a-refused-write-offers-the-step-up",
+    why: "a button that answered 403 is worse than its absence, and `finance.dunning.manage`"
+      + " is financial class because the figures decide when a member's access is recommended"
+      + " to be restricted -- so the page offers the step-up instead",
+    file: "src/app/payments/dunning/page.tsx",
+    from: "          canWrite={mayWrite.allowed}",
+    to: "          canWrite={true}",
+    grep: "offers the step-up rather than a button the gate would refuse",
+    runner: "playwright",
+  },
+  {
+    id: "dunning-the-floor-says-which-half-is-structural",
+    why: "two of the four rules are properties of this build and two are intentions -- nothing"
+      + " here sends or charges -- and a floor a reader cannot tell from an intention is a"
+      + " floor they have to take on trust",
+    file: "src/app/payments/dunning/page.tsx",
+    from: '                {text(one.enforced ? "dunning.floorEnforced" : "dunning.floorIntended")}',
+    to: '                {text("dunning.floorEnforced")}',
+    grep: "renders the floor and says which half of it is structural",
+    runner: "playwright",
+  },
+  {
+    id: "dunning-is-reachable-from-the-workspace-it-sorts",
+    why: "a screen with no route to it is unreachable, and the recovery workspace is the one"
+      + " whose rows these figures decide the treatment of",
+    file: "src/app/payments/recovery/page.tsx",
+    from: '        <Link href="/payments/dunning">{text("recovery.rulesLink")}</Link>',
+    to: "        {null}",
+    grep: "is linked from the recovery workspace",
+    runner: "playwright",
+  },
 ];
 
 const only = process.argv[2];

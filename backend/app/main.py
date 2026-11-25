@@ -53,6 +53,7 @@ from app.authorization import service as authz
 from app.billing import service as billing
 from app.booking import service as booking
 from app.catalog import service as catalog
+from app.commercial import collections
 from app.commercial import service as commercial
 from app.config import Settings, load_settings
 from app.configuration import display as config_display
@@ -1961,6 +1962,21 @@ class SettleRefundBody(BaseModel):
 class DunningBody(BaseModel):
     invoice_id: str
     idempotency_key: str = Field(min_length=1, max_length=200)
+    correlation_id: str
+
+
+class DunningPolicyBody(BaseModel):
+    """ADM-PAY-06's two figures, bounded at the boundary as well as in the decision.
+
+    **The bands are `collections.Policy`'s own**, imported rather than restated: a pair of
+    literals here would be a second answer the day either moves, and MOD-011's finding is that
+    an unbounded integer reaches psycopg as a `DataError` the handlers do not catch. The
+    decision validates again, because this body is not the only caller.
+    """
+
+    retry_attempts: int = Field(ge=1, le=20)
+    access_grace_days: int = Field(
+        ge=collections.MIN_ACCESS_GRACE_DAYS, le=collections.MAX_ACCESS_GRACE_DAYS)
     correlation_id: str
 
 
@@ -8151,6 +8167,41 @@ def create_app(
         """
         permit(session, "finance.dunning.read")
         return commercial.recovery_workspace(tenant_pool, tenant_id, limit=limit)
+
+    @app.get("/finance/dunning-policy")
+    def read_dunning_policy(tenant_id: TenantId, session: Session) -> dict[str, Any]:
+        """ADM-PAY-06: the two figures a tenant sets, the journey they produce, and the floor.
+
+        `finance.dunning.read`, the same permission as the cases and the workspace beside
+        them: this is the policy those rows are decided by, and a read behind a step-up is a
+        read nobody does until something has already gone wrong.
+        """
+        permit(session, "finance.dunning.read")
+        return commercial.read_dunning_policy(tenant_pool, tenant_id)
+
+    @app.post("/finance/dunning-policy")
+    def set_dunning_policy(
+        tenant_id: TenantId, session: Session, body: DunningPolicyBody,
+    ) -> dict[str, Any]:
+        """Set the retry budget and the access grace.
+
+        **Three permissions, because the act is three things.** It is a dunning-management
+        decision (`finance.dunning.manage`, financial class -- the figures decide when a
+        member's access is recommended to be restricted), it publishes a configuration value
+        (`config.value.publish`, likewise), and where a tenant has no key yet it registers one
+        (`config.definition.write`, routine, so it adds no step-up). Charging only the dunning
+        permission would let its holder write into MOD-005's registry by another door, which is
+        MOD-013's "a field on the wrong body is an escalation" from the other side.
+        """
+        permit(session, "finance.dunning.manage", body.correlation_id)
+        permit(session, "config.value.publish", body.correlation_id)
+        permit(session, "config.definition.write")
+        return commercial.set_dunning_policy(
+            tenant_pool, tenant_id,
+            retry_attempts=body.retry_attempts,
+            access_grace_days=body.access_grace_days,
+            published_by=session["identity_id"], correlation_id=body.correlation_id,
+        )
 
     @app.post("/finance/dunning-cases", status_code=201)
     def start_dunning(

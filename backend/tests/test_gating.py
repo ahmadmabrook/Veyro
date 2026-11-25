@@ -419,6 +419,9 @@ WRITE_ROUTES = [
     # ADM-PAY-05. The same rows as the listing above and the same permission, which is the
     # point: it is those cases sorted by what each one wants, not a wider read.
     ("get", "/finance/recovery", None),
+    # ADM-PAY-06. The policy those rows are decided by, behind the same read: a policy behind
+    # a step-up is a policy nobody looks at until a journey has already gone wrong.
+    ("get", "/finance/dunning-policy", None),
     # ADM-PAY-10. The module's last writer with no reader: three routes could record,
     # answer and settle a chargeback and nothing could list one.
     ("get", "/finance/disputes", None),
@@ -494,6 +497,11 @@ WRITE_ROUTES = [
     ("post", "/finance/dunning-cases",
      {"invoice_id": _ID, "idempotency_key": "sweep-d1", **_CORR}),
     ("post", f"/finance/dunning-cases/{_ID}/advance", _CORR),
+    # ADM-PAY-06. Three permissions, so the sweep drives it like any other write: the figures
+    # decide when a member's access is recommended to be restricted, which is why the dunning
+    # half is financial class.
+    ("post", "/finance/dunning-policy",
+     {"retry_attempts": 2, "access_grace_days": 14, **_CORR}),
     ("post", "/finance/disputes",
      {"payment_id": _ID, "provider_case_ref": "CB-SWEEP-1", "dispute_kind": "chargeback",
       "reason_code": "card_expired", "amount_minor": 1000, "currency": "JOD",

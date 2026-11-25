@@ -21,9 +21,11 @@ import unittest
 import uuid
 from datetime import UTC, date, datetime, timedelta
 
+from psycopg.types.json import Jsonb
+
 from app.commercial import service as commercial
 from app.db import tenant_scope
-from app.errors import Conflict
+from app.errors import Conflict, ServiceError
 from tests.support import GatedApiTestCase
 
 ACTOR = "55555555-5555-4555-8555-555555555555"
@@ -3549,6 +3551,28 @@ class CommandCentreReadTests(CommercialApiTestCase):
         self.assertEqual(read.status_code, 200, read.text)
         return read.json()
 
+    def test_the_workspace_sorts_by_the_tenant_s_own_retry_budget(self):
+        """ADM-PAY-06. **The budget is what the sort turns on**, so reading the module's
+        default here would be a workspace sorted by somebody else's policy: the same two failed
+        charges want a retry under a budget of four and a payment link under a budget of two,
+        and the header the design reads off the set -- "all retries exhausted" -- would be
+        wrong in exactly the case a tenant had tightened the policy to avoid.
+        """
+        tenant_id = self.tenant()
+        live = self.membership(tenant_id)
+        self.recovery_case(tenant_id, failure_code="insufficient_funds",
+                           membership_id=live["membership_id"], charges=2)
+        # The default budget is four, so two presented charges still want another.
+        default = self.recovery(tenant_id)
+        self.assertEqual(default["by_treatment"]["retry"], 1)
+        self.assertEqual(default["by_treatment"]["link"], 0)
+        self.assertEqual(self.client.post("/finance/dunning-policy", json={
+            "retry_attempts": 2, "access_grace_days": 14, **self.correlation()},
+            headers=self.headers(tenant_id)).status_code, 200)
+        tightened = self.recovery(tenant_id)
+        self.assertEqual(tightened["by_treatment"]["retry"], 0)
+        self.assertEqual(tightened["by_treatment"]["link"], 1)
+
     def test_the_workspace_sorts_the_cases_by_what_each_one_wants(self):
         """"The six are one decision, not six" is only true once the set is sorted.
 
@@ -6129,3 +6153,211 @@ class PriceImpactTests(CommercialApiTestCase):
         refused = self.client.get(
             f"/catalog/variants/{variant_id}/price-impact", headers=priced)
         self.assertEqual(refused.status_code, 403, refused.text)
+
+
+class DunningPolicyApiTests(CommercialApiTestCase):
+    """ADM-PAY-06 through the request path, which is where the registry half lives.
+
+    The decision is pinned in `test_commercial_domain.py`; what is here is the three things
+    only a transaction can show: a tenant that has declared nothing reads the defaults, a
+    published figure reaches the dates a case is advanced by, and a value written past the
+    registry cannot take a dunning run down.
+    """
+
+    def policy(self, tenant_id: str) -> dict:
+        read = self.client.get("/finance/dunning-policy", headers=self.headers(tenant_id))
+        self.assertEqual(read.status_code, 200, read.text)
+        return read.json()
+
+    def write_config_value(self, tenant_id: str, key: str, value: object) -> None:
+        """A value written straight into `cfg_values`, which is the writer that is not a route.
+
+        The registry validates on publish, so this is the only way to produce the state the
+        fallback exists for -- and the version is pushed high so the newest row for the scope
+        is this one.
+        """
+        with tenant_scope(self._tenant_pool, tenant_id) as conn:
+            row = conn.execute(
+                "SELECT definition_id FROM plt01.cfg_definitions WHERE config_key = %s",
+                (key,)).fetchone()
+            assert row is not None, f"{key} is not declared for this tenant"
+            conn.execute(
+                "INSERT INTO plt01.cfg_values (tenant_id, definition_id, scope_type, value,"
+                " version, published_by, correlation_id)"
+                " VALUES (%s, %s, 'tenant', %s, 99, %s, %s)",
+                (tenant_id, row[0], Jsonb(value), self.owner_identity(tenant_id),
+                 str(uuid.uuid4())))
+
+    def test_a_tenant_that_has_declared_nothing_reads_the_defaults_and_says_so(self):
+        """**A default is not a decision.** A tenant that has configured nothing resolves to
+        the journey this build already ran, so a surface reading only the figures could not
+        tell it from one that chose them -- MOD-005's own board had to learn the same thing
+        about `scope_type: "default"`."""
+        body = self.policy(self.tenant())
+        self.assertEqual(body["retry_attempts"], 4)
+        self.assertEqual(body["access_grace_days"], 14)
+        self.assertEqual(body["declared"], [])
+        self.assertEqual([s["days_after_due"] for s in body["stages"]], [0, 3, 7, 14, 21])
+
+    def test_publishing_both_figures_moves_the_journey_and_records_the_decision(self):
+        tenant_id = self.tenant()
+        set_up = self.client.post("/finance/dunning-policy", json={
+            "retry_attempts": 2, "access_grace_days": 20, **self.correlation()},
+            headers=self.headers(tenant_id))
+        self.assertEqual(set_up.status_code, 200, set_up.text)
+        body = set_up.json()
+        self.assertEqual(body["retry_attempts"], 2)
+        self.assertEqual(body["access_grace_days"], 20)
+        # Both keys declared, so the screen can say these are decisions rather than defaults.
+        self.assertEqual(body["declared"],
+                         ["dunning.access_grace_days", "dunning.retry_attempts"])
+        # The tail moved and the notices did not, which is the canvas's own one number.
+        self.assertEqual([s["days_after_due"] for s in body["stages"]], [0, 3, 7, 20, 27])
+        # And it is readable afterwards, which is what makes it a setting rather than a call.
+        self.assertEqual(self.policy(tenant_id)["access_grace_days"], 20)
+
+    def test_the_published_grace_is_the_date_a_case_is_advanced_to(self):
+        """**The figure reaches the dates, not only the sort.** A policy a workspace sorted by
+        while the journey ran on the module's own constant would be two answers to when a
+        member's access is recommended to be restricted."""
+        tenant_id = self.tenant()
+        owner = self.headers(tenant_id)
+        self.assertEqual(self.client.post("/finance/dunning-policy", json={
+            "retry_attempts": 3, "access_grace_days": 9, **self.correlation()},
+            headers=owner).status_code, 200)
+        billing = self.billing(tenant_id, self.person(tenant_id))
+        issued = self.invoice(tenant_id, billing, due_on="2026-01-15")
+        opened = self.client.post("/finance/dunning-cases", json={
+            "invoice_id": issued["invoice_id"], "idempotency_key": "dp-1",
+            **self.correlation()}, headers=owner)
+        self.assertEqual(opened.status_code, 201, opened.text)
+        case_id = opened.json()["case_id"]
+        for stage in (2, 3):
+            moved = self.client.post(
+                f"/finance/dunning-cases/{case_id}/advance",
+                json=self.correlation(), headers=owner)
+            self.assertEqual(moved.status_code, 200, moved.text)
+            self.assertEqual(moved.json()["stage"], stage)
+        restricting = self.client.post(
+            f"/finance/dunning-cases/{case_id}/advance",
+            json=self.correlation(), headers=owner)
+        self.assertEqual(restricting.status_code, 200, restricting.text)
+        self.assertEqual(restricting.json()["stage"], 4)
+        self.assertEqual(restricting.json()["access_recommendation"], "restrict")
+        # Nine days past the due date rather than the module's fourteen.
+        self.assertEqual(restricting.json()["next_action_on"], "2026-01-24")
+
+    def test_a_figure_outside_its_band_is_refused_at_the_boundary(self):
+        """422 rather than a 500 from a CHECK, and rather than a stored figure the journey
+        could never honour. MOD-011's finding: an unbounded integer reaches psycopg as a
+        `DataError` the handlers do not catch."""
+        tenant_id = self.tenant()
+        owner = self.headers(tenant_id)
+        for bad in ({"retry_attempts": 0, "access_grace_days": 14},
+                    {"retry_attempts": 21, "access_grace_days": 14},
+                    {"retry_attempts": 4, "access_grace_days": 7},
+                    {"retry_attempts": 4, "access_grace_days": 181}):
+            refused = self.client.post(
+                "/finance/dunning-policy", json={**bad, **self.correlation()}, headers=owner)
+            self.assertEqual(refused.status_code, 422, refused.text)
+        # And nothing was published, so a refused pair leaves the tenant on its own policy.
+        self.assertEqual(self.policy(tenant_id)["declared"], [])
+
+    def test_a_value_written_past_the_registry_cannot_take_a_dunning_run_down(self):
+        """The guard exists for the writer that is *not* a route, so the case has to be one.
+        `Policy` refuses anything outside the band on publish, and this read is on the path of
+        every advance -- so a value somebody wrote directly must fall back rather than raise."""
+        tenant_id = self.tenant()
+        owner = self.headers(tenant_id)
+        self.assertEqual(self.client.post("/finance/dunning-policy", json={
+            "retry_attempts": 2, "access_grace_days": 20, **self.correlation()},
+            headers=owner).status_code, 200)
+        self.write_config_value(tenant_id, "dunning.access_grace_days", 3)
+        body = self.policy(tenant_id)
+        # The whole policy falls back, because the pair is validated together: a tenant reading
+        # three days of grace beside two retries would be reading half a decision.
+        self.assertEqual(body["access_grace_days"], 14)
+        self.assertEqual(body["retry_attempts"], 4)
+
+    def test_a_value_of_the_wrong_type_falls_back_rather_than_raising(self):
+        """**The sweep said this case did not exist**, and the one beside it does not cover it:
+        an integer out of band is refused by `Policy`'s own comparison, and a *string* would
+        reach that comparison as a `TypeError` -- a 500 out of a dunning run rather than a
+        refusal. `jsonb` holds whatever somebody wrote, so the type is checked before the band.
+        """
+        tenant_id = self.tenant()
+        owner = self.headers(tenant_id)
+        self.assertEqual(self.client.post("/finance/dunning-policy", json={
+            "retry_attempts": 2, "access_grace_days": 20, **self.correlation()},
+            headers=owner).status_code, 200)
+        self.write_config_value(tenant_id, "dunning.retry_attempts", "four")
+        body = self.policy(tenant_id)
+        self.assertEqual(body["retry_attempts"], 4)
+        # And a boolean, which is an `int` in Python and is not a retry budget.
+        self.write_config_value(tenant_id, "dunning.access_grace_days", True)
+        self.assertEqual(self.policy(tenant_id)["access_grace_days"], 14)
+
+    def test_a_brand_value_does_not_override_the_tenant_s_policy(self):
+        """A collections policy is the tenant's: a journey that differed by club would make
+        "when is this member's access recommended to be restricted" a question with one answer
+        per site, and the stage a case is advanced to is recorded on the case rather than
+        re-derived per reader."""
+        tenant_id = self.tenant()
+        owner = self.headers(tenant_id)
+        self.assertEqual(self.client.post("/finance/dunning-policy", json={
+            "retry_attempts": 2, "access_grace_days": 20, **self.correlation()},
+            headers=owner).status_code, 200)
+        brand_id, _ = self.brand_and_location(tenant_id)
+        published = self.client.post("/config/values", json={
+            "config_key": "dunning.access_grace_days", "scope_type": "brand",
+            "brand_id": brand_id, "value": 60,
+            "published_by": self.owner_identity(tenant_id), **self.correlation()},
+            headers=owner)
+        self.assertEqual(published.status_code, 201, published.text)
+        self.assertEqual(self.policy(tenant_id)["access_grace_days"], 20)
+
+    def test_a_refused_pair_publishes_neither_half(self):
+        """**The pair is validated before either is written.** Driven through the service
+        rather than the route, because `DunningPolicyBody` refuses an out-of-band figure at the
+        boundary -- so the writer this guards against is the one that is not a route, and a
+        route-level case could never reach it. Without the check the valid half publishes and
+        the refusal leaves a tenant half-configured."""
+        tenant_id = self.tenant()
+        with self.assertRaises(ServiceError):
+            commercial.set_dunning_policy(
+                self._tenant_pool, tenant_id, retry_attempts=4, access_grace_days=3,
+                published_by=self.owner_identity(tenant_id),
+                correlation_id=str(uuid.uuid4()))
+        self.assertEqual(self.policy(tenant_id)["declared"], [])
+
+    def test_the_floor_is_returned_as_codes_and_says_which_half_is_structural(self):
+        """**The NEVER block is not a setting**, which the canvas says outright -- "it is the
+        floor beneath every dunning policy". Codes rather than sentences, because this
+        application has two message catalogues and prose on the wire can only be read by one;
+        and `enforced` is the half that is a property of the build rather than an intention."""
+        body = self.policy(self.tenant())
+        rules = {one["rule"]: one["enforced"] for one in body["floor"]}
+        self.assertEqual(len(rules), 4)
+        # Paragraph 1496: an access recommendation is recorded and never applied, and there is
+        # no stored card for this build to charge.
+        self.assertTrue(rules["never_block_access_without_a_person"])
+        self.assertTrue(rules["never_charge_a_removed_card"])
+        # The two that are intentions: nothing sends, so nothing yet honours a quiet hour.
+        self.assertFalse(rules["never_message_outside_business_hours"])
+        self.assertFalse(rules["never_more_than_one_reminder_a_week"])
+
+    def test_the_three_settings_with_no_reader_are_named_rather_than_stored(self):
+        """Storing a value nothing acts on is this build's most-repeated finding, so the canvas's
+        other three settings come back as absences with what each waits on."""
+        waits = {one["setting"]: one["waits_on"]
+                 for one in self.policy(self.tenant())["not_settable"]}
+        self.assertEqual(waits, {
+            "retry_hour": "a_scheduled_dunning_run",
+            "draft_message_held_for_approval": "a_dispatcher",
+            "exception_threshold": "a_case_written_by_collections",
+        })
+
+    def test_the_account_s_own_payment_terms_are_a_separate_figure_and_the_read_says_so(self):
+        """Two figures in days and two different subjects: a reader seeing both would assume
+        they were one, which is the conflation this read exists to prevent."""
+        self.assertTrue(self.policy(self.tenant())["account_terms_are_separate"])

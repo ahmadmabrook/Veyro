@@ -3550,3 +3550,50 @@ Three things worth carrying:
   request and writes nothing, so the fix is one call before the read rather than a permission
   deleted or a route added to `UNGATED`. Before arguing that a control is too expensive to ask
   for, read what the asking route actually does.
+
+
+**A canvas's settings are not all settings, and reading it against the code before building is
+what tells you which.** ADM-PAY-06 sets five things in sentence form. Two have readers --
+`collections.recovery_treatment`'s retry budget and the day offset on `STAGES`' `restrict`
+stage -- and three configure machinery this build does not have: a scheduled dunning run, a
+dispatcher, and a MOD-026 case nothing writes. The backlog entry said all four were "simply
+unstored", which is a smaller and wronger claim: **storing a value nothing acts on is this
+build's most-repeated finding**, so the honest screen is two controls and three named absences.
+A control for one of the three would be worse than its absence, because a tenant would believe
+they had configured something.
+
+Three things that generalise from it:
+
+- **A band's interesting bound is usually the one that encodes an ordering.** The access grace
+  is 8 to 180 days, and the lower bound is not caution: the `warn` stage sits at seven days, so
+  a shorter grace restricts access before the member has been warned. The upper bound matches
+  the per-account grace beside it, because a figure in days that two functions bound
+  differently is two answers to one question.
+- **When one number moves a table, decide what moves with it and write the reason down.** The
+  canvas sets "allow access for N days", so `restrict` lands on N and `suspend` keeps its seven
+  days behind; scaling the notices too would make "allow access for 30 days" also mean "warn
+  after 15", which the canvas does not say, and leaving `suspend` fixed would let it precede
+  the stage it follows. The head/tail split is a mutation and is caught.
+- **Two figures in the same unit and different subjects need the distinction said out loud.**
+  `access_grace_days` is tenant policy about one stage; `next_step`'s `grace_days` is the
+  account's payment terms, added once at the front of the whole journey. Both are days, and a
+  reader seeing them together would assume they were one -- so the read carries
+  `account_terms_are_separate` and the screen renders the sentence.
+
+**A form field's value is typed back, not rendered, so the tenant's numerals must not reach
+it.** Every rendered figure in this app follows `localization.numerals` -- and a number in an
+input is the one exception: on an `arab` tenant `formatInteger` would put `٢` in the box and the
+server action's own `/^\d+$/` would refuse the tenant's own digits. `String(n)` rather than the
+formatter. **Found by the undefined-`ds-`-class sweep** rather than by a failure: the first
+version rendered its own `<input className="ds-input">` instead of letting the field shell do
+it, the sweep said that class styles nothing, and simplifying to the shell is what surfaced the
+question of what the value should be.
+
+**A mutation sweep's gaps are usually three different things and the output does not say
+which.** Ten mutations against the dunning policy came back 7/10, and the three were: a case
+whose input could not reach the guard (an integer out of band where a *string* was needed to
+exercise a type check); a case that did not exist (nobody published at brand scope); and a
+guard the route's own body subsumes, which is real for the writer that is *not* a route and
+needed a service-level case. The third one also found a defect: `CollectionsError` is a
+`ValueError`, so letting it out of a service would be a 500 from a refusal -- MOD-018's
+`month_bounds` finding, and the reason the fix is `InvalidRequest` rather than a narrower test.

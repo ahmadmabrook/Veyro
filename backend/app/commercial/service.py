@@ -33,6 +33,7 @@ from psycopg import Connection, errors
 
 from app.catalog import service as catalog
 from app.commercial import collections, entitlements, invoicing, lifecycle, reporting
+from app.configuration import service as configuration
 from app.db import Pool, tenant_scope
 from app.errors import Conflict, InvalidRequest, NotFound, ServiceError
 from app.events import service as events
@@ -45,6 +46,62 @@ def _now() -> datetime:
 
 def _today() -> date:
     return _now().date()
+
+
+#: The two MOD-005 keys ADM-PAY-06 sets. Declared here rather than in the configuration
+#: module because the policy is MOD-017's: `collections.py` owns the figures' meaning and
+#: their bounds, and a second place naming the keys is a second place to keep in step.
+DUNNING_RETRY_KEY = "dunning.retry_attempts"
+DUNNING_GRACE_KEY = "dunning.access_grace_days"
+
+
+def dunning_policy_on(conn: Connection[Any]) -> tuple[collections.Policy, list[str]]:
+    """This tenant's dunning policy, and which of its keys were actually declared.
+
+    **On the caller's connection, so the policy and the decision it bounds commit together.**
+    That is MOD-010's `append_event` argument applied to a journey: a case advanced on one
+    policy while another was being published is a date nobody can reconstruct, and the read is
+    on the same plane under the same role so there is nothing to coordinate.
+
+    **A key nobody declared resolves to the default, not to an error.** MOD-005's definitions
+    are rows, so a tenant has to register a key before a value can be published against it --
+    and a dunning run cannot be made to depend on that having happened. `declared` comes back
+    beside the policy for the same reason the display read carries it: a tenant that has
+    configured nothing is not a tenant that chose these figures, and a surface that could not
+    tell them apart would present a default as a decision.
+
+    **A stored value outside the band falls back rather than raising.** The registry validates
+    on publish, so the writer this guards against is the one that is not a route -- and a
+    collections sweep is not the place to find out. `Policy` is what states the bands.
+    """
+    rows = conn.execute(
+        "SELECT d.config_key, coalesce(v.value, d.default_value)"
+        "  FROM plt01.cfg_definitions d"
+        # The tenant-scoped value where one is published, else the definition's own default.
+        # No brand and no location: a dunning policy is the tenant's, like the display rule.
+        "  LEFT JOIN plt01.cfg_values v"
+        "    ON v.definition_id = d.definition_id AND v.scope_type = 'tenant'"
+        " WHERE d.config_key = ANY(%s)"
+        # Insert-only, so the newest row for a scope is the live one.
+        " ORDER BY v.version DESC NULLS LAST",
+        ([DUNNING_RETRY_KEY, DUNNING_GRACE_KEY],),
+    ).fetchall()
+    got: dict[str, Any] = {}
+    for key, value in rows:
+        got.setdefault(key, value)
+
+    def whole(key: str, fallback: int) -> int:
+        value = got.get(key)
+        return value if isinstance(value, int) and not isinstance(value, bool) else fallback
+
+    try:
+        policy = collections.Policy(
+            retry_attempts=whole(DUNNING_RETRY_KEY, collections.DEFAULT_RETRY_ATTEMPTS),
+            access_grace_days=whole(DUNNING_GRACE_KEY,
+                                    collections.DEFAULT_ACCESS_GRACE_DAYS))
+    except collections.CollectionsError:
+        policy = collections.DEFAULT_POLICY
+    return policy, sorted(got)
 
 
 def _check_name(error: errors.CheckViolation) -> str:
@@ -3659,7 +3716,9 @@ def start_dunning(
             (str(invoice[0]),),
         ).fetchone()
         assert terms is not None
-        step = collections.opening_step(due_on=invoice[2], grace_days=int(terms[0]))
+        policy, _ = dunning_policy_on(conn)
+        step = collections.opening_step(
+            due_on=invoice[2], grace_days=int(terms[0]), policy=policy)
         row = conn.execute(
             """
             INSERT INTO plt01.fin_dunning_cases
@@ -3764,8 +3823,10 @@ def advance_dunning(
             (str(case[1]),),
         ).fetchone()
         assert terms is not None
+        policy, _ = dunning_policy_on(conn)
         step = collections.next_step(
-            current_stage=int(case[2]), due_on=invoice[1], grace_days=int(terms[0]))
+            current_stage=int(case[2]), due_on=invoice[1], grace_days=int(terms[0]),
+            policy=policy)
         if step is None:
             conn.execute(
                 "UPDATE plt01.fin_dunning_cases SET status = 'abandoned',"
@@ -5650,6 +5711,119 @@ def list_dunning_cases(
     }
 
 
+def read_dunning_policy(pool: Pool, tenant_id: str) -> dict[str, Any]:
+    """ADM-PAY-06: the dunning policy, what is a decision, and what the canvas sets that
+    nothing here reads.
+
+    **Five settings on the canvas and two of them have readers**, which is the whole shape of
+    this read. `retry_attempts` is what `recovery_treatment` sorts on and `access_grace_days`
+    is the day the journey starts recommending that access be restricted. The other three --
+    the hour a retry runs, a drafted message held for approval, and the exception threshold --
+    configure machinery that does not exist, so they come back as named absences with what each
+    waits on rather than as fields a tenant can set. Storing a value nothing acts on is this
+    build's most-repeated finding, and a screen offering a control for one is worse than the
+    gap, because a tenant would believe they had configured something.
+
+    **The floor is returned too, and it is not a setting.** The canvas is explicit: "The NEVER
+    block is not configurable per-tenant -- it is the floor beneath every dunning policy."
+    Never block access without a person deciding; never message outside 09:00-20:00; never send
+    more than one reminder a week; never charge a card that has been removed. It rides on the
+    read as four codes rather than four sentences, for `GET /reports/attendance`'s reason: this
+    application has two message catalogues and prose on the wire can only ever be read by one
+    of them. **Two of the four are already structural rather than promised** -- an access
+    recommendation is recorded and never applied (paragraph 1496), and there is no stored card
+    to charge -- and the read says which, because a floor a reader cannot tell from an
+    intention is a floor they have to take on trust.
+    """
+    with tenant_scope(pool, tenant_id) as conn:
+        policy, declared = dunning_policy_on(conn)
+    return {
+        "retry_attempts": policy.retry_attempts,
+        "access_grace_days": policy.access_grace_days,
+        # The journey the two figures produce, so a surface renders the dates rather than
+        # recomputing them from a table it would then hold a second copy of.
+        "stages": [
+            {"stage": n, "days_after_due": days, "notification_key": key,
+             "access_recommendation": access}
+            for n, days, key, access in collections.stages(policy)
+        ],
+        "retry_attempts_band": [1, 20],
+        "access_grace_days_band": [
+            collections.MIN_ACCESS_GRACE_DAYS, collections.MAX_ACCESS_GRACE_DAYS],
+        # Which keys this tenant has actually published: a default is not a decision.
+        "declared": declared,
+        # **Not `next_step`'s `grace_days`**, which is the account's payment terms and is read
+        # per billing account. Said on the read because a reader seeing two figures in days
+        # would assume they were one.
+        "account_terms_are_separate": True,
+        #: The canvas's own settings this build cannot honour, each with what it waits on.
+        "not_settable": [
+            {"setting": "retry_hour", "waits_on": "a_scheduled_dunning_run"},
+            {"setting": "draft_message_held_for_approval", "waits_on": "a_dispatcher"},
+            {"setting": "exception_threshold", "waits_on": "a_case_written_by_collections"},
+        ],
+        #: The floor, as codes. `enforced` is the half that is structural rather than promised.
+        "floor": [
+            {"rule": "never_block_access_without_a_person", "enforced": True},
+            {"rule": "never_message_outside_business_hours", "enforced": False},
+            {"rule": "never_more_than_one_reminder_a_week", "enforced": False},
+            {"rule": "never_charge_a_removed_card", "enforced": True},
+        ],
+    }
+
+
+def set_dunning_policy(
+    pool: Pool, tenant_id: str, *, retry_attempts: int, access_grace_days: int,
+    published_by: str, correlation_id: str,
+) -> dict[str, Any]:
+    """Publish the two figures, declaring their keys first where a tenant has none.
+
+    **The keys' shape is stated here rather than by a caller**, which is the reason this is a
+    route of its own instead of two `/config/values` posts from a screen: the type, the default
+    and the validation are MOD-017's facts about its own policy, and a client that sent them
+    would be a second definition of what the key is. `Policy` validates the pair before either
+    is written, so a refused figure publishes nothing.
+
+    **Declaring is idempotent in effect.** A key a tenant already has comes back as a conflict
+    from the registry, which is the state this wants -- so it is caught and the publish goes
+    ahead. A tenant provisioned before these keys existed is the ordinary case, not an error.
+    """
+    # **A `ValueError` is not a `ServiceError`** -- MOD-018's `month_bounds` finding, which
+    # cost four money routes a 500 on a mistyped year. `CollectionsError` is a `ValueError`,
+    # and this application's handlers catch `RequestValidationError` and `ServiceError` only,
+    # so letting it out would be a 500 from a refusal. The route's own body bounds both figures
+    # as well, which is why no request can reach this -- and a service is not safe because its
+    # only caller happens to be.
+    try:
+        collections.Policy(
+            retry_attempts=retry_attempts, access_grace_days=access_grace_days)
+    except collections.CollectionsError as error:
+        raise InvalidRequest(str(error)) from None
+    declarations = (
+        (DUNNING_RETRY_KEY, "integer", collections.DEFAULT_RETRY_ATTEMPTS,
+         {"minimum": 1, "maximum": 20},
+         "How many times a failed card is presented again before a person is asked"),
+        (DUNNING_GRACE_KEY, "integer", collections.DEFAULT_ACCESS_GRACE_DAYS,
+         {"minimum": collections.MIN_ACCESS_GRACE_DAYS,
+          "maximum": collections.MAX_ACCESS_GRACE_DAYS},
+         "How many days past a due date the journey keeps recommending access"),
+    )
+    for key, value_type, default, validation, description in declarations:
+        try:
+            configuration.define_config(
+                pool, tenant_id, config_key=key, value_type=value_type,
+                default_value=default, owner_module="MOD-017", validation=validation,
+                description=description)
+        except Conflict:
+            pass
+    for key, value in ((DUNNING_RETRY_KEY, retry_attempts),
+                       (DUNNING_GRACE_KEY, access_grace_days)):
+        configuration.publish_config_version(
+            pool, tenant_id, config_key=key, scope_type="tenant", value=value,
+            published_by=published_by, correlation_id=correlation_id)
+    return read_dunning_policy(pool, tenant_id)
+
+
 def recovery_workspace(
     pool: Pool, tenant_id: str, *, limit: int = 50,
 ) -> dict[str, Any]:
@@ -5687,6 +5861,11 @@ def recovery_workspace(
     """
     limit = _bounded(limit)
     with tenant_scope(pool, tenant_id) as conn:
+        # **The tenant's own retry budget, not the module's default** -- ADM-PAY-06. The
+        # treatment turns on whether retries remain, so a tenant that retries twice sorts a
+        # case into `link` where one that retries four times still has it in `retry`: reading
+        # the default here would be a workspace sorted by somebody else's policy.
+        policy, _ = dunning_policy_on(conn)
         rows = conn.execute(
             "SELECT c.case_id, c.invoice_id, c.stage, c.attempts AS case_attempts,"
             " c.access_recommendation, c.next_action_on, c.opened_on,"
@@ -5734,7 +5913,8 @@ def recovery_workspace(
         attempts = int(r[17])
         failure_code = str(r[14]) if r[14] else None
         verdict = collections.recovery_treatment(
-            failure_code, attempts=attempts, membership_status=membership_status)
+            failure_code, attempts=attempts, membership_status=membership_status,
+            max_attempts=policy.retry_attempts)
         by_treatment[verdict.treatment] += 1
         currency = str(r[9])
         outstanding = int(r[8]) - int(r[13])
