@@ -793,6 +793,20 @@ numeric bound: the integer has to be the whole literal, or `'00:01:30'::interval
 `1000000:01:30'::interval` and the statement never runs.
 
 
+**The gate's "MOD-000 runner suite" step is minutes long and can hang, so a gate that has not
+printed its verdict is not a gate that is failing.** Measured on this machine: the whole gate
+finished in about eight minutes twice, and then that one step ran 49:49 at 9% CPU without
+finishing, and alone under `timeout 300` it did not finish either. Its output is JSON about
+`runner_alive` / `child_alive`, so it drives subprocesses and polls them -- which is the shape
+that hangs when something it spawned does not exit. Two monitors armed on the verdict line
+expired with no events, which reads exactly like a stuck watch rather than a stuck suite.
+
+**What to do rather than skip the gate**: run its other eighteen steps individually -- each is
+seconds and the loop is seven `tools/` commands plus eight `npm run` ones -- and say which ran.
+That is honest where "I ran the gate" would not be, and it keeps the standard. And `pgrep -f`
+plus `ps -o etime,%cpu` on the step's own process is what distinguishes slow from stuck in one
+command; a log that has stopped growing says neither.
+
 **`tools/local_ci.sh` and the browser suite cannot run at the same time.** The gate's last
 step is `npm run build`, which writes `.next`, and the browser suite's `webServer` under `CI=1`
 is `npm run start`, which *serves* `.next` -- so a gate started beside a running suite
@@ -3206,6 +3220,34 @@ collected nothing and printed `Tests  no tests`, which reads as a gap the harnes
 fifth distinct form of "a mutation that changes nothing is not evidence" here, and the cheapest
 guard is the shape rather than a check: **mutate the value a branch returns, never the clauses
 around it.**
+
+**`veyro-product-experience-design/project/veyro-screen.js` is the prototype and the
+`Veyro V1 Batch *.dc.html` files are the deliverable, and the two differ on *which fields
+exist*.** This file already records the softer version -- ADM-CRM-05's drawn fourth cell is
+`ENGAGEMENT` while the prototype calls it `CONVERSION LIKELIHOOD`, and "the drawn canvas is the
+deliverable". The harder version cost three wrong claims in twenty minutes while sizing
+ADM-SET-07, each written down and nearly committed:
+
+- The prototype's ADM-SET-07 draws six fields including **"Week starts · Saturday"**. The batch
+  canvas is titled LOCALIZATION and has three concerns -- languages offered, numerals, month
+  names -- and **no week field at all**. I had already put "the first day of the week is a
+  tenant setting whose value is Saturday" into a backlog entry, two docstrings and `CLAUDE.md`
+  before checking the authority.
+- The prototype's ADM-SCH-04 draws a vertical list of seven rows, Monday to Sunday. The batch
+  canvas is a seven-column week grid -- which is what this build renders -- so the built screen
+  was right and my "correction" to it was wrong.
+- Both of those were me *correcting* an earlier claim that was also wrong: the original
+  docstring said "ADM-SCH-04 draws its columns SUN-SAT", and that canvas templates its day
+  labels from `{{ days }}` and draws no literal day. The order it produced is right for a
+  different canvas's reason -- ADM-SCH-03's `REPEATS · S M T W Th F S`.
+
+**So: read the batch file for anything load-bearing, and read the prototype only where the
+batch is silent -- never for whether a field exists.** `grep -rl '<ID>' veyro-product-
+experience-design/` names every file that mentions a screen; the batch is the one whose name
+begins "Veyro V1 Batch". And the wider rule, which is this build's own and was the thing I kept
+skipping: **a citation is a claim.** The evidence a decision names has to be checked exactly as
+hard as the decision, and a decision that is right for the wrong reason will be "corrected" into
+a wrong one by the next reader -- who, here, was me.
 
 **"Does this table carry a location" is not "can this be scoped", and I answered the first
 twice while believing I had answered the second.** Sizing ADM-CC-02 I checked

@@ -3755,9 +3755,33 @@ Known gaps, deliberate:
   record that they moved. That is MOD-016's `cat_prices.effective_to` for the second time in
   this build. Correcting a window is withdrawing it and adding the corrected one, which is
   the same edit with a history.
-- **`week_from` starts the week on Sunday, which is the design's call and not this module's.**
-  ADM-SCH-04 draws its columns SUN-SAT and dates its sample week to a Sunday, the working week
-  in this product's own market. The first version started on Monday because `Window.weekday` is
+- **`week_from` starts the week on Sunday, which is the design's call -- and the canvas this
+  file cited for it was the wrong one.** ADM-SCH-04's drawn canvas templates its seven day
+  labels from a `{{ days }}` list and draws no literal day, so it is evidence for a grid and
+  for nothing about where a week begins; the real evidence is ADM-SCH-03's
+  `REPEATS · S M T W Th F S`, which `web/src/lib/new-class.ts` has always cited correctly for
+  the same order. The order is right and the reason written down for it was a misreading, put
+  into the code and into this file as "the design's call". **Found while sizing ADM-SET-07,
+  and only after being wrong twice more on the way** -- the prototype's ADM-SCH-04 draws a
+  vertical list of seven rows from Monday to Sunday, which I first took for the deliverable
+  and nearly committed as the correction. A citation is a claim, and this build's rule about a
+  doc claiming a control it does not have applies to the *evidence* a decision names.
+- **And the decisive statement was in a canvas neither citation had looked at.** CON-04, the
+  new-tenant screen, says the region is irreversible because "Jordan sets data residency, JOD
+  as the currency, the JoFotara tax adapter, Arabic as an available language, and **a Sunday
+  week start**". So the first day of the week is *derived from the region* rather than chosen,
+  Jordan gives Sunday, and ADM-SET-07 displays it -- which makes a constant right for a build
+  that provisions one region and wrong the day there is a second. Searching every batch canvas
+  for the concept took one command and produced four hits; two sessions of arguing about
+  Sunday against Monday had searched none of them.
+- **The same four hits closed a different gap, which is the better find.** ADM-SET-02 draws
+  "KHALDA OPENING HOURS · Sun-Thu 06:00-23:00 · Fri 14:00-22:00 · Sat 08:00-22:00 · FLOOR
+  CAPACITY 180", and the fidelity table already records that those two figures "have no read".
+  That is exactly the data `GET /reports/attendance` refuses to assume -- it returns all
+  twenty-four hours and will not label a day set "weekdays" "because nothing in this build
+  records a working week". The report's gap and that screen's partial are one missing read, not
+  two, and MOD-022's note saying a rota is not a site's opening hours was right to refuse to
+  derive it: the design puts it on a different screen. The first version started on Monday because `Window.weekday` is
   0-Monday -- which is a *storage* convention and says nothing about how a week is read: the
   rota rows are keyed by weekday number either way and only the order of the seven dates moved.
   It is **not** a declaration of which days anybody works; `GET /reports/attendance` still

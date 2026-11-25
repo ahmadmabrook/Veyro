@@ -333,7 +333,7 @@ corresponds to them. The others map loosely:
 | `/login` | ADM-AUTH-01 Admin sign-in | **rebuilt** — the lockup, the note box; the tenant field is a stated deviation |
 | `/step-up` | ADM-AUTH-02 Sensitive action re-auth | **rebuilt** — names the action from MOD-008's catalogue; a page rather than an overlay |
 | `/people` | ADM-MEM-11 Merge duplicate members (partially) | partial — the duplicate queue only |
-| `/organization` | ADM-SET-01, ADM-SET-02 | the hierarchy, with a figures line; the opening hours and floor capacity ADM-SET-02 draws have no read |
+| `/organization` | ADM-SET-01, ADM-SET-02 | the hierarchy, with a figures line; the opening hours and floor capacity ADM-SET-02 draws have no read -- **and that one read is also what `GET /reports/attendance` refuses to assume**, since it returns all twenty-four hours and will not label a day set "weekdays" because nothing here records a working week. ADM-SET-02 draws it: "Sun-Thu 06:00-23:00 · Fri 14:00-22:00 · Sat 08:00-22:00 · FLOOR CAPACITY 180". One missing read, two screens |
 | `/access` | **none** | a zone list, which the design has no canvas for |
 | `/catalog` | ADM-POS-01, ADM-POS-03 | partial, and the three absent columns are named on the screen |
 | `/finance` | **none** | MOD-018's general ledger. It was counted as ADM-PAY-01 and is a different subject; `/payments` is that screen now |

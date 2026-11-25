@@ -285,9 +285,22 @@ def week_from(any_day: date) -> tuple[date, ...]:
     The caller may hand in any day; the week is normalised so two readers asking about the
     same week get the same seven dates.
 
-    **Sunday, not Monday, and that is the design's call rather than this module's.**
-    ADM-SCH-04 draws its columns SUN-SAT and dates its sample week to a Sunday, which is the
-    working week in this product's own market -- Sunday to Thursday. The first version started
+    **Sunday, not Monday, and that is the design's call rather than this module's -- but the
+    canvas cited for it was the wrong one.** ADM-SCH-04's drawn canvas templates its seven day
+    labels from a `{{ days }}` list and draws no literal day at all, so it is evidence for a
+    grid and for nothing about where a week begins. The real evidence is ADM-SCH-03, whose
+    `REPEATS · S M T W Th F S` is Sunday first -- which `web/src/lib/new-class.ts` has always
+    cited correctly for the same order. So the order here is right and the reason recorded for
+    it was a misreading, which is this build's "a doc claiming a control it does not have"
+    pointed at a citation rather than at a control.
+
+    **And the decisive statement is CON-04's, which neither citation had found.** The new-tenant
+    canvas says the region is irreversible because "Jordan sets data residency, JOD as the
+    currency, the JoFotara tax adapter, Arabic as an available language, and a Sunday week
+    start". So the first day of the week is *derived from the region* rather than chosen, Jordan
+    gives Sunday, and ADM-SET-07 displays it. A constant here is therefore right for this build
+    -- which provisions one region -- and wrong the day a second region exists, which is the
+    honest form of the gap. The first version started
     on Monday because `Window.weekday` is 0-Monday, which is MOD-019's storage convention and
     says nothing about how a week is read: the rota rows are keyed by weekday number either
     way, and only the order of the seven dates moves.
