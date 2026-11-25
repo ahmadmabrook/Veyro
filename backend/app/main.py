@@ -47,6 +47,7 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validato
 from app import db
 from app.access import service as access
 from app.authorization import catalog as authz_catalog
+from app.authorization import decision as authz_decision
 from app.authorization import gate as authz_gate
 from app.authorization import service as authz
 from app.billing import service as billing
@@ -3554,7 +3555,7 @@ def create_app(
                             headers=headers)
 
     def permit(session: dict[str, Any], action: str, correlation_id: str | None = None,
-               **context: Any) -> authz_gate.Gate:
+               *, scoped: bool = False, **context: Any) -> authz_gate.Gate:
         """The one way a route asks whether its caller may act.
 
         **It returns the gate, not the session, because the gate carries the mask.** MOD-008
@@ -3587,7 +3588,66 @@ def create_app(
         except ServiceError:
             _count_denial(session["tenant_id"], action)
             raise
+        # **A route opts in to a scoped caller, and the default refuses one** -- ADR-0014 D4,
+        # and this is the half that keeps the change fail-closed.
+        #
+        # The gate now answers "may this caller do this anywhere" and says where, which is
+        # what lets a brand- or location-scoped role work at all: four modules record that
+        # such a role "cannot use this module at all" because the gate asked at the
+        # tenant-wide scope and nowhere else. But a read that has not been taught to filter
+        # on `gate.scopes` would return the *whole tenant* to a club manager -- turning a role
+        # that cannot work into one that sees everything, silently, across a hundred routes.
+        #
+        # So the route says whether it uses the answer. `GateCoverageTests` requires a route
+        # passing `scoped=True` to mention `scopes` in its body, because a flag a route sets
+        # is a declaration and this build has shipped six of those.
+        if not scoped and not gate.tenant_wide:
+            _count_denial(session["tenant_id"], action)
+            raise authz.Forbidden("forbidden")
         return gate
+
+    def _named_scope(
+        tenant_id: str, brand_id: str | None, location_id: str | None,
+    ) -> authz_decision.Scope | None:
+        # **The ids arrive already shape-checked**, because the caller validates them in its
+        # own body. `test_id_validation` reads `main.py` with `ast` and matches each id a route
+        # takes against a validator call *in that route* -- its first version matched names
+        # across the whole file, so a field wrapped in one route read as wrapped in all of
+        # them. Moving the `optional_uuid` calls in here passed every behavioural test and
+        # turned that sweep red for both check routes, which is the sweep being per-route on
+        # purpose.
+        """The scope the caller named, or `None` when they named none. ADR-0014.
+
+        **`Scope()` and `None` are two different questions and `resolve_scope` only answers
+        the first.** It returns the tenant-wide scope for an empty pair, which is right for the
+        permission simulator -- "what may this person do tenant-wide" is a real question -- and
+        wrong for the gate, where the absence of a named scope means "may they do this
+        *anywhere*". The first implementation of ADR-0014 keyed on `scope is None` and both
+        check routes passed a resolved scope unconditionally, so the gate every surface in this
+        app reads stayed inert: `/staff` answered a club manager "yes" and the rail answered
+        "no", which is the worst of the two.
+        """
+        if brand_id is None and location_id is None:
+            return None
+        return authz.resolve_scope(
+            tenant_pool, tenant_id, brand_id=brand_id, location_id=location_id)
+
+    def _only_locations(
+        scopes: tuple[authz_decision.Scope, ...],
+    ) -> tuple[str, ...]:
+        """The locations a scoped caller may look at, from the gate's own answer.
+
+        **Location scopes only, and a brand scope contributes nothing** -- ADR-0014's "what
+        this does not decide". `Scope.covers` says in as many words that this module "does not
+        know the hierarchy and must not guess at it", so expanding a brand into its locations
+        is a `tenancy` read, and bounding a query on a brand id nobody resolved would be the
+        guess that comment forbids. A caller with only a brand scope therefore gets an empty
+        tuple, which the route turns into the refusal they get today.
+        """
+        return tuple(
+            one.location_id for one in scopes
+            if one.scope_type == authz_decision.LOCATION
+            and one.location_id is not None)
 
     def _count_denial(tenant_id: str, action: str) -> None:
         """Roll a refusal into `authz.denials`, and never let the bookkeeping outrank the answer.
@@ -4654,16 +4714,32 @@ def create_app(
         decided = authz.check(
             identity_pool, tenant_id, identity_id=session["identity_id"],
             session_aal=session["aal"], action=action, correlation_id=correlation_id,
-            scope=authz.resolve_scope(
-                tenant_pool, tenant_id,
-                brand_id=optional_uuid(brand_id, "brand_id"),
-                location_id=optional_uuid(location_id, "location_id")),
+            # **`None` where the caller named neither, not `Scope()`** -- ADR-0014, and this
+            # is where the first implementation of it was silently inert. `resolve_scope`
+            # returns the tenant-wide scope for an empty pair, and `check` keys "may this
+            # caller do this *anywhere*" on the argument being absent: so a route that always
+            # passed a resolved scope asked the tenant-wide question, and the gate every
+            # surface in this app reads answered a club manager "no" while `/staff` answered
+            # "yes". One screen refusing and its read allowing is the worst of the two.
+            scope=_named_scope(
+                tenant_id, optional_uuid(brand_id, "brand_id"),
+                optional_uuid(location_id, "location_id")),
             record_denial=False,
         )
         return {"action": action, "allowed": decided.allowed, "reason": decided.reason,
                 "step_up_required": decided.step_up_required,
                 "required_aal": decided.required_aal, "reachable": decided.reachable,
-                "masked_fields": list(decided.masked_fields)}
+                "masked_fields": list(decided.masked_fields),
+                # **ADR-0014: whether they hold it everywhere.** A surface needs this to agree
+                # with its own read: the gate says "anywhere" and `permit` refuses a scoped
+                # caller on any route that has not opted in, so a page keyed on `allowed`
+                # alone would render as permitted over a read that answers 403.
+                "tenant_wide": decided.tenant_wide,
+                "scopes": [
+                    {"scope_type": one.scope_type, "brand_id": one.brand_id,
+                     "location_id": one.location_id}
+                    for one in decided.scopes],
+                }
 
     @app.get("/authz/checks")
     def check_actions(
@@ -4710,10 +4786,11 @@ def create_app(
         unknown = sorted({one for one in action if one not in authz_catalog.PERMISSIONS})
         if unknown:
             raise InvalidRequest(f"unknown_action:{','.join(unknown)}")
-        scope = authz.resolve_scope(
-            tenant_pool, tenant_id,
-            brand_id=optional_uuid(brand_id, "brand_id"),
-            location_id=optional_uuid(location_id, "location_id"))
+        # `None` where the caller named neither, for the reason the single check above gives:
+        # the batch *is* the rail's question, and the rail is what ADM-CC-02 is about.
+        scope = _named_scope(
+            tenant_id, optional_uuid(brand_id, "brand_id"),
+            optional_uuid(location_id, "location_id"))
         checks = []
         for one in action:
             decided = authz.check(
@@ -4725,7 +4802,14 @@ def create_app(
                 "action": one, "allowed": decided.allowed, "reason": decided.reason,
                 "step_up_required": decided.step_up_required,
                 "required_aal": decided.required_aal, "reachable": decided.reachable,
-                "masked_fields": list(decided.masked_fields)})
+                "masked_fields": list(decided.masked_fields),
+                # The same two fields as the single check, for the same reason: this *is* the
+                # rail's question, and ADM-CC-02 is the club manager's Command Center.
+                "tenant_wide": decided.tenant_wide,
+                "scopes": [
+                    {"scope_type": s2.scope_type, "brand_id": s2.brand_id,
+                     "location_id": s2.location_id}
+                    for s2 in decided.scopes]})
         return {"checks": checks, "count": len(checks)}
 
     @app.post("/authz/approval-policies", status_code=201)
@@ -6139,7 +6223,10 @@ def create_app(
             tenant_pool, tenant_id, require_uuid(recipient_id, "recipient_id")
         )
 
-    def held_permissions(session: dict[str, Any]) -> set[str]:
+    def held_permissions(
+        session: dict[str, Any],
+        at: tuple[authz_decision.Scope, ...] | None = None,
+    ) -> set[str]:
         """Which permissions this caller can **exercise**, for the field masking to read.
 
         One extra query per masked read, and the honest way to answer "which sensitivity classes
@@ -6164,11 +6251,48 @@ def create_app(
         and that was the dead end `visibility.UNREACHABLE_CLASSES` named; what it does now is
         the thing it was always written to do, which is to let the level decide.
         """
-        answer = authz.effective_permissions(
-            identity_pool, session["tenant_id"], identity_id=session["identity_id"])
+        # **`at` is the caller's own scopes, for a route that bounds its rows** -- ADR-0014.
+        # Without it this resolves at the tenant-wide default scope, where a club manager's
+        # permission set is *empty*, so the mask would be computed from nothing for the one
+        # route such a caller can read.
+        #
+        # **It is inert today and that is stated rather than discovered.** `/staff` is the only
+        # route that has opted in, its maskable columns are `identity` class, and the only
+        # class a scoped caller could open with a *routine* permission is `contact`, which that
+        # list has no field of -- so `readable_classes` answers `{"none"}` either way. There is
+        # therefore no behavioural case to write and a mutation against this would correctly
+        # come back uncaught. It is here because the next route to opt in would otherwise
+        # inherit an empty set in silence, and the opt-in is designed to be added one route at
+        # a time.
+        #
+        # **This is not what made the withheld marker's remedy wrong**, which was my first
+        # reading of it: a club manager holds no `member.identity.read` at any assurance, so
+        # the names are correctly withheld and what was false was the sentence beside them.
+        # `web/src/lib/mask.ts` is that fix. Recorded because the wrong diagnosis survived a
+        # rebuild and a re-run -- the symptom did not move, which is the thing to doubt first.
+        #
+        # **The union across scopes is safe only because the rows are bounded.** It answers
+        # "which classes may this reader see at all", and `/authz/simulate`'s own gap says
+        # "what may this person do" has no single answer across scopes -- so a route that
+        # unioned the mask while returning every club's rows would unmask another club's
+        # members. That is the same opt-in `permit` has, and the caller passes the gate's own
+        # `scopes` rather than anything it chose.
+        #
+        # **`None` is "no argument", not "allowed nowhere".** An empty tuple would be a caller
+        # allowed at no scope, which `permit` refuses before any route body runs -- the same
+        # distinction `people.list_staff` draws for `only_locations`. It cannot occur here, and
+        # if it did, resolving at the tenant-wide scope is the fail-closed answer: a
+        # location-scoped assignment covers nothing there, so the set comes back empty.
+        scopes = (authz_decision.Scope(),) if at is None else (at or (authz_decision.Scope(),))
+        granted: set[str] = set()
+        for one in scopes:
+            answer = authz.effective_permissions(
+                identity_pool, session["tenant_id"],
+                identity_id=session["identity_id"], scope=one)
+            granted |= set(answer["permissions"])
         aal = int(session["aal"])
         return {
-            name for name in answer["permissions"]
+            name for name in granted
             if identity_policy.ACTION_ASSURANCE[authz_catalog.action_class(name)] <= aal
         }
 
@@ -6341,13 +6465,34 @@ def create_app(
         first reader. Two of the design's four columns are on other planes and the response
         names them with the permission that answers each, because a column rendered empty
         reads as a fact about the person.
+
+        **The first route in this build to accept a brand- or location-scoped caller** --
+        ADR-0014, and this screen is why: ADM-STF-01's own note is "a club manager sees only
+        their own club's staff", which MOD-014's gap list records as a sentence on the screen
+        rather than a predicate, because `permit` resolved tenant-wide and such a caller was
+        refused the read outright. `scoped=True` says this route uses the gate's answer, and
+        `GateCoverageTests` requires that it does.
+
+        **A location-scoped caller is bounded to their locations; a brand-scoped one is
+        refused.** `Scope.covers` is explicit that this module does not know the hierarchy and
+        must not guess at it, so turning a brand into its locations is a `tenancy` read this
+        route does not make -- and bounding on a brand nobody resolved would be the guess that
+        comment forbids. Refusing is the same answer they get today, which is why it is safe
+        to leave; the honest claim is that one of the two scoped kinds works here.
         """
-        gate = permit(session, "people.person.read")
+        gate = permit(session, "people.person.read", scoped=True)
+        only = _only_locations(gate.scopes) if not gate.tenant_wide else None
+        if only is not None and not only:
+            raise authz.Forbidden("forbidden")
         return people.list_staff(
             tenant_pool, tenant_id,
-            masked_fields=gate.masked_fields, held_permissions=held_permissions(session),
+            masked_fields=gate.masked_fields,
+            # The gate's own scopes, because this route bounds its rows to them -- see
+            # `held_permissions` for why the union is safe only on a route that does.
+            held_permissions=held_permissions(session, gate.scopes),
             employment_state=employment_state,
             location_id=optional_uuid(location_id, "location_id"), limit=limit,
+            only_locations=only,
         )
 
     @app.get("/staff/{person_id}")

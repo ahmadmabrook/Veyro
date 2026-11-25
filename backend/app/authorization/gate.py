@@ -47,6 +47,26 @@ class Gate:
     door it is."""
     masked_fields: tuple[str, ...] = ()
     decision: authz.Decision | None = None
+    scopes: tuple[authz.Scope, ...] = ()
+    """Where the caller holds this action, from their own live assignments. ADR-0014.
+
+    **Empty on a request that named a scope**, because the question was already "may they act
+    *there*" and answering it with a list would be a second answer to the same thing. It is
+    populated only where the route named none -- which is the case this exists for: the gate
+    asked at the tenant-wide scope and nowhere else, so a location-scoped assignment
+    contributed nothing and a club manager was refused every read in the product.
+
+    A read filters on this. A read that does not is refused a non-tenant-wide caller by
+    `permit`, which is what keeps the change fail-closed: allowing a scoped caller through a
+    route that ignores where they may act turns a role that cannot work into a role that sees
+    everything, silently, across a hundred routes."""
+    tenant_wide: bool = True
+    """Whether the caller holds the action everywhere in the tenant.
+
+    **True by default, which is load-bearing rather than cautious.** Every route, test and
+    fixture in this repository assumes a tenant-wide caller, so a default that said otherwise
+    would change what they see invisibly. It is false only for a caller whose every live
+    assignment of this action is brand- or location-scoped."""
 
 
 def may(

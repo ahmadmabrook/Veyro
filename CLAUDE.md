@@ -821,6 +821,29 @@ believing the caller.** Worth carrying forward as rules:
 
 Known gaps, deliberate:
 
+- **The gate answers *where* now, and one route acts on it.** ADR-0014. `check` asked at the
+  tenant-wide default scope and nowhere else, so a brand- or location-scoped assignment
+  contributed nothing and such a role was refused **every** gated read -- four modules record
+  it in almost the same words, and the practical consequence was that every tenant in this
+  build had exactly one kind of user: one who holds everything everywhere. A request that
+  names no scope is now asking "may this caller do this anywhere", answered by re-deciding at
+  the caller's own *broadest* held scope rather than by noticing a grant exists, so the
+  assurance check, the deny policies and the mask all still run. Four decisions carry it:
+  **derived, never accepted** (`scopes_holding` reads the assignments the gate already
+  loaded, and `resolve_scope` stays the only way request input becomes a `Scope`); **a
+  tenant-wide holder is untouched**, which is load-bearing because every route, test and
+  fixture here assumes one; **a route opts in and the default refuses**, because a read that
+  has not been taught to filter would return the whole tenant to a club manager, silently,
+  across a hundred routes; and **the opt-in is checked structurally**, since a flag a route
+  sets is a declaration and this build has shipped six of those. Proven: 11 mutations, all
+  caught, and 8 HTTP tests.
+  **And the first implementation was silently inert, which no test could see.** `check` keys
+  on the scope argument being *absent*, and both `/authz/check` and `/authz/checks` passed
+  `resolve_scope(None, None)` -- the tenant-wide `Scope()`. So `/staff` answered a club
+  manager "yes" while the gate every surface in this app reads answered "no": the screen said
+  "Not permitted" over a read that would have worked, which is the worse half of the two.
+  `None` and `Scope()` are two different questions and nothing in 46 authorization tests had
+  ever asked the gate as a scoped caller.
 - **The bootstrap.** `authz.bootstrap` creates a role holding everything and grants it to the
   caller, refusing once any assignment exists, under a lock that survived ten concurrent
   attempts. It is only as strong as the surface around it, and `X-Veyro-Tenant` is an
@@ -2026,10 +2049,17 @@ Known gaps, deliberate:
   on every person read (fail-closed, and it will surprise the tenant that writes one) and an
   `allow` naming `assigned_to` can never fire. The migration header says the service "can supply
   `is_minor` and `is_assigned` -- which it must"; it supplies neither.
-- **A brand- or location-scoped role cannot use this module at all.** Both `permit` and
-  `held_permissions` resolve against the tenant-wide default scope, and a narrower assignment
-  covers nothing, so a single-brand front desk is refused every read. The direction is safe -- a
-  narrower role unmasks less, never more -- and the product consequence is real.
+- **A brand- or location-scoped role can use `/staff` and nothing else yet, which is
+  ADR-0014.** `authz.check` asked at the tenant-wide default scope and nowhere else, and
+  `permissions_of` lets a broad assignment cover a narrow one and never the reverse -- so a
+  location-scoped grant contributed nothing and a single-brand front desk was refused *every*
+  read. The gate answers "may this caller do this anywhere" now and says where; `GET /staff`
+  bounds its list to those clubs, which is the first route in this build to accept such a
+  caller. **Every other route refuses one exactly as before, deliberately**: a read that has
+  not been taught to filter would return the whole tenant, so `permit` refuses unless the route
+  passes `scoped=True` and `GateCoverageTests` requires a route that passes it to read
+  `gate.scopes`. `held_permissions` still resolves at the default scope, so the *mask* is a
+  tenant-wide answer -- a mask that differed by club is a further question.
 - **An erased minor stops being a minor.** The erasure clears `date_of_birth`, so
   `guardianship_satisfied` then opens the residual record -- the member number and the
   non-health notes -- to any `people.person.read` holder. Fail-open, and the smallest honest fix
@@ -2045,10 +2075,12 @@ Known gaps, deliberate:
   close it, and the response names the two of ADM-STF-01's four columns this module cannot
   answer: the role is MOD-008's `iam.role_assignments` and the last-seen is MOD-007's
   `iam.sessions`, both on a plane `veyro_cp_app` holds nothing in, so the surface composes
-  them through their own gates rather than joining. **`location_id` is a filter, not a
-  boundary**: the design says a club manager sees only their own club's staff and `permit`
-  resolves tenant-wide, which is the scope gap two bullets up, said on the screen rather than
-  implied by a filter.
+  them through their own gates rather than joining. **`location_id` is the filter and
+  `only_locations` is the boundary**, which is ADR-0014: the design says a club manager sees
+  only their own club's staff, and until the gate could answer *where* that was a sentence on
+  the screen rather than a predicate -- such a caller was refused the read outright. This is
+  the first route in the build to accept one, and the response says which of the two shaped
+  the answer, because a bounded list read as the whole team is a team that is not there.
 - **No search, and FD-02's lookup is not one** -- which two notes in this repository
   disagreed about until ADR-0012 settled it. Paragraph 4218's permission-aware search index
   with a mandatory query pre-filter is ENG-01's, and a `LIKE` scan presented as search would
@@ -5032,9 +5064,11 @@ Known gaps, deliberate:
   today nothing stops one. The schema refuses self-reference; `workflow.check_no_cycle` is
   written and tested and has no caller until slice 2 -- which is this build's "a writer with
   no reader" shape, named here rather than discovered later.
-- **A queue's `location_id` is a scope, not a boundary.** `permit` resolves tenant-wide, so a
-  club manager sees every queue -- MOD-014's standing scope gap, said here rather than implied
-  by a column that looks like it restricts something.
+- **A queue's `location_id` is a scope, not a boundary**, and this module has not opted in.
+  ADR-0014 gave the gate a `where` answer and `GET /staff` is the one route that acts on it;
+  a scoped caller is still refused every route here, which is the behaviour this note
+  described and is now a choice rather than the only possibility. Opting in is one predicate
+  per read plus a case, and the gate already answers the question.
 - **An escalation will end in a notification request and will not claim anybody was told**,
   because MOD-013 authors a message and sends nothing.
 
@@ -5233,9 +5267,9 @@ Known gaps, deliberate:
 - **A lead's stage move is unattributed on the lead row.** Who moved it is a touchpoint, which
   is the record that survives; the row carries the stage and not a history of it. The same
   asymmetry MOD-026 records for a task's reassignment, and the same remedy would close both.
-- **A source's `location_id` is a scope, not a boundary**, because `permit` resolves
-  tenant-wide -- MOD-014's standing gap, said on the read rather than implied by a column that
-  looks like it restricts something.
+- **A source's `location_id` is a scope, not a boundary**, and this module has not opted in
+  to ADR-0014 either: the gate answers *where* now and only `GET /staff` acts on it, so a
+  scoped caller is refused every route here exactly as before.
 
 ## The worker runtime
 
@@ -5749,6 +5783,69 @@ something they are not, so neither is rendered alone:
 Both blocks are gated on their own permission, because `config.flag.read` and
 `config.definition.read` are separate and a reader may hold one: an empty flag board would say
 this tenant has no flags, which is a different fact from "you may not see them".
+
+**And every other screen in this app was still telling a reader the wrong remedy, which
+ADR-0014 made reachable on the one it touched.** A legal name is MOD-014's `identity` class;
+`member.identity.read` opens it and is `financial`, so a step-up lifts the mask for a session
+that holds the grant at too low an assurance and does nothing at all for a role that does not
+hold it. Sixteen marker sites across thirteen files passed the step-up sentence -- "Identity
+fields need a stronger sign-in than this session has. Step up and the value is readable." --
+unconditionally, because `isWithheld` answers *whether* a value is masked and nothing asked
+*why*. So a reader without the permission followed the link, spent a recovery code they cannot
+spare, and the names were still withheld.
+
+**ADR-0014 is what made the wrong half reachable on `/staff`**: before it a location-scoped
+caller was refused that read outright, so every reader of it was tenant-wide and held
+everything. The club manager the ADR admits holds `people.person.read`, which opens no class
+at all, and was shown a remedy that could not work. `withheldRemedy` in `web/src/lib/mask.ts`
+is the split, the gate decides it, and every one of the sixteen sites now passes a key chosen
+from the answer -- which for a helper or a client form means the key travels as a prop, because
+the cell is rendered by the component and only the page knows which remedy the reader has.
+
+Three things fell out of it that are worth more than the fix:
+
+- **`WithheldLink` was built for exactly this and nobody supplied the third case.** Its own
+  docstring says the reason is part of the rendering "because the two reasons a field is
+  withheld here have different remedies and they are different doors", and it names two: an
+  identity field, which a step-up opens, and a health field, which needs a passkey. The case
+  it did not name is the reader who holds nothing, and every call site passed the first key to
+  all three.
+- **The member record's contact marker was false in *every* case, not some.**
+  `member.profile.read` is `data_access` with no financial class, so a contact value is masked
+  only when the reader does not hold the permission and a stronger sign-in never lifts it --
+  and the panel said "identity fields need a stronger sign-in" over a phone number.
+  `member.withheldContact` is its own sentence and says the remedy is a permission. A custom
+  field had the same two-way split and needed three, because its sensitivity may be any of
+  them.
+- **And my own test for the contact case contradicted itself.** It asserted no element
+  carries a title containing "stronger sign-in" -- and the sentence it requires to be present
+  reads "Reading one needs a permission rather than a stronger sign-in", so the marker the
+  test exists to assert was what failed it. The property is the *offer*: the step-up
+  sentence's own clause, and the absence of a link.
+- **And the sweep that found the sites was a grep for an attribute literal, which missed the
+  same key inside an expression.** `reason="member.withheldIdentity"` came back clean while
+  three sites spelled it `reason={... ? ... : "member.withheldIdentity"}` -- a custom field, a
+  note, and the link itself. Worse, **the step-up offer was a separate control from the
+  marker** and seven screens rendered it unconditionally, so fixing the sentence left the
+  link. Found by a browser test counting `[title*="stronger sign-in"]` and getting 2 where it
+  expected 0: the count is what pointed at the sites, twice in one afternoon -- the first time
+  it was five rows against one banner.
+- **Found by asserting what the reader sees, and the first diagnosis was wrong.** I read the
+  markers as the mask resolving at the tenant-wide default scope, changed `held_permissions`
+  to resolve at the caller's own scopes, and the markers stayed -- because the cause was the
+  missing permission all along. That change is kept and is **inert today**, deliberately
+  stated: it is right that a caller holding permissions at a club should not get an empty set,
+  and no route that has opted in has a maskable class a scoped *routine* permission opens, so
+  there is no case to write and a mutation against it would correctly come back uncaught.
+  **The count was the tell I ignored**: the banner is one element and five matched, so the
+  thing I had just fixed was not the thing being counted.
+
+Proven: 6 component tests over every verdict and both catalogues, 4 mutations (2 of them
+ill-formed on the first attempt, both in the same way -- in a `switch` whose earlier clauses
+decide, adding a label is either unreachable or unparseable, so the mutation of a branch is its
+own answer), and a browser test that reads the club manager's own sentence off the page: the
+step-up sentence absent, the role sentence present, no step-up *link* offered, and the rows
+still saying they are withheld rather than reading as blank.
 
 **The schedule board is the second place a withheld field reaches a reader, and the first
 where the surface has to say which of two refusals it is.** MOD-019 masks a session change's
@@ -6726,9 +6823,11 @@ in this build at all, and `Invited · 0` would say nobody has been invited rathe
 nothing can invite anybody. There are **no unticked grant rows**: the canvas draws two
 capabilities its subject lacks, which implies a candidate set, and here a permission exists if
 a role carries it -- so "what somebody could have" is the whole 207-entry catalogue and
-picking two would be inventing the product's idea of a sensitive capability. And **"a club
-manager sees only their own club's staff" is not true here**, said on the screen, because
-`permit` resolves tenant-wide.
+picking two would be inventing the product's idea of a sensitive capability. And **"a club manager sees only
+their own club's staff" is true now** -- ADR-0014, which is the one screen in this app that
+reads the gate's `where` answer: the list is bounded to the clubs the caller's own live
+assignments name, and a bounded list says so rather than letting the absence read as a team
+with nobody in it. Every other screen still refuses such a caller, deliberately.
 
 **The screenshot pass found a defect in every grid in the app.** `DataGrid` has said from the
 start that "a droppable value is in the DOM twice and visible once -- the stylesheet shows

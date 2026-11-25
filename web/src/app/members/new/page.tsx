@@ -2,9 +2,10 @@ import Link from "next/link";
 
 import { Banner } from "@/components/ds/banner";
 import { PageHeader } from "@/components/ds/page-header";
-import { t } from "@/i18n/locale";
+import { t, type MessageKey } from "@/i18n/locale";
 import { gateAll, gateMessage, gateVerdict } from "@/lib/api";
 import { presentation } from "@/lib/preferences";
+import { withheldRemedy } from "@/lib/mask";
 
 import { WalkInForm } from "./walk-in-form";
 
@@ -55,10 +56,20 @@ export default async function AddMemberPage() {
   // the same `as const` the member record uses, and the reason the money and integer
   // formatters take it as an argument rather than reading a locale.
   const numbering = "latn" as const;
-  const [read, write] = await gateAll([
+  const [read, write, mayNames] = await gateAll([
     "people.person.read",
     "people.person.write",
+    // For the withheld marker's remedy, not for any read. See `@/lib/mask`.
+    "member.identity.read",
   ] as const);
+  // **The remedy has to match the cause.** A legal name is MOD-014's `identity` class and
+  // `member.identity.read` opens it; that permission is `financial`, so a step-up lifts the
+  // mask for a session holding the grant at too low an assurance and does nothing for a role
+  // that does not hold it. The row said "step up" to both until now. See `@/lib/mask`.
+  const remedy = withheldRemedy(gateVerdict(mayNames));
+  const nameWithheld: MessageKey = remedy === "step_up"
+    ? "member.withheldIdentity"
+    : "member.withheldIdentityNoRemedy";
 
   // **The read is what the screen is for.** Without it there is no duplicate check, and a
   // form that created records with no check is the opposite of this screen's purpose — so
@@ -100,6 +111,7 @@ export default async function AddMemberPage() {
           tell them apart — so it would either offer a step-up to somebody it cannot help or
           withhold one from somebody it can. `gateVerdict` is what separates them. */}
       <WalkInForm
+        nameWithheld={nameWithheld}
         locale={locale} numbering={numbering}
         canWrite={write.allowed} writeVerdict={gateVerdict(write)}
       />

@@ -1903,6 +1903,48 @@ dropped from a matrix is a comparison a reader gets wrong.
   the page already asks three gates; a fourth read for a case the fixture does not produce
   would be a branch nothing exercises.
 
+**And the withheld marker's remedy was wrong for the reader ADR-0014 admits, on this screen
+and on twelve others.** ADM-STF-01 draws a NAME column, and a legal name is MOD-014's
+`identity` class -- so at an ordinary sign-in every row is marked withheld, which is correct
+and is what the canvas's own reading of "minimum necessary" requires. What was wrong was the
+sentence beside it: "Identity fields need a stronger sign-in than this session has. Step up and
+the value is readable", rendered whoever was reading. `member.identity.read` is `financial`, so
+that is true of a tenant-wide reader at AAL 1 and false of a club manager, who holds
+`people.person.read` and nothing else; a step-up raises assurance and their problem is a
+permission they hold at no assurance. Following the offer costs a single-use recovery code and
+lifts nothing.
+
+ADR-0014 is what made that reader reach the page: before it a location-scoped caller was
+refused the staff read outright, so every reader was tenant-wide and the sentence was right for
+all of them. Four decisions carry the fix:
+
+- **The gate decides it, and the page asks.** `member.identity.read` joins the batch -- not for
+  the read, which does not need it, but so the page can tell "a step-up would open this" from
+  "this role does not include it". `withheldRemedy` in `@/lib/mask` is the split, and it takes a
+  *verdict* rather than an answer, because a caller the gate allows has nothing withheld and a
+  fourth branch would be one nothing reaches.
+- **The row and the banner read one decision.** `remedy` is computed once per page, so the
+  banner's sentence and every row's marker cannot disagree -- which they did for one commit,
+  because the banner was fixed first and the rows outnumber it five to one. The count was the
+  tell: one element matching the step-up sentence is the banner, and five were the rows.
+- **The marker and the offer are two controls.** Seven screens rendered the step-up link on a
+  condition of their own, beside the sentence, so correcting the sentence left a link that
+  still costs a recovery code for nothing. Each is now behind the same `remedy === "step_up"`,
+  spelled one way across all seven -- including the member record, whose first version
+  compared the message key instead, which is the same test written twice.
+- **The key travels as a prop where a helper renders the cell.** `Person`, `Row`, `Board`,
+  `MatchRow`, `IdentityPanel`, `DisputeCard`, `LeadTable` and `ContactMatchLine` each take it,
+  because the component renders the cell and only the page knows the reader's remedy. The three
+  walk-in forms are the sharpest case: creating a *member* is financial class so that reader can
+  step up, while opening a *lead* is routine, so the same shared line needs a different sentence
+  on two screens that draw it identically.
+
+**Proven:** 6 component tests over every verdict and both catalogues, and the browser spec reads
+the club manager's own sentence off the page -- it asserts the step-up sentence is absent, the
+role sentence is present, that no step-up *link* is offered, and that the rows still say they
+are withheld rather than reading as blank, which is the half a reader would lose if the marker
+were simply dropped.
+
 ## ADM-TSK-01 · ADM-CC-06 · ADM-CC-07 — work, the exception it came from, and the record of it
 
 **The canvases.** ADM-TSK-01 is three chips (`Mine · 4`, `Team · 11`, `Overdue · 2`), rows of a
@@ -2916,3 +2958,75 @@ had no case. Both states have a test.
 **What is still owed is the charge.** The figure is disclosed and recorded against the change
 and no invoice is issued, which is the payment provider at the door — the same seam
 ADM-MSH-05's "Upgrade and charge 8.43" stops at.
+
+## ADR-0014 — the gate answers *where*, so a club manager can sign in and work
+
+Not a screen of its own, and it is the reason ADM-CC-02 could not be one.
+
+`authz.check` asked at the tenant-wide default scope and nowhere else.
+`authz.permissions_of` lets a broad assignment cover a narrow scope and never the reverse,
+which is correct and is the whole safety property. Together they meant a **location-scoped
+assignment contributed nothing**, so a club manager holding `people.person.read` at one club was
+refused every gated read in the product. Four modules record it in their own gap lists in almost
+the same words, and the practical consequence was that every tenant in this build had exactly
+one kind of user: one who holds everything everywhere.
+
+**The direction of that failure was safe and the product cost was total.** Nothing leaked; a
+whole role simply could not work.
+
+Four decisions, and the second and third are what make the change safe to land incrementally:
+
+- **A request that names no scope is asking "may this caller do this *anywhere*", answered by
+  re-deciding at the caller's own broadest held scope.** Not by noticing a grant exists — that
+  would skip the assurance check, the deny policies and the mask for exactly the caller this is
+  about.
+- **A tenant-wide holder is untouched**, which is load-bearing rather than cautious: every
+  route, test and fixture in this repository assumes one, and a change that altered what they
+  see would be a change to the product nobody asked for, made invisibly.
+- **A route opts in and the default refuses.** The gate saying yes is not enough: a read that
+  has not been taught to filter would return the whole tenant to a club manager, turning a role
+  that cannot work into one that sees everything, silently, across a hundred routes. `permit`
+  refuses unless the route passes `scoped=True`.
+- **The opt-in is checked with `ast`**, because a flag a route sets is a declaration and this
+  build has shipped six controls keyed on a value somebody supplied. `GateCoverageTests`
+  requires a route passing it to mention `scopes` in its body — and a second test requires that
+  at least one route does, because a structural check asserting an empty list proves nothing
+  until it can see its subjects.
+
+**`GET /staff` is the one route that has opted in, and ADM-STF-01 is why.** Its canvas says "a
+club manager sees only their own club's staff", which MOD-014's gap list recorded as a sentence
+on the screen rather than a predicate. The list is bounded to the clubs the gate named and the
+response says which of the filter and the boundary shaped it, because a bounded list read as
+the whole team is a team that is not there. A **brand**-scoped caller is still refused there:
+`Scope.covers` says in as many words that the module "does not know the hierarchy and must not
+guess at it", so turning a brand into its locations is a `tenancy` read that route does not
+make, and bounding on a brand nobody resolved would be that guess.
+
+**Two defects came out of it and neither was visible to any test.**
+
+- **The first implementation was silently inert.** `check` keys the new path on the `scope`
+  argument being *absent*, and both `/authz/check` and `/authz/checks` passed
+  `resolve_scope(None, None)` — which is the tenant-wide `Scope()`, because that is the right
+  answer for the permission simulator. So `GET /staff` answered a club manager "yes" while the
+  gate every surface in this app reads answered "no": the page rendered "Not permitted" over a
+  read that would have worked. **A screen refusing while its own read allows is the worse half
+  of the two**, and nothing in 46 authorization tests could see it because none had asked the
+  gate as a scoped caller.
+- **And then `/members` rendered as permitted over a read that refuses.** The client's `gate()`
+  returns the gate's own answer, so the hour it learned to say "anywhere" every page keyed on
+  `allowed` started rendering for a caller whose read `permit` still refuses: the heading drew,
+  the list read answered 403, and the page showed neither the rows nor the refusal. The remedy
+  is the server's own discipline one layer up — the client's `allowed` keeps its old meaning
+  and the new one rides beside it as `allowed_anywhere`, so every page behaves exactly as it
+  did and the one page that filters opts in.
+
+**The rail is ADM-CC-02's own sentence and is the smallest honest piece of that screen.** "The
+rail is generated from his role rather than greyed" — so the staff entry reads
+`allowed_anywhere` and every other entry reads `allowed`, which means a club manager gets a
+rail of the pages that would actually answer them. A rail of one entry is what that sentence
+means in a build where one route has opted in.
+
+**What is still owed on ADM-CC-02 is the Command Center's panels.** Each is a read that has not
+opted in, so a club manager sees the rail and an empty board. Opting one in is a predicate and
+a case, and `permit` refuses such a caller until it happens — which is the behaviour they had
+before this, so nothing regressed by leaving them.

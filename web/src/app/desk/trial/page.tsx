@@ -8,6 +8,7 @@ import { currentSession, gate, gateAll, gateMessage, gateVerdict } from "@/lib/a
 import { listSellablePlans } from "@/lib/leads-reads";
 import { presentation } from "@/lib/preferences";
 import { headlineDays, planChoice, type TrialPlan } from "@/lib/walk-in-trial";
+import { withheldRemedy } from "@/lib/mask";
 
 import { TrialForm } from "./trial-form";
 
@@ -48,13 +49,23 @@ export default async function WalkInTrialPage() {
 
   if (!(await currentSession())) redirect("/login");
 
-  const [read, lead, person, agreement, activate] = await gateAll([
+  const [read, lead, person, agreement, activate, mayNames] = await gateAll([
     "people.person.read",
     "crm.lead.write",
     "people.person.write",
     "membership.agreement.write",
     "membership.agreement.activate",
+    // For the withheld marker's remedy, not for any read. See `@/lib/mask`.
+    "member.identity.read",
   ] as const);
+  // **The remedy has to match the cause.** A legal name is MOD-014's `identity` class and
+  // `member.identity.read` opens it; that permission is `financial`, so a step-up lifts the
+  // mask for a session holding the grant at too low an assurance and does nothing for a role
+  // that does not hold it. The row said "step up" to both until now. See `@/lib/mask`.
+  const remedy = withheldRemedy(gateVerdict(mayNames));
+  const nameWithheld: MessageKey = remedy === "step_up"
+    ? "member.withheldIdentity"
+    : "member.withheldIdentityNoRemedy";
 
   if (!read.allowed) {
     return (
@@ -117,6 +128,7 @@ export default async function WalkInTrialPage() {
         </Banner>
       ) : (
         <TrialForm
+        nameWithheld={nameWithheld}
           locale={locale} numbering={numbering}
           canStart={canStart} startVerdict={startVerdict} choice={choice}
         />

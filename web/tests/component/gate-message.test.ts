@@ -18,6 +18,12 @@ const answer = (over: Partial<GateAnswer>): GateAnswer => ({
   step_up_required: false,
   required_aal: null,
   reachable: true,
+  // ADR-0014. `tenant_wide: true` is the ordinary caller: every page in this app assumed one
+  // and the gate's `allowed` is narrowed to that case, so a builder that defaulted it false
+  // would be testing a reader this app has never had.
+  tenant_wide: true,
+  scopes: [],
+  allowed_anywhere: false,
   masked_fields: [],
   ...over,
 });

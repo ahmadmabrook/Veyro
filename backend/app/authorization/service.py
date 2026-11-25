@@ -21,6 +21,7 @@ ignore real ones.
 from __future__ import annotations
 
 import re
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -855,6 +856,36 @@ def check(
         policies = _load_policies(conn, action)
         decided = gating.may(session_aal=session_aal, request=request,
                              assignments=assignments, policies=policies, now=_now())
+        # **Where the caller holds it, for a request that named no scope** -- ADR-0014 D1.
+        # Only for that case: a request aimed at a scope was already asking "may they act
+        # *there*", and answering it with a list would be a second answer to one question.
+        #
+        # **Asked after the decision and never instead of it.** The evaluator's answer at the
+        # tenant-wide scope is unchanged, so a tenant-wide caller is decided exactly as before
+        # and this only adds the `scopes` the gate reports. A caller whose grants are all
+        # scoped is still *refused* here; what changes is that the refusal now carries where
+        # they would have been allowed, which is what lets `permit` offer the route the
+        # choice rather than the gate making it.
+        if scope is None:
+            where = authz.scopes_holding(assignments, now=_now(), permission=action)
+            # **Re-decided at the caller's own broadest scope, not hand-waved.** "May this
+            # caller do this anywhere" has to be answered by the evaluator rather than by this
+            # function noticing a grant exists -- otherwise the assurance check, the deny
+            # policies and the masking would all be skipped for exactly the caller this is
+            # about. `where[0]` is tenant, then brand, then location, so the first entry is
+            # the broadest place they hold it and is a scope `gating.may` understands.
+            #
+            # A tenant-wide holder is untouched: `where[0]` is the default scope, the request
+            # is identical, and the answer is the one above.
+            if where and not decided.allowed:
+                decided = gating.may(
+                    session_aal=session_aal,
+                    request=authz.Request(action=action, scope=where[0],
+                                          attributes=attributes or {}),
+                    assignments=assignments, policies=policies, now=_now())
+            decided = replace(
+                decided, scopes=where,
+                tenant_wide=any(one.scope_type == authz.TENANT for one in where))
         if not decided.allowed and record_denial:
             try:
                 category = audit_category(action)

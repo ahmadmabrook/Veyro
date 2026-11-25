@@ -50,8 +50,9 @@ import { IDLE, type WalkInTrialState } from "./state";
  * them rather than assuming the press started something.
  */
 export function TrialForm({
-  locale, numbering, canStart, startVerdict, choice,
+  locale, numbering, canStart, startVerdict, choice, nameWithheld,
 }: {
+  nameWithheld: MessageKey;
   locale: Locale;
   numbering: "latn";
   /** All five permissions, three of them financial class. */
@@ -189,7 +190,7 @@ export function TrialForm({
               {text("deskTrial.duplicate")}
             </p>
             <p className="ds-walk-in-match">
-              <ContactMatchLine locale={locale} match={duplicate.first} />
+              <ContactMatchLine nameWithheld={nameWithheld} locale={locale} match={duplicate.first} />
               {". "}
               {text("deskTrial.insteadOfSecond")}
             </p>

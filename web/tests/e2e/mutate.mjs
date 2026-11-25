@@ -2971,6 +2971,57 @@ const MUTATIONS = [
   // thing being proved: the control is the route's three `permit` calls, and
   // `test_the_card_charges_all_three_permissions` is what proves them. A mutation that cannot
   // fail is evidence of nothing, which this repository has a rule for.
+  {
+    id: "withheld-remedy-offers-the-step-up-to-everybody",
+    why: "a step-up lifts an identity mask only for a reader who holds the permission at too"
+      + " low an assurance; offered to one who holds it at none, it costs a single-use"
+      + " recovery code and lifts nothing -- which is what nineteen call sites did",
+    file: "src/lib/mask.ts",
+    // **Not a second `default:`** -- the switch already has one, so adding a clause makes
+    // the file unparseable and vitest collects nothing: "Tests  no tests", which the harness
+    // would read as a gap it created. The mutation is the default branch's own answer.
+    from: '    default:\n      return "not_held";',
+    to: '    default:\n      return "step_up";',
+    grep: "says the role does not include it when the gate simply refused",
+    runner: "vitest",
+  },
+  {
+    id: "withheld-remedy-treats-a-dead-gate-as-a-refusal",
+    why: "a transport failure is not a statement about the reader's access, which is the"
+      + " whole reason `gateVerdict` has a verdict for it",
+    file: "src/lib/mask.ts",
+    // **Both of this pair's first drafts were ill-formed in the same way**, which is worth
+    // the note: in a `switch` whose earlier clauses already decide, adding a label is either
+    // a duplicate (unreachable -- the first match wins, so the sweep reports UNCAUGHT) or a
+    // second `default:` (unparseable -- vitest collects nothing and reports "no tests").
+    // The mutation of a branch is its own answer, never a clause beside it.
+    from: '      return "no_answer";',
+    to: '      return "not_held";',
+    grep: "keeps a transport failure out of both",
+    runner: "vitest",
+  },
+  {
+    id: "staff-rows-keep-the-step-up-sentence",
+    why: "the banner is one element and the rows are five, so fixing only the banner leaves"
+      + " the false remedy on every row -- which is how the first version shipped",
+    file: "src/app/staff/page.tsx",
+    from: '  const nameWithheld: MessageKey = remedy === "step_up"\n'
+      + '    ? "member.withheldIdentity"\n'
+      + '    : "member.withheldIdentityNoRemedy";',
+    to: '  const nameWithheld: MessageKey = "member.withheldIdentity";',
+    grep: "can read the staff list at all, and is told it is bounded",
+    runner: "playwright",
+  },
+  {
+    id: "staff-banner-keeps-the-step-up-sentence",
+    why: "the page-level sentence is the one a reader acts on, and the offer beside it is"
+      + " what costs the recovery code",
+    file: "src/app/staff/page.tsx",
+    from: '          {remedy === "step_up" ? (',
+    to: "          {true ? (",
+    grep: "can read the staff list at all, and is told it is bounded",
+    runner: "playwright",
+  },
 ];
 
 const only = process.argv[2];

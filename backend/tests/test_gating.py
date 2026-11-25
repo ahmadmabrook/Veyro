@@ -1051,6 +1051,77 @@ class GateCoverageTests(unittest.TestCase):
                               if isinstance(c, ast.Call) and isinstance(c.func, ast.Name)}
                     yield dec.func.attr.upper(), dec.args[0].value, called
 
+    def _scoped_routes(self):
+        """Every route that passes `scoped=True` to `permit`, with whether it reads `scopes`.
+
+        A second walk rather than an extra yield from `_routes`, because this one needs the
+        *keyword* on the `permit` call and the names the body mentions -- which is a different
+        question from "does it call a guard at all".
+        """
+        source = pathlib.Path(__file__).resolve().parents[1] / "app" / "main.py"
+        tree = ast.parse(source.read_text())
+        create_app = next(n for n in tree.body
+                          if isinstance(n, ast.FunctionDef) and n.name == "create_app")
+        routes = (ast.FunctionDef, ast.AsyncFunctionDef)
+        for node in create_app.body:
+            if not isinstance(node, routes):
+                continue
+            for dec in node.decorator_list:
+                if not (isinstance(dec, ast.Call) and isinstance(dec.func, ast.Attribute)
+                        and isinstance(dec.func.value, ast.Name)
+                        and dec.func.value.id == "app"
+                        and dec.func.attr.upper() in self.HTTP_METHODS
+                        and dec.args and isinstance(dec.args[0], ast.Constant)
+                        and isinstance(dec.args[0].value, str)):
+                    continue
+                opted = any(
+                    isinstance(call.func, ast.Name) and call.func.id == "permit"
+                    and any(kw.arg == "scoped"
+                            and isinstance(kw.value, ast.Constant) and kw.value.value is True
+                            for kw in call.keywords)
+                    for call in ast.walk(node) if isinstance(call, ast.Call))
+                if not opted:
+                    continue
+                # `scopes` named anywhere in the body: as an attribute (`gate.scopes`), a
+                # keyword (`scopes=...`) or a plain name. Narrower than that would reject the
+                # honest spellings; wider would accept a route that merely has the word in a
+                # comment, which `ast` cannot see at all -- which is the point of using it.
+                reads = any(
+                    (isinstance(n2, ast.Attribute) and n2.attr == "scopes")
+                    or (isinstance(n2, ast.Name) and n2.id == "scopes")
+                    or (isinstance(n2, ast.keyword) and n2.arg == "scopes")
+                    for n2 in ast.walk(node))
+                yield dec.func.attr.upper(), dec.args[0].value, reads
+
+    def test_a_route_that_accepts_a_scoped_caller_reads_where_they_may_act(self):
+        """ADR-0014 D5: a flag a route sets is a declaration, so it is checked structurally.
+
+        `permit(..., scoped=True)` says "this route is safe for a brand- or location-scoped
+        caller", and the only thing that makes it safe is filtering on `gate.scopes`. A route
+        that set the flag and ignored the answer would return the whole tenant to a club
+        manager -- which is the failure this whole change is written to avoid, arriving through
+        the opt-in that exists to prevent it. This build has shipped six controls keyed on a
+        value the caller supplies; a flag the *route* supplies deserves the same suspicion.
+        """
+        claiming = [(method, path) for method, path, reads in self._scoped_routes()
+                    if not reads]
+        self.assertEqual(
+            claiming, [],
+            "these routes accept a scoped caller and never read gate.scopes, so they would "
+            "return every club's rows to a caller who holds the action at one")
+
+    def test_the_scoped_guard_is_not_vacuous(self):
+        """A structural check that passes because it found nothing is the thing it prevents.
+
+        The sweeps in this file are allowed to be samples on the strength of the walker above;
+        this one is allowed to assert an empty list only if it can see the routes at all.
+        """
+        seen = list(self._scoped_routes())
+        self.assertTrue(
+            seen,
+            "no route passes scoped=True, so the guard above proves nothing -- either a route "
+            "should opt in, or this test and `permit`'s `scoped` flag are dead weight")
+
     def test_every_route_asks_the_gate_or_is_a_named_exception(self):
         unguarded = [(method, path) for method, path, called in self._routes()
                      if not (self.GUARDS & called)

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { MESSAGES } from "@/i18n/locale";
 import type { Assignment, CatalogPermission, Role } from "@/lib/authz";
+import { withheldRemedy } from "@/lib/mask";
 import {
   grantReach,
   keysInPlay,
@@ -321,5 +322,56 @@ describe("the vocabularies, from the side the parity check cannot see", () => {
       "working", "workingNeverUsed", "workingNoLogin", "endedWithAccess", "ended", "unknown",
     ].map((one) => standingName(one as never)));
     expect(names.size).toBe(6);
+  });
+});
+
+describe("why a name is withheld decides what the page may offer", () => {
+  // **The sentence was one sentence for four different readers.** Both the staff list and the
+  // members list said the cause was a missing second factor and offered the step-up that
+  // lifts it -- true for a tenant-wide reader at AAL 1, false for a role that does not hold
+  // `member.identity.read` at all, who would spend a recovery code to no effect. ADR-0014 is
+  // what made the wrong half reachable on `/staff`: before it a location-scoped caller was
+  // refused that read outright, so every reader was a tenant-wide one.
+  it("offers the step-up only when a step-up would open it", () => {
+    expect(withheldRemedy("needs_step_up")).toBe("step_up");
+  });
+
+  it("says the role does not include it when the gate simply refused", () => {
+    expect(withheldRemedy("denied")).toBe("not_held");
+  });
+
+  it("does not offer a step-up for a level a step-up cannot reach", () => {
+    // Unreachable for `member.identity.read`, which is `financial` and so maps to AAL 2 --
+    // kept because if it ever did arrive, a step-up is exactly what would not help.
+    expect(withheldRemedy("unreachable_level")).toBe("not_held");
+  });
+
+  it("keeps a transport failure out of both, because it is not about the reader", () => {
+    expect(withheldRemedy("gate_failed")).toBe("no_answer");
+  });
+
+  it("has a sentence in both catalogues for each answer it can give", () => {
+    // **One pair, shared.** The claim is identical on every screen that lists names, and
+    // five of them make it; a per-screen copy is five sentences that can drift apart, which
+    // is this build's most-repeated finding pointed at prose. What stays per screen is only
+    // how each one names its own list.
+    for (const key of [
+      "staff.namesWithheld", "members.namesWithheld", "leads.namesWithheld",
+      "dispute.namesWithheld", "recovery.namesWithheld",
+      "member.namesWithheldNotHeld", "member.namesWithheldNoAnswer",
+      "member.withheldIdentity", "member.withheldIdentityNoRemedy", "member.withheldContact",
+    ] as const) {
+      expect(MESSAGES.en, `en is missing ${key}`).toHaveProperty(key);
+      expect(MESSAGES.ar, `ar is missing ${key}`).toHaveProperty(key);
+    }
+  });
+
+  it("never promises a stronger sign-in in the sentence that says one will not help", () => {
+    // The defect in one assertion: the wording is the whole fix, so a sentence that still
+    // mentions presenting a factor would be the same false remedy in different words.
+    expect(MESSAGES.en["member.namesWithheldNotHeld"]).toMatch(/would not change it/);
+    expect(MESSAGES.en["member.withheldIdentityNoRemedy"]).not.toMatch(/sign-in/);
+    // A contact mask is never a step-up at any assurance, so its sentence says which it is.
+    expect(MESSAGES.en["member.withheldContact"]).toMatch(/permission rather than/);
   });
 });

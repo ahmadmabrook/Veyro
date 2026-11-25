@@ -7,7 +7,7 @@ import { PageHeader } from "@/components/ds/page-header";
 import { Prose, ProseNote } from "@/components/prose";
 import { Withheld } from "@/components/withheld";
 import { fill, t, type Locale, type MessageKey } from "@/i18n/locale";
-import { currentSession, failureMessage, gateAll, gateMessage } from "@/lib/api";
+import { currentSession, failureMessage, gateAll, gateMessage, gateVerdict } from "@/lib/api";
 import {
   evidenceFrom,
   kindName,
@@ -23,7 +23,7 @@ import {
 } from "@/lib/disputes";
 import { readMembership } from "@/lib/membership";
 import { listMembers } from "@/lib/members-reads";
-import { isWithheld } from "@/lib/people";
+import { isWithheld, withheldRemedy } from "@/lib/people";
 import { presentation } from "@/lib/preferences";
 
 /**
@@ -92,7 +92,7 @@ export default async function DisputesPage({
 
   if (!(await currentSession())) redirect("/login?next=/payments/disputes");
 
-  const [mayDisputes, mayPeople, mayAttendance, mayMembership] = await gateAll([
+  const [mayDisputes, mayPeople, mayAttendance, mayMembership, mayNames] = await gateAll([
     // **Routine, and the board exists because of it.** `finance.dispute.manage` is
     // financial, so a board behind it is one an accountant reaches only after a step-up
     // -- and the thing this screen is for is noticing that seven days are left.
@@ -100,7 +100,17 @@ export default async function DisputesPage({
     "people.person.read",
     "access.decision.read",
     "membership.record.read",
+    // For the withheld marker's remedy, not for any read. See `@/lib/mask`.
+    "member.identity.read",
   ] as const);
+  // **The remedy has to match the cause.** A legal name is MOD-014's `identity` class and
+  // `member.identity.read` opens it; that permission is `financial`, so a step-up lifts the
+  // mask for a session holding the grant at too low an assurance and does nothing for a role
+  // that does not hold it. The row said "step up" to both until now. See `@/lib/mask`.
+  const remedy = withheldRemedy(gateVerdict(mayNames));
+  const nameWithheld: MessageKey = remedy === "step_up"
+    ? "member.withheldIdentity"
+    : "member.withheldIdentityNoRemedy";
 
   if (!mayDisputes.allowed) {
     // **No step-up offer, because the permission is routine.** A step-up cannot lift a
@@ -177,13 +187,21 @@ export default async function DisputesPage({
           actually withheld. */}
       {list.disputes.some((d) => isWithheld(names?.get(d.payer_person_id) ?? "")) ? (
         <p className="ds-note">
-          {text("dispute.namesWithheld")}{" "}
-          <Link
-            href={`/step-up?for=financial&action=member.identity.read&next=${
-              encodeURIComponent("/payments/disputes")}`}
-          >
-            {text("member.raiseSession")}
-          </Link>
+          {remedy === "step_up" ? (
+            <>
+              {text("dispute.namesWithheld")}{" "}
+              <Link
+                href={`/step-up?for=financial&action=member.identity.read&next=${
+                  encodeURIComponent("/payments/disputes")}`}
+              >
+                {text("member.raiseSession")}
+              </Link>
+            </>
+          ) : remedy === "no_answer" ? (
+            text("member.namesWithheldNoAnswer")
+          ) : (
+            text("member.namesWithheldNotHeld")
+          )}
         </p>
       ) : null}
 
@@ -198,6 +216,7 @@ export default async function DisputesPage({
             name={names === null ? null : names.get(dispute.payer_person_id) ?? null}
             namesRefused={names === null}
             evidence={evidence.get(dispute.dispute_id) ?? null}
+            nameWithheld={nameWithheld}
           />
         ))
       )}
@@ -252,12 +271,16 @@ function DisputeCard({
   name,
   namesRefused,
   evidence,
+  nameWithheld,
 }: {
   locale: Locale;
   dispute: Dispute;
   name: string | null;
   namesRefused: boolean;
   evidence: Evidence[] | null;
+  // Which sentence a withheld name gets: decided by the page from the gate's answer, because
+  // only the page knows whether a step-up would lift the mask for this reader.
+  nameWithheld: MessageKey;
 }) {
   const text = (key: MessageKey) => t(locale, key);
   const level = urgency(dispute);
@@ -283,7 +306,7 @@ function DisputeCard({
         ) : name === null ? (
           <span className="muted">{text("dispute.notOnThisPage")}</span>
         ) : isWithheld(name) ? (
-          <Withheld locale={locale} reason="member.withheldIdentity" />
+          <Withheld locale={locale} reason={nameWithheld} />
         ) : (
           <Link href={`/people/${dispute.payer_person_id}`}>{name}</Link>
         )}

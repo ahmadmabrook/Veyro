@@ -17,7 +17,7 @@ import {
   type LeadDetail, type TrialCard,
 } from "@/lib/leads";
 import { readLead, readLeadTrial } from "@/lib/leads-reads";
-import { isWithheld } from "@/lib/people";
+import { isWithheld, withheldRemedy } from "@/lib/people";
 import { presentation } from "@/lib/preferences";
 import { dayLabel, monthDayLabel, timeOfDay } from "@/lib/time";
 import { LOST_REASONS, reasonWord, recontactSentence } from "@/lib/lost";
@@ -67,14 +67,24 @@ export default async function LeadPage({
 
   if (!(await currentSession())) redirect("/login");
 
-  const [mayLead, mayTouch, mayWrite, mayPeople, mayVisits, mayBookings] = await gateAll([
+  const [mayLead, mayTouch, mayWrite, mayPeople, mayVisits, mayBookings, mayNames] = await gateAll([
     "crm.lead.read", "crm.touchpoint.write", "crm.lead.write", "people.person.read",
     // **ADM-CRM-05's card carries three modules' facts**, so it asks for all three: the
     // window is MOD-017's, the visits are MOD-022's entry events and the classes are
     // MOD-020's settled bookings. Three of its four cells is not the card the canvas draws,
     // so the read is skipped rather than half-made and the screen says which reads it wants.
     "access.decision.read", "booking.booking.read",
+    // For the withheld marker's remedy, not for any read. See `@/lib/mask`.
+    "member.identity.read",
   ] as const);
+  // **The remedy has to match the cause.** A legal name is MOD-014's `identity` class and
+  // `member.identity.read` opens it; that permission is `financial`, so a step-up lifts the
+  // mask for a session holding the grant at too low an assurance and does nothing for a role
+  // that does not hold it. The row said "step up" to both until now. See `@/lib/mask`.
+  const remedy = withheldRemedy(gateVerdict(mayNames));
+  const nameWithheld: MessageKey = remedy === "step_up"
+    ? "member.withheldIdentity"
+    : "member.withheldIdentityNoRemedy";
 
   if (!mayLead.allowed) {
     const verdict = gateVerdict(mayLead);
@@ -171,7 +181,7 @@ export default async function LeadPage({
       <RecordHeader
         id="lead-heading"
         name={
-          name ?? <Withheld locale={locale} reason="member.withheldIdentity" />
+          name ?? <Withheld locale={locale} reason={nameWithheld} />
         }
         {...band}
         subline={

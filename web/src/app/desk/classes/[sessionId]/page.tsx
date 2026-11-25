@@ -3,8 +3,9 @@ import Link from "next/link";
 import { Banner } from "@/components/ds/banner";
 import { PageHeader } from "@/components/ds/page-header";
 import { Withheld } from "@/components/withheld";
+import { withheldRemedy } from "@/lib/mask";
 import { fill, formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
-import { ApiError, gateAll, gateMessage } from "@/lib/api";
+import { ApiError, gateAll, gateMessage, gateVerdict } from "@/lib/api";
 import {
   checkinWindow, deskOrder, hasStarted, mayCheckIn, minutesUntil, nameOf, notHere,
   presence, rowState, waiting, type NamedPerson, type Roster, type RosterBooking,
@@ -64,11 +65,21 @@ export default async function ClassCheckInPage(
   const text = (key: MessageKey) => t(locale, key);
   const count = (value: number) => formatInteger(value, numbering);
 
-  const [mayRoster, mayPeople, mayAttend] = await gateAll([
+  const [mayRoster, mayPeople, mayAttend, mayNames] = await gateAll([
     "booking.booking.read",
     "people.person.read",
     "booking.attendance.write",
+    // For the withheld marker's remedy, not for any read. See `@/lib/mask`.
+    "member.identity.read",
   ] as const);
+  // **The remedy has to match the cause.** A legal name is MOD-014's `identity` class and
+  // `member.identity.read` opens it; that permission is `financial`, so a step-up lifts the
+  // mask for a session holding the grant at too low an assurance and does nothing for a role
+  // that does not hold it. The row said "step up" to both until now. See `@/lib/mask`.
+  const remedy = withheldRemedy(gateVerdict(mayNames));
+  const nameWithheld: MessageKey = remedy === "step_up"
+    ? "member.withheldIdentity"
+    : "member.withheldIdentityNoRemedy";
 
   if (!mayRoster.allowed) {
     return (
@@ -206,6 +217,7 @@ export default async function ClassCheckInPage(
                 locale={locale} numbering={numbering} sessionId={sessionId}
                 booking={booking} person={names.get(booking.person_id)}
                 mayAttend={mayAttend.allowed} now={now}
+                nameWithheld={nameWithheld}
               />
             ))}
           </ul>
@@ -220,7 +232,10 @@ export default async function ClassCheckInPage(
               <li key={entry.entry_id} className="ds-desk-row">
                 <span className="ds-desk-row-name">
                   <span className="data">{count(entry.position)}</span>{" "}
-                  <Person locale={locale} person={names.get(entry.person_id)} />
+                  <Person
+                    locale={locale} person={names.get(entry.person_id)}
+                    nameWithheld={nameWithheld}
+                  />
                 </span>
                 <span className="muted">{text(`desk.waitState.${entry.state}` as MessageKey)}</span>
               </li>
@@ -248,9 +263,10 @@ export default async function ClassCheckInPage(
 }
 
 function Row({
-  locale, numbering, sessionId, booking, person, mayAttend, now,
+  locale, numbering, sessionId, booking, person, mayAttend, now, nameWithheld,
 }: {
   locale: Locale;
+  nameWithheld: MessageKey;
   numbering: "latn";
   sessionId: string;
   booking: RosterBooking;
@@ -268,7 +284,7 @@ function Row({
   return (
     <li className="ds-desk-row" data-state={state}>
       <span className="ds-desk-row-name">
-        <Person locale={locale} person={person} />
+        <Person locale={locale} person={person} nameWithheld={nameWithheld} />
         {/* **Context, not a flag** — the canvas's own words. It is shown for everybody who
             has one, including the member who is already here, because a coach reads it
             before the class rather than at the door. */}
@@ -303,12 +319,17 @@ function Row({
   );
 }
 
-function Person({ locale, person }: { locale: Locale; person: NamedPerson | undefined }) {
+function Person({ locale, person, nameWithheld }: {
+  locale: Locale; person: NamedPerson | undefined;
+  // Which sentence a withheld name gets, decided by the page from the gate's answer: the
+  // helper renders the cell and only the page knows whether a step-up would lift the mask.
+  nameWithheld: MessageKey;
+}) {
   const shown = nameOf(person);
   if (shown !== null) return <strong>{shown}</strong>;
   return (
     <strong>
-      <Withheld locale={locale} reason="member.withheldIdentity" />
+      <Withheld locale={locale} reason={nameWithheld} />
       {person?.member_number ? (
         <span className="muted"> · {person.member_number}</span>
       ) : null}

@@ -787,6 +787,7 @@ def list_staff(
     pool: Pool, tenant_id: str, *, masked_fields: tuple[str, ...],
     held_permissions: set[str], employment_state: str | None = None,
     location_id: str | None = None, limit: int = 50,
+    only_locations: tuple[str, ...] | None = None,
 ) -> dict[str, Any]:
     """ADM-STF-01's staff list -- the first reader `ppl_staff_profiles` has ever had.
 
@@ -805,11 +806,13 @@ def list_staff(
     Member 360 composes membership and money onto a person. `columns_this_module_cannot_answer`
     names them, because a column rendered empty reads as a fact about the person.
 
-    **`location_id` is a filter, not a restriction.** The design says "a Club Manager sees only
-    their own club's staff"; `permit` resolves against the tenant-wide default scope, so a
-    narrower assignment covers nothing and nothing here derives a reader's own club. That is
-    MOD-014's standing gap, and the response says so rather than letting a filter read as a
-    boundary.
+    **`location_id` is the filter and `only_locations` is the boundary**, and until ADR-0014
+    there was only the first. The design says "a Club Manager sees only their own club's
+    staff"; `permit` resolved against the tenant-wide default scope, so a narrower assignment
+    covered nothing and such a caller was refused this read outright -- MOD-014's standing gap,
+    recorded in four modules in almost the same words. The gate answers *where* now, the route
+    passes it, and the response says which of the two shaped the answer, because a reader who
+    took a bounded list for the whole team would be reading a team that is not there.
 
     Masked like every other read in this module -- the gate's fields and the caller's class
     permissions both, as required arguments.
@@ -829,6 +832,20 @@ def list_staff(
     if location_id is not None:
         where.append("s.location_id = %s")
         args.append(location_id)
+    # **ADR-0014: the boundary, as opposed to the filter above.** `location_id` is what a
+    # reader *asked* for and `only_locations` is where they are *allowed* to look -- the gate's
+    # own answer, derived from their live assignments and never from the request. Until this,
+    # the design's "a Club Manager sees only their own club's staff" was a sentence on the
+    # screen rather than a predicate, because `permit` resolved tenant-wide and a
+    # location-scoped role was refused the read outright.
+    #
+    # **An empty tuple is not the same as `None`.** `None` is "no boundary, this caller holds
+    # the action everywhere"; an empty tuple would be a caller allowed nowhere, which `permit`
+    # refuses before this function is reached -- so it cannot occur, and the day it can the
+    # `= ANY` below correctly matches nothing rather than everything.
+    if only_locations is not None:
+        where.append("s.location_id = ANY(%s)")
+        args.append(list(only_locations))
 
     with tenant_scope(pool, tenant_id) as conn:
         # The chips, over the whole tenant rather than over the page. A surface that counted
@@ -916,10 +933,16 @@ def list_staff(
             "no table in this build holds a coach certification or its expiry, so the "
             "design's 30-day certification warning has nothing to read",
         #: The filter is a filter. Saying so is cheaper than a reader deriving a boundary.
+        #: ADR-0014. **The boundary is the gate's answer and the filter is the reader's
+        #: request**, and a surface that confused them would show a bounded list as the whole
+        #: team -- a team that is not there. `null` is the tenant-wide caller, for whom the
+        #: filter is still only a filter.
+        "bounded_to_locations": None if only_locations is None else list(only_locations),
         "the_location_filter_is_not_a_boundary":
-            "permit resolves against the tenant-wide default scope, so a brand- or "
-            "location-scoped role covers nothing here and nothing derives a reader's own "
-            "club; this narrows the list and does not restrict who may read it",
+            "`location_id` narrows what this reader asked for; `bounded_to_locations` is "
+            "where the gate says they may look, from their own live assignments. A "
+            "tenant-wide caller has no boundary and the filter is the only thing narrowing "
+            "the list",
     }
 
 

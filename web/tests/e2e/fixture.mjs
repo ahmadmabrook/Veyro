@@ -1235,6 +1235,48 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
   await confirmWebDevice(
     tenantId, deskSession.identity_id, deskSignIn.token, deskEmail, deskPassword);
 
+  // ------------------------------------- a club manager, which this build had no kind of
+  //
+  // **ADR-0014, and until it landed this identity could not read anything at all.** A
+  // location-scoped role was refused every gated read, because `authz.check` asked at the
+  // tenant-wide scope and `permissions_of` lets a broad assignment cover a narrow one and
+  // never the reverse. Four modules record it in almost the same words, so every tenant in
+  // this build had exactly one kind of user: one who holds everything everywhere.
+  //
+  // The staff screen's bounded banner is a branch no fixture could reach without this -- which
+  // is the trap this repository has paid for four times in four modules.
+  const clubEmail = `club+${Date.now()}@veyro.invalid`;
+  const clubPassword = `e2e-${randomUUID()}`;
+  await call("/identities", {
+    method: "POST", tenant: tenantId,
+    body: { display_name: "E2E Club Manager", correlation_id: cid(), email: clubEmail,
+            password: clubPassword },
+  });
+  const clubSignIn = await call("/auth/login", {
+    method: "POST", tenant: tenantId,
+    body: { identifier: clubEmail, password: clubPassword, correlation_id: cid() },
+  });
+  const clubSession = await call("/auth/session", { ...as(clubSignIn.token) });
+  const clubRole = await call("/authz/roles", {
+    method: "POST", ...as(token),
+    body: {
+      role_key: `club_${Date.now()}`, display_name: "Club manager",
+      permissions: ["people.person.read"],
+      correlation_id: cid(),
+    },
+  });
+  await call("/authz/assignments", {
+    method: "POST", ...as(token),
+    body: { identity_id: clubSession.identity_id, role_key: clubRole.role_key,
+            // **The whole point: scoped to one club.** The tenant has a second location
+            // seeded below, so the boundary excludes something rather than being a boundary
+            // around everything.
+            scope_type: "location", location_id: location.location_id,
+            correlation_id: cid() },
+  });
+  await confirmWebDevice(
+    tenantId, clubSession.identity_id, clubSignIn.token, clubEmail, clubPassword);
+
   // ------------------------------------------------ a second identity: a person can type it
   //
   // **Nothing in the suite uses this one.** It exists because every other credential here is
@@ -3136,6 +3178,9 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
     twinPersonId: twin.person_id,
     overriddenPersonId: twin.person_id,
     deskEmail,
+    // ADR-0014: the first location-scoped session this build can answer.
+    clubEmail,
+    clubPassword,
     deskPassword,
     easyEmail: EASY_EMAIL,
     easyPassword: EASY_PASSWORD,
@@ -3254,6 +3299,8 @@ if (invokedDirectly) {
       `VEYRO_E2E_READER_EMAIL=${fixture.publisherEmail}`,
       `VEYRO_E2E_READER_PASSWORD=${fixture.publisherPassword}`,
       `VEYRO_E2E_DESK_EMAIL=${fixture.deskEmail}`,
+      `VEYRO_E2E_CLUB_EMAIL=${fixture.clubEmail}`,
+      `VEYRO_E2E_CLUB_PASSWORD=${fixture.clubPassword}`,
       `VEYRO_E2E_DESK_PASSWORD=${fixture.deskPassword}`,
       `VEYRO_E2E_LOCATION_ID=${fixture.locationId}`,
       `VEYRO_E2E_LOOKUP_PREFIX=${fixture.lookupPrefix}`,

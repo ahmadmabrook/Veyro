@@ -6,8 +6,11 @@ import { Button } from "@/components/ds/button";
 import { Field } from "@/components/ds/field";
 import { NotYet, PageHeader } from "@/components/ds/page-header";
 import { WithheldLink } from "@/components/withheld";
+import { withheldRemedy } from "@/lib/mask";
 import { fill, t, type MessageKey } from "@/i18n/locale";
-import { currentSession, gate, gateMessage, gateVerdict } from "@/lib/api";
+import {
+  currentSession, gate, gateAll, gateMessage, gateVerdict,
+} from "@/lib/api";
 import {
   checksFor, confirmable, metaParts, stateOf, type Lookup, type Match,
 } from "@/lib/lookup";
@@ -50,7 +53,15 @@ export default async function LookupPage({
 
   if (!(await currentSession())) redirect("/login");
 
-  const read = await gate("people.person.read");
+  // **Batched, because two asks is two round trips** and `/authz/checks` exists for it.
+  // `member.identity.read` is not for the read -- it is what says whether a withheld name's
+  // remedy is a step-up or whether this role does not include identity fields at all.
+  const [read, mayNames] = await gateAll([
+    "people.person.read", "member.identity.read",
+  ] as const);
+  const nameWithheld: MessageKey = withheldRemedy(gateVerdict(mayNames)) === "step_up"
+    ? "member.withheldIdentity"
+    : "member.withheldIdentityNoRemedy";
   if (!read.allowed) {
     return (
       <>
@@ -133,7 +144,7 @@ export default async function LookupPage({
 
           <ul className="ds-desk-rows">
             {found?.people.map((match) => (
-              <MatchRow key={match.person_id} match={match}
+              <MatchRow key={match.person_id} match={match} nameWithheld={nameWithheld}
                 club={clubOf(match)} locale={locale} />
             ))}
           </ul>
@@ -162,11 +173,14 @@ export default async function LookupPage({
 
 /** One match: who they are, what a desk can check them by, and their record. */
 function MatchRow({
-  match, club, locale,
+  match, club, locale, nameWithheld,
 }: {
   match: Match;
   club: string | null;
   locale: Parameters<typeof t>[0];
+  // Which sentence a withheld name gets: the page decides it from the gate's answer, because
+  // only the page knows whether a step-up would lift the mask for this reader.
+  nameWithheld: MessageKey;
 }) {
   const text = (key: MessageKey) => t(locale, key);
   // The plan is null on purpose: it costs three requests per match, which `lookup-reads`
@@ -187,7 +201,7 @@ function MatchRow({
           </Link>
         ) : (
           <WithheldLink
-            locale={locale} reason="member.withheldIdentity"
+            locale={locale} reason={nameWithheld}
             href={`/people/${match.person_id}`}
             label={fill(locale, "lookup.openWithheld", {
               what: match.phone !== null && checks.digits

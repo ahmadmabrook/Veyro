@@ -12,7 +12,9 @@ import { memberFacts } from "@/components/member-metrics";
 import { MembershipPanels } from "@/components/membership-panels";
 import { Withheld } from "@/components/withheld";
 import { fill, formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
-import { ApiError, currentSession, gate, failureMessage, gateMessage } from "@/lib/api";
+import {
+  ApiError, currentSession, failureMessage, gate, gateAll, gateMessage, gateVerdict,
+} from "@/lib/api";
 import { listMembers } from "@/lib/members-reads";
 import { MetricCell, MetricRow } from "@/components/ds/metric-cell";
 import {
@@ -25,14 +27,7 @@ import {
   type TimelineFilterKey,
 } from "@/lib/member-record";
 import {
-  isWithheld,
-  readMember360,
-  splitComposed,
-  splitSections,
-  type Member360,
-  type Note,
-  type Person,
-  type TimelineEntry,
+  isWithheld, readMember360, splitComposed, splitSections, withheldRemedy, type Member360, type Note, type Person, type TimelineEntry, type WithheldRemedy,
 } from "@/lib/people";
 import { presentation } from "@/lib/preferences";
 import { dayLabel, timeOfDay, utcStamp } from "@/lib/time";
@@ -120,7 +115,21 @@ export default async function Member360Page({
 
   if (!(await currentSession())) redirect("/login");
 
-  const may = await gate("people.person.read");
+  // **Batched**, because `/authz/checks` exists for it. `member.identity.read` is not for
+  // this read -- it is what says whether a withheld *identity* field's remedy is a step-up or
+  // whether this role does not include identity fields at all.
+  const [may, mayNames] = await gateAll([
+    "people.person.read", "member.identity.read",
+  ] as const);
+  // **A contact field is a different control and has no step-up.** `member.profile.read` is
+  // `data_access` with no financial class, so a contact value is masked when the reader does
+  // not hold the permission and a stronger sign-in never lifts it -- yet the panel below said
+  // "identity fields need a stronger sign-in. Step up and the value is readable." for a phone
+  // number, which was false in every case rather than in some. Its own key now.
+  const remedy = withheldRemedy(gateVerdict(mayNames));
+  const nameWithheld: MessageKey = remedy === "step_up"
+    ? "member.withheldIdentity"
+    : "member.withheldIdentityNoRemedy";
   if (!may.allowed) {
     return (
       <Banner severity="info">
@@ -243,6 +252,8 @@ export default async function Member360Page({
             locale={locale}
             personId={personId}
             filter={filter}
+            nameWithheld={nameWithheld}
+            remedy={remedy}
           />
         ) : null}
         {tab === "membership" || tab === "billing" ? (
@@ -306,12 +317,16 @@ async function Overview({
   locale,
   personId,
   filter,
+  nameWithheld,
+  remedy,
 }: {
   record: Member360;
   facts: Awaited<ReturnType<typeof memberFacts>>;
   locale: Locale;
   personId: string;
   filter: TimelineFilterKey;
+  nameWithheld: MessageKey;
+  remedy: WithheldRemedy;
 }) {
   const text = (key: MessageKey) => t(locale, key);
   const shown = filter === "all"
@@ -378,7 +393,10 @@ async function Overview({
         </Timeline>
 
         <div className="ds-record-side">
-          <IdentityPanel person={record.person} locale={locale} />
+          <IdentityPanel
+            person={record.person} locale={locale} nameWithheld={nameWithheld}
+            remedy={remedy}
+          />
           <ContactPanel person={record.person} locale={locale} />
         </div>
       </div>
@@ -679,7 +697,15 @@ function Notes({ record, locale }: { record: Member360; locale: Locale }) {
   );
 }
 
-function IdentityPanel({ person, locale }: { person: Person; locale: Locale }) {
+function IdentityPanel({ person, locale, nameWithheld, remedy }: {
+  person: Person; locale: Locale;
+  // Which sentence a withheld identity field gets, and whether there is a remedy to offer:
+  // the page decides both from the gate's answer, because only the page knows. They travel
+  // together rather than one being re-derived from the other -- comparing `nameWithheld`
+  // against a key would be the same test spelled a second way.
+  nameWithheld: MessageKey;
+  remedy: WithheldRemedy;
+}) {
   const text = (key: MessageKey) => t(locale, key);
   // **The remedy, where the refusal is.** An identity field is withheld because this session
   // is assurance level 1 and `member.identity.read` is a financial action -- which is a thing
@@ -697,14 +723,14 @@ function IdentityPanel({ person, locale }: { person: Person; locale: Locale }) {
         <dl className="facts">
           <Fact label={text("member.legalName")}>
             {isWithheld(person.legal_name)
-              ? <Withheld locale={locale} reason="member.withheldIdentity" />
+              ? <Withheld locale={locale} reason={nameWithheld} />
               : person.legal_name}
           </Fact>
           <Fact label={text("member.dateOfBirth")}>
             {person.date_of_birth === null
               ? "—"
               : isWithheld(person.date_of_birth)
-                ? <Withheld locale={locale} reason="member.withheldIdentity" />
+                ? <Withheld locale={locale} reason={nameWithheld} />
                 : <span className="data" dir="ltr">{person.date_of_birth}</span>}
           </Fact>
         </dl>
@@ -718,13 +744,20 @@ function IdentityPanel({ person, locale }: { person: Person; locale: Locale }) {
           <dl className="facts">
             {person.custom_fields.map((field) => (
               <Fact key={field.field_key} label={field.display_name}>
+                {/* **Three classes, three remedies.** Health needs a level this screen
+                    cannot reach, contact needs a permission no step-up gives, and identity
+                    is the one the gate's answer decides -- so the two-way split that was
+                    here sent a contact field's reader to a step-up that lifts nothing, and
+                    told a reader who holds no identity read that one would. */}
                 {field.redacted || isWithheld(field.value)
                   ? <Withheld
                     locale={locale}
                     reason={
                       field.sensitivity === "health" || field.sensitivity === "biometric"
                         ? "member.withheldHealth"
-                        : "member.withheldIdentity"
+                        : field.sensitivity === "contact"
+                          ? "member.withheldContact"
+                          : nameWithheld
                     }
                   />
                   : field.value}
@@ -732,7 +765,12 @@ function IdentityPanel({ person, locale }: { person: Person; locale: Locale }) {
             ))}
           </dl>
         )}
-        {identityWithheld ? (
+        {/* **The offer, only where it is one.** This rendered for anybody whose identity
+            fields were withheld, which includes a reader who holds `member.identity.read` at
+            no assurance at all -- so a front desk was handed a link that costs a single-use
+            recovery code and lifts nothing. The marker above says the fact; this says the
+            remedy, and only when there is one. */}
+        {identityWithheld && remedy === "step_up" ? (
           <p style={{ margin: 0 }}>
             <Link
               // **The action, so the prompt can name it.** ADM-AUTH-02's own line is
@@ -777,7 +815,7 @@ function ContactPanel({ person, locale }: { person: Person; locale: Locale }) {
                 label={contact.kind + (contact.is_primary ? ` · ${text("member.primary")}` : "")}
               >
                 {isWithheld(contact.value_raw)
-                  ? <Withheld locale={locale} reason="member.withheldIdentity" />
+                  ? <Withheld locale={locale} reason="member.withheldContact" />
                   : <span className="data" dir="ltr">{contact.value_raw}</span>}
                 {" · "}
                 {/* **A verification is recorded, not performed**: nothing here sends a code

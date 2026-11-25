@@ -524,6 +524,285 @@ class ReviewRegressionTests(AuthorizationTestCase):
             "timezone": "Atlantic/Reykjavik"}, headers=head).json()["location_id"]
         return first, second, location
 
+    def test_a_location_scoped_role_can_read_at_all_and_only_at_its_club(self):
+        """ADR-0014, and the limitation four modules record in almost the same words.
+
+        A club manager holding `people.person.read` at one location was refused **every** gated
+        read in the product: `authz.check` defaulted to the tenant-wide scope and
+        `permissions_of` lets a broad assignment cover a narrow one and never the reverse. So
+        every tenant in this build had exactly one kind of user -- one who holds everything
+        everywhere -- and ADM-STF-01's "a club manager sees only their own club's staff" was a
+        sentence on a screen rather than a predicate.
+        """
+        tenant_id, _, admin_token = self.admin()
+        head = self.headers(tenant_id, admin_token)
+        _, brand_b, club = self.hierarchy(tenant_id, admin_token)
+        staff_id, _, staff_token = self.person(tenant_id, fingerprint="device-club")
+        self.client.post("/authz/roles", json={
+            "role_key": "club_mgr", "display_name": "Club Manager",
+            "permissions": ["people.person.read"], **self.correlation()}, headers=head)
+        made = self.client.post("/authz/assignments", json={
+            "identity_id": staff_id, "role_key": "club_mgr", "scope_type": "location",
+            "location_id": club, **self.correlation()}, headers=head)
+        self.assertEqual(made.status_code, 201, made.text)
+
+        # Two staff, one at their club and one elsewhere. Without both, a 200 proves the read
+        # happened and says nothing about the boundary -- which is the weaker of the two
+        # available assertions and this repository's most-repeated evidence gap.
+        elsewhere = self.client.post("/locations", json={
+            "brand_id": brand_b, "location_name": "Another Gym",
+            "timezone": "Asia/Amman"}, headers=head).json()["location_id"]
+        mine = self.client.post("/people", json={
+            "legal_name": "Ours", **self.correlation()}, headers=head).json()["person_id"]
+        theirs = self.client.post("/people", json={
+            "legal_name": "Theirs", **self.correlation()}, headers=head).json()["person_id"]
+        for person_id, where in ((mine, club), (theirs, elsewhere)):
+            made = self.client.post(
+                f"/people/{person_id}/staff-profile",
+                json={"job_title": "Coach", "location_id": where, **self.correlation()},
+                headers=head)
+            self.assertEqual(made.status_code, 201, made.text)
+
+        # **The read happens at all**, which is the whole finding: before this it was a 403.
+        listed = self.client.get(
+            "/staff", headers=self.headers(tenant_id, staff_token))
+        self.assertEqual(listed.status_code, 200, listed.text)
+        seen = {row["person_id"] for row in listed.json()["staff"]}
+        self.assertIn(mine, seen)
+        self.assertNotIn(theirs, seen)
+
+        # **And the boundary is not the filter.** The admin, who holds the action everywhere,
+        # sees both -- so the absence above is the gate's answer rather than a narrower query
+        # this test happened to send.
+        both = self.client.get("/staff", headers=self.headers(tenant_id, admin_token))
+        self.assertEqual(both.status_code, 200, both.text)
+        everyone = {row["person_id"] for row in both.json()["staff"]}
+        self.assertIn(mine, everyone)
+        self.assertIn(theirs, everyone)
+
+    def test_only_the_club_where_this_permission_is_held_is_in_the_boundary(self):
+        """Two roles at two clubs, and only one of them grants the read.
+
+        Without the permission filter in `scopes_holding`, a caller holding *any* permission at
+        a club would read as holding *this* one there -- so a coach's rota role at one club
+        would open that club's staff list because they happen to manage another. The case needs
+        two clubs and two roles that disagree; with one of each the two rules give the same
+        answer and the mutation is invisible, which is this repository's "a case catches a
+        weakening only if the two rules disagree on it".
+        """
+        tenant_id, _, admin_token = self.admin()
+        head = self.headers(tenant_id, admin_token)
+        _, brand_b, allowed_club = self.hierarchy(tenant_id, admin_token)
+        other_club = self.client.post("/locations", json={
+            "brand_id": brand_b, "location_name": "Other Gym",
+            "timezone": "Asia/Amman"}, headers=head).json()["location_id"]
+        staff_id, _, staff_token = self.person(tenant_id, fingerprint="device-two")
+        for key, perms in (("reads_people", ["people.person.read"]),
+                           ("reads_rota", ["scheduling.schedule.read"])):
+            self.client.post("/authz/roles", json={
+                "role_key": key, "display_name": key,
+                "permissions": perms, **self.correlation()}, headers=head)
+        self.client.post("/authz/assignments", json={
+            "identity_id": staff_id, "role_key": "reads_people",
+            "scope_type": "location", "location_id": allowed_club,
+            **self.correlation()}, headers=head)
+        self.client.post("/authz/assignments", json={
+            "identity_id": staff_id, "role_key": "reads_rota",
+            "scope_type": "location", "location_id": other_club,
+            **self.correlation()}, headers=head)
+
+        here, there = (self.client.post("/people", json={
+            "legal_name": name, **self.correlation()},
+            headers=head).json()["person_id"] for name in ("Here", "There"))
+        for person_id, where in ((here, allowed_club), (there, other_club)):
+            self.client.post(
+                f"/people/{person_id}/staff-profile",
+                json={"job_title": "Coach", "location_id": where, **self.correlation()},
+                headers=head)
+
+        listed = self.client.get("/staff", headers=self.headers(tenant_id, staff_token))
+        self.assertEqual(listed.status_code, 200, listed.text)
+        seen = {row["person_id"] for row in listed.json()["staff"]}
+        self.assertIn(here, seen)
+        # The club where they hold a *different* permission is not in the boundary.
+        self.assertNotIn(there, seen)
+
+    def test_an_expired_or_revoked_assignment_opens_no_club(self):
+        """`scopes_holding` asks `assignment.live(now)`, which is the same `live` the evaluator
+        uses -- so an assignment that has run out or been withdrawn contributes no scope. The
+        case needs one of each beside a live one: with only live assignments the filter is
+        invisible."""
+        tenant_id, _, admin_token = self.admin()
+        head = self.headers(tenant_id, admin_token)
+        _, brand_b, live_club = self.hierarchy(tenant_id, admin_token)
+        stale_club = self.client.post("/locations", json={
+            "brand_id": brand_b, "location_name": "Closed Gym",
+            "timezone": "Asia/Amman"}, headers=head).json()["location_id"]
+        staff_id, _, staff_token = self.person(tenant_id, fingerprint="device-stale")
+        self.client.post("/authz/roles", json={
+            "role_key": "club_reader", "display_name": "Club Reader",
+            "permissions": ["people.person.read"], **self.correlation()}, headers=head)
+        self.client.post("/authz/assignments", json={
+            "identity_id": staff_id, "role_key": "club_reader",
+            "scope_type": "location", "location_id": live_club,
+            **self.correlation()}, headers=head)
+        withdrawn = self.client.post("/authz/assignments", json={
+            "identity_id": staff_id, "role_key": "club_reader",
+            "scope_type": "location", "location_id": stale_club,
+            **self.correlation()}, headers=head)
+        self.assertEqual(withdrawn.status_code, 201, withdrawn.text)
+        gone = self.client.post(
+            f"/authz/assignments/{withdrawn.json()['assignment_id']}/revoke",
+            json={"reason": "moved clubs", **self.correlation()}, headers=head)
+        self.assertEqual(gone.status_code, 200, gone.text)
+
+        here, there = (self.client.post("/people", json={
+            "legal_name": name, **self.correlation()},
+            headers=head).json()["person_id"] for name in ("Current", "Former"))
+        for person_id, where in ((here, live_club), (there, stale_club)):
+            self.client.post(
+                f"/people/{person_id}/staff-profile",
+                json={"job_title": "Coach", "location_id": where, **self.correlation()},
+                headers=head)
+
+        listed = self.client.get("/staff", headers=self.headers(tenant_id, staff_token))
+        self.assertEqual(listed.status_code, 200, listed.text)
+        seen = {row["person_id"] for row in listed.json()["staff"]}
+        self.assertIn(here, seen)
+        self.assertNotIn(there, seen)
+
+    def test_the_gate_the_rail_reads_answers_a_scoped_caller_too(self):
+        """ADM-CC-02's rail is `/authz/checks`, and the first ADR-0014 implementation left it
+        inert.
+
+        `check` keys "may this caller do this *anywhere*" on the scope argument being absent,
+        and both check routes passed `resolve_scope(None, None)` -- which is the tenant-wide
+        `Scope()`, not `None`. So `/staff` answered a club manager "yes" while the gate every
+        surface in this app reads answered "no": the screen said "Not permitted" over a read
+        that would have worked. One screen refusing and its own read allowing is the worst of
+        the two, and nothing in the suite could see it because no test asked the gate as a
+        scoped caller.
+        """
+        tenant_id, _, admin_token = self.admin()
+        head = self.headers(tenant_id, admin_token)
+        _, _, club = self.hierarchy(tenant_id, admin_token)
+        staff_id, _, staff_token = self.person(tenant_id, fingerprint="device-rail")
+        self.client.post("/authz/roles", json={
+            "role_key": "rail_reader", "display_name": "Club Manager",
+            "permissions": ["people.person.read"], **self.correlation()}, headers=head)
+        self.client.post("/authz/assignments", json={
+            "identity_id": staff_id, "role_key": "rail_reader",
+            "scope_type": "location", "location_id": club,
+            **self.correlation()}, headers=head)
+        mine = self.headers(tenant_id, staff_token)
+
+        one = self.client.get(
+            "/authz/check", params={"action": "people.person.read", **self.correlation()},
+            headers=mine)
+        self.assertEqual(one.status_code, 200, one.text)
+        self.assertTrue(one.json()["allowed"], one.text)
+
+        batch = self.client.get(
+            "/authz/checks",
+            params={"action": ["people.person.read", "finance.ledger.read"],
+                    **self.correlation()},
+            headers=mine)
+        self.assertEqual(batch.status_code, 200, batch.text)
+        answers = {row["action"]: row["allowed"] for row in batch.json()["checks"]}
+        self.assertTrue(answers["people.person.read"])
+        # And one they hold nowhere is still refused, so the change is not "allow everything
+        # for a scoped caller".
+        self.assertFalse(answers["finance.ledger.read"])
+
+    def test_a_named_scope_still_asks_about_that_scope_only(self):
+        """The other direction, which `resolve_scope` exists for: a request that *names* a
+        scope is asking "may they act there", and answering it with "somewhere" would undo
+        MOD-008's review finding -- a brand-scoped manager reached another brand's location by
+        sending their own brand id beside it."""
+        tenant_id, _, admin_token = self.admin()
+        head = self.headers(tenant_id, admin_token)
+        _, brand_b, club = self.hierarchy(tenant_id, admin_token)
+        elsewhere = self.client.post("/locations", json={
+            "brand_id": brand_b, "location_name": "Far Gym",
+            "timezone": "Asia/Amman"}, headers=head).json()["location_id"]
+        staff_id, _, staff_token = self.person(tenant_id, fingerprint="device-named")
+        self.client.post("/authz/roles", json={
+            "role_key": "one_club", "display_name": "Club Manager",
+            "permissions": ["people.person.read"], **self.correlation()}, headers=head)
+        self.client.post("/authz/assignments", json={
+            "identity_id": staff_id, "role_key": "one_club",
+            "scope_type": "location", "location_id": club,
+            **self.correlation()}, headers=head)
+        mine = self.headers(tenant_id, staff_token)
+
+        here = self.client.get(
+            "/authz/check",
+            params={"action": "people.person.read", "location_id": club,
+                    **self.correlation()}, headers=mine)
+        self.assertTrue(here.json()["allowed"], here.text)
+        there = self.client.get(
+            "/authz/check",
+            params={"action": "people.person.read", "location_id": elsewhere,
+                    **self.correlation()}, headers=mine)
+        self.assertFalse(there.json()["allowed"], there.text)
+
+    def test_a_route_that_has_not_opted_in_still_refuses_a_scoped_caller(self):
+        """ADR-0014 D4, and the half that keeps the change fail-closed.
+
+        The gate answers "may this caller do this anywhere" now, so a read that had not been
+        taught to filter would return the *whole tenant* to a club manager -- a role that
+        cannot work becoming a role that sees everything, silently, across a hundred routes.
+        `permit` refuses unless the route passes `scoped=True`, so every untaught route behaves
+        exactly as it did.
+        """
+        tenant_id, _, admin_token = self.admin()
+        head = self.headers(tenant_id, admin_token)
+        _, _, club = self.hierarchy(tenant_id, admin_token)
+        staff_id, _, staff_token = self.person(tenant_id, fingerprint="device-club2")
+        self.client.post("/authz/roles", json={
+            "role_key": "club_mgr2", "display_name": "Club Manager",
+            "permissions": ["people.person.read", "membership.record.read"],
+            **self.correlation()}, headers=head)
+        self.client.post("/authz/assignments", json={
+            "identity_id": staff_id, "role_key": "club_mgr2", "scope_type": "location",
+            "location_id": club, **self.correlation()}, headers=head)
+
+        # `/staff` opted in and answers.
+        self.assertEqual(self.client.get(
+            "/staff", headers=self.headers(tenant_id, staff_token)).status_code, 200)
+        # `/memberships` has not, and refuses -- which is today's behaviour, unchanged.
+        refused = self.client.get(
+            "/memberships", headers=self.headers(tenant_id, staff_token))
+        self.assertEqual(refused.status_code, 403, refused.text)
+
+    def test_a_brand_scoped_caller_is_refused_the_staff_list_rather_than_guessed_at(
+            self) -> None:
+        """`Scope.covers` says this module "does not know the hierarchy and must not guess at
+        it", so turning a brand into its locations is a `tenancy` read the staff route does not
+        make -- and bounding a query on a brand nobody resolved would be that guess. Refusing
+        is the answer they get today, which is why it is safe to leave."""
+        tenant_id, _, admin_token = self.admin()
+        head = self.headers(tenant_id, admin_token)
+        _, brand_b, _ = self.hierarchy(tenant_id, admin_token)
+        staff_id, _, staff_token = self.person(tenant_id, fingerprint="device-brand")
+        self.client.post("/authz/roles", json={
+            "role_key": "brand_only", "display_name": "Brand Manager",
+            "permissions": ["people.person.read"], **self.correlation()}, headers=head)
+        self.client.post("/authz/assignments", json={
+            "identity_id": staff_id, "role_key": "brand_only", "scope_type": "brand",
+            "brand_id": brand_b, **self.correlation()}, headers=head)
+        refused = self.client.get(
+            "/staff", headers=self.headers(tenant_id, staff_token))
+        self.assertEqual(refused.status_code, 403, refused.text)
+
+    def test_a_tenant_wide_caller_is_unchanged(self):
+        """ADR-0014 D3, which is load-bearing rather than cautious: every route, test and
+        fixture in this repository assumes a tenant-wide caller, and a change that altered
+        what they see would be a change to the product nobody asked for, made invisibly."""
+        tenant_id, _, admin_token = self.admin()
+        listed = self.client.get("/staff", headers=self.headers(tenant_id, admin_token))
+        self.assertEqual(listed.status_code, 200, listed.text)
+
     def test_b2_a_brand_scoped_principal_cannot_reach_another_brands_location(self):
         """Sending your own brand id beside somebody else's location used to work."""
         tenant_id, _, admin_token = self.admin()

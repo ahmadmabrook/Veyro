@@ -8,6 +8,7 @@ import { currentSession, gate, gateAll, gateMessage, gateVerdict } from "@/lib/a
 import { INTERESTS, interestWord } from "@/lib/leads";
 import { listSources } from "@/lib/leads-reads";
 import { presentation } from "@/lib/preferences";
+import { withheldRemedy } from "@/lib/mask";
 
 import { LeadForm } from "./lead-form";
 
@@ -48,11 +49,21 @@ export default async function NewLeadPage() {
 
   if (!(await currentSession())) redirect("/login");
 
-  const [read, write, mayLead] = await gateAll([
+  const [read, write, mayLead, mayNames] = await gateAll([
     "people.person.read",
     "people.person.write",
     "crm.lead.write",
+    // For the withheld marker's remedy, not for any read. See `@/lib/mask`.
+    "member.identity.read",
   ] as const);
+  // **The remedy has to match the cause.** A legal name is MOD-014's `identity` class and
+  // `member.identity.read` opens it; that permission is `financial`, so a step-up lifts the
+  // mask for a session holding the grant at too low an assurance and does nothing for a role
+  // that does not hold it. The row said "step up" to both until now. See `@/lib/mask`.
+  const remedy = withheldRemedy(gateVerdict(mayNames));
+  const nameWithheld: MessageKey = remedy === "step_up"
+    ? "member.withheldIdentity"
+    : "member.withheldIdentityNoRemedy";
 
   if (!read.allowed) {
     return (
@@ -95,6 +106,7 @@ export default async function NewLeadPage() {
       <PageHeader title={text("newLead.heading")} figures={text("newLead.lead")} />
 
       <LeadForm
+        nameWithheld={nameWithheld}
         locale={locale} numbering={numbering}
         canCreatePerson={write.allowed} personVerdict={gateVerdict(write)}
         canOpenLead={mayLead.allowed}

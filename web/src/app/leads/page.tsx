@@ -10,7 +10,7 @@ import { ProseNote } from "@/components/prose";
 import { fill, t, type Locale, type MessageKey } from "@/i18n/locale";
 import { ApiError, currentSession, gateAll, gateMessage, gateVerdict } from "@/lib/api";
 import { readNames } from "@/lib/desk-reads";
-import { isWithheld } from "@/lib/people";
+import { isWithheld, withheldRemedy } from "@/lib/people";
 import {
   BOARD_COLUMNS, CARDS_PER_COLUMN, columnCount, columnNote, isLeadFilter,
   isLeadView, metaLine, sinceLabel,
@@ -62,7 +62,7 @@ export default async function LeadsPage({
 
   if (!(await currentSession())) redirect("/login");
 
-  const [mayLeads, mayPeople, mayWrite] = await gateAll([
+  const [mayLeads, mayPeople, mayWrite, mayNames] = await gateAll([
     "crm.lead.read",
     "people.person.read",
     // **For the header's "Add a lead" and nothing else.** The live ADM-CRM-01 screen draws
@@ -74,7 +74,18 @@ export default async function LeadsPage({
     // makes the capability undiscoverable, and showing it to somebody the gate denies
     // outright is a button that answers 403.
     "people.person.write",
+    // For the withheld marker's remedy, not for any read. See `@/lib/mask`.
+    "member.identity.read",
   ] as const);
+  // **The remedy has to match the cause.** A legal name is MOD-014's `identity` class and
+  // `member.identity.read` opens it; that permission is `financial`, so a step-up lifts the
+  // mask for a session holding the grant at too low an assurance and does nothing for a role
+  // that does not hold it. The row said "step up" to both until now. See `@/lib/mask`.
+  const remedy = withheldRemedy(gateVerdict(mayNames));
+  const nameWithheld: MessageKey = remedy === "step_up"
+    ? "member.withheldIdentity"
+    : "member.withheldIdentityNoRemedy";
+
   const addLead = gateVerdict(mayWrite) === "denied" ? undefined : (
     <Button
       variant="secondary" size="md" href="/leads/new"
@@ -172,13 +183,21 @@ export default async function LeadsPage({
     <Shell locale={locale} view={view} filter={filter} board={board} coldAfter={coldAfter} action={addLead}>
       {rows.some((row) => row.name === null) ? (
         <p className="ds-note">
-          {text("leads.namesWithheld")}{" "}
-          <Link
-            href={`/step-up?for=financial&action=member.identity.read&next=${
-              encodeURIComponent(view === "table" ? "/leads?view=table" : "/leads")}`}
-          >
-            {text("member.raiseSession")}
-          </Link>
+          {remedy === "step_up" ? (
+            <>
+              {text("leads.namesWithheld")}{" "}
+              <Link
+                href={`/step-up?for=financial&action=member.identity.read&next=${
+                  encodeURIComponent(view === "table" ? "/leads?view=table" : "/leads")}`}
+              >
+                {text("member.raiseSession")}
+              </Link>
+            </>
+          ) : remedy === "no_answer" ? (
+            text("member.namesWithheldNoAnswer")
+          ) : (
+            text("member.namesWithheldNotHeld")
+          )}
         </p>
       ) : null}
 
@@ -194,6 +213,7 @@ export default async function LeadsPage({
             locale={locale}
             rows={rows}
             countLabel={fill(locale, "leads.countLabel", { count: rows.length })}
+            nameWithheld={nameWithheld}
           />
           <ProseNote>{text("leads.ageCarriesColour")}</ProseNote>
         </>
@@ -203,6 +223,7 @@ export default async function LeadsPage({
           board={board}
           leads={leads}
           nameOf={nameOf}
+          nameWithheld={nameWithheld}
         />
       )}
       <ProseNote>{text("leads.nameIsElsewhere")}</ProseNote>
@@ -225,12 +246,15 @@ function wordFor(locale: Locale, key: MessageKey | null, raw: string): string {
 }
 
 function Board({
-  locale, board, leads, nameOf,
+  locale, board, leads, nameOf, nameWithheld,
 }: {
   locale: Locale;
   board: Board | null;
   leads: LeadRow[];
   nameOf: (personId: string | null) => string | null;
+  // Which sentence a withheld name gets: the page decides it from the gate's answer, because
+  // only the page knows whether a step-up would lift the mask for this reader.
+  nameWithheld: MessageKey;
 }) {
   const text = (key: MessageKey) => t(locale, key);
   const counts = new Map((board?.columns ?? []).map((one) => [one.stage, one.count]));
@@ -273,7 +297,7 @@ function Board({
                 href={`/leads/${lead.lead_id}`}
                 name={
                   nameOf(lead.person_id) ?? (
-                    <Withheld locale={locale} reason="member.withheldIdentity" />
+                    <Withheld locale={locale} reason={nameWithheld} />
                   )
                 }
                 meta={metaLine(locale, lead)}

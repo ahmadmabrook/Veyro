@@ -193,7 +193,13 @@ export default async function RootLayout({
       // It shares `people.person.read` with the two above because a staff profile is one of
       // a person's profiles -- the permission's own description says so -- and the role and
       // login halves the page composes ask their own gates on the page itself.
-      { href: "/staff", label: "nav.staffList", allowed: people.allowed,
+      // **`allowed_anywhere`, because this is the one page that accepts a scoped caller** --
+      // ADR-0014. Every other entry reads `allowed`, which is narrowed to "allowed *and*
+      // tenant-wide" precisely so each keeps refusing a brand- or location-scoped role as it
+      // did rather than offering a link to a read that answers 403. ADM-CC-02's canvas says
+      // "the rail is generated from his role rather than greyed", and a rail of one entry is
+      // what that sentence means in a build where one route has opted in.
+      { href: "/staff", label: "nav.staffList", allowed: people.allowed_anywhere,
         group: "nav.groupPeople", icon: "staff" },
       { href: "/permissions", label: "nav.permissions", allowed: permissions.allowed,
         group: "nav.groupPeople", icon: "permissions" },

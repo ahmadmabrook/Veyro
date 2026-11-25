@@ -5,7 +5,7 @@ import { Button } from "@/components/ds/button";
 import { WithheldLink } from "@/components/withheld";
 import { DataGrid } from "@/components/ds/data-grid";
 import { fill, formatInteger, t, type MessageKey } from "@/i18n/locale";
-import { ApiError, gate, gateMessage, gateVerdict } from "@/lib/api";
+import { ApiError, gateAll, gateMessage, gateVerdict } from "@/lib/api";
 import {
   LIFECYCLE_STATES,
   UNANSWERABLE,
@@ -16,7 +16,7 @@ import {
   type MembershipRow,
 } from "@/lib/members";
 import { listMembers, listMemberships } from "@/lib/members-reads";
-import { isWithheld } from "@/lib/people";
+import { isWithheld, withheldRemedy } from "@/lib/people";
 import { planName, stateName } from "@/lib/members";
 import { presentation } from "@/lib/preferences";
 
@@ -60,16 +60,22 @@ export default async function MembersPage({
   const wanted = typeof params.state === "string" ? params.state : undefined;
   const lifecycleState = isLifecycleState(wanted) ? wanted : undefined;
 
-  const [mayPeople, mayMemberships, mayWrite] = await Promise.all([
-    gate("people.person.read"),
-    gate("membership.record.read"),
+  // **Batched, because four parallel asks is four round trips.** `/authz/checks` exists for
+  // exactly this and the rate-limit incident is why: the budget is per identity and a page
+  // view spends one request per gate it asks separately.
+  const [mayPeople, mayMemberships, mayWrite, mayNames] = await gateAll([
+    "people.person.read",
+    "membership.record.read",
     // **For the header's "Add member" and nothing else.** `people.person.write` is financial
     // class, so a front desk holds it at an assurance it has not reached — and the screen it
     // leads to offers the step-up, which is why `needs_step_up` shows the button and `denied`
     // does not. Hiding it from somebody who could step up would make the capability
     // undiscoverable; showing it to somebody who holds nothing is a button that answers 403.
-    gate("people.person.write"),
-  ]);
+    "people.person.write",
+    // For the withheld banner's remedy, not for the read. See the staff list, which had the
+    // same sentence and the same defect.
+    "member.identity.read",
+  ] as const);
   const addMember = gateVerdict(mayWrite) === "denied" ? undefined : (
     <Button
       variant="secondary" size="md" href="/members/new"
@@ -115,6 +121,12 @@ export default async function MembersPage({
       </Shell>
     );
   }
+
+  // The remedy, decided once -- see the staff list, which carries the reasoning.
+  const remedy = withheldRemedy(gateVerdict(mayNames));
+  const nameWithheld: MessageKey = remedy === "step_up"
+    ? "member.withheldIdentity"
+    : "member.withheldIdentityNoRemedy";
 
   const held = membershipsByPerson(memberships);
   const counts = stateCounts(page.by_state);
@@ -166,13 +178,25 @@ export default async function MembersPage({
             the destination, and it is shown only when something is actually withheld. */}
         {page.people.some((row) => isWithheld(row.preferred_name ?? row.legal_name)) ? (
           <p className="ds-note">
-            {text("members.namesWithheld")}{" "}
-            <Link
-              href={`/step-up?for=financial&action=member.identity.read&next=${
-                encodeURIComponent("/members")}`}
-            >
-              {text("member.raiseSession")}
-            </Link>
+            {/* **And the remedy has to be one the reader has.** The sentence above said the
+                cause was a missing second factor whoever was reading, so a role that does not
+                hold `member.identity.read` at all was sent to spend a recovery code on a
+                step-up that lifts nothing. The gate answers which it is. */}
+            {remedy === "step_up" ? (
+              <>
+                {text("members.namesWithheld")}{" "}
+                <Link
+                  href={`/step-up?for=financial&action=member.identity.read&next=${
+                    encodeURIComponent("/members")}`}
+                >
+                  {text("member.raiseSession")}
+                </Link>
+              </>
+            ) : remedy === "no_answer" ? (
+              text("member.namesWithheldNoAnswer")
+            ) : (
+              text("member.namesWithheldNotHeld")
+            )}
           </p>
         ) : null}
 
@@ -209,7 +233,7 @@ export default async function MembersPage({
                     {isWithheld(row.preferred_name ?? row.legal_name) ? (
                       <WithheldLink
                         locale={locale}
-                        reason="member.withheldIdentity"
+                        reason={nameWithheld}
                         href={`/people/${row.person_id}`}
                         label={fill(locale, "members.openWithheld", {
                           what: row.member_number ?? text("members.noNumber"),

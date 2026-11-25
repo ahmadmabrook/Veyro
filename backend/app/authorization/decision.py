@@ -206,3 +206,44 @@ def permissions_of(assignments: list[Assignment], *, now: datetime,
         if assignment.live(now) and assignment.scope.covers(target):
             granted |= assignment.permissions
     return frozenset(granted)
+
+
+def scopes_holding(
+    assignments: list[Assignment], *, now: datetime, permission: str,
+) -> tuple[Scope, ...]:
+    """Where a caller holds one permission, from their own live assignments. ADR-0014 D1, D2.
+
+    **The gate asked at the tenant-wide scope and nowhere else, so a club manager could not use
+    the product at all.** `permissions_of` lets a broad assignment cover a narrow scope and
+    never the reverse -- which is the whole safety property and is unchanged -- and the
+    consequence was that a location-scoped assignment contributed nothing at the default scope.
+    Four modules record the same gap in their own words; this is the read that answers it.
+
+    **Derived, never accepted** (D2). The scopes come from the assignments the gate has already
+    loaded, so a caller cannot name one: MOD-008's review found a brand-scoped manager reaching
+    another brand's location by sending their own brand id beside it, and `resolve_scope`
+    remains the only way request input becomes a `Scope`.
+
+    **The tenant-wide scope comes first when it is there**, so a caller who holds the permission
+    everywhere answers with one scope and `scope_type == TENANT` -- which is what lets the gate
+    say `tenant_wide` without a second rule, and what keeps every existing route's behaviour
+    exactly as it was (D3).
+
+    **A scope appears once**, however many roles grant the permission there: two roles at one
+    club is one place, and a read that filtered on a list with duplicates would ask the same
+    question twice.
+    """
+    seen: list[Scope] = []
+    for assignment in assignments:
+        if not assignment.live(now) or permission not in assignment.permissions:
+            continue
+        if assignment.scope not in seen:
+            seen.append(assignment.scope)
+    # Tenant first, then brand, then location, and within a kind by the ids -- so the answer is
+    # total rather than depending on the order the rows came back in. MOD-018's `chart_for`
+    # finding: an unordered lookup makes the planner the author.
+    rank = {TENANT: 0, BRAND: 1, LOCATION: 2}
+    return tuple(sorted(
+        seen,
+        key=lambda one: (rank.get(one.scope_type, 3), one.brand_id or "",
+                         one.location_id or "")))

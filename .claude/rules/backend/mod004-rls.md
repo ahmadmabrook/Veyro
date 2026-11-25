@@ -793,6 +793,14 @@ numeric bound: the integer has to be the whole literal, or `'00:01:30'::interval
 `1000000:01:30'::interval` and the statement never runs.
 
 
+**`tools/local_ci.sh` and the browser suite cannot run at the same time.** The gate's last
+step is `npm run build`, which writes `.next`, and the browser suite's `webServer` under `CI=1`
+is `npm run start`, which *serves* `.next` -- so a gate started beside a running suite
+overwrites the artefact the suite is being judged against, mid-run. Nothing errors in a way
+that names the cause: the server keeps answering, from a mixture. Run one, then the other, and
+if a long suite is in flight and the gate is wanted now, stop the gate rather than hoping the
+build lands between tests.
+
 **A suite that passes on a dev server and fails against the production build has not been
 run.** `playwright.config.ts` says so in its own comment -- "a gate that only ever saw
 `next dev` is a gate that has not seen the artefact" -- and this session proved it twice in
@@ -1385,6 +1393,15 @@ to check the log's mtime before believing its last line, which `stat -f "%Sm"` a
 call. **A stale artefact read as current is the same failure as a stale fixture or a server
 started before the change** -- this file records both -- and a watcher makes it quieter,
 because the number arrives as a notification rather than as something you went and looked at.
+
+**An assertion keyed on words a *correct* sentence also contains contradicts itself.** A test
+for "this reader is offered no step-up" used `[title*="stronger sign-in"]` and expected zero --
+and the sentence it required to be present reads "Reading one needs a permission rather than a
+stronger sign-in", so the marker the test exists to assert was what made it fail. The property
+is the *offer*, not the vocabulary: the step-up sentence's own distinctive clause, and the
+absence of a link. That is the positional-locator trap in prose, and the tell is a test that
+fails against a page a human would call correct -- so read the sentence the page renders before
+rewriting the code it tests.
 
 **An unscoped `getByText` on a phrase is a test coupled to that phrase being unique in the
 document.** The account page asserted "the highest assurance this product has" at page level;
@@ -3180,8 +3197,121 @@ the consequence did not, and every assertion about the picker passed. When a new
 correlation id, the read has to send it; when a read is wrapped in a `catch`, the absence it
 produces is indistinguishable from "there is nothing to show".
 
+**In a `switch`, a mutation that adds a clause is a no-op or a syntax error -- the mutation of
+a branch is its own answer.** Both of this session's first two mutations against a four-verdict
+decision were ill-formed in that one way, and the two failures look nothing alike: a duplicate
+`case` label is *unreachable*, because the first match wins, so the sweep reported UNCAUGHT and
+read as a protection with no evidence; a second `default:` makes the file unparseable, so vitest
+collected nothing and printed `Tests  no tests`, which reads as a gap the harness created. The
+fifth distinct form of "a mutation that changes nothing is not evidence" here, and the cheapest
+guard is the shape rather than a check: **mutate the value a branch returns, never the clauses
+around it.**
+
+**A boolean that answers "is this withheld" is not an answer to "what can the reader do about
+it", and a shared sentence makes the second one wrong everywhere at once.** This file already
+records the `reachable` version -- one field answering two questions is right only while the
+two agree. The surface version is worse because it scales: sixteen marker sites across
+thirteen files rendered one key for a masked name, and that key named a remedy -- a step-up -- which is
+right for a reader holding the grant at too low an assurance and wrong for one who does not
+hold it at all. The component was *built* for the distinction and its docstring names two
+doors; the case it did not name is the reader who holds nothing, and every site passed the
+first key to all three. **The question to ask of any "this is withheld / refused / unavailable"
+marker is not whether it is accurate but whether the remedy beside it is one this reader has.**
+
+Three corollaries, all paid here:
+
+- **A grep for an attribute literal misses the same key inside an expression.** The sweep that
+  found the sites searched `reason="member.withheldIdentity"` and came back clean while three
+  of them spelled it `reason={cond ? ... : "member.withheldIdentity"}`. Search for the *value*,
+  not the attribute form -- and in a repository where a design-system component takes a message
+  key as a prop, that value is the only thing every site has in common.
+- **The marker and the offer are two controls, and fixing one leaves the other.** Seven screens
+  rendered the step-up link beside the sentence, each on its own condition, so the corrected
+  sentence sat above a link that still cost a recovery code for nothing. **The count is what
+  found both**: a browser assertion of `[title*="stronger sign-in"]` expecting 0 and receiving
+  2, after an earlier one expecting 0 and receiving 5 -- one element is a banner and five are
+  rows, so the number says which layer you have not fixed yet.
+- **A remedy that is never available must not be offered at all.** The member record marked a
+  contact point with the identity sentence, and `member.profile.read` is routine -- so a
+  stronger sign-in could *never* lift that mask and the sentence was false in every case rather
+  than in some. A marker shared across classes inherits the wrong remedy for all but one.
+- **A fix that does not clear the symptom is a diagnosis to doubt.** I read five markers as the
+  mask resolving at the tenant-wide default scope, changed the resolution to the caller's own
+  scopes, rebuilt, and five markers remained -- because the cause was the missing permission.
+  What settled it was reading the fixture's role and the permission's action class, which is
+  two greps and needs no test at all. And the count was the tell I ignored: the banner is one
+  element and five meant the rows, so the thing I had fixed was not the thing being counted.
+
+**And a backend started before the edit is what made that loop longer than it needed to be.**
+The process was 40 minutes older than `main.py`, with no `--reload`, so the run that reported
+the five markers was testing code without the change -- which this file already records for
+routes and for a registry, met again for a service function. `ps -o lstart=` against the file's
+mtime is the check, and it costs one command.
+
+**`nohup cmd &` inside a backgrounded tool call is not a background run.** The harness reports
+the *wrapper's* exit, so a browser suite that was torn down after 30 of 711 tests came back
+"completed (exit code 0)" with no summary in its log. The tells were both there and neither is
+an error: a log whose last line is an ordinary pass, and an announced test count far above the
+number of result lines. Let the harness own the process, and check that a suite log ends in a
+tally before reading it as a result.
+
 **A `psql` session as `postgres` bypasses RLS, so a tenant filter must be an explicit
 `WHERE`.** A diagnostic query that set `app.tenant_id` and relied on the policy returned every
 tenant's rows — thousands of them from the backend suite's own tenants — because a superuser is
 exempt from row-level security entirely. The isolation suite never hits this because it
 `SET LOCAL ROLE` to a runtime role first. For an ad-hoc read, name the tenant in the predicate.
+
+**`None` and a default-constructed value are two different questions, and a helper that
+answers only the second makes a new branch silently inert.** ADR-0014 gave `authz.check` a
+"may this caller do this *anywhere*" path, keyed on the `scope` argument being absent — and
+both `/authz/check` and `/authz/checks` passed `resolve_scope(None, None)`, which returns the
+tenant-wide `Scope()` because that is the right answer for the permission simulator. So the
+new branch never ran for the gate every surface in this app reads: `GET /staff` answered a
+club manager "yes" while the rail answered "no", and the page rendered "Not permitted" over a
+read that would have worked. **A screen refusing while its own read allows is the worse half
+of the two**, and nothing in 46 authorization tests could see it, because no test had ever
+asked the gate as a scoped caller. The guard is a test that asks `/authz/check` *and*
+`/authz/checks` as one, plus a mutation that puts the unconditional resolve back.
+
+**When a gate learns to say yes to a caller it used to refuse, every reader of `allowed` is a
+page that may now render over a read that refuses.** The server's `permit` got an opt-in — a
+route accepts a scoped caller only by passing `scoped=True` — and the client's `gate()` needed
+the same information or the two layers disagree: `/members` drew its heading and its list read
+answered 403, showing neither the rows nor the refusal. The remedy is to narrow the *client's*
+`allowed` to the old meaning and carry the new one beside it as `allowed_anywhere`, so every
+page behaves exactly as it did and the one page that filters opts in. That is the same
+"default is what this build already did" reasoning as ADR-0011's billing anchor, applied to a
+boolean that a hundred call sites read.
+
+**A flag a route sets is a declaration, so check it with `ast`.** `permit(..., scoped=True)`
+says "this route is safe for a scoped caller", and the only thing that makes it safe is
+filtering on `gate.scopes`. A route that set the flag and ignored the answer would return every
+club's rows to a caller who holds the action at one — the exact failure the opt-in exists to
+prevent, arriving through the opt-in. `GateCoverageTests` requires a route passing it to
+mention `scopes` in its body, **and a second test requires that at least one route does**,
+because a structural check asserting an empty list proves nothing until it can see its
+subjects at all.
+
+**A 200 is the weaker of the two available assertions about a boundary.** The first version of
+the club-manager test asserted that the staff list answered rather than refusing — which is
+the finding, and says nothing about the bound. Two staff profiles, one at the caller's club and
+one elsewhere, with the admin seeing both and the club manager seeing one, is what makes the
+absence the gate's answer rather than a narrower query the test happened to send.
+
+**And two of that sweep's mutations needed cases that did not exist, both for the same
+reason.** Removing the permission filter from `scopes_holding` and removing the liveness check
+both left the answer unchanged for a caller with *one* role at *one* club — the two rules agree
+on that input. The cases that bite are a second role at a second club granting something else,
+and a revoked assignment at a third: the shapes where the rules disagree. This is "a case
+catches a weakening only if the two rules disagree on it" applied to a derivation rather than
+a constraint, and the sweep is the only instrument that finds it.
+
+**Hoisting a validator call into a helper passes every behavioural test and turns the id sweep
+red, which is the sweep being per-route on purpose.** `test_id_validation` reads `main.py` with
+`ast` and requires every id a route takes to reach a validator **in that route's own body** —
+its first version matched field names against validator calls across the whole file, so a field
+wrapped in one route read as wrapped in all of them and it reported zero. Moving two
+`optional_uuid` calls into a shared `_named_scope` helper left the ids genuinely validated and
+every test green except that one. The fix is to validate at the call site and pass the checked
+values in; the alternative — exempting the routes — would be declaring that a uuid is not a
+uuid.

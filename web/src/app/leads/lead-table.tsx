@@ -36,8 +36,11 @@ export type LeadDisplay = {
  * age, which are this module's own.
  */
 export function LeadTable({
-  locale, rows, countLabel,
+  locale, rows, countLabel, nameWithheld,
 }: {
+  // Which sentence a withheld name gets: the page decides it from the gate's answer, because
+  // only the page knows whether a step-up would lift the mask for this reader.
+  nameWithheld: MessageKey;
   locale: Locale;
   rows: LeadDisplay[];
   countLabel: string;
@@ -61,7 +64,7 @@ export function LeadTable({
               {row.name === null ? (
                 <WithheldLink
                   locale={locale}
-                  reason="member.withheldIdentity"
+                  reason={nameWithheld}
                   href={`/leads/${row.lead_id}`}
                   label={row.meta}
                 />
@@ -90,7 +93,7 @@ export function LeadTable({
             ) : row.owner === "" ? (
               // An owner whose own name is withheld. The cell says so rather than printing a
               // uuid where a name belongs, which is the members list's own finding.
-              <Withheld locale={locale} reason="member.withheldIdentity" />
+              <Withheld locale={locale} reason={nameWithheld} />
             ) : (
               row.owner
             ),

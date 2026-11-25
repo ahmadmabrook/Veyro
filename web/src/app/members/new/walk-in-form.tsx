@@ -47,8 +47,9 @@ import { IDLE, type WalkInState } from "./state";
  *   it applies to is what the duplicate changes.
  */
 export function WalkInForm({
-  locale, numbering, canWrite, writeVerdict,
+  locale, numbering, canWrite, writeVerdict, nameWithheld,
 }: {
+  nameWithheld: MessageKey;
   locale: Locale;
   numbering: "latn";
   canWrite: boolean;
@@ -196,7 +197,7 @@ export function WalkInForm({
               {text("walkIn.alreadyOnARecord")}
             </p>
             <p className="ds-walk-in-match">
-              <ContactMatchLine locale={locale} match={duplicate.first} />
+              <ContactMatchLine nameWithheld={nameWithheld} locale={locale} match={duplicate.first} />
               {". "}
               {text("walkIn.secondRecord")}
             </p>

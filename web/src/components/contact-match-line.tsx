@@ -1,5 +1,5 @@
 import { Withheld } from "@/components/withheld";
-import { fill, type Locale } from "@/i18n/locale";
+import { fill, type Locale, type MessageKey } from "@/i18n/locale";
 import { monthYearLabel } from "@/lib/time";
 import { knownFrom, recognitionParts, type ContactMatch } from "@/lib/walk-in";
 
@@ -19,10 +19,15 @@ import { knownFrom, recognitionParts, type ContactMatch } from "@/lib/walk-in";
  * them. The member number and the date are not identity-class, so they stay.
  */
 export function ContactMatchLine({
-  locale, match,
+  locale, match, nameWithheld,
 }: {
   locale: Locale;
   match: ContactMatch;
+  // Which sentence a withheld name gets. The page decides it from the gate's answer, because
+  // only the page knows whether a step-up would lift the mask -- and it differs by screen:
+  // creating a *member* is financial class, so that reader can step up, while opening a lead
+  // is routine, so a salesperson may hold no identity read at any assurance.
+  nameWithheld: MessageKey;
 }) {
   const shown = match.preferred_name ?? match.legal_name;
   const withheld = shown === null || shown === "***";
@@ -31,7 +36,7 @@ export function ContactMatchLine({
     <>
       <strong>
         {withheld
-          ? <Withheld locale={locale} reason="member.withheldIdentity" />
+          ? <Withheld locale={locale} reason={nameWithheld} />
           : shown}
       </strong>
       {parts.map((part) => (

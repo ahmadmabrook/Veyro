@@ -115,6 +115,9 @@ export type Fixture = {
    * be both, which is why there are three.
    */
   deskEmail: string;
+  /** ADR-0014: a location-scoped session, the first this build can answer. */
+  clubEmail: string;
+  clubPassword: string;
   deskPassword: string;
   /** The published membership product MOD-016's board opens, with one variant and one price. */
   productId: string;
@@ -292,6 +295,8 @@ export function fixture(): Fixture {
     readerEmail: env.VEYRO_E2E_READER_EMAIL!,
     readerPassword: env.VEYRO_E2E_READER_PASSWORD!,
     deskEmail: env.VEYRO_E2E_DESK_EMAIL!,
+    clubEmail: env.VEYRO_E2E_CLUB_EMAIL!,
+    clubPassword: env.VEYRO_E2E_CLUB_PASSWORD!,
     deskPassword: env.VEYRO_E2E_DESK_PASSWORD!,
     productId: env.VEYRO_E2E_PRODUCT_ID!,
     invoiceId: env.VEYRO_E2E_INVOICE_ID!,

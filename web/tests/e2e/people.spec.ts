@@ -2,7 +2,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 
 import { fixture } from "./fixture-env";
-import { useOwnerSession, useReaderSession } from "./sign-in";
+import { useDeskSession, useOwnerSession, useReaderSession } from "./sign-in";
 
 /**
  * MOD-014's surfaces: the way in, and the composed record with its masks marked.
@@ -74,6 +74,38 @@ test.describe("the member record", () => {
     // so a level-1 session sees the address while the name beside it is withheld. A surface
     // that masked everything, or nothing, would pass a test that only looked at one.
     await expect(page.getByText("jane.member@veyro.test")).toBeVisible();
+  });
+
+  test("tells a reader who holds no contact read that no sign-in will open it", async ({
+    page,
+  }) => {
+    // **The other side of that map, and the branch the owner cannot reach.** The test above
+    // proves a routine session *sees* the address, which means the withheld-contact case had
+    // no fixture at all -- and the marker it rendered said "identity fields need a stronger
+    // sign-in. Step up and the value is readable." for a phone number, which is false in
+    // every case rather than in some: `member.profile.read` is `data_access` with no
+    // financial class, so a stronger sign-in can never lift a contact mask. The front desk
+    // holds `people.person.read` and nothing else, so this is the reader it is about.
+    await useDeskSession(page);
+    await page.goto(`/people/${fixture().personId}`);
+    const marker = page.locator("#main").getByText("Withheld").first();
+    await expect(marker).toBeVisible();
+    await expect(
+      page.locator("#main").locator('[title*="contact field"]').first(),
+    ).toBeVisible();
+    await expect(page.locator("#main").getByText("jane.member@veyro.test"))
+      .toHaveCount(0);
+    // **And never the remedy that does not exist for it** -- asserted as the *offer* rather
+    // than as the words, which is what the first version got wrong: `[title*="stronger
+    // sign-in"]` matched the contact sentence itself, because that sentence says the remedy
+    // is "a permission rather than a stronger sign-in". A substring that appears in more
+    // than the thing it means is the positional-locator trap in prose.
+    await expect(
+      page.locator("#main").locator('[title*="Step up and the value is readable"]'),
+    ).toHaveCount(0);
+    await expect(
+      page.locator("#main").getByRole("link", { name: /stronger sign-in|Raise/i }),
+    ).toHaveCount(0);
   });
 
   test("keeps a health note visible as a note and withholds only its body", async ({ page }) => {

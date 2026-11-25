@@ -19,7 +19,8 @@ import { api } from "@/lib/api";
 // and therefore `next/headers`, so a client component that reaches it fails the build -- which
 // is what FD-07's open form did through `@/lib/shift`. The marker's home is the pure module and
 // the name stays reachable here, so the pages that already import it are untouched.
-export { MASK, isWithheld } from "@/lib/mask";
+export { MASK, isWithheld, withheldRemedy } from "@/lib/mask";
+export type { WithheldRemedy } from "@/lib/mask";
 
 export type ContactPoint = {
   contact_point_id: string;

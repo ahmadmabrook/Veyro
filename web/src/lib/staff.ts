@@ -46,6 +46,14 @@ export type StaffList = {
   columns_this_module_cannot_answer: Record<string, string>;
   invited_is_not_a_state_here: string;
   certifications_are_not_recorded: string;
+  /**
+   * ADR-0014: where the gate says this reader may look, or `null` for a tenant-wide one.
+   *
+   * **A bounded list read as the whole team is a team that is not there**, which is why the
+   * screen says so rather than letting the absence pass. Until ADR-0014 a club manager was
+   * refused this read outright, so there was no bounded case to say anything about.
+   */
+  bounded_to_locations: string[] | null;
   the_location_filter_is_not_a_boundary: string;
 };
 

@@ -250,11 +250,13 @@ const BACKLOG = {
     + "path with no freshness contract and no permission pre-filter",
   // `work:` -- a built module does not yet do what the screen draws. Each names the module
   // and what has to be written in it.
-  "ADM-CC-02": "work: MOD-008's `permit` and MOD-014's `held_permissions` both resolve "
-    + "against the tenant-wide default scope, so a brand- or location-scoped role is refused "
-    + "every read rather than shown its own club -- and what makes this screen the club "
-    + "manager's is the scope: 'the rail is generated from his role rather than greyed'. "
-    + "MOD-014 records the gap; closing it is scope resolution in the gate",
+  "ADM-CC-02": "work: MOD-008. ADR-0014 gave the gate a `where` answer, so a brand- or "
+    + "location-scoped role can sign in and work at all -- it was refused every gated read "
+    + "before -- and the rail is generated from the pages that would answer them rather "
+    + "than greyed, which is this canvas's own sentence. What is left is the Command "
+    + "Center's panels: each is a read that has not opted in, so a club manager sees the "
+    + "rail and an empty board. Opting one in is a predicate plus a case, and `permit` "
+    + "refuses such a caller until it happens, which is the behaviour they had before",
   "ADM-SCH-06": "work: MOD-019. The canvas draws name, capacity and equipment and says "
     + "'capacity here is the ceiling every class inherits'. `sch_resources` has `quantity` "
     + "-- how many of a thing there are -- capacity lives on a template's own policy per "

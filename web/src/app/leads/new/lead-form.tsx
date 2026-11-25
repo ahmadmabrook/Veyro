@@ -61,8 +61,9 @@ import { IDLE, type NewLeadState } from "./state";
  * sign-in can still do the thing the duplicate check found for them.
  */
 export function LeadForm({
-  locale, numbering, canCreatePerson, personVerdict, canOpenLead, sources, interests,
+  locale, numbering, canCreatePerson, personVerdict, canOpenLead, sources, interests, nameWithheld,
 }: {
+  nameWithheld: MessageKey;
   locale: Locale;
   numbering: "latn";
   /** `people.person.write` — the new-person half, financial class. */
@@ -190,7 +191,7 @@ export function LeadForm({
               {text("newLead.duplicate")}
             </p>
             <p className="ds-walk-in-match">
-              <ContactMatchLine locale={locale} match={duplicate.first} />
+              <ContactMatchLine nameWithheld={nameWithheld} locale={locale} match={duplicate.first} />
               {". "}
               {text("newLead.insteadOfSecond")}
             </p>

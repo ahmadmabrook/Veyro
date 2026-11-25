@@ -165,6 +165,29 @@ export async function may(action: string): Promise<boolean> {
   return (await gate(action)).allowed;
 }
 
+/**
+ * ADR-0014: narrow the gate's answer to "allowed *here*", keeping the raw one beside it.
+ *
+ * **Every page in this app reads `allowed` and almost none of them filters by scope.** The
+ * gate now answers "may this caller do this anywhere", and the server's `permit` refuses a
+ * brand- or location-scoped caller on any route that has not opted in -- so a page keyed on
+ * the raw answer renders as permitted over a read that answers 403. `/members` did exactly
+ * that the hour the gate changed: the heading drew, the list read refused, and the page showed
+ * neither the refusal nor the rows.
+ *
+ * So `allowed` keeps its old meaning and `allowed_anywhere` carries the new one. A page that
+ * filters -- `/staff` is the first -- reads the second and the boundary beside it; every other
+ * page behaves exactly as it did, which is ADR-0014 D3 applied one layer up.
+ */
+function narrow(answer: GateAnswer): GateAnswer {
+  const anywhere = answer.allowed === true;
+  return {
+    ...answer,
+    allowed_anywhere: anywhere,
+    allowed: anywhere && answer.tenant_wide === true,
+  };
+}
+
 export type GateAnswer = {
   action: string;
   allowed: boolean;
@@ -175,6 +198,25 @@ export type GateAnswer = {
   reachable: boolean;
   /** The fields a read must render masked. MOD-014's list, carried rather than dropped. */
   masked_fields: string[];
+  /**
+   * ADR-0014: whether the caller holds the action everywhere in the tenant.
+   *
+   * **`allowed` is narrowed to this by default**, which keeps every page in this app behaving
+   * exactly as it did: the server's `permit` refuses a brand- or location-scoped caller on any
+   * route that has not opted in, so a page keyed on the gate's raw answer would render as
+   * permitted over a read that answers 403 -- which is what happened to `/members` the hour
+   * the gate learned to say "anywhere".
+   */
+  tenant_wide: boolean;
+  /**
+   * Where the caller holds it, from their own live assignments.
+   *
+   * A page that filters reads this; a page that does not gets `allowed: false` for a scoped
+   * caller and never sees it. `allowed_anywhere` is the raw answer for the former.
+   */
+  scopes: { scope_type: string; brand_id: string | null; location_id: string | null }[];
+  /** The gate's own answer, before `allowed` is narrowed to the tenant-wide case. */
+  allowed_anywhere: boolean;
 };
 
 /**
@@ -216,6 +258,9 @@ export async function gateAll<A extends readonly string[]>(
     required_aal: null,
     reachable: true,
     masked_fields: [],
+    tenant_wide: false,
+    scopes: [],
+    allowed_anywhere: false,
   });
   const query = new URLSearchParams();
   for (const action of actions) query.append("action", action);
@@ -228,7 +273,7 @@ export async function gateAll<A extends readonly string[]>(
       // An action the server did not answer about is not permission either.
       return found === undefined
         ? closed(action, "gate_unreachable")
-        : { ...closed(action, "gate"), ...found, allowed: found.allowed === true };
+        : narrow({ ...closed(action, "gate"), ...found });
     }) as { [K in keyof A]: GateAnswer };
   } catch (error) {
     if (error instanceof ApiError) {
@@ -322,12 +367,15 @@ export async function gate(action: string): Promise<GateAnswer> {
     required_aal: null,
     reachable: true,
     masked_fields: [],
+    tenant_wide: false,
+    scopes: [],
+    allowed_anywhere: false,
   };
   try {
     const answer = await api<GateAnswer>(
       `/authz/check?action=${encodeURIComponent(action)}&correlation_id=${correlationId()}`,
     );
-    return { ...closed, ...answer, allowed: answer.allowed === true };
+    return narrow({ ...closed, ...answer });
   } catch (error) {
     // Fail closed. An unreachable gate is not permission.
     if (error instanceof ApiError) return { ...closed, reason: error.reason };

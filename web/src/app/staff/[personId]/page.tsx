@@ -7,10 +7,10 @@ import { RecordHeader } from "@/components/ds/record-header";
 import { Prose, ProseNote } from "@/components/prose";
 import { Withheld } from "@/components/withheld";
 import { fill, t, type Locale, type MessageKey } from "@/i18n/locale";
-import { currentSession, failureMessage, gateAll, gateMessage } from "@/lib/api";
+import { currentSession, failureMessage, gateAll, gateMessage, gateVerdict } from "@/lib/api";
 import { listRoles, readCatalog, simulate, type Assignment } from "@/lib/authz";
 import { listLocations, type Location } from "@/lib/organization";
-import { isWithheld, readPerson } from "@/lib/people";
+import { isWithheld, readPerson, withheldRemedy } from "@/lib/people";
 import { presentation } from "@/lib/preferences";
 import {
   NO_UNTICKED_ROWS,
@@ -87,12 +87,22 @@ export default async function StaffProfilePage({
 
   if (!(await currentSession())) redirect(`/login?next=/staff/${personId}`);
 
-  const [mayStaff, mayRoles, mayLogins, maySites] = await gateAll([
+  const [mayStaff, mayRoles, mayLogins, maySites, mayNames] = await gateAll([
     "people.person.read",
     "authz.role.read",
     "identity.identity.read",
     "tenancy.organization.read",
+    // For the withheld marker's remedy, not for any read. See `@/lib/mask`.
+    "member.identity.read",
   ] as const);
+  // **The remedy has to match the cause.** A legal name is MOD-014's `identity` class and
+  // `member.identity.read` opens it; that permission is `financial`, so a step-up lifts the
+  // mask for a session holding the grant at too low an assurance and does nothing for a role
+  // that does not hold it. The row said "step up" to both until now. See `@/lib/mask`.
+  const remedy = withheldRemedy(gateVerdict(mayNames));
+  const nameWithheld: MessageKey = remedy === "step_up"
+    ? "member.withheldIdentity"
+    : "member.withheldIdentityNoRemedy";
 
   if (!mayStaff.allowed) {
     return (
@@ -195,7 +205,7 @@ export default async function StaffProfilePage({
               ? (
                 <>
                   {profile.job_title ?? text("staff.noTitle")}{" "}
-                  <Withheld locale={locale} reason="member.withheldIdentity" />
+                  <Withheld locale={locale} reason={nameWithheld} />
                 </>
               )
               : name
@@ -234,9 +244,19 @@ export default async function StaffProfilePage({
 
       {isWithheld(name ?? "") ? (
         <p className="ds-note">
-          {text("staff.nameWithheld")}{" "}
-          <Link href={`/step-up?for=financial&action=member.identity.read&next=${
-            encodeURIComponent(`/staff/${personId}`)}`}>{text("member.raiseSession")}</Link>
+          {remedy === "step_up" ? (
+            <>
+              {text("staff.nameWithheld")}{" "}
+              <Link href={`/step-up?for=financial&action=member.identity.read&next=${
+                encodeURIComponent(`/staff/${personId}`)}`}>
+                {text("member.raiseSession")}
+              </Link>
+            </>
+          ) : remedy === "no_answer" ? (
+            text("member.namesWithheldNoAnswer")
+          ) : (
+            text("member.namesWithheldNotHeld")
+          )}
         </p>
       ) : null}
 
