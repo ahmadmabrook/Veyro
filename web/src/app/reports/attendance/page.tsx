@@ -252,7 +252,7 @@ export default async function AttendanceReportPage({
         </nav>
       ) : null}
 
-      <MetricRow label={text("attendanceReport.title")} columns={4}>
+      <MetricRow label={text("attendanceReport.title")}>
         <MetricCell label={text("attendanceReport.visits")} value={count(report.entries)} />
         <MetricCell
           label={text("attendanceReport.busiest")}

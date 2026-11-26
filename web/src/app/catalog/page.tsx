@@ -134,6 +134,7 @@ export default async function CatalogPage({
         ) : (
           <DataGrid
             caption={text("catalog.products")}
+            countLabel={null}
             labelledBy="products-heading"
             rows={products}
             rowKey={(product) => product.product_id}
@@ -200,6 +201,7 @@ export default async function CatalogPage({
           ) : (
             <DataGrid
               caption={text("catalog.variants")}
+              countLabel={fill(locale, "grid.count.variants", { count: detail.variants.length }, numbering)}
               labelledBy="variants-heading"
               rows={detail.variants}
               rowKey={(variant) => variant.variant_id}
@@ -288,6 +290,7 @@ export default async function CatalogPage({
         ) : (
           <DataGrid
             caption={text("catalog.books")}
+            countLabel={null}
             labelledBy="books-heading"
             rows={books}
             rowKey={(book) => book.price_book_id}
@@ -347,6 +350,7 @@ export default async function CatalogPage({
         ) : (
           <DataGrid
             caption={text("catalog.promotions")}
+            countLabel={null}
             labelledBy="promotions-heading"
             rows={promotions}
             rowKey={(promotion) => promotion.promotion_id}

@@ -7,6 +7,7 @@ import { NotYet, PageHeader } from "@/components/ds/page-header";
 import { fill, formatInteger, formatMoney, t, type MessageKey } from "@/i18n/locale";
 import { currentSession, gate, gateAll, gateMessage, gateVerdict } from "@/lib/api";
 import { planName, repriceable, type Plan } from "@/lib/plans";
+import { planName as storedWord } from "@/lib/members";
 import { readPlanTable } from "@/lib/plans-reads";
 import { numerals } from "@/lib/display";
 import { presentation } from "@/lib/preferences";
@@ -37,6 +38,18 @@ import { PriceForm } from "./price-form";
  * **The sheet is a query parameter, not a modal**, as ADM-MSH-07's cancellation is: this app
  * has no side sheet, and a permanently-open destructive form has no way out.
  */
+/**
+ * The billing period in the reader's language.
+ *
+ * `one_off` and `fixed_term` reached this row raw -- the same vocabulary-as-label defect the
+ * members list had, on the screen where a tenant picks which plan to re-price. An unmapped
+ * value falls through to its stored form rather than to a blank.
+ */
+function periodWord(stored: string, locale: "en" | "ar"): string {
+  const key = storedWord(stored);
+  return key === null ? stored : t(locale, key);
+}
+
 export default async function PlansPage({
   searchParams,
 }: {
@@ -139,7 +152,7 @@ export default async function PlansPage({
                     <>
                       <Link href={`/plans?variant=${row.variant_id}`}>{named.name}</Link>
                       <div className="muted ds-desk-row-context">
-                        {[named.qualifier, row.billing_period,
+                        {[named.qualifier, periodWord(row.billing_period, locale),
                           ...(row.is_a_trial_product ? [text("plans.isTrial")] : []),
                           ...(named.isKey ? [text("plans.untranslated")] : [])]
                           .join(" \u00b7 ")}

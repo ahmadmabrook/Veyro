@@ -144,8 +144,26 @@ describe("the interpretation panel", () => {
 });
 
 describe("what the screen says it cannot do", () => {
-  it("names the CRM as the reason the fourth metric has no figure", () => {
-    expect(t("en", UNANSWERABLE.leadConversion)).toContain("ADM-CRM");
+  it("gives the fourth metric a reason in the operator's language, not a module id", () => {
+    // **The finding this test was written for still holds**: the cell with no figure carries
+    // a reason rather than a zero or an em-dash, because both of those read as a measurement.
+    // What changed is who the reason is addressed to. It used to name `ADM-CRM-*`, a screen
+    // id from the design folder, on the product's front door -- and a screen id is not
+    // something a gym owner can act on or even look up.
+    const reason = t("en", UNANSWERABLE.leadConversion);
+    expect(reason.toLowerCase()).toContain("lead");
+    expect(reason).not.toMatch(/ADM-[A-Z]+|MOD-\d+|[a-z]+_[a-z]+/);
+  });
+
+  it("no message a reader sees carries a module id or an internal identifier", () => {
+    // The sweep behind the assertion above: the directive is explicit that backend module
+    // names, UUIDs and diagnostic text do not belong in normal product UI, and the Command
+    // Center shipped seven such notes. This is what stops the eighth.
+    for (const key of Object.values(UNANSWERABLE)) {
+      for (const locale of ["en", "ar"] as const) {
+        expect(t(locale, key), `${key} (${locale})`).not.toMatch(/ADM-[A-Z]+-?\*?|MOD-\d+/);
+      }
+    }
   });
 
   it("names every gap in both languages", () => {

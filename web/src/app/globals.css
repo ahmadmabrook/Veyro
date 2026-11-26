@@ -1,14 +1,18 @@
 /**
  * Base styles over the generated tokens.
  *
- * The direction this follows is the design system's own "1a LEDGER": hairline rules instead of
- * shadows, near-zero radius on data, warm paper neutrals, mono numerals, one superfamily
- * across Latin / Arabic / mono -- chosen because it is "the only direction whose legibility
- * improves as row count rises", which is the actual condition of Admin, Front Desk and
- * Console.
+ * The world is recorded in `ds.json` WORLD and argued in `.impeccable/surfaces/admin.md`: the
+ * graphic tradition of Levantine football-club identity, which lends this surface four things
+ * and only four -- type, palette, density, and the numeral on the back of a shirt. It does not
+ * lend the layout, the navigation model or the controls, which stay standard web components a
+ * reader already knows how to use.
+ *
+ * What that replaces: the retired "1a LEDGER" direction of warm paper, hairlines and mono
+ * numerals. Hairlines became a 2px rule, warm paper became bone, and the mono numerals became
+ * Archivo -- monospace is for code, not for "technical".
  *
  * Nothing here invents a value. Every colour is a layer-2 token and every length is on the
- * spacing scale, because "no value outside this scale ships".
+ * spacing scale, because no value outside that scale ships.
  */
 
 @import "../design/tokens.generated.css";
@@ -30,7 +34,7 @@ body {
   color: var(--color-text-primary);
   /* The self-hosted face, with the declared name after it so a reader who already has IBM
      Plex installed gets it and everyone else gets the one this app ships. */
-  font-family: var(--font-plex-sans), "IBM Plex Sans", system-ui, sans-serif;
+  font-family: var(--font-text), system-ui, sans-serif;
   font-size: var(--type-body-size);
   line-height: var(--type-body-line);
   font-weight: var(--type-body-weight);
@@ -45,7 +49,7 @@ body {
  * `src/design/type.mjs`; this is the body default.
  */
 :root[lang="ar"] body {
-  font-family: var(--font-plex-arabic), "IBM Plex Sans Arabic", system-ui, sans-serif;
+  font-family: var(--font-arabic), system-ui, sans-serif;
   line-height: calc(var(--type-body-line) + 0.15);
 }
 
@@ -84,7 +88,7 @@ h2 {
  * keep the column aligned and the same width.
  */
 .data {
-  font-family: var(--font-plex-mono), "IBM Plex Mono", ui-monospace, monospace;
+  font-family: var(--font-figure), system-ui, sans-serif;
   font-size: var(--type-data-size);
   line-height: var(--type-data-line);
   font-weight: var(--type-data-weight);
@@ -92,7 +96,7 @@ h2 {
 }
 
 :root[lang="ar"] .data {
-  font-family: var(--font-plex-arabic), "IBM Plex Sans Arabic", system-ui, sans-serif;
+  font-family: var(--font-arabic), system-ui, sans-serif;
   font-variant-numeric: tabular-nums;
 }
 
@@ -114,6 +118,161 @@ h2 {
 
 a {
   color: var(--color-text-link);
+  /* Colour is never the only signal a thing is a link, and the offset keeps the rule clear of
+     Barlow's descenders instead of striking through them. */
+  text-decoration-line: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.18em;
+}
+
+a:hover {
+  text-decoration-thickness: 2px;
+}
+
+/**
+ * **The parts nobody draws still carry the design.**
+ *
+ * Selection, the caret, the scrollbar and the numerals in tabular data ship with browser
+ * defaults that belong to no design system: a page that leaves them is a page assembled
+ * rather than built. Each is themed from the palette, and each is themed in *both* themes,
+ * because a selection colour that was picked against a light ground disappears on a dark one.
+ */
+::selection {
+  /* The honours colour. It is the one place gold touches body text, and it reads as a
+     highlighter rather than as a state, which is what a selection is. */
+  background: var(--color-brand-mark);
+  color: var(--color-text-on-bright);
+}
+
+:root {
+  caret-color: var(--color-text-link);
+  scrollbar-color: var(--color-border-strong) transparent;
+  scrollbar-width: thin;
+}
+
+/* Every figure in the product is tabular, so a column aligns without a per-cell rule and a
+   number does not jitter as it changes. */
+.ds-figure,
+.ds-figure-sm,
+.data,
+table {
+  font-variant-numeric: tabular-nums;
+}
+
+/**
+ * The signature move: the numeral on the back of a shirt.
+ *
+ * Set in the figure face at the top of the scale, on a baseline, with its unit and provenance
+ * beneath it in text. Never inside a bordered tile -- a border around a number is a substitute
+ * for having decided that it matters.
+ */
+.ds-figure,
+.ds-figure-sm {
+  display: block;
+  font-family: var(--font-figure), system-ui, sans-serif;
+  color: var(--color-text-primary);
+  /* The figure sits on its baseline rather than in a box, so the descender room a line box
+     would add is removed and the unit beneath sits where the design puts it. */
+  line-height: var(--type-figure-line);
+}
+
+.ds-figure {
+  font-size: var(--type-figure-size);
+  font-weight: var(--type-figure-weight);
+  letter-spacing: var(--type-figure-tracking);
+}
+
+.ds-figure-sm {
+  font-size: var(--type-figureSm-size);
+  line-height: var(--type-figureSm-line);
+  font-weight: var(--type-figureSm-weight);
+  letter-spacing: var(--type-figureSm-tracking);
+}
+
+/* A figure at phone width collapses to the smaller register rather than wrapping or
+   overflowing: "the surface collapses to the single next decision with its figure
+   monumental", which only works if the figure still fits the viewport. */
+@media (max-width: 599px) {
+  .ds-figure {
+    font-size: var(--type-figureSm-size);
+  }
+}
+
+/* Arabic sets figures in Cairo, which carries Arabic-Indic numerals and ships tabular
+   figures, so the column keeps its alignment across the family switch. */
+:root[lang="ar"] .ds-figure,
+:root[lang="ar"] .ds-figure-sm {
+  font-family: var(--font-arabic), system-ui, sans-serif;
+}
+
+/**
+ * The structural line. 2px in ink, not a hairline.
+ *
+ * The retired system used hairlines "instead of shadows"; this world uses a rule you can see
+ * from across a desk. `--shell-rule` is generated from ds.json SHELL so a component never
+ * hard-codes the weight.
+ */
+.ds-rule {
+  border: 0;
+  border-block-start: var(--shell-rule) solid var(--color-border-strong);
+  margin: 0;
+}
+
+/**
+ * StatusBadge. Four severities, each a solid field, never a bar down one side.
+ *
+ * The vocabulary is closed and the label names the state in words, so colour is the second
+ * channel rather than the only one. `neutral` is deliberately not a colour event -- "'success'
+ * is not a severity, it is the neutral case" -- so it stays a quiet ground with a full border,
+ * which is the craft floor's own alternative to a one-sided mark.
+ */
+.ds-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-05) var(--space-2);
+  /* The data radius, not the button one: a badge is a label and not something to press. */
+  border-radius: var(--radius-card);
+  font-family: var(--font-text), system-ui, sans-serif;
+  font-size: var(--type-label-size);
+  line-height: var(--type-label-line);
+  font-weight: var(--type-label-weight);
+  letter-spacing: var(--type-label-tracking);
+  white-space: nowrap;
+}
+
+.ds-badge-neutral {
+  background: var(--color-surface-sunken);
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border-default);
+}
+
+.ds-badge-info {
+  background: var(--color-semantic-info);
+  color: var(--color-text-inverse);
+}
+
+/* Ink, not bone: the attention field is gold in both themes and white on it is 2.04:1. */
+.ds-badge-attention {
+  background: var(--color-category-money);
+  color: var(--color-text-on-bright);
+}
+
+.ds-badge-critical {
+  background: var(--color-semantic-error);
+  color: var(--color-text-inverse);
+}
+
+/* A short line under a section heading that states something about the data the heading
+   cannot. One sentence in the operator's own language -- never an explanation of this
+   product's internals, which belongs in the repository and not on a working screen. */
+.ds-section-note {
+  margin: 0;
+  max-inline-size: 68ch;
+  font-size: var(--type-bodySm-size);
+  line-height: var(--type-bodySm-line);
+  color: var(--color-text-secondary);
+  text-wrap: pretty;
 }
 
 /** The skip link: present for every keyboard user, visible only when focused. */
@@ -169,6 +328,20 @@ a {
 
 .muted {
   color: var(--color-text-secondary);
+}
+
+/**
+ * Secondary text on the shell field is tinted from the field's own hue.
+ *
+ * The craft floor is explicit: "On colored surfaces tint secondary text from that hue or the
+ * foreground; never gray." `.muted` resolves to `ink.600`, which is a near-black on a
+ * saturated green -- so the chrome's "Language" and "Theme" legends were invisible rather
+ * than quiet. Scoped to the field rather than fixed at each call site, because the rule is
+ * about the surface and not about those two labels.
+ */
+.ds-chrome .muted,
+.ds-shell-rail .muted {
+  color: var(--color-brand-field-muted);
 }
 
 /**
@@ -392,7 +565,7 @@ a {
 /* Money and numeric columns stay end-aligned on the LOGICAL end, so they mirror. */
 .ds-col-money {
   text-align: end;
-  font-family: var(--font-plex-mono), "IBM Plex Mono", ui-monospace, monospace;
+  font-family: var(--font-figure), system-ui, sans-serif;
   font-size: var(--type-data-size);
   font-weight: var(--type-data-weight);
 }
@@ -555,7 +728,10 @@ a {
 }
 
 .ds-button-primary:hover:not(:disabled) {
-  filter: brightness(0.95);
+  /* **`brightness(0.95)` on ink.900 is invisible.** #0d1210 becomes #0c110f -- one step per
+     channel, on the page's primary action. A dark fill cannot be darkened perceptibly, so
+     hover lifts toward the pressed end instead, which is a step a reader can see. */
+  background: var(--color-action-hover);
 }
 
 .ds-button-primary:active:not(:disabled) {
@@ -637,8 +813,21 @@ a {
   /* `padding:10px 0` -- each item carries its own inline padding so a selected row's ground
      reaches the rail's edges. */
   padding-block: 10px;
-  border-inline-end: 1px solid var(--color-border-default);
-  background: var(--color-surface-default);
+  /* **The committed colour field.** The mode rules are explicit that colour on a working
+     screen does real jobs and that "a grey screen with one accent colour is the category
+     default without the category's polish, not restraint" -- so the shell is a saturated
+     field rather than a white panel with a tinted current row. The rule between the field
+     and the content is the field's own edge; it needs no border. */
+  background: var(--color-brand-field);
+  color: var(--color-brand-field-text);
+  /* **The field needs an edge, and the first version said it did not.** In light the rail is
+     11.74:1 against the canvas and genuinely is its own edge; in dark both are green-black --
+     pitch.950 against night.900 is **1.00:1** -- so the two-field composition the contract
+     opens with did not exist in the dark theme at all. No value in the pitch ramp separates
+     from a green-black canvas by luminance, which is the cost of that canvas being green
+     rather than neutral; the world's own device is a 2px rule, and one rule does the job in
+     both themes because `border.strong` is ink in light and bone in dark. */
+  border-inline-end: var(--shell-rule) solid var(--color-border-strong);
 }
 
 .ds-shell-content {
@@ -753,6 +942,35 @@ a {
     inline-size: auto;
   }
 
+  /**
+   * **The groups flatten into the row, and until now they did not.**
+   *
+   * This block was written for a flat list of links, and the rail is a list of *sections*
+   * each holding its own nested list. So `flex-direction: row` laid the five sections out
+   * side by side and each section kept stacking its items downward -- a four-column grid
+   * filling 40% of a phone viewport, permanently, with the content pushed above it. The
+   * rule's own comment says the intent is a row that "scrolls inside itself", which is what
+   * `display: contents` restores: the section box stops generating, so its items become
+   * children of the row and the whole rail is one scrolling strip again.
+   *
+   * It is still more than the five `BREAKPOINTS` specifies. A disclosure holding the rest is
+   * the real answer and is a component this build does not have; a strip that scrolls keeps
+   * every section reachable in the meantime, which a four-row grid also did at the cost of
+   * the screen.
+   */
+  .ds-shell-rail .ds-rail-section {
+    display: contents;
+  }
+
+  .ds-shell-rail .ds-rail-items {
+    display: flex;
+    flex-direction: row;
+    gap: var(--space-1);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
   .ds-shell-rail .ds-rail-list a {
     flex-direction: column;
     gap: 2px;
@@ -805,20 +1023,20 @@ a {
 .ds-rail-list a {
   display: flex;
   align-items: center;
-  gap: 9px;
-  padding: 7px var(--space-4);
-  color: var(--color-text-secondary);
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  color: var(--color-brand-field-text);
+  /* The rail's links are navigation, not prose: the global underline would make thirteen
+     rows of ruled text. The affordance is the row, its hover ground and its current state. */
   text-decoration: none;
   font-size: var(--type-label-size);
   line-height: 1.3;
   font-weight: var(--type-body-weight);
   letter-spacing: 0;
-  border-inline-start: 2px solid transparent;
-  margin-inline-start: -2px;
 }
 
 .ds-rail-list a .ds-icon {
-  color: var(--color-text-tertiary);
+  color: var(--color-brand-field-muted);
   flex-shrink: 0;
 }
 
@@ -828,50 +1046,61 @@ a {
 }
 
 .ds-rail-count {
+  font-family: var(--font-figure), system-ui, sans-serif;
   font-size: var(--type-caption-size);
   line-height: 1.4;
-  color: var(--color-text-tertiary);
+  color: var(--color-brand-field-muted);
+  font-variant-numeric: tabular-nums;
 }
 
 .ds-rail-list a:hover {
-  background: var(--color-surface-hover);
-  color: var(--color-text-primary);
+  /* Lifted off the field rather than tinted toward white: a translucent white on a saturated
+     ground goes chalky, and the field is the thing that should stay recognisable. */
+  background: var(--color-brand-field-selected);
 }
 
+.ds-rail-list a:hover .ds-icon {
+  color: var(--color-brand-field-text);
+}
+
+/* **A tint and a weight, not a bar down one side.** The retired rail drew a 2px edge pulled
+   into the gutter, which is the one-sided-bar pattern the craft floor bans outright and
+   offers "a full border, a tint, or a leading icon or label" in place of. This is the tint.
+   It also no longer reaches for `--color-action-default`, a token nothing ever defined, so
+   the current item used to take its colour from whatever it inherited. */
 .ds-rail-list a[aria-current="page"] {
-  background: var(--color-surface-selected);
-  border-inline-start-color: var(--color-action-default);
-  color: var(--color-action-default);
+  background: var(--color-brand-field-selected);
+  color: var(--color-brand-field-selected-text);
   font-weight: var(--type-label-weight);
 }
 
 .ds-rail-list a[aria-current="page"] .ds-icon,
 .ds-rail-list a[aria-current="page"] .ds-rail-count {
-  color: var(--color-action-default);
+  color: var(--color-brand-field-selected-text);
 }
 
-/* The group heading: mono, uppercase, tracked, and the one above the first group sits
- * tighter than the rest -- `6px 16px 8px` against `14px 16px 8px`. */
+/* The group heading. Uppercase and tracked, and the one above the first group sits tighter
+ * than the rest. It is a *group heading over its own items*, not a kicker above a page
+ * heading -- the thing the craft floor bans outright -- so it keeps its register. */
 .ds-rail-group {
-  font-family: var(--font-plex-mono), "IBM Plex Mono", ui-monospace, monospace;
-  font-size: var(--type-eyebrow-size);
+  font-family: var(--font-text), system-ui, sans-serif;
+  font-size: var(--type-label-size);
   line-height: 1.4;
-  font-weight: var(--type-eyebrow-weight);
-  letter-spacing: var(--type-eyebrow-tracking);
+  font-weight: var(--type-label-weight);
+  letter-spacing: var(--type-label-tracking);
   text-transform: uppercase;
-  /* **`text.tertiary`, not the warm.500 the canvas writes.** The canvas sets this label at
-   * `#85807a`, and the foundations' own contrast matrix rules that out: "warm.500 measures
-   * 3.88:1 on warm.0 and is available only for large text, icons paired with a label, and
-   * non-essential decoration." A 9.5px tracked label is small text, and the matrix is "part
-   * of the token set, not documentation about it -- a token pairing that is not in here is
-   * not approved for use, and CI checks it on every change." The rule wins over the drawing;
-   * axe found it the moment the rail shipped. `text.tertiary` is the stated floor. */
-  color: var(--color-text-tertiary);
-  padding: 14px var(--space-4) 8px;
+  /* **Tinted from the field's own hue, not grey.** On a coloured surface the craft floor
+   * asks for secondary text tinted from that hue or the foreground; grey on a saturated
+   * green goes muddy and loses contrast at the same time. `moss.300` measures 7.95:1 on the
+   * light field and 10.85:1 on the dark one, both well clear of the small-text floor -- so
+   * this register is legible rather than, as in the retired rail, a 3.88:1 warm grey that
+   * axe caught the moment it shipped. */
+  color: var(--color-brand-field-muted);
+  padding: var(--space-4) var(--space-4) 8px;
 }
 
 .ds-rail-list > .ds-rail-section:first-child .ds-rail-group {
-  padding-block-start: 6px;
+  padding-block-start: var(--space-2);
 }
 
 /* The group label is a block inside its list item; the items are the nested list. */
@@ -1382,65 +1611,111 @@ a {
 /* The metric row is a bordered grid whose **1px gaps are the dividers**, each cell on its own
  * ground. Cell borders would double at every seam and miss one at each end. */
 .ds-metric-row {
-  display: grid;
-  /* Four cells on the Command Center, five on the Member 360. `--metric-columns` is set by
-     the component from how many it was given: a fixed `repeat(4, …)` leaves a fifth cell on
-     its own row with three cells' worth of the grid's own background showing beside it,
-     which reads as a broken cell rather than as an empty one. */
-  grid-template-columns: repeat(var(--metric-columns, 4), minmax(0, 1fr));
-  gap: 1px;
-  background: var(--color-border-default);
-  border: 1px solid var(--color-border-default);
-  border-radius: var(--radius-input);
-  overflow: hidden;
+  /**
+   * **Flex, not a four-column grid, and that is what lets the signature move render.**
+   *
+   * Four equal tracks forced every figure into the same width, and at the Admin target that
+   * width is 276px: content area 1152 (the 1440 cap less the 240 rail and 48 of padding),
+   * less three 32px gaps, over four. "JOD 72.20" at 72px in Archivo is about 337px wide, so
+   * the register could not fit and a container query quietly dropped every figure to 44px --
+   * on the one width this surface is designed for. `--type-figure-size` had no effective
+   * reader anywhere in the app, which made the world's one lent move decorative.
+   *
+   * The contract names three quantities, not four: "collected, members, visits". The fourth
+   * cell is prose, because lead conversion has no module behind it. So the figures size to
+   * their own content and the prose cell absorbs the remainder, which is what a flex row does
+   * and what no equal-track grid can.
+   */
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-8);
+  /* The figures align on their own top edge. `end` aligned the cells' *boxes*, so a cell
+     whose comparison line wrapped to two lines rode its figure upward -- measured 182 / 198 /
+     199 across three figures the contract says share a baseline. With one register across the
+     row, aligning the tops is the same thing as a shared baseline. */
+  align-items: start;
+  padding-block-end: var(--space-6);
+  border-block-end: var(--shell-rule) solid var(--color-border-strong);
+}
+
+.ds-metric {
+  /* A figure takes the width its own content needs and no more. */
+  flex: 0 1 auto;
+  min-inline-size: 0;
+}
+
+/* The cell with no figure takes what is left, so the three figures are not squeezed by a
+   paragraph sitting beside them. */
+.ds-metric[data-freshness="unavailable"] {
+  flex: 1 1 18rem;
 }
 
 @media (max-width: 1199px) {
   .ds-metric-row {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-6);
+  }
+
+  /* Two up, then the prose cell on its own line. */
+  .ds-metric {
+    flex: 1 1 40%;
   }
 }
 
 @media (max-width: 599px) {
+  /* Stacked, never a sideways scroll: at this width the figure drops to `type.figureSm` and
+     reads the same in a column. */
   .ds-metric-row {
-    grid-auto-flow: column;
-    grid-auto-columns: 72%;
-    grid-template-columns: none;
-    overflow-x: auto;
-    scroll-snap-type: inline mandatory;
+    gap: var(--space-5);
   }
 
   .ds-metric {
-    scroll-snap-align: start;
+    flex: 1 1 100%;
+  }
+
+  .ds-metric .ds-figure {
+    font-size: var(--type-figureSm-size);
+    line-height: var(--type-figureSm-line);
+    letter-spacing: var(--type-figureSm-tracking);
   }
 }
 
-.ds-metric {
-  background: var(--color-surface-default);
-  padding: 13px 15px;
-  min-inline-size: 0;
-}
-
-/* `font:500 9.5px/1.4 Mono; letter-spacing:.07em` — the eyebrow register. */
+/* The unit and the period, beneath the figure rather than above it. Not a kicker: the figure
+   is the heading, and this is what the figure is of. */
 .ds-metric-label {
-  font-family: var(--font-plex-mono), "IBM Plex Mono", ui-monospace, monospace;
-  font-size: var(--type-eyebrow-size);
-  line-height: 1.4;
-  font-weight: var(--type-eyebrow-weight);
-  letter-spacing: 0.07em;
+  font-family: var(--font-text), system-ui, sans-serif;
+  font-size: var(--type-label-size);
+  line-height: var(--type-label-line);
+  font-weight: var(--type-label-weight);
+  letter-spacing: var(--type-label-tracking);
   text-transform: uppercase;
   color: var(--color-text-secondary);
+  margin-block-start: var(--space-2);
 }
 
-/* `font:500 21px/1.15 Mono` — **mono, not sans**. It is what makes four figures align. */
+/* The figure itself. `.ds-figure` carries the face, the size and the tabular figures; this
+   adds only what belongs to a metric. */
 .ds-metric-value {
-  font-family: var(--font-plex-mono), "IBM Plex Mono", ui-monospace, monospace;
-  font-size: 21px;
-  line-height: 1.15;
-  font-weight: var(--type-data-weight);
-  font-variant-numeric: tabular-nums;
   color: var(--color-text-primary);
-  margin-block-start: 7px;
+}
+
+/**
+ * **A figure's children inherit the figure's size.**
+ *
+ * `MoneyValue` renders `.ds-money .data`, and `.data` sets `font-size: var(--type-data-size)`
+ * -- so the one metric that is money rendered at 13.5px beside two integers at 72px.
+ * Specificity, not source order, is what settles it: a 0,2,0 selector beats `.data`'s 0,1,0
+ * wherever that class lands.
+ *
+ * This has now been written twice, because the first copy sat inside a block that was later
+ * replaced wholesale and went with it -- and the symptom is unmistakable the moment anybody
+ * looks at the page, which is how both versions were caught.
+ */
+.ds-figure .data,
+.ds-figure .ds-money {
+  font-size: inherit;
+  line-height: inherit;
+  font-weight: inherit;
+  letter-spacing: inherit;
 }
 
 .ds-metric[data-freshness="stale"] .ds-metric-value {
@@ -1448,7 +1723,7 @@ a {
 }
 
 .ds-metric-provenance {
-  margin-block-start: 5px;
+  margin-block-start: var(--space-1);
   font-size: var(--type-caption-size);
   line-height: 1.3;
   color: var(--color-semantic-warning);
@@ -1456,10 +1731,10 @@ a {
 
 .ds-metric-comparison {
   display: flex;
-  gap: 7px;
+  gap: var(--space-2);
   align-items: baseline;
   flex-wrap: wrap;
-  margin-block-start: 5px;
+  margin-block-start: var(--space-1);
   font-size: var(--type-caption-size);
   line-height: 1.3;
   color: var(--color-text-secondary);
@@ -1480,7 +1755,7 @@ a {
 }
 
 .ds-metric-unavailable {
-  margin: 7px 0 0;
+  margin: var(--space-2) 0 0;
   font-size: var(--type-caption-size);
   line-height: 1.4;
   color: var(--color-text-secondary);
@@ -1495,10 +1770,17 @@ a {
   white-space: nowrap;
 }
 
-/* `aggregate · fils de-emphasised, never truncated` — 14px against the major part's 21. */
+/* `aggregate · fils de-emphasised, never truncated` — two thirds of the major part. */
 .ds-money-minor {
   font-size: 0.66em;
   color: var(--color-text-tertiary);
+}
+
+/* At figure scale two thirds would be a 47px minor unit, which competes with the number it
+   is subordinate to. The ratio tightens as the figure grows rather than the fils being
+   truncated, which §39 forbids. */
+.ds-figure .ds-money-minor {
+  font-size: 0.34em;
 }
 
 .ds-money[data-kind="owed"],
@@ -1521,7 +1803,7 @@ a {
 
 .ds-queue-counts {
   margin: 0;
-  font-family: var(--font-plex-mono), "IBM Plex Mono", ui-monospace, monospace;
+  font-family: var(--font-figure), system-ui, sans-serif;
   font-size: var(--type-caption-size);
   line-height: 1.4;
   color: var(--color-text-secondary);
@@ -1534,14 +1816,16 @@ a {
 }
 
 /* One container, rows divided by a hairline. */
+/* **Rules, not a card.** "Cards are the lazy container"; the queue is a list of rows and the
+   world's structural device is a 2px line. The group is bounded top and bottom by that rule
+   and the rows are divided inside it, which is one fewer box on the page and reads as a
+   continuous list rather than a panel floating on the canvas. */
 .ds-queue {
   list-style: none;
   margin: 0;
   padding: 0;
-  border: 1px solid var(--color-border-default);
-  border-radius: var(--radius-input);
   background: var(--color-surface-default);
-  overflow: hidden;
+  border-block: var(--shell-rule) solid var(--color-border-strong);
 }
 
 .ds-queue > li + li .ds-attention {
@@ -1553,40 +1837,32 @@ a {
   align-items: stretch;
 }
 
-/* A 3px block that runs the row's full height, severity-coloured. */
-.ds-attention-edge {
-  inline-size: 3px;
-  flex-shrink: 0;
-  background: transparent;
-}
-
-.ds-attention[data-severity="critical"] .ds-attention-edge {
-  background: var(--color-semantic-error);
-}
-
-.ds-attention[data-severity="attention"] .ds-attention-edge {
-  background: var(--color-semantic-warning);
-}
-
-.ds-attention[data-severity="info"] .ds-attention-edge {
-  background: var(--color-semantic-info);
-}
-
-.ds-attention[data-severity="info"] .ds-attention-category {
-  color: var(--color-semantic-info);
-}
+/* **The edge-mark is gone, and the chip became a field.**
+ *
+ * A 3px severity-coloured block running the row's full height is a bar down one side of a
+ * box, which the craft floor bans outright in any colour or state and answers with "a full
+ * border, a tint, or a leading icon or label". The label was already there -- the category
+ * chip -- so it carries the severity now as a solid field rather than as a bordered pill
+ * beside a stripe.
+ *
+ * The design's own anatomy requires that "severity is edge-mark **and** category chip **and**
+ * wording -- never the bar alone", and the reason it gives is that a row whose severity
+ * existed only as a coloured edge would be a colour-only signal. That requirement is met more
+ * directly without the edge: the chip names the category in words, the headline states the
+ * fact, and the field is the third channel rather than the only one.
+ */
 
 /* The condensed row — ADM-CC-01's "2 full, 2 condensed". One line: chip, headline, owner,
  * one action. The headline drops to body weight because at this height it is the whole row
  * rather than the top of a block, and `min-inline-size:0` lets it ellipsize instead of
  * pushing the action off the end. */
 .ds-attention[data-density="condensed"] .ds-attention-body {
-  padding: 9px 15px;
+  padding: var(--space-2) var(--space-4);
 }
 
 .ds-attention-line {
   display: flex;
-  gap: 11px;
+  gap: var(--space-3);
   align-items: center;
   flex-wrap: wrap;
 }
@@ -1614,12 +1890,12 @@ a {
 .ds-attention-body {
   flex: 1;
   min-inline-size: 0;
-  padding: 13px 15px;
+  padding: var(--space-3) var(--space-4);
 }
 
 .ds-attention-eyebrow {
   display: flex;
-  gap: 9px;
+  gap: var(--space-2);
   align-items: center;
   flex-wrap: wrap;
 }
@@ -1627,28 +1903,65 @@ a {
 /* A bordered pill in the severity's own ink — §38: "severity is edge-mark and category chip
  * and wording — never the bar alone". */
 .ds-attention-category {
-  font-family: var(--font-plex-mono), "IBM Plex Mono", ui-monospace, monospace;
-  font-size: var(--type-eyebrow-size);
-  line-height: 1.4;
-  font-weight: var(--type-eyebrow-weight);
-  letter-spacing: 0.07em;
+  font-family: var(--font-text), system-ui, sans-serif;
+  font-size: var(--type-label-size);
+  line-height: var(--type-label-line);
+  font-weight: var(--type-label-weight);
+  letter-spacing: var(--type-label-tracking);
   text-transform: uppercase;
-  padding: 2px 6px;
-  border-radius: 3px;
-  border: 1px solid currentColor;
+  /* A solid field, flat and square: screenprint, not a pill. The radius is the data radius
+     rather than the button one, because this is a label and not something to press. */
+  padding: var(--space-05) var(--space-2);
+  border-radius: var(--radius-card);
+  background: var(--color-surface-sunken);
   color: var(--color-text-secondary);
+  white-space: nowrap;
 }
 
-.ds-attention[data-severity="critical"] .ds-attention-category {
-  color: var(--color-semantic-error);
+/**
+ * **The field carries the row's kind, and it used to carry its severity.**
+ *
+ * The direction contract says "its kind carried by a solid colour field at the row's head",
+ * and this keyed on `[data-severity]` instead -- so with money and compliance both critical,
+ * retention attention and staffing info, every row wore another category's declared colour:
+ * RETENTION rendered gold, which is money's, and STAFFING rendered steel, which is
+ * compliance's. Three of the four `color.category.*` tokens had no reader anywhere in the app
+ * and the fourth was read only as a severity, which is this repository's most-repeated
+ * finding -- a declared token nothing writes -- in a palette built this week.
+ *
+ * **Severity did not lose a channel by this, because it never had a colour one to lose.** The
+ * queue is ordered worst-first, its head states "2 critical", and each headline states the
+ * fact in words. The design's requirement is that severity is never *colour-only*; with the
+ * field carrying kind, severity is not encoded in colour at all, so there is nothing to
+ * under-signal. `data-severity` stays on the row for the ordering and for assistive tech.
+ *
+ * Each field takes ink or bone, whichever clears AA on it, and the two flip per theme: in
+ * dark every category colour is a light tint, so all four take ink there. White on gold is
+ * 2.04:1 and is the one pairing in this palette that would look deliberate and fail, which is
+ * why it is pinned in a test.
+ */
+.ds-attention[data-category="money"] .ds-attention-category {
+  background: var(--color-category-money);
+  color: var(--color-category-money-text);
 }
 
-.ds-attention[data-severity="attention"] .ds-attention-category {
-  color: var(--color-semantic-warning);
+.ds-attention[data-category="compliance"] .ds-attention-category {
+  background: var(--color-category-compliance);
+  color: var(--color-category-compliance-text);
+}
+
+.ds-attention[data-category="retention"] .ds-attention-category {
+  background: var(--color-category-retention);
+  color: var(--color-category-retention-text);
+}
+
+.ds-attention[data-category="staffing"] .ds-attention-category {
+  background: var(--color-category-staffing);
+  color: var(--color-category-staffing-text);
 }
 
 .ds-attention-when {
-  font-family: var(--font-plex-mono), "IBM Plex Mono", ui-monospace, monospace;
+  font-family: var(--font-text), system-ui, sans-serif;
   font-size: var(--type-caption-size);
   line-height: 1.4;
   color: var(--color-text-secondary);
@@ -1659,26 +1972,40 @@ a {
   margin-inline-start: auto;
   display: inline-flex;
   align-items: baseline;
-  gap: 5px;
+  gap: var(--space-1);
   font-size: 15px;
   line-height: 1.2;
   font-weight: var(--type-data-weight);
 }
 
+/**
+ * **The amount is ink, and it used to be claret floating in the open.**
+ *
+ * Two problems in one declaration. It put a saturated hue on text sitting outside any region,
+ * which RAISE 1 forbids -- colour appears only inside a region doing a job -- and it was the
+ * *second* rule colouring this element: `.ds-money[data-kind="owed"]` already sets
+ * `text.critical` (claret.600), so the same figure resolved to two different clarets by
+ * specificity depending on which row it was in.
+ *
+ * It is also the design's own rule, applied in one place and abandoned in the other: the
+ * metric row's note says "the metrics do not turn red -- they are still facts", and an amount
+ * at risk is as much a fact as a headcount. The severity is already carried by the row's
+ * order, its field and its wording; it does not need the number as well.
+ */
 .ds-attention[data-severity="critical"] .ds-attention-money .ds-money {
-  color: var(--color-semantic-error);
+  color: var(--color-text-primary);
 }
 
 .ds-attention-meaning {
-  font-family: var(--font-plex-mono), "IBM Plex Mono", ui-monospace, monospace;
-  font-size: var(--type-eyebrow-size);
+  font-family: var(--font-text), system-ui, sans-serif;
+  font-size: var(--type-label-size);
   line-height: 1.4;
   font-weight: var(--type-body-weight);
   color: var(--color-text-secondary);
 }
 
 .ds-attention-headline {
-  margin: 7px 0 0;
+  margin: var(--space-2) 0 0;
   font-size: 15.5px;
   line-height: 1.35;
   font-weight: var(--type-h3-weight);
@@ -1698,14 +2025,14 @@ a {
 .ds-attention-actions {
   display: flex;
   gap: var(--space-2);
-  margin-block-start: 11px;
+  margin-block-start: var(--space-3);
   flex-wrap: wrap;
   align-items: center;
 }
 
 .ds-attention-owner {
-  margin: 11px 0 0;
-  font-family: var(--font-plex-mono), "IBM Plex Mono", ui-monospace, monospace;
+  margin: var(--space-3) 0 0;
+  font-family: var(--font-figure), system-ui, sans-serif;
   font-size: var(--type-caption-size);
   line-height: 1.4;
   /* The canvas writes warm.500 here too; same matrix, same answer. */
@@ -1767,17 +2094,17 @@ a {
   gap: var(--space-2);
   padding: var(--space-4);
   border: 1px solid var(--color-semantic-ai-border);
-  border-radius: var(--radius-input);
+  border-radius: var(--radius-button);
   background: var(--color-semantic-ai-wash);
 }
 
 .ds-ai-eyebrow {
   margin: 0;
-  font-family: var(--font-plex-mono), "IBM Plex Mono", ui-monospace, monospace;
-  font-size: var(--type-eyebrow-size);
-  line-height: var(--type-eyebrow-line);
-  font-weight: var(--type-eyebrow-weight);
-  letter-spacing: var(--type-eyebrow-tracking);
+  font-family: var(--font-figure), system-ui, sans-serif;
+  font-size: var(--type-label-size);
+  line-height: var(--type-label-line);
+  font-weight: var(--type-label-weight);
+  letter-spacing: var(--type-label-tracking);
   text-transform: uppercase;
   color: var(--color-semantic-ai);
 }
@@ -1816,13 +2143,18 @@ a {
 .ds-bar-track {
   block-size: var(--space-3);
   background: var(--color-surface-sunken);
-  border-radius: var(--radius-input);
+  border-radius: var(--radius-button);
   overflow: hidden;
 }
 
 .ds-bar-fill {
+  /* **`display: block`, which is the whole bar.** The fill is a `span`, and `inline-size`
+     and `block-size` do not apply to an inline box -- so every bar on this chart rendered as
+     an empty track, including the weeks that had money in them. The datum was computed
+     correctly and drawn nowhere. Found by looking at the chart. */
+  display: block;
   block-size: 100%;
-  background: var(--color-text-secondary);
+  background: var(--color-brand-field);
 }
 
 /* A partial bucket is marked rather than scaled up. The hatch is a pattern and not only a
@@ -1830,7 +2162,7 @@ a {
 .ds-bar[data-partial="true"] .ds-bar-fill {
   background: repeating-linear-gradient(
     135deg,
-    var(--color-text-secondary) 0 var(--space-1),
+    var(--color-brand-field) 0 var(--space-1),
     transparent var(--space-1) var(--space-2)
   );
 }
@@ -1885,7 +2217,7 @@ a {
 }
 
 .ds-week-scroll:focus-visible {
-  outline: var(--focus-ring-width) solid var(--color-focus-ring);
+  outline: 2px solid var(--color-border-focus);
   outline-offset: 2px;
 }
 
@@ -1908,10 +2240,10 @@ a {
 }
 
 .ds-week thead th {
-  font-size: var(--type-eyebrow-size);
-  line-height: var(--type-eyebrow-line);
-  font-weight: var(--type-eyebrow-weight);
-  letter-spacing: var(--type-eyebrow-tracking);
+  font-size: var(--type-label-size);
+  line-height: var(--type-label-line);
+  font-weight: var(--type-label-weight);
+  letter-spacing: var(--type-label-tracking);
   text-transform: uppercase;
   color: var(--color-text-secondary);
   border-block-start: none;
@@ -1944,7 +2276,7 @@ a {
   gap: 2px;
   padding-inline-start: var(--space-2);
   background: var(--color-surface-default);
-  border-radius: var(--radius-input);
+  border-radius: var(--radius-button);
 }
 
 .ds-class-name {
@@ -1977,28 +2309,32 @@ a {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 14px;
+  gap: var(--space-4);
   /* A minimum rather than a fixed height: at phone width the account controls drop to a
      second line, and a 48px box with more in it than fits is what pushes a page sideways. */
   min-block-size: 48px;
   padding-inline: var(--space-4);
-  background: var(--color-surface-default);
-  border-block-end: 1px solid var(--color-border-default);
+  /* **The chrome is part of the shell field, not a white bar above it.** With the rail
+     saturated and the chrome white, the lockup sat on a seam at the one corner of the page
+     where the product says its own name. One field, one edge. */
+  background: var(--color-brand-field);
+  color: var(--color-brand-field-text);
+  border-block-end: 0;
 }
 
 .ds-chrome-brand {
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: var(--space-2);
 }
 
 /* 22x22, radius 4, the ink ground. A mark rather than a logo: there is no brand asset. */
 .ds-chrome-mark {
   inline-size: 22px;
   block-size: 22px;
-  border-radius: 4px;
-  background: var(--color-text-primary);
-  color: var(--color-text-inverse);
+  border-radius: var(--radius-card);
+  background: var(--color-brand-mark);
+  color: var(--color-text-on-bright);
   font-size: var(--type-label-size);
   font-weight: var(--type-label-weight);
   line-height: 22px;
@@ -2011,26 +2347,26 @@ a {
   line-height: 1.2;
   font-weight: var(--type-label-weight);
   letter-spacing: -0.012em;
-  color: var(--color-text-primary);
+  color: var(--color-brand-field-text);
 }
 
 .ds-chrome-divider {
   inline-size: 1px;
   block-size: 20px;
-  background: var(--color-border-default);
+  background: var(--color-brand-field-muted);
 }
 
 /* A statement, not a control: there is no scope to switch to, so there is no caret. */
 .ds-chrome-scope {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  padding: 7px 10px;
-  border: 1px solid var(--color-border-default);
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-brand-field-muted);
   border-radius: var(--radius-button);
   font-size: var(--type-label-size);
   line-height: 1;
-  color: var(--color-text-primary);
+  color: var(--color-brand-field-text);
 }
 
 .ds-chrome-end {
@@ -2048,8 +2384,9 @@ a {
   inline-size: 26px;
   block-size: 26px;
   border-radius: 50%;
-  background: var(--p-warm-300);
-  border: 1px solid var(--color-border-default);
+  background: var(--color-brand-field-selected);
+  color: var(--color-brand-field-text);
+  border: 1px solid var(--color-brand-field-muted);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -2219,7 +2556,7 @@ a {
   inline-size: 28px;
   block-size: 28px;
   border-radius: 50%;
-  background: var(--p-warm-150);
+  background: var(--color-surface-selected);
   flex-shrink: 0;
 }
 
@@ -2273,7 +2610,7 @@ a {
   inline-size: 52px;
   block-size: 52px;
   border-radius: 50%;
-  background: var(--p-warm-200);
+  background: var(--color-surface-selected);
   border: 1px solid var(--color-border-default);
   flex-shrink: 0;
 }
@@ -2457,7 +2794,7 @@ a {
   inline-size: 2px;
   flex-shrink: 0;
   border-radius: 1px;
-  background: var(--p-warm-400);
+  background: var(--color-border-default);
 }
 
 .ds-timeline-spine[data-tone="money"] { background: var(--color-semantic-error); }
@@ -2612,7 +2949,7 @@ a {
 .ds-matrix thead .ds-matrix-rowhead { background: var(--color-surface-sunken); }
 
 .ds-matrix-eyebrow {
-  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-family: var(--font-text), system-ui, sans-serif;
   font-size: 9.5px;
   letter-spacing: 0.08em;
   color: var(--color-text-tertiary);
@@ -2620,7 +2957,7 @@ a {
 
 .ds-matrix-name {
   display: block;
-  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-family: var(--font-figure), system-ui, sans-serif;
   color: var(--color-text-primary);
 }
 
@@ -2663,9 +3000,9 @@ a {
   inline-size: 24px;
   block-size: 24px;
   border-radius: 5px;
-  background: var(--p-warm-900);
-  color: var(--p-warm-0);
-  font-family: var(--font-plex-sans), system-ui, sans-serif;
+  background: var(--color-brand-field);
+  color: var(--color-brand-mark);
+  font-family: var(--font-text), system-ui, sans-serif;
   font-size: 13px;
   font-weight: 500;
   line-height: 24px;
@@ -2775,9 +3112,9 @@ a {
 /* The roles sit at the logical end, so they mirror under `dir="rtl"` on their own. */
 .ds-report-roles {
   flex-shrink: 0;
-  font-size: var(--type-eyebrow-size);
-  line-height: var(--type-eyebrow-line);
-  font-weight: var(--type-eyebrow-weight);
+  font-size: var(--type-label-size);
+  line-height: var(--type-label-line);
+  font-weight: var(--type-label-weight);
   letter-spacing: 0.09em;
   color: var(--color-text-tertiary);
 }
@@ -2909,7 +3246,7 @@ a {
 .ds-evidence-mark {
   inline-size: 14px;
   flex-shrink: 0;
-  font-family: var(--font-plex-mono), "IBM Plex Mono", ui-monospace, monospace;
+  font-family: var(--font-figure), system-ui, sans-serif;
   color: var(--color-semantic-success);
 }
 
@@ -3052,7 +3389,7 @@ a {
 /* The mark a cell prints. Mono and small, because it is a code in a grid rather than prose,
    and `dir="ltr"` is not needed: both catalogues give a word, never a number. */
 .ds-rota-mark-text {
-  font-family: var(--font-mono);
+  font-family: var(--font-figure), system-ui, sans-serif;
   font-size: var(--type-caption-size);
   line-height: 1;
   letter-spacing: 0.04em;
@@ -3330,7 +3667,7 @@ a {
   display: flex;
   gap: var(--space-4);
   flex-wrap: wrap;
-  font-family: var(--font-mono);
+  font-family: var(--font-figure), system-ui, sans-serif;
   font-size: var(--type-caption-size);
   color: var(--color-text-secondary);
 }

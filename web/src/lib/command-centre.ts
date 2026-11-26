@@ -223,16 +223,6 @@ export const AI_PANEL = {
 export const UNANSWERABLE = {
   /** The fourth metric. ADM-CRM-* is unbuilt, so there is no lead and no conversion. */
   leadConversion: "cc.gapLeads" as MessageKey,
-  /** The LEADS attention class, for the same reason. */
-  leadsQueue: "cc.gapLeadsQueue" as MessageKey,
-  /** Every primary action in the queue. */
-  actions: "cc.gapActions" as MessageKey,
-  /** The AI interpretation panel and its evidence links. */
-  interpretation: "cc.gapInterpretation" as MessageKey,
-  /** "By location · month to date" — the money chain carries a legal entity. */
-  byLocation: "cc.gapByLocation" as MessageKey,
-  /** The period toggle, the resolved-today drawer and the lower-priority collapse. */
-  interactions: "cc.gapInteractions" as MessageKey,
   /** The scope switcher the heading's "all locations" comes from. */
   scope: "cc.gapScope" as MessageKey,
 } as const;

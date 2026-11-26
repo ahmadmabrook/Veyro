@@ -173,6 +173,7 @@ function OrganizationCard({ node, locale }: { node: OrganizationTree; locale: Lo
             ) : (
               <DataGrid
                 caption={text("org.locations")}
+                countLabel={null}
                 labelledBy={`sites-${brand.brand_id}`}
                 rows={locations}
                 rowKey={(location) => location.location_id}

@@ -86,15 +86,18 @@ test("a pressable radius is larger than a card radius, which is the DS's own inv
   assert.ok(parseInt(RADIUS.card, 10) <= 2, "data must stay sharp");
 });
 
-test("the primitive ramps are the twenty-two the design system publishes", () => {
-  // The *light* ramp is the one the source publishes as a ramp, and it is exactly 22. The
-  // generated `PRIMITIVES` map also carries the dark ramp, which the source states inline in
-  // the dark column rather than collecting anywhere -- so this counts the two separately. The
-  // first version counted the map and therefore conflated them, which would have let a dark
-  // entry quietly take a light one's place.
-  assert.equal(ds.PRIMITIVES.length, 22);
-  assert.equal(PRIMITIVES["ink.600"], "#1b4079");
-  assert.equal(PRIMITIVES["ai.600"], "#4a3d7a");
+test("the primitive ramps are the thirty-five the design system publishes", () => {
+  // The *light* ramp is the one published as a ramp, and it is exactly 35. The generated
+  // `PRIMITIVES` map also carries the dark ramp, which is declared separately because a theme
+  // is a remapping of layer 2 onto layer 1 -- so this counts the two apart. Counting the map
+  // would conflate them and let a dark entry quietly take a light one's place.
+  assert.equal(ds.PRIMITIVES.length, 35);
+  assert.equal(PRIMITIVES["ink.900"], "#110d11");
+  // The owner's primary, pinned at the value they gave: everything else in the plum ramp is
+  // derived from its hue, so this is the one entry a drift would start from.
+  assert.equal(PRIMITIVES["plum.500"], "#91338a");
+  assert.equal(PRIMITIVES["plum.800"], "#3e143b");
+  assert.equal(PRIMITIVES["ai.600"], "#3b49a0");
   assert.equal(Object.keys(PRIMITIVES).length, ds.PRIMITIVES.length + ds.DARK_RAMP.length);
   for (const hex of Object.values(PRIMITIVES)) {
     assert.match(hex, /^#[0-9a-f]{6}$/, hex);

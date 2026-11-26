@@ -1,3 +1,4 @@
+import { vocabulary } from "@/lib/members";
 import { redirect } from "next/navigation";
 
 import { Banner } from "@/components/ds/banner";
@@ -179,6 +180,7 @@ export default async function FinancePage({
         ) : (
           <DataGrid
             caption={text("finance.lock")}
+            countLabel={null}
             labelledBy="lock-heading"
             rows={periods}
             rowKey={(period) => period.period_id}
@@ -282,6 +284,7 @@ export default async function FinancePage({
             ) : (
               <DataGrid
                 caption={text("finance.trialBalance")}
+                countLabel={null}
                 labelledBy="trial-balance-heading"
                 rows={balance.lines}
                 rowKey={(line) => line.account_id}
@@ -295,7 +298,10 @@ export default async function FinancePage({
                       <>
                         <span className="data" dir="ltr">{line.account_code}</span>
                         <div className="muted" style={caption}>
-                          {line.account_kind}
+                          {(() => {
+                            const key = vocabulary(line.account_kind);
+                            return key === null ? line.account_kind : t(locale, key);
+                          })()}
                           {/* A retired account with a balance is exactly the row somebody
                               needs to notice; unmarked it reads as a live one. */}
                           {line.status === "active" ? "" : ` · ${text("finance.retired")}`}
@@ -360,6 +366,7 @@ export default async function FinancePage({
         ) : (
           <DataGrid
             caption={text("finance.cases")}
+            countLabel={fill(locale, "grid.count.questions", { count: cases.length }, numbering)}
             labelledBy="cases-heading"
             rows={cases}
             rowKey={(item) => item.case_id}

@@ -1,4 +1,23 @@
 /**
+ * **DEPRECATED on 2026-11-26, and it must not be used to judge the current design.**
+ *
+ * This harness renders `veyro-product-experience-design/project/*.dc.html` and puts the
+ * implementation beside it. That design was replaced wholesale by owner directive: it is
+ * evidence of what the product used to look like and an anti-reference, not an authority. A
+ * difference this tool reports between the canvases and the build is now the *intent*, so
+ * acting on its output would walk the new system back toward the retired one -- which is the
+ * single most likely way this redesign gets quietly undone.
+ *
+ * It is kept rather than deleted because the extraction logic and the canvas-rendering runtime
+ * are the only record of how those documents were read, and because `screens.generated.json`
+ * is still product data. It has no npm script and is in no CI job.
+ *
+ * What replaced it: `src/design/system-check.mjs` (npm run design:check) for the system's
+ * structural properties, the contrast suite for every pairing a reader sees, and the Playwright
+ * suites for the rendered result. `DESIGN.md` is the authority for what the product should
+ * look like.
+ */
+/**
  * The visual comparison harness: the approved canvas and the running screen, side by side,
  * plus a mechanical diff of the properties a screenshot cannot be trusted to show.
  *

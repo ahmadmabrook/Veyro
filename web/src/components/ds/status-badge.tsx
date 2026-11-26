@@ -55,29 +55,24 @@ export { VOCABULARY, SEVERITY } from "@/design/contracts.generated";
 export type Domain = keyof typeof VOCABULARY;
 export type Status = (typeof VOCABULARY)[Domain][number];
 
-const TONE: Record<Severity, { fg: string; edge: string; bg: string }> = {
-  // Neutral is a fact, so it is text and a hairline rather than a colour event.
-  neutral: {
-    fg: "var(--color-text-secondary)",
-    edge: "var(--color-border-default)",
-    bg: "var(--color-surface-sunken)",
-  },
-  info: {
-    fg: "var(--color-text-primary)",
-    edge: "var(--color-semantic-info)",
-    bg: "var(--color-surface-sunken)",
-  },
-  attention: {
-    fg: "var(--color-text-primary)",
-    edge: "var(--color-semantic-warning)",
-    bg: "var(--color-surface-sunken)",
-  },
-  critical: {
-    fg: "var(--color-text-critical)",
-    edge: "var(--color-semantic-error)",
-    bg: "var(--color-surface-sunken)",
-  },
-};
+/**
+ * **The tone lives in the stylesheet now, and `ds-badge` used to style nothing.**
+ *
+ * The class was applied from the first commit and defined nowhere; every badge in the
+ * product was painted by a `style` object instead. Two things were wrong with that and the
+ * undefined-class sweep found the first:
+ *
+ * A design-system class that styles nothing is a promise the component exists, and it hides
+ * the component from the stylesheet entirely -- a theme, a density mode or a media query
+ * cannot reach an inline style, so this badge could not have responded to any of them.
+ *
+ * And the tone it painted was `borderInlineStart: 2px solid <severity>` on a box with
+ * `borderRadius`, which is a bar down one side of a rounded box: the craft floor bans that
+ * outright "any colour or state" and answers it with "a full border, a tint, or a leading
+ * icon or label". The badge already has the label -- it names the state in words, which is
+ * what makes it more than a colour -- so the severity is a solid field, matching the
+ * attention queue's category chips so the two read as one system rather than two.
+ */
 
 export function StatusBadge({
   status,
@@ -96,7 +91,6 @@ export function StatusBadge({
   style?: CSSProperties;
 }) {
   const severity = SEVERITY[status] ?? "neutral";
-  const tone = TONE[severity];
   return (
     <span
       // Not a button: the source says a badge is "not a button unless it opens something",
@@ -106,23 +100,7 @@ export function StatusBadge({
       // it is the localized one where there is one, because an abbreviation whose accessible
       // name is in another language is worse than no abbreviation.
       aria-label={abbreviated ? (label ?? status) : undefined}
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: "var(--space-1)",
-        paddingBlock: "var(--space-05)",
-        paddingInline: "var(--space-2)",
-        borderRadius: "var(--radius-button)",
-        background: tone.bg,
-        color: tone.fg,
-        // The severity edge-mark on the logical start edge, so it mirrors with the row.
-        borderInlineStart: `2px solid ${tone.edge}`,
-        fontSize: "var(--type-label-size)",
-        fontWeight: "var(--type-label-weight)",
-        letterSpacing: "var(--type-label-tracking)",
-        whiteSpace: "nowrap",
-        ...style,
-      }}
+      {...(style ? { style } : {})}
     >
       {abbreviated ?? label ?? status}
     </span>
@@ -138,7 +116,17 @@ export function StatusBadge({
  */
 export function edgeMark(severity: Severity | null): CSSProperties {
   if (severity === null || severity === "neutral") return {};
-  return { borderInlineStart: `3px solid ${TONE[severity].edge}` };
+  // **A table row, not a rounded box.** The craft floor's ban is on a bar down one side of a
+  // rounded box, which is the card cliché; a severity mark on the leading edge of a dense
+  // grid row is a standard affordance the reader already knows, and the rows here carry no
+  // radius. The attention queue's rows lost theirs because they *were* boxes and because the
+  // category chip was already carrying the signal in words.
+  const edge = {
+    info: "var(--color-semantic-info)",
+    attention: "var(--color-semantic-warning)",
+    critical: "var(--color-semantic-error)",
+  }[severity];
+  return { borderInlineStart: `var(--shell-rule) solid ${edge}` };
 }
 
 /** The worst severity in a set, for a row roll-up. */

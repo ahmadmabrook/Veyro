@@ -83,6 +83,7 @@ export function AttentionRow({
   id,
   severity,
   category,
+  kind,
   when,
   money,
   headline,
@@ -94,8 +95,17 @@ export function AttentionRow({
   /** Used for the headline's id, so the article can be labelled by it. */
   id: string;
   severity: Severity;
-  /** The category chip — a bordered pill in the severity's own ink. */
+  /** The category chip's text, in the reader's own language. */
   category: string;
+  /**
+   * The category's machine value -- `money`, `compliance`, `retention`, `staffing`.
+   *
+   * **The chip's colour comes from this, not from `severity`.** The direction contract puts
+   * the row's *kind* in the field at its head; keying the fill on severity made every row
+   * wear another category's declared colour. The localized `category` above is what a reader
+   * sees; this is what the stylesheet matches on, and the two must name the same thing.
+   */
+  kind: string;
   /** The age and scope: "2h ago · Khalda, Abdoun". */
   when: string;
   /** A figure and what it means. Logical end, so it mirrors. */
@@ -132,12 +142,12 @@ export function AttentionRow({
         aria-labelledby={`${id}-headline`}
         {...(condensed ? { "aria-describedby": `${id}-evidence` } : {})}
         data-severity={severity}
+        data-category={kind}
         data-density={density}
       >
         {/* **A 3px block, not a border.** The canvas draws it as its own flex child so it
             runs the row's full height whatever the content does; a `border-inline-start`
             would stop at the padding box and leave the mark short on a tall row. */}
-        <span className="ds-attention-edge" aria-hidden="true" />
         <div className="ds-attention-body">
           {condensed ? (
             <div className="ds-attention-line">

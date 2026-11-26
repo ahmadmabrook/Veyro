@@ -94,7 +94,7 @@ export default async function MembershipReportPage() {
         figures={<span className="data" dir="ltr">{summary.as_of}</span>}
       />
 
-      <MetricRow label={text("membershipReport.title")} columns={4}>
+      <MetricRow label={text("membershipReport.title")}>
         <MetricCell label={text("membershipReport.joined")} value={count(month.joined)} />
         <MetricCell label={text("membershipReport.left")} value={count(month.left)} />
         <MetricCell

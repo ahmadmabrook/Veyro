@@ -229,6 +229,35 @@ test("a grid under a heading points at it rather than repeating it", () => {
   );
 });
 
+test("a grid states its count, or says the page states it", () => {
+  // **§25: "the count always states what is selected."** The slot used to fall back to
+  // `rows.length`, so a grid that passed nothing rendered a bare numeral -- a stray
+  // character to a reader who has not been told what it counts -- and every grid in the app
+  // did exactly that for as long as the fallback existed.
+  //
+  // The fallback is gone, which turns the omission into silence rather than into the banned
+  // character; this is what stops silence being the accident. Fourteen grids genuinely state
+  // their count elsewhere -- twelve under a page header whose own figures line carries the
+  // figure, the resolved board's sub-line, and the payments ledger's "N rows in this window"
+  // -- and each says so with `countLabel={null}` rather than by leaving the prop off.
+  //
+  // **Counted rather than parsed**, for the reason the `labelledBy` sweep above records: a
+  // `<DataGrid<SourceRow>` opening tag is a generic and `[^>]*>` stops at the wrong `>`.
+  const offenders = files
+    .filter((f) => {
+      const grids = (f.text.match(/<DataGrid\b/g) ?? []).length;
+      const counted = (f.text.match(/countLabel=/g) ?? []).length;
+      return grids > counted;
+    })
+    .map((f) => f.path);
+  assert.deepEqual(
+    offenders,
+    [],
+    "these render a DataGrid with no countLabel; pass the whole phrase, or countLabel={null} "
+      + "where the page already states the count",
+  );
+});
+
 test("no screen paints its own severity colour", () => {
   // "One accent, spent once": semantic colour belongs to StatusBadge, Banner and the row
   // edge-mark. A page that reaches for `--color-semantic-error` directly is a page deciding

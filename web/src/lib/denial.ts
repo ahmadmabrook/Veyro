@@ -62,6 +62,37 @@ export function sayFor(code: string): MessageKey | null {
 }
 
 /**
+ * The two grants, worded.
+ *
+ * `granted` gets no sentence on purpose: the verdict beside it already reads "Admitted", and
+ * a caption repeating it is the one message said twice that the field shell's own rule
+ * exists to prevent. `granted_by_override` is the other half and is the fact that matters --
+ * somebody let this person in against the policy, which is "a decision in its own right
+ * rather than a flag on one" and the thing a reader of the log is looking for.
+ */
+const GRANT_WORD: Record<string, MessageKey> = {
+  granted_by_override: "access.byOverride",
+};
+
+/**
+ * What to say under a decision's verdict, or nothing.
+ *
+ * **The code is the module's closed vocabulary and was being rendered raw.** The door board
+ * printed `granted_by_override` and `see_front_desk` in a caption under every row -- a
+ * stored enumeration where a word belongs, which is this repository's most-repeated surface
+ * finding and the fifth place it has been found. FD-03 already had the sentences; this is
+ * the same map read by the board, so the two screens cannot word one refusal two ways.
+ *
+ * **An unmapped code falls through to its stored form rather than to "other".** The set is
+ * MOD-022's and may grow, and hiding a decision somebody needs to see is worse than showing
+ * an ugly one -- MOD-013's own judgement about its eight delivery reasons.
+ */
+export function codeWord(code: string, granted: boolean): MessageKey | null {
+  if (granted) return GRANT_WORD[code] ?? null;
+  return sayFor(code);
+}
+
+/**
  * Whether this refusal is one the hardware caused rather than the member.
  *
  * **It changes who the next sentence is about.** A revoked card and a reader whose clock is

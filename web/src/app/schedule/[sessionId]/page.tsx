@@ -6,13 +6,21 @@ import { DataGrid } from "@/components/ds/data-grid";
 import { MetricCell, MetricRow } from "@/components/ds/metric-cell";
 import { PageHeader } from "@/components/ds/page-header";
 import { RecordHeader } from "@/components/ds/record-header";
+import { PersonName } from "@/components/person-name";
 import { fill, formatInteger, t, type MessageKey, type Numbering } from "@/i18n/locale";
 import { ApiError, currentSession, gateAll, gateMessage, gateVerdict } from "@/lib/api";
 import { numerals } from "@/lib/display";
+import { withheldRemedy } from "@/lib/mask";
 import { presentation } from "@/lib/preferences";
 import { heldBeyondRoster, readRoster } from "@/lib/booking";
+import {
+  bookingSourceWord, bookingStateWord, nameOf, waitlistStateWord, type NamedPerson,
+} from "@/lib/desk";
+import { readNames } from "@/lib/desk-reads";
 import { offerable } from "@/lib/cancel-class";
-import { readCalendar, readSession, type SessionResource } from "@/lib/scheduling";
+import {
+  readCalendar, readSession, sessionChangeWord, type SessionResource,
+} from "@/lib/scheduling";
 import { inZone } from "@/lib/time";
 
 import { CancelClassSheet } from "./cancel-form";
@@ -53,14 +61,29 @@ export default async function SessionPage({
   // whole render: `conventions()` is React's per-request memo and the layout starts it.
   const numbering = await numerals();
   const text = (key: MessageKey) => t(locale, key);
+  /**
+   * A stored value, worded -- or shown as it is stored where there is no word for it.
+   *
+   * Each vocabulary here is a module's own closed set and may grow, and hiding a state
+   * somebody needs to see is worse than showing an ugly one. The fallback keeps the
+   * `data` face and the Latin direction, because an unworded value is an identifier.
+   */
+  const word = (key: MessageKey | null, stored: string) => (
+    key === null ? <span className="data" dir="ltr">{stored}</span> : text(key)
+  );
 
   if (!(await currentSession())) redirect("/login");
 
   // One round trip for all three; see `member-metrics.tsx` for why.
-  const [may, mayChange, mayRoster] = await gateAll([
+  const [may, mayChange, mayRoster, mayPeople] = await gateAll([
     "scheduling.schedule.read",
     "scheduling.session.change",
     "booking.booking.read",
+    // **For the roster's names, which were a truncated uuid.** A person is MOD-014's and
+    // paragraph 1300 bars the join, so the roster carries ids and the names are composed
+    // through their own gate -- FD-06's arrangement, and the same batch read, because a
+    // coach reading who is coming should not be reading identifiers.
+    "people.person.read",
   ] as const);
   if (!may.allowed) {
     return (
@@ -85,6 +108,24 @@ export default async function SessionPage({
   // its own and a refusal says so rather than rendering an empty class.
   const session = await readSession(sessionId).catch(toNull);
   const roster = mayRoster.allowed ? await readRoster(sessionId).catch(toNull) : null;
+  // **Only what this page shows, in one request.** A name per row would be one round trip
+  // each; a refused or failed read leaves the map empty, and the cell then says the name is
+  // withheld rather than printing an id.
+  const names = mayPeople.allowed && roster !== null
+    ? await readNames([
+      ...roster.bookings.map((booking) => booking.person_id),
+      ...roster.waitlist.map((entry) => entry.person_id),
+    ]).catch(() => new Map<string, NamedPerson>())
+    : new Map<string, NamedPerson>();
+  // **The remedy has to match the cause**, which is FD-06's reasoning on the same cell: a
+  // legal name is MOD-014's `identity` class and `member.identity.read` opens it. That
+  // permission is financial class, so a step-up lifts the mask for a session holding the
+  // grant at too low an assurance and does nothing at all for a reader who does not hold it.
+  // Only the page has the gate's answer, so the key travels to the cell as a prop.
+  const nameRemedy = withheldRemedy(gateVerdict(mayPeople));
+  const nameWithheld: MessageKey = nameRemedy === "step_up"
+    ? "member.withheldIdentity"
+    : "member.withheldIdentityNoRemedy";
   if (session === null) {
     return (
       <Shell title={text("schedule.session")}>
@@ -296,7 +337,10 @@ export default async function SessionPage({
             <ul style={{ margin: 0, paddingInlineStart: "var(--space-5)" }}>
               {session.changes.map((change) => (
                 <li key={`${change.change_kind}-${change.recorded_at}`}>
-                  {change.change_kind}
+                  {/* The kind, worded. MOD-019's four acts are genuinely different and
+                      `handoff` is the one no reader could guess: it is attendance being
+                      handed over rather than anything about the room or the coach. */}
+                  {word(sessionChangeWord(change.change_kind), change.change_kind)}
                   {" · "}
                   <span className="data" dir="ltr">
                     {inZone(change.recorded_at, session.timezone).date}{" "}
@@ -310,7 +354,7 @@ export default async function SessionPage({
                       style={{
                         border: "1px dashed var(--color-border-default)",
                         padding: "0 var(--space-2)",
-                        borderRadius: "var(--radius-sm)",
+                        borderRadius: "var(--radius-button)",
                       }}
                     >
                       {text("schedule.reasonWithheld")}
@@ -376,6 +420,7 @@ export default async function SessionPage({
             ) : (
               <DataGrid
                 caption={text("roster.title")}
+                countLabel={fill(locale, "grid.count.bookings", { count: roster.bookings.length }, numbering)}
                 labelledBy="roster-heading"
                 rows={roster.bookings}
                 rowKey={(entry) => entry.booking_id}
@@ -385,7 +430,10 @@ export default async function SessionPage({
                     kind: "person",
                     priority: 1,
                     render: (entry) => (
-                      <span className="data" dir="ltr">{entry.person_id.slice(0, 8)}</span>
+                      <PersonName
+                        locale={locale} person={names.get(entry.person_id)}
+                        nameWithheld={nameWithheld}
+                      />
                     ),
                   },
                   {
@@ -410,17 +458,51 @@ export default async function SessionPage({
                     header: text("roster.state"),
                     kind: "status",
                     priority: 2,
-                    render: (entry) => entry.state,
+                    // **`cancelled` and `released` are not one word.** The member's own
+                    // cancellation and the gym calling the class off are the distinction
+                    // MOD-020's worst shipped defect collapsed, so the two sentences say
+                    // whose decision it was.
+                    render: (entry) => word(bookingStateWord(entry.state), entry.state),
                   },
                   {
                     header: text("roster.source"),
                     kind: "text",
                     priority: 3,
-                    render: (entry) => entry.source_kind,
+                    render: (entry) =>
+                      word(bookingSourceWord(entry.source_kind), entry.source_kind),
                   },
                 ]}
               />
             )}
+            {/* **A list of withheld names needs the remedy on the list.** The members board
+                learned this from an independent tester who clicked a marker looking for a way
+                through and found none, and this roster inherited the defect the moment it
+                started showing names instead of a truncated id: every row is marked at an
+                ordinary sign-in, which is the credential a coach actually holds. The offer is
+                the same link the member record makes, with this session as the destination,
+                and it is shown only when something is genuinely withheld -- and only where a
+                step-up would lift it, because `member.identity.read` is financial class and a
+                reader who does not hold it would be spending a recovery code on nothing. */}
+            {[...roster.bookings, ...roster.waitlist]
+              .some((entry) => nameOf(names.get(entry.person_id)) === null) ? (
+                <p className="ds-note">
+                  {nameRemedy === "step_up" ? (
+                    <>
+                      {text("members.namesWithheld")}{" "}
+                      <Link
+                        href={`/step-up?for=financial&action=member.identity.read&next=${
+                          encodeURIComponent(`/schedule/${sessionId}`)}`}
+                      >
+                        {text("member.raiseSession")}
+                      </Link>
+                    </>
+                  ) : nameRemedy === "no_answer" ? (
+                    text("member.namesWithheldNoAnswer")
+                  ) : (
+                    text("member.namesWithheldNotHeld")
+                  )}
+                </p>
+              ) : null}
             <h3 style={{ margin: 0, fontSize: "var(--type-label-size)" }}>
               {text("roster.waitlist")}
             </h3>
@@ -432,11 +514,12 @@ export default async function SessionPage({
               <ol style={{ margin: 0, paddingInlineStart: "var(--space-5)" }}>
                 {roster.waitlist.map((entry) => (
                   <li key={entry.entry_id}>
-                    <span className="data" dir="ltr">
-                      {entry.person_id.slice(0, 8)}
-                    </span>
+                    <PersonName
+                      locale={locale} person={names.get(entry.person_id)}
+                      nameWithheld={nameWithheld}
+                    />
                     {" · "}
-                    {entry.state}
+                    {word(waitlistStateWord(entry.state), entry.state)}
                   </li>
                 ))}
               </ol>

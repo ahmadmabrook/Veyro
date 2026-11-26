@@ -5,7 +5,9 @@ import { useActionState } from "react";
 import { Button } from "@/components/ds/button";
 import { Banner } from "@/components/ds/banner";
 import { DataGrid } from "@/components/ds/data-grid";
-import { formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
+import {
+  fill, formatInteger, t, type Locale, type MessageKey, type Numbering,
+} from "@/i18n/locale";
 import {
   assuranceMeans,
   currentDeviceId,
@@ -36,8 +38,39 @@ import { IDLE, type AccountState } from "./state";
  * in a query string or a cookie to survive one would be putting permanent credentials
  * somewhere a browser keeps things.
  */
+/**
+ * The word for an authentication event, in the reader's language.
+ *
+ * **This is the member's own security log**, and it rendered the stored kind -- `step_up`,
+ * `recovery_code`, `codes_issued` -- to the person whose account it is. A vocabulary the
+ * backend stores is never a label. The kinds are dotted (`step_up.succeeded`), so the leading
+ * segment is what carries the meaning and the outcome has its own column; an unmapped kind
+ * falls through to its stored form rather than to a blank, because the log is evidence and a
+ * row nobody can read is worse than an ugly one.
+ */
+function authEventWord(kind: string, locale: "en" | "ar"): string {
+  const known: Record<string, MessageKey> = {
+    authenticated: "authEvent.signIn",
+    authentication_failed: "authEvent.signInFailed",
+    step_up: "authEvent.stepUp",
+    recovery_code: "authEvent.recoveryCode",
+    recovery_codes_issued: "authEvent.codesIssued",
+    codes_issued: "authEvent.codesIssued",
+    password_changed: "authEvent.passwordChanged",
+    device_confirmed: "authEvent.deviceConfirmed",
+    device_revoked: "authEvent.deviceRevoked",
+    session_revoked: "authEvent.sessionRevoked",
+    passkey_enrolled: "authEvent.passkeyEnrolled",
+    passkey_revoked: "authEvent.passkeyRevoked",
+  };
+  const head = kind.split(".")[0] ?? kind;
+  const key = known[kind] ?? known[head];
+  return key === undefined ? kind : t(locale, key);
+}
+
 export function AccountView({
   locale,
+  numbering,
   identityId,
   aal,
   factors,
@@ -52,6 +85,8 @@ export function AccountView({
   identifier,
 }: {
   locale: Locale;
+  /** The tenant's numeral system, so a count here matches every other figure. */
+  numbering: Numbering;
   identityId: string;
   aal: number;
   factors: string[];
@@ -310,6 +345,7 @@ export function AccountView({
         ) : (
           <DataGrid
             caption={text("account.events")}
+            countLabel={fill(locale, "grid.count.signIns", { count: events.length }, numbering)}
             labelledBy="events-heading"
             rows={events}
             rowKey={(event) => `${event.occurred_at}-${event.kind}-${event.outcome}`}
@@ -323,7 +359,7 @@ export function AccountView({
                 priority: 1,
                 render: (event) => (
                   <>
-                    {event.kind}
+                    {authEventWord(event.kind, locale)}
                     {event.factor === null ? null : (
                       <div className="muted" style={caption}>{event.factor}</div>
                     )}

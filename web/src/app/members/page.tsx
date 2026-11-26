@@ -213,6 +213,7 @@ export default async function MembersPage({
         ) : (
           <DataGrid
             caption={text("members.title")}
+            countLabel={fill(locale, "grid.count.members", { count: page.people.length }, numbering)}
             labelledBy="members-heading"
             rows={page.people}
             rowKey={(row) => row.person_id}

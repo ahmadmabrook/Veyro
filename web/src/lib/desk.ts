@@ -10,6 +10,8 @@
  * different place is how two numbers on one screen start to disagree.
  */
 
+import type { MessageKey } from "@/i18n/locale";
+
 /** A booking as `GET /booking/sessions/{id}/roster` returns it. */
 export type RosterBooking = {
   booking_id: string;
@@ -192,3 +194,58 @@ export function nameOf(person: NamedPerson | undefined): string | null {
   const shown = person.preferred_name ?? person.legal_name;
   return shown === null || shown === "***" ? null : shown;
 }
+
+/**
+ * A booking's state, its origin and a waitlist entry's state, worded.
+ *
+ * **All three were rendered raw** -- `booked`, `front_desk`, `waiting` -- on the roster a
+ * coach opens before a class. A stored enumeration where a word belongs is this
+ * repository's most-repeated surface finding, and the Arabic page had it worst: Latin
+ * letters and an underscore in the middle of an Arabic line, in neither catalogue, so
+ * invisible to the parity sweep.
+ *
+ * **Two of the words carry a distinction the module calls load-bearing.** `cancelled` is
+ * the member's own act and `released` is the gym calling the class off -- the module's own
+ * comment says conflating them "is how somebody gets a strike for a class the gym called
+ * off" -- so the two sentences say whose decision it was rather than both reading
+ * "cancelled". The waitlist's `lapsed` is the same fact from the queue's side.
+ *
+ * **An unmapped value falls through to its stored form.** Each set is MOD-020's and may
+ * grow; hiding a state somebody needs to see is worse than showing an ugly one.
+ */
+export function bookingStateWord(state: string): MessageKey | null {
+  return (BOOKING_STATE as Record<string, MessageKey>)[state] ?? null;
+}
+
+export function bookingSourceWord(source: string): MessageKey | null {
+  return (BOOKING_SOURCE as Record<string, MessageKey>)[source] ?? null;
+}
+
+export function waitlistStateWord(state: string): MessageKey | null {
+  return (WAITLIST_STATE as Record<string, MessageKey>)[state] ?? null;
+}
+
+const BOOKING_STATE = {
+  booked: "booking.state.booked",
+  attended: "booking.state.attended",
+  no_show: "booking.state.no_show",
+  cancelled: "booking.state.cancelled",
+  released: "booking.state.released",
+} as const satisfies Record<string, MessageKey>;
+
+const BOOKING_SOURCE = {
+  member: "booking.source.member",
+  waitlist: "booking.source.waitlist",
+  front_desk: "booking.source.front_desk",
+  migration: "booking.source.migration",
+} as const satisfies Record<string, MessageKey>;
+
+const WAITLIST_STATE = {
+  waiting: "waitlist.state.waiting",
+  offered: "waitlist.state.offered",
+  confirmed: "waitlist.state.confirmed",
+  declined: "waitlist.state.declined",
+  expired: "waitlist.state.expired",
+  withdrawn: "waitlist.state.withdrawn",
+  lapsed: "waitlist.state.lapsed",
+} as const satisfies Record<string, MessageKey>;

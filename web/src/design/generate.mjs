@@ -24,10 +24,13 @@ import { fileURLToPath } from "node:url";
 
 const here = (name) => fileURLToPath(new URL(name, import.meta.url));
 const ds = JSON.parse(readFileSync(here("./ds.json"), "utf8"));
-// **Extracted from the design source and pinned by digest**, which `ds.json` is not:
-// `ds.json` is Step 2 and this is Steps 3 to 5. The density modes, the breakpoint
-// ranges and the Admin shell all live here, and none of them was emitted before.
-const contracts = JSON.parse(readFileSync(here("./contracts.json"), "utf8"));
+// **`ds.json` is the only authority, and that is the change.** The density modes, the
+// breakpoint ranges and the Admin shell used to come from `contracts.json`, which
+// `extract.mjs` lifted out of `veyro-product-experience-design/`. That design is
+// deprecated, so a generator still reading it would keep emitting the retired world's
+// numbers under the new world's name. They are declared data in `ds.json` now --
+// `DENSITY`, `BREAKPOINTS` and `SHELL` -- rather than prose parsed with a regex, which
+// also removes the seven regexes that threw whenever somebody reworded a sentence.
 
 /**
  * Layer 1, both halves.
@@ -168,7 +171,8 @@ function buildCss() {
   // hierarchy are invariant" (Patterns, CROSS). So each mode redefines three things and
   // nothing else, and `--density-*` is what a row-rendering component consumes.
   lines.push("", "/* Density. Four modes, three variables, nothing else moves. */");
-  for (const mode of contracts.density) {
+  for (const [modeName, rowAndControl, typeStep] of ds.DENSITY) {
+    const mode = { mode: modeName, row_and_control: rowAndControl, type_step: typeStep };
     const [row, control] = mode.row_and_control.split("/").map((s) => parseInt(s.trim(), 10));
     const step = TYPE_STEP[mode.type_step];
     if (step === undefined) throw new Error(`unknown density type step: ${mode.type_step}`);
@@ -205,37 +209,36 @@ function buildCss() {
     );
   }
 
-  // The Admin shell, quoted from LAYOUTS. The numbers are the source's, parsed rather than
-  // retyped, because a transcribed number is how four precision slips happened in the design
-  // project itself -- the Foundations document says so and the discipline transfers.
-  const admin = contracts.layouts.find((l) => l.surface === "Veyro Admin").specification;
-  const n = (re) => {
-    const found = admin.match(re);
-    if (!found) throw new Error(`the Admin layout no longer states: ${re}`);
-    return found[1];
+  // The Admin shell. `SHELL` is declared data, so there is nothing to parse and nothing to
+  // reword accidentally; `--shell-rule` is new and carries the world's 2px structural line so
+  // a component never hard-codes it.
+  const shell = Object.fromEntries(ds.SHELL.map(([name, value]) => [name, value]));
+  const px = (name) => {
+    if (!(name in shell)) throw new Error(`ds.json SHELL no longer declares: ${name}`);
+    return shell[name];
   };
   lines.push(
     "",
-    "/* The Admin shell, from LAYOUTS: 12-column, 24px gutter, rail 240/56, content max 1440,",
-    " * inspector 380 at bp.lg and 480 at bp.xl. Split view is list + inspector, never three",
-    " * columns. */",
+    "/* The Admin shell: 12-column, 24px gutter, rail 240/56, content max 1440, inspector 380",
+    " * at bp.lg and 480 at bp.xl. Split view is list + inspector, never three columns. */",
     ":root {",
-    `  --shell-columns: ${n(/(\d+)-column/)};`,
-    `  --shell-gutter: ${n(/(\d+)px gutter/)}px;`,
-    `  --shell-rail: ${n(/Rail (\d+) expanded/)}px;`,
-    `  --shell-rail-collapsed: ${n(/expanded \/ (\d+) collapsed/)}px;`,
-    `  --shell-content-max: ${n(/Content max (\d+)/)}px;`,
-    `  --shell-inspector: ${n(/Inspector (\d+) at bp\.lg/)}px;`,
-    `  --shell-inspector-wide: ${n(/bp\.lg, (\d+) at bp\.xl/)}px;`,
+    `  --shell-columns: ${px("columns")};`,
+    `  --shell-gutter: ${px("gutter")}px;`,
+    `  --shell-rail: ${px("rail")}px;`,
+    `  --shell-rail-collapsed: ${px("rail_collapsed")}px;`,
+    `  --shell-content-max: ${px("content_max")}px;`,
+    `  --shell-inspector: ${px("inspector")}px;`,
+    `  --shell-inspector-wide: ${px("inspector_wide")}px;`,
+    `  --shell-rule: ${px("rule")}px;`,
     "}",
   );
 
   // The five breakpoints as values. Media queries need literals, so these exist for the
   // component layer to reason with and for a test to compare the literals against.
-  lines.push("", "/* Breakpoints. The ranges are the source's; the behaviour is per surface. */", ":root {");
-  for (const bp of contracts.breakpoints) {
-    const from = bp.range.match(/^(\d+)/)[1];
-    lines.push(`  --${bp.name.replace(".", "-")}: ${from}px;`);
+  lines.push("", "/* Breakpoints. The behaviour at each is per surface; see ds.json. */", ":root {");
+  for (const [name, range] of ds.BREAKPOINTS) {
+    const from = range.match(/^(\d+)/)[1];
+    lines.push(`  --${name.replace(".", "-")}: ${from}px;`);
   }
   lines.push("}");
 

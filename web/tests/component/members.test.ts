@@ -48,8 +48,15 @@ describe("the members list is built from a design that exists", () => {
   });
 
   it("says why there is no search rather than offering a box that scans", () => {
-    expect(t("en", UNANSWERABLE.search)).toContain("ENG-01");
-    expect(t("en", UNANSWERABLE.search)).toContain("pre-filter");
+    // **The finding holds and the wording moved.** The screen still explains the absence
+    // rather than offering a box that scans; what it no longer does is explain it with a
+    // requirement id, which is not something a gym owner can look up. The property asserted
+    // is that the reason names the two things that make a scan the wrong answer -- who may
+    // see whom, and staleness -- in the reader's own language.
+    const reason = t("en", UNANSWERABLE.search);
+    expect(reason.toLowerCase()).toContain("permission");
+    expect(reason.toLowerCase()).toContain("stale");
+    expect(reason).not.toMatch(/ENG-\d+|PPL-\d+|[Pp]aragraph \d+/);
   });
 });
 

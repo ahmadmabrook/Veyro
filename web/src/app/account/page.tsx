@@ -81,6 +81,7 @@ export default async function AccountPage() {
     >
       <AccountView
         locale={locale}
+        numbering={numbering}
         identityId={identityId}
         aal={Number(session.aal ?? 1)}
         factors={(session.factors as string[] | undefined) ?? []}

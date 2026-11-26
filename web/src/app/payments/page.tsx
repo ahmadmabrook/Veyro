@@ -195,6 +195,7 @@ export default async function PaymentsPage({
         ) : (
           <DataGrid
             caption={text("payments.title")}
+            countLabel={null}
             labelledBy="ledger-heading"
             density="compact"
             rows={ledger.entries}
@@ -225,11 +226,12 @@ export default async function PaymentsPage({
                   // gate masked. Rendering any of them as a blank would say the payment has
                   // no payer.
                   if (names === null) {
-                    return (
-                      <span className="data" dir="ltr">
-                        {entry.payer_person_id.slice(0, 8)}
-                      </span>
-                    );
+                    // **The reader holds no people permission, so there is no name to show
+                    // and an id fragment is not a substitute.** Eight hex characters tell an
+                    // operator nothing they can act on, and the directive bars an identifier
+                    // from ordinary product UI. The sentence says which of the three cases
+                    // this is, which is what the branch exists for.
+                    return <span className="muted">{text("payer.nameNeedsPermission")}</span>;
                   }
                   if (name === undefined) {
                     return <span className="muted">{text("payments.notOnThisPage")}</span>;
@@ -245,7 +247,12 @@ export default async function PaymentsPage({
                 header: text("payments.method"),
                 kind: "text",
                 priority: 3,
-                render: (entry) => <span className="data" dir="ltr">{entry.method}</span>,
+                // Worded, for the state column's reason: `direct_debit` and `gift_card`
+                // are stored values, and the underscore alone says they were never meant for
+                // a reader. An unmapped method still shows as data.
+                render: (entry) => (methodWord(entry.method) === null
+                  ? <span className="data" dir="ltr">{entry.method}</span>
+                  : text(methodWord(entry.method) as MessageKey)),
               },
               {
                 header: text("payments.amount"),
@@ -268,23 +275,24 @@ export default async function PaymentsPage({
                 priority: 2,
                 render: (entry) => (
                   <>
-                    {entry.state}
+                    {/* **The state, worded.** Four kinds of row carry four state
+                        vocabularies -- an intent is `requires_authentication`, a dispute is
+                        `responded` -- and this rendered all of them raw, which is a stored
+                        enumeration where a word belongs. An unmapped value still shows, as
+                        data, because each set is a module's and may grow. */}
+                    {stateWord(entry.state) === null
+                      ? <span className="data" dir="ltr">{entry.state}</span>
+                      : text(stateWord(entry.state) as MessageKey)}
                     <div className="muted" style={{ fontSize: "var(--type-caption-size)" }}>
                       {text(`payments.kind.${entry.kind}` as MessageKey)}
-                      {entry.about_payment_id === null
-                        || entry.about_payment_id === entry.row_id
-                        ? null
-                        : (
-                          // The canvas's "parenthetical original": a negative figure with no
-                          // story is a figure nobody can check.
-                          <>
-                            {" ("}
-                            <span className="data" dir="ltr">
-                              {entry.about_payment_id.slice(0, 8)}
-                            </span>
-                            {")"}
-                          </>
-                        )}
+                      {/* **The canvas's "parenthetical original" is not drawn, and the
+                          reason is that nothing here can name the payment it points at.**
+                          It held eight characters of the original's uuid -- a handle for
+                          matching two rows by eye, and an identifier in ordinary product UI
+                          either way. A payment has no human-facing number in this build the
+                          way an invoice has a document number, so the honest options were a
+                          fragment or a gap, and the gap is named in "What this screen cannot
+                          do yet" rather than papered over with hex. */}
                     </div>
                   </>
                 ),
@@ -381,3 +389,47 @@ function Shell({
     </div>
   );
 }
+
+/**
+ * A payment row's state and method, worded.
+ *
+ * **Four kinds of row carry four state vocabularies**, which is why this is a flat map rather
+ * than a lookup keyed on the kind: an attempt is one of MOD-017's intent statuses, a dispute
+ * one of its dispute statuses, and the two sets do not overlap. A value outside all of them
+ * still renders, as data -- each set is the module's and may grow, and hiding a state
+ * somebody needs to see is worse than showing an ugly one.
+ */
+function stateWord(state: string): MessageKey | null {
+  return (PAYMENT_STATE as Record<string, MessageKey>)[state] ?? null;
+}
+
+function methodWord(method: string): MessageKey | null {
+  return (PAYMENT_METHOD as Record<string, MessageKey>)[method] ?? null;
+}
+
+const PAYMENT_STATE = {
+  pending: "payments.state.pending",
+  requires_authentication: "payments.state.requires_authentication",
+  succeeded: "payments.state.succeeded",
+  failed: "payments.state.failed",
+  cancelled: "payments.state.cancelled",
+  unknown: "payments.state.unknown",
+  received: "payments.state.received",
+  open: "payments.state.open",
+  responded: "payments.state.responded",
+  won: "payments.state.won",
+  lost: "payments.state.lost",
+  withdrawn: "payments.state.withdrawn",
+} as const satisfies Record<string, MessageKey>;
+
+const PAYMENT_METHOD = {
+  card: "payments.method.card",
+  direct_debit: "payments.method.direct_debit",
+  bank_transfer: "payments.method.bank_transfer",
+  cash: "payments.method.cash",
+  wallet: "payments.method.wallet",
+  gift_card: "payments.method.gift_card",
+  other: "payments.method.other",
+  refund: "payments.method.refund",
+  chargeback: "payments.method.chargeback",
+} as const satisfies Record<string, MessageKey>;

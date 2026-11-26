@@ -284,9 +284,17 @@ export default async function Member360Page({
           <div className="ds-panel-body">
             <p className="muted" style={{ margin: 0 }}>{text("member.unavailableWhy")}</p>
             <dl className="facts">
-              {absent.map(([section, why]) => (
+              {/* **The section name, not the server's sentence.** Each `why` is written for
+                  whoever maintains Veyro -- "class attendance ... is MOD-020's (OPS-02) and
+                  nothing here reads it" -- and this is a member's record, read by a
+                  receptionist with that member in front of them. The product fact an operator
+                  needs is which parts of a member's life Veyro does not hold, which is the
+                  list itself; the module that would hold them is not something they can act
+                  on or look up. The backend keeps returning the sentence, and this stops
+                  printing it. */}
+              {absent.map(([section]) => (
                 <Fact key={section} label={section}>
-                  <span className="muted">{why}</span>
+                  <span className="muted">{text("member.sectionNotHeld")}</span>
                 </Fact>
               ))}
             </dl>
@@ -351,6 +359,7 @@ async function Overview({
               id="member-attention"
               severity="critical"
               category={text("member.categoryMoney")}
+              kind="money"
               when={text("member.asOfNow")}
               money={{
                 amount: (
@@ -485,7 +494,7 @@ async function AttendanceTab({ personId, locale }: { personId: string; locale: L
         <h2 className="ds-panel-title">{text("member.tabAttendance")}</h2>
       </div>
       <div className="ds-panel-body">
-        <MetricRow label={text("member.tabAttendance")} columns={3}>
+        <MetricRow label={text("member.tabAttendance")}>
           <MetricCell
             label={text("attendance.sinceLast")}
             {...(seen.days_since === null

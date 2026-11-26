@@ -101,7 +101,7 @@ export async function memberFacts(
     currency: owedCurrency,
     membership: live,
     row: (
-      <MetricRow label={text("member.metrics")} columns={5}>
+      <MetricRow label={text("member.metrics")}>
         <MetricCell
           label={text("member.outstanding")}
           {...(owed === null || owedCurrency === null

@@ -142,6 +142,7 @@ export default async function NotificationsPage() {
             </dl>
             <DataGrid
               caption={text("notify.authored")}
+              countLabel={fill(locale, "grid.count.messages", { count: rows.length }, numbering)}
               labelledBy="authored-heading"
               rows={rows}
               rowKey={(row) => row.notification_id}
@@ -268,6 +269,7 @@ export default async function NotificationsPage() {
         ) : (
           <DataGrid
             caption={text("notify.channels")}
+            countLabel={fill(locale, "grid.count.channels", { count: channels.length }, numbering)}
             labelledBy="channels-heading"
             rows={channels}
             rowKey={(policy) => policy.policy_id}
@@ -325,6 +327,7 @@ export default async function NotificationsPage() {
         ) : (
           <DataGrid
             caption={text("notify.templates")}
+            countLabel={fill(locale, "grid.count.templates", { count: templates.length }, numbering)}
             labelledBy="templates-heading"
             rows={templates}
             rowKey={(template) => template.template_id}

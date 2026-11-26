@@ -28,3 +28,6 @@ build/
 dist/
 *.log
 *.tmp
+
+# Playwright MCP session artefacts (snapshots, console logs) -- never a deliverable.
+.playwright-mcp/

@@ -307,7 +307,7 @@ function DisputeCard({
       {/* The canvas's opening sentence, composed from what the read returns. */}
       <p style={{ margin: 0 }}>
         {namesRefused ? (
-          <span className="data" dir="ltr">{dispute.payer_person_id.slice(0, 8)}</span>
+          <span className="muted">{text("payer.nameNeedsPermission")}</span>
         ) : name === null ? (
           <span className="muted">{text("dispute.notOnThisPage")}</span>
         ) : isWithheld(name) ? (

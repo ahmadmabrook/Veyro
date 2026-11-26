@@ -173,6 +173,7 @@ export default async function OperationsPage() {
               ) : null}
               <DataGrid
                 caption={text("ops.worker")}
+                countLabel={fill(locale, "grid.count.jobs", { count: jobs.jobs.length }, numbering)}
                 labelledBy="worker-heading"
                 rows={jobs.jobs}
                 rowKey={(job) => job.job}
@@ -262,6 +263,7 @@ export default async function OperationsPage() {
             ) : (
               <DataGrid
                 caption={text("ops.deadLetters")}
+                countLabel={fill(locale, "grid.count.deadLetters", { count: letters.length }, numbering)}
                 labelledBy="dead-letters-heading"
                 rows={letters}
                 rowKey={(letter) => letter.dead_letter_id}

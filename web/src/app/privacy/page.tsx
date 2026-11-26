@@ -167,6 +167,7 @@ export default async function PrivacyPage() {
             </p>
             <DataGrid
               caption={text("privacy.whatSurvives")}
+              countLabel={fill(locale, "grid.count.areas", { count: groupResidue(reach).length }, numbering)}
               labelledBy="erasure-heading"
               rows={groupResidue(reach)}
               rowKey={(group) => group.area}
@@ -227,6 +228,7 @@ export default async function PrivacyPage() {
         ) : (
           <DataGrid
             caption={text("privacy.requests")}
+            countLabel={null}
             labelledBy="requests-heading"
             rows={queue}
             rowKey={(request) => request.request_id}
@@ -323,6 +325,7 @@ export default async function PrivacyPage() {
         ) : (
           <DataGrid
             caption={text("privacy.retention")}
+            countLabel={fill(locale, "grid.count.policies", { count: policies.length }, numbering)}
             labelledBy="retention-heading"
             rows={policies}
             rowKey={(policy) => policy.policy_id}
@@ -379,6 +382,7 @@ export default async function PrivacyPage() {
         ) : (
           <DataGrid
             caption={text("privacy.purposes")}
+            countLabel={fill(locale, "grid.count.purposes", { count: purposes.length }, numbering)}
             labelledBy="purposes-heading"
             rows={purposes}
             rowKey={(purpose) => purpose.purpose_id}

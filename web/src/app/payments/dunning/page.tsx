@@ -107,6 +107,7 @@ export default async function DunningRulesPage() {
         <h2 id="dunning-journey">{text("dunning.journey")}</h2>
         <DataGrid
           caption={text("dunning.journey")}
+          countLabel={fill(locale, "grid.count.stages", { count: policy.stages.length }, numbering)}
           labelledBy="dunning-journey"
           rows={policy.stages}
           rowKey={(row: DunningStage) => String(row.stage)}

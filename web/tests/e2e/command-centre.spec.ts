@@ -66,8 +66,13 @@ test.describe("the Command Center", () => {
     expect(await metrics.count()).toBeGreaterThanOrEqual(4);
     const leads = metrics.filter({ hasText: "LEAD CONVERSION" });
     await expect(leads).toHaveAttribute("data-freshness", "unavailable");
-    // Not a zero and not an em-dash: both read as a measurement.
-    await expect(leads).toContainText("ADM-CRM");
+    // Not a zero and not an em-dash: both read as a measurement. **The reason is now
+    // addressed to the operator**, where it used to name `ADM-CRM-*`, a screen id from the
+    // design folder, on the product's front door. The finding this asserts is unchanged --
+    // the cell carries a reason instead of a figure -- and what it no longer asserts is that
+    // the reason is written for an engineer.
+    await expect(leads).toContainText(/lead/i);
+    await expect(leads).not.toContainText(/ADM-[A-Z]+|MOD-\d+/);
     await expect(leads.locator(".ds-metric-value")).toHaveCount(0);
   });
 
@@ -159,25 +164,31 @@ test.describe("the Command Center", () => {
     await expect(money.locator(".ds-attention-money")).toContainText("JOD");
   });
 
-  test("the interpretation panel is withheld and says why", async ({ page }) => {
-    const panel = page.locator(".ds-ai");
-    await expect(panel).toHaveAttribute("data-withheld", "true");
-    await expect(panel).toContainText(/not a confirmed figure/i);
-    await expect(panel).toContainText("No module in this build produces one");
+  test("there is no interpretation panel, because there is no interpretation", async ({
+    page,
+  }) => {
+    // **This asserted a withheld panel and now asserts its absence.** The panel rendered a
+    // tracked kicker -- "VEYRO INTERPRETATION · NOT A CONFIRMED FIGURE" -- over a paragraph
+    // explaining that no module in this build produces an interpretation. Both halves are
+    // wrong for an operator's screen: the kicker is a banned pattern, and a reader does not
+    // need to be told that an absent feature is absent. The engineering record moved to
+    // `.impeccable/surfaces/admin.md`.
+    await expect(page.locator(".ds-ai")).toHaveCount(0);
   });
 
-  test("the AI panel's border is the system indigo, not the tenant accent", async ({ page }) => {
-    // G7 and DS-CL-02: "A tenant brand on an AI panel would make inference look like a
-    // first-party assertion; Veyro is accountable for what its AI says, so Veyro owns the
-    // colour it says it in." The audit found this exact defect and closed it by locking the
-    // hue; asserting the computed colour is what stops it coming back.
-    const [border, accent] = await page.locator(".ds-ai").evaluate((el) => [
-      getComputedStyle(el).borderTopColor,
-      getComputedStyle(el).getPropertyValue("--color-action-default").trim(),
-    ]);
-    expect(border).toBe("rgb(74, 61, 122)"); // ai.600 — #4a3d7a
-    expect(border).not.toBe(accent);
-  });
+  // **The G7 colour guarantee moved to the token layer**, where it does not need a panel.
+  // This asserted the AI region's computed border on the Command Center, and that region is
+  // no longer rendered here -- there is no interpretation in this build and an operator does
+  // not need a panel saying so. The requirement is unchanged and is real: "a tenant brand on
+  // an AI panel would make inference look like a first-party assertion", so `ai.600` is
+  // system-owned in both themes and must not collide with the action colour or any status.
+  // `tests/unit/contrast.test.mjs` asserts that now, in both themes rather than one.
+  //
+  // Worth recording about the test that was here: its second assertion was vacuous. It read
+  // `--color-action-default`, a custom property nothing in this app ever defined, so
+  // `getPropertyValue` returned the empty string and "the border is not the accent" was
+  // trivially true on every run. The undefined-property sweep in `design:check` is what
+  // would now catch that.
 
   test("only the last week bucket can be partial, and never more than one", async ({ page }) => {
     // "The last bar is a partial week and is marked, not extrapolated."
@@ -204,23 +215,36 @@ test.describe("the Command Center", () => {
     expect(first).toMatch(/^\d{1,2} \w{3,9}$/);
   });
 
-  test("the pace is named as a projection wherever it appears", async ({ page }) => {
-    // A figure a manager could quote as collections is the one thing this must not produce.
-    await expect(page.locator("main")).toContainText("straight-line projection");
-    await expect(page.locator("main")).toContainText("must not be rendered as a total");
+  test("the pace is named beside the figure it is a pace for", async ({ page }) => {
+    // A figure a manager could quote as collections is the one thing this must not produce,
+    // and that requirement is unchanged. What changed is where it is met: the server's own
+    // "straight-line projection ... must not be rendered as a total" paragraph was written
+    // for an engineer and sat under the chart, two sections away from the number. The word
+    // now sits in the collected figure's own comparison line, next to the amount.
+    const collected = page.locator(".ds-metric").filter({ hasText: "COLLECTED" });
+    await expect(collected).toContainText(/pace/i);
+    await expect(page.locator("main")).not.toContainText("straight-line projection");
   });
 
-  test("says the breakdown is by legal entity and that the design asked for clubs", async ({
+  test("says the breakdown is by legal entity, in the operator's own language", async ({
     page,
   }) => {
+    // The product fact is the same and the sentence is not: it used to explain the tenant
+    // hierarchy and name `MOD-004` and `by_legal_entity` to a gym owner.
     await expect(page.locator("main")).toContainText("legal entity");
-    await expect(page.locator("main")).toContainText(/breaks this down by club/);
+    await expect(page.locator("main")).toContainText(/issued the invoices/i);
+    await expect(page.locator("main")).not.toContainText(/breaks this down by club/);
   });
 
-  test("names its own gaps rather than drawing empty panels", async ({ page }) => {
-    const gaps = page.locator("main").getByText("What this screen does not do yet");
-    await expect(gaps).toBeVisible();
-    await expect(page.locator("main")).toContainText("scope switcher");
+  test("explains nothing about its own internals to an operator", async ({ page }) => {
+    // **This asserted the gap table and now asserts that it is gone.** Seven notes written
+    // for engineers sat on the product's front door, naming module and screen ids; they are
+    // recorded in the surface brief instead. The honesty requirement they served is met where
+    // it belongs -- a figure the build cannot derive carries a reason in the place the figure
+    // would have been, which the fourth-metric test above asserts.
+    const main = page.locator("#main");
+    await expect(main.getByText("What this screen does not do yet")).toHaveCount(0);
+    await expect(main).not.toContainText(/ADM-[A-Z]+-?\*?|MOD-\d+|by_legal_entity|pace_minor/);
   });
 
   test("has no axe violations", async ({ page }) => {

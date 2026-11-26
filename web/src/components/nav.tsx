@@ -55,10 +55,16 @@ export type NavItem = {
 export function AppNav({ locale, items }: { locale: Locale; items: NavItem[] }) {
   const visible = items.filter((item) => item.allowed);
   if (visible.length === 0) return null;
+  // **Merged by label, not by adjacency.** The comment above has always said the groups
+  // render "in the order their first permitted item appears", and the implementation closed
+  // the current group whenever the label changed -- so a label that recurred further down the
+  // list opened a *second* heading with the same words. The rail shipped two groups both
+  // headed Money, which is also a duplicate React key, and the only thing a reader could
+  // conclude from two identical headings is that one of them means something else.
   const groups: { label: MessageKey; items: NavItem[] }[] = [];
   for (const item of visible) {
-    const last = groups[groups.length - 1];
-    if (last !== undefined && last.label === item.group) last.items.push(item);
+    const existing = groups.find((group) => group.label === item.group);
+    if (existing !== undefined) existing.items.push(item);
     else groups.push({ label: item.group, items: [item] });
   }
   return (

@@ -126,6 +126,7 @@ export default async function InvitePage() {
           ) : (
             <DataGrid
               caption={text("invite.pendingTitle")}
+              countLabel={null}
               labelledBy="pending-heading"
               rows={invitations.invitations}
               rowKey={(row) => row.invitation_id}

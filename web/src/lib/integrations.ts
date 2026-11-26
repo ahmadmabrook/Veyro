@@ -1,4 +1,5 @@
 import { api } from "@/lib/api";
+import type { MessageKey } from "@/i18n/locale";
 
 /**
  * MOD-012's reads, typed: what is installed, what it may reach, and what it has done.
@@ -151,12 +152,16 @@ export function obligationsMet(install: Install): boolean {
   return install.has_fallback && install.has_reconciliation && install.has_exit_plan;
 }
 
-export function missingObligations(install: Install): string[] {
+export function missingObligations(install: Install): MessageKey[] {
+  // **Keys, not stored words.** This list is composed here rather than read from a provider,
+  // so `exit_plan` reaching a screen was this app naming its own field at a reader: the three
+  // obligations a live critical install must carry in writing are a sentence each, and the
+  // reader is whoever has to go and write one.
   if (install.criticality !== OBLIGED_CRITICALITY) return [];
   return [
-    ...(install.has_fallback ? [] : ["fallback"]),
-    ...(install.has_reconciliation ? [] : ["reconciliation"]),
-    ...(install.has_exit_plan ? [] : ["exit_plan"]),
+    ...(install.has_fallback ? [] : ["integrations.obligationFallback" as MessageKey]),
+    ...(install.has_reconciliation ? [] : ["integrations.obligationReconciliation" as MessageKey]),
+    ...(install.has_exit_plan ? [] : ["integrations.obligationExitPlan" as MessageKey]),
   ];
 }
 

@@ -6076,6 +6076,58 @@ Known gaps, deliberate:
 
 ## The web app
 
+**The visual design was replaced on 2026-11-26, on the owner's standing directive, and the
+previous one is deprecated.** That directive supersedes every design-fidelity instruction in
+this file wherever the two conflict, and it changes nothing about business correctness,
+security, privacy, tenant isolation, financial integrity or testing. Read
+`web/.impeccable/surfaces/admin.md` for the direction contract and `web/DESIGN.md` for the
+system as built; `web/PRODUCT.md` is the product truth both are derived from.
+
+**The primary is #91338A and dark mode's ground is #26202C**, both named by the owner on
+2026-11-26 and both pinned by a test that fails if either moves, because every other colour in
+the palette is derived from one of those two hues. What the second colour bought is worth
+knowing before touching the tokens: guardrail G2 bars the action colour from sharing a hue
+with a status, and the retired palette put the shell field and the success state on the same
+green -- so the action had to be ink, a colour with no hue at all. The primary shares a hue
+with nothing (51 degrees from error, 73 from AI, 97 from warning, 108 from info, 148 from
+success), so for the first time the shell field and the one pressable thing on the page are
+the same colour. **Green survives in exactly one job, success**, because a status is not an
+identity and a paid invoice in the brand colour reads as a highlight rather than a state; and
+error moved to a true red and AI to an indigo, because at 37 and 57 degrees from the new
+primary a refusal and an inference would both have read as the brand.
+
+What that means for anybody reading the rest of this section: **the per-screen fidelity
+arguments below are a record of how each screen was reasoned about, not a specification to
+restore.** Where one of them cites a canvas in
+`veyro-product-experience-design/` as the authority for a colour, a type size, a border or a
+composition, that authority is withdrawn. The product facts in the same sentences -- which
+figure a screen shows, which permission gates it, which refusal it must distinguish, what it
+must not claim -- all stand, and most of this section is those.
+
+Three consequences worth knowing before touching `web/`:
+
+- **`design:check` no longer enforces the retired design.** It ran `extract.mjs --check`,
+  `screens.mjs --check` and `coverage.mjs`, all three of which read
+  `veyro-product-experience-design/project/*.dc.html` and failed when the implementation
+  drifted from those canvases -- so the gate held the product to the look it was told to
+  replace. It is `src/design/system-check.mjs` now: every custom property resolves, no
+  component reaches a layer-1 `--p-*` primitive, every `ds-*` class is styled, and nothing
+  sets a monospace family. Each of the four is mutation-proven. The old extractors remain as
+  `design:legacy-extract`, and the data they produced stays pinned, because the status
+  vocabulary, the screen registry and the shell numbers are product facts rather than visual
+  ones.
+- **The world lends four things and only four**: type, palette, density and one signature
+  move. It never supplies the layout, the navigation model or the controls, which stay
+  standard web components a reader already knows. A screen whose world shows up only as a
+  colour scheme has not found its move; a screen that dresses a control as an artifact of the
+  world has gone too far.
+- **Nothing that explains this product's internals belongs on an operator's screen.** The
+  Command Center shipped seven gap-notes naming `MOD-004`, `MOD-014` and `ADM-CRM-*` to gym
+  owners, plus a `pace_minor` paragraph and a `by_legal_entity` sentence. Those records are
+  valuable and they moved to the surface brief; the in-product form is one line in the
+  operator's own language where the figure would have been. `tests/component/command-centre
+  .test.ts` sweeps every reader-facing message for a module id in both locales.
+
 `web/` is the operator surface, and it exists because a module whose only client is a test is
 not a product. Next.js 16 on the App Router, TypeScript, no UI framework and no CSS library:
 `src/design/ds.json` is the design system and `generate.mjs` emits the CSS custom properties

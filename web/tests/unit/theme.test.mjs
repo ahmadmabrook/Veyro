@@ -106,6 +106,29 @@ test("every dark ramp entry cites where the pinned source states it", () => {
   }
 });
 
+test("the two colours the owner specified are where they were asked to be", () => {
+  // **A tripwire on values that are not derived from anything.** Every other colour in this
+  // palette is computed from one of these two hues, so a drift anywhere else is a drift in
+  // something a reader can argue about from the hue. These two are the brief: #91338A as the
+  // primary and #26202C as the ground the dark theme is built on. If either moves, it moved
+  // because somebody chose to, and this is what makes that a decision rather than a diff.
+  const primitive = Object.fromEntries(ds.PRIMITIVES);
+  const darkRamp = Object.fromEntries((ds.DARK_RAMP ?? []).map(([n, hex]) => [n, hex]));
+  assert.equal(primitive["plum.500"], "#91338a", "the primary");
+  assert.equal(darkRamp["aubergine.800"], "#26202c", "the dark ground");
+
+  // And they are used for the two jobs they were given rather than parked in layer 1: the
+  // primary is the action fill, and the dark ground is the surface that covers the most of a
+  // dark screen -- every card, panel and table body.
+  const semantic = Object.fromEntries(ds.SEMANTIC.map(([n, l, d]) => [n, [l, d]]));
+  assert.equal(semantic["color.action.primary"][0], "plum.500");
+  assert.equal(semantic["color.surface.default"][1], "aubergine.800");
+  // The shell field is the primary's own family in light and the dark ground's in dark, which
+  // is what makes it one colour scheme rather than two themes that happen to coexist.
+  assert.match(semantic["color.brand.field"][0], /^plum\./);
+  assert.match(semantic["color.brand.field"][1], /^aubergine\./);
+});
+
 test("every dark ramp primitive is actually referenced by a semantic token", () => {
   // An unused primitive is a colour nobody decided to use, sitting in layer 1 where the next
   // component will reach for it. Layer 1 exists "so semantic tokens have somewhere to point".

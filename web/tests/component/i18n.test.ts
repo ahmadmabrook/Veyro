@@ -182,6 +182,71 @@ describe("numerals and money", () => {
   });
 });
 
+describe("the catalogue speaks the operator's language", () => {
+  it("no message names a module, a screen id, a route or a database identifier", () => {
+    // **The directive is explicit**: backend module names, UUIDs and diagnostic text do not
+    // belong in normal product UI. Twenty-four messages named one -- `MOD-022`, `ADM-POS-01`,
+    // `resolve_price`, `payment_method_ref`, `ntf_preferences` -- and every one of them was
+    // rendered on a screen a gym owner, a club manager or a receptionist opens. Those are
+    // true and useful engineering records; they belong in the repository, and the product
+    // fact each carried was rewritten in the reader's own language instead.
+    //
+    // `snake_case` catches a table or column name and a Python function; the id patterns catch
+    // a module or a design-canvas screen. A real English word with an underscore in it would
+    // be a false positive, and there are none -- the catalogue is prose.
+    const banned = [
+      /\bMOD-\d+/,
+      /\bADM-[A-Z]{2,4}-?\*?\d*/,
+      /\b(?:FD|CON|POS|IAM|PLT|SEC|DAT|REL|ECO|ENG|PPL|COM|OPS|HW|ACC|AUT)-\d+/,
+      /\b[a-z]+_[a-z_]+\b/,
+      /\b(?:GET|POST|PATCH|DELETE) \//,
+      // A requirement id and a specification paragraph are the same kind of reference: true,
+      // useful to whoever maintains Veyro, and unlookupable by the person reading the screen.
+      /\b(?:ENG|PPL|COM|OPS|PLT|SEC|DAT|REL|ECO|HW|ACC|AUT|IAM)-\d+(?:-R\d+)?/,
+      /\b[Pp]aragraph \d+/,
+    ];
+    const offenders: string[] = [];
+    for (const locale of ["en", "ar"] as const) {
+      for (const [key, value] of Object.entries(MESSAGES[locale])) {
+        const forms: string[] =
+          typeof value === "string" ? [value] : (Object.values(value) as string[]);
+        for (const form of forms) {
+          const hit = banned.find((r) => r.test(form));
+          if (hit) offenders.push(`${locale}:${key} (${hit.source})`);
+        }
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+});
+
+describe("digits never live in the catalogue", () => {
+  it("no message in either locale contains an Arabic-Indic digit", () => {
+    // **A digit inside message text escapes every numerals sweep this app has.** The others
+    // read `fill` call sites and `formatInteger` literals; a figure typed into the catalogue
+    // is neither, so it renders whatever the translator typed regardless of the tenant's
+    // `localization.numerals` setting. Two Arabic messages carried Arabic-Indic digits --
+    // "٣٠ يومًا" and "٧ أيام" -- and rendered them beside "JOD 72.20", "8" and "0" in Latin on
+    // the same screen, which `ARABIC_RULES` forbids in as many words: "Never mixed within a
+    // tenant, and never decided per component."
+    //
+    // The rule this encodes: a quantity reaches a message as a *value*, through `fill`, which
+    // formats it in the tenant's own system. A number that is part of the sentence rather
+    // than data -- there are none here -- would have to be declared.
+    const offenders: string[] = [];
+    for (const locale of ["en", "ar"] as const) {
+      for (const [key, value] of Object.entries(MESSAGES[locale])) {
+        const forms: string[] =
+          typeof value === "string" ? [value] : (Object.values(value) as string[]);
+        for (const form of forms) {
+          if (/[\u0660-\u0669\u06f0-\u06f9]/.test(form)) offenders.push(`${locale}:${key}`);
+        }
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+});
+
 describe("a message is text, not an escape sequence", () => {
   /**
    * **Found by looking at a page, twice removed from anything a test could see.** A message

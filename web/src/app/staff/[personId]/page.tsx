@@ -353,10 +353,13 @@ export default async function StaffProfilePage({
                 <span className="ds-evidence-what">
                   {one.display_name ?? one.role_key}
                   <div className="muted" style={{ fontSize: "var(--type-caption-size)" }}>
-                    {fill(locale, "staff.grantedBy", {
-                      who: one.granted_by.slice(0, 8),
-                      on: one.granted_at.slice(0, 10),
-                    })}
+                    {/* **Who granted it is recorded and not named here.** This printed
+                        eight characters of the grantor's identity uuid, which is an
+                        identifier rather than a person: the id is on the authorization
+                        plane and naming it needs a people read keyed by identity, which no
+                        route on this page makes. The date is the half this page can answer
+                        honestly. */}
+                    {fill(locale, "staff.grantedOn", { on: one.granted_at.slice(0, 10) })}
                     {one.expires_at === null ? null : (
                       <>
                         {" · "}
@@ -414,8 +417,11 @@ export default async function StaffProfilePage({
                       ? text("staff.grantEverywhere")
                       : fill(locale, "staff.grantAt", {
                         where: grant.scopes
+                          // A club the sites read did not cover is named as that rather
+                          // than as its id: a reader can act on "a club this page cannot
+                          // name" and cannot act on eight hex characters.
                           .map((one) => (one.id === null ? null
-                            : sites?.get(one.id)?.location_name ?? one.id.slice(0, 8)))
+                            : sites?.get(one.id)?.location_name ?? t(locale, "staff.siteNotNamed")))
                           .filter((one): one is string => one !== null).join(", "),
                       })}
                   </div>

@@ -279,9 +279,7 @@ export default async function RecoveryPage({
                     return (
                       <>
                         {names === null ? (
-                          <span className="data" dir="ltr">
-                            {one.payer_person_id.slice(0, 8)}
-                          </span>
+                          <span className="muted">{text("payer.nameNeedsPermission")}</span>
                         ) : name === undefined ? (
                           <span className="muted">{text("recovery.notOnThisPage")}</span>
                         ) : isWithheld(name) ? (

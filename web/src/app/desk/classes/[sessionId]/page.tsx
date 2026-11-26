@@ -2,12 +2,13 @@ import Link from "next/link";
 
 import { Banner } from "@/components/ds/banner";
 import { PageHeader } from "@/components/ds/page-header";
-import { Withheld } from "@/components/withheld";
+import { PersonName } from "@/components/person-name";
 import { withheldRemedy } from "@/lib/mask";
 import { fill, formatInteger, t, type Locale, type MessageKey, type Numbering } from "@/i18n/locale";
 import { ApiError, gateAll, gateMessage, gateVerdict } from "@/lib/api";
 import {
   checkinWindow, deskOrder, hasStarted, mayCheckIn, minutesUntil, nameOf, notHere,
+  waitlistStateWord,
   presence, rowState, waiting, type NamedPerson, type Roster, type RosterBooking,
 } from "@/lib/desk";
 import { readNames, readRoster } from "@/lib/desk-reads";
@@ -238,12 +239,22 @@ export default async function ClassCheckInPage(
               <li key={entry.entry_id} className="ds-desk-row">
                 <span className="ds-desk-row-name">
                   <span className="data">{count(entry.position)}</span>{" "}
-                  <Person
+                  <PersonName
                     locale={locale} person={names.get(entry.person_id)}
                     nameWithheld={nameWithheld}
                   />
                 </span>
-                <span className="muted">{text(`desk.waitState.${entry.state}` as MessageKey)}</span>
+                {/* **One vocabulary, read through one function.** This built its key from
+                    the stored value -- and `t` throws rather than falling back, while only
+                    two of MOD-020's seven waitlist states had a key: an expired offer, which
+                    keeps its place and can be offered again, would have taken this page down.
+                    The session's own roster words the same states, so the map lives beside
+                    the type they belong to and neither screen can word one state two ways. */}
+                <span className="muted">
+                  {waitlistStateWord(entry.state) === null
+                    ? <span className="data" dir="ltr">{entry.state}</span>
+                    : text(waitlistStateWord(entry.state) as MessageKey)}
+                </span>
               </li>
             ))}
           </ol>
@@ -297,7 +308,7 @@ function Row({
   return (
     <li className="ds-desk-row" data-state={state}>
       <span className="ds-desk-row-name">
-        <Person locale={locale} person={person} nameWithheld={nameWithheld} />
+        <PersonName locale={locale} person={person} nameWithheld={nameWithheld} />
         {/* **Context, not a flag** — the canvas's own words. It is shown for everybody who
             has one, including the member who is already here, because a coach reads it
             before the class rather than at the door. */}
@@ -329,23 +340,5 @@ function Row({
         )
       ) : null}
     </li>
-  );
-}
-
-function Person({ locale, person, nameWithheld }: {
-  locale: Locale; person: NamedPerson | undefined;
-  // Which sentence a withheld name gets, decided by the page from the gate's answer: the
-  // helper renders the cell and only the page knows whether a step-up would lift the mask.
-  nameWithheld: MessageKey;
-}) {
-  const shown = nameOf(person);
-  if (shown !== null) return <strong>{shown}</strong>;
-  return (
-    <strong>
-      <Withheld locale={locale} reason={nameWithheld} />
-      {person?.member_number ? (
-        <span className="muted"> · {person.member_number}</span>
-      ) : null}
-    </strong>
   );
 }

@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import { t } from "@/i18n/locale";
+
 import {
   OBLIGED_CRITICALITY,
   credentialIsCurrent,
@@ -110,12 +112,23 @@ describe("obligationsMet", () => {
 
   it("names which obligation is missing, not merely that one is", () => {
     // "A written obligation is missing" in a list of three sends somebody reading all three.
-    expect(missingObligations(install({ has_exit_plan: false }))).toEqual(["exit_plan"]);
+    // **The list returns message keys now**, because the three names are this app's own and
+    // `exit_plan` reaching a screen was it naming its own field at a reader. The property is
+    // unchanged -- which obligation, in order -- and the keys are asserted to exist, so a
+    // renamed key fails here rather than rendering as a blank.
+    expect(missingObligations(install({ has_exit_plan: false })))
+      .toEqual(["integrations.obligationExitPlan"]);
     expect(
       missingObligations(install({ has_fallback: false, has_exit_plan: false })),
-    ).toEqual(["fallback", "exit_plan"]);
+    ).toEqual(["integrations.obligationFallback", "integrations.obligationExitPlan"]);
     expect(missingObligations(install({ criticality: "important", has_fallback: false })))
       .toEqual([]);
+    for (const key of missingObligations(install({
+      has_fallback: false, has_reconciliation: false, has_exit_plan: false,
+    }))) {
+      expect(t("en", key).length).toBeGreaterThan(3);
+      expect(t("ar", key).length).toBeGreaterThan(3);
+    }
   });
 });
 

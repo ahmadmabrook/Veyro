@@ -99,6 +99,7 @@ export default async function ResolvedPageView() {
       ) : (
         <DataGrid
           caption={text("resolved.title")}
+          countLabel={null}
           labelledBy="resolved-heading"
           rows={page.cases}
           rowKey={(row) => row.case_id}

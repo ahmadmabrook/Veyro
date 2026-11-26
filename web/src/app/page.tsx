@@ -1,14 +1,12 @@
-import { AITreatment } from "@/components/ds/ai-treatment";
 import { Button } from "@/components/ds/button";
 import { MoneyValue } from "@/components/ds/money-value";
 import { AttentionQueue, AttentionRow } from "@/components/ds/attention-row";
 import { Banner } from "@/components/ds/banner";
 import { MetricCell, MetricRow } from "@/components/ds/metric-cell";
-import { fill, formatInteger, formatMoney, t, type MessageKey, type Numbering } from "@/i18n/locale";
+import { MESSAGES, fill, formatInteger, formatMoney, t, type MessageKey, type Numbering } from "@/i18n/locale";
 import { ApiError, currentSession, gate, gateAll } from "@/lib/api";
 import { listLegalEntities, type LegalEntity } from "@/lib/organization";
 import {
-  AI_PANEL,
   UNANSWERABLE,
   heading as headingFor,
   orderQueue,
@@ -266,6 +264,7 @@ export default async function CommandCentre() {
                 id={item.key}
                 severity={item.severity}
                 category={t(locale, categoryLabel(item.category))}
+                kind={item.category}
                 when={item.when}
                 {...(item.money
                   ? { money: { amount: item.money.amount, meaning: t(locale, item.money.meaning) } }
@@ -299,29 +298,10 @@ export default async function CommandCentre() {
       </section>
       )}
 
-      {/* The interpretation panel, in its withheld state, with the true reason. */}
-      <section className="page-section">
-        <AITreatment eyebrow={text(AI_PANEL.eyebrow)} withheld>
-          <p>{text(AI_PANEL.reason)}</p>
-        </AITreatment>
-      </section>
-
       {collections.allowed && collections.data ? (
         <Charts data={collections.data} locale={locale} money={money} entities={entities} />
       ) : null}
 
-      <section className="page-section">
-        <h2>{text("cc.gaps")}</h2>
-        <dl className="facts">
-          <Gap locale={locale} label="cc.metricLeads" why={UNANSWERABLE.leadConversion} />
-          <Gap locale={locale} label="cc.catLeads" why={UNANSWERABLE.leadsQueue} />
-          <Gap locale={locale} label="cc.queue" why={UNANSWERABLE.actions} />
-          <Gap locale={locale} label="cc.aiEyebrow" why={UNANSWERABLE.interpretation} />
-          <Gap locale={locale} label="cc.chartEntity" why={UNANSWERABLE.byLocation} />
-          <Gap locale={locale} label="cc.scope" why={UNANSWERABLE.scope} />
-          <Gap locale={locale} label="cc.title" why={UNANSWERABLE.interactions} />
-        </dl>
-      </section>
     </div>
   );
 }
@@ -474,11 +454,11 @@ function VisitsMetric({
       value={formatInteger(panel.data.entries, numbering)}
       comparison={
         seen.length === 0
-          ? fill(locale, "cc.noUsual", { weekday: panel.data.weekday })
+          ? fill(locale, "cc.noUsual", { weekday: weekdayName(locale, panel.data.weekday) })
           : (
             <>
               <span className="data">{formatInteger(usual, numbering)}</span>{" "}
-              {fill(locale, "cc.usualFor", { weekday: panel.data.weekday })}
+              {fill(locale, "cc.usualFor", { weekday: weekdayName(locale, panel.data.weekday) })}
             </>
           )
       }
@@ -555,14 +535,45 @@ function Charts({
           </div>
         ))}
       </dl>
-      <p className="muted" style={{ margin: 0, fontSize: "var(--type-caption-size)" }}>
-        {data.by_location_is_unavailable}
-      </p>
-      <p className="muted" style={{ margin: 0, fontSize: "var(--type-caption-size)" }}>
-        {data.pace_is_a_projection}
-      </p>
+      {/* **The server's own two sentences are not rendered here, and that is deliberate.**
+          `by_location_is_unavailable` and `pace_is_a_projection` are prose fields on the
+          collections response, and both are written for an engineer: they name `MOD-004`,
+          `by_legal_entity` and `pace_minor`. An operator screen is not where this product
+          explains its own module boundaries, and the directive protects the backend contract,
+          so the fields keep being returned and this surface stops printing them.
+
+          What an operator actually needs from the first is one line in their own language,
+          which is below. The second is already carried where it belongs -- the collected
+          figure's own comparison line says "pace", beside the number it is a pace for. The
+          consequence, recorded rather than left to be discovered: those two response fields
+          now have no reader in this app. */}
+      <p className="ds-section-note">{t(locale, "cc.chartEntityNote")}</p>
     </section>
   );
+}
+
+/**
+ * The weekday, in the reader's language.
+ *
+ * **The visits read returns an English weekday name**, and an Arabic page rendered it
+ * verbatim: "لا يوجد يوم Thursday سابق للمقارنة", Latin letters mid-sentence in a product
+ * whose bilingual parity is a stated commitment. That is this repository's own recurring
+ * finding -- a vocabulary the backend stores is never a label -- and the message-catalogue
+ * parity check cannot see it, because the English name never became a key.
+ *
+ * Mapped rather than reformatted from a date: `conventions.mjs` is compared character for
+ * character against the backend's own copy, so a weekday formatter added there would need a
+ * Python twin, and the response carries a name rather than an instant anyway. An unknown
+ * value falls through to what the server said instead of to a blank, because a weekday nobody
+ * mapped is still more use to a reader than nothing.
+ */
+function weekdayName(locale: "en" | "ar", weekday: string): string {
+  const key = `weekday.${weekday.trim().toLowerCase()}`;
+  const message = MESSAGES[locale][key as MessageKey];
+  // The catalogue holds plural forms as objects as well as plain strings, so the type is a
+  // union: a weekday is never a plural, and anything that is not a string is not one of
+  // these keys. Falling through to the server's own word is the honest default.
+  return typeof message === "string" ? message : weekday;
 }
 
 function RefusedPanels({
@@ -592,23 +603,6 @@ function RefusedPanels({
           {t(locale, "cc.failedPanel")}
         </Banner>
       ) : null}
-    </>
-  );
-}
-
-function Gap({
-  locale,
-  label,
-  why,
-}: {
-  locale: "en" | "ar";
-  label: MessageKey;
-  why: MessageKey;
-}) {
-  return (
-    <>
-      <dt className="muted">{t(locale, label)}</dt>
-      <dd style={{ margin: 0 }}>{t(locale, why)}</dd>
     </>
   );
 }
@@ -747,7 +741,9 @@ function staffingItems(
     // Two bodies: "0 places are held across them" is a sentence with nothing in it, and the
     // empty case is the one worth saying something useful about.
     body: panel.data.members_affected > 0
-      ? fill(locale, "cc.staffingBody", { members: panel.data.members_affected })
+      // `fill` defaults its numbering to `latn`, so omitting it renders Latin digits on an
+      // `arab` tenant -- the one plural message on this surface that was doing so.
+      ? fill(locale, "cc.staffingBody", { members: panel.data.members_affected }, numbering)
       : t(locale, "cc.staffingBodyEmpty"),
     actions: [{ label: "cc.openIt", href: "/schedule" }],
   }];

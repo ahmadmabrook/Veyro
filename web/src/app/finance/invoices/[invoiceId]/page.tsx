@@ -132,9 +132,7 @@ export default async function InvoicePage({
         subline={
           <>
             {payer === null ? (
-              <span className="data" dir="ltr">
-                {invoice.payer_person_id.slice(0, 8)}
-              </span>
+              <span className="muted">{text("payer.nameNeedsPermission")}</span>
             ) : (
               <Link href={`/people/${invoice.payer_person_id}`}>
                 {/* Masked on a level-1 session, which is a fact about this reader rather
@@ -173,6 +171,7 @@ export default async function InvoicePage({
           </div>
           <DataGrid
             caption={text("invoice.lines")}
+            countLabel={fill(locale, "grid.count.invoiceLines", { count: invoice.lines.length }, numbering)}
             labelledBy="lines-heading"
             rows={invoice.lines}
             rowKey={(line) => String(line.line_number)}

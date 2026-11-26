@@ -105,6 +105,7 @@ export default async function ConfigurationPage({
           <>
             <DataGrid
               caption={text("config.registry")}
+              countLabel={fill(locale, "grid.count.configValues", { count: definitions.length }, numbering)}
               labelledBy="config-heading"
               rows={definitions}
               rowKey={(definition) => definition.definition_id}
@@ -208,6 +209,7 @@ export default async function ConfigurationPage({
           <>
             <DataGrid
               caption={text("config.flags")}
+              countLabel={null}
               labelledBy="flags-heading"
               rows={Object.entries(flags)}
               rowKey={([key]) => key}

@@ -7,70 +7,101 @@
 
 :root {
   /* Layer 1 - primitive ramps */
-  --p-warm-0: #fffefb;
-  --p-warm-50: #faf8f4;
-  --p-warm-100: #f4f2ee;
-  --p-warm-150: #ece9e3;
-  --p-warm-200: #e0dcd4;
-  --p-warm-300: #cbc6bc;
-  --p-warm-400: #a8a29a;
-  --p-warm-500: #85807a;
-  --p-warm-600: #6b6a63;
-  --p-warm-700: #57544d;
-  --p-warm-800: #3d3b36;
-  --p-warm-900: #17171a;
-  --p-ink-600: #1b4079;
-  --p-ink-700: #14315e;
-  --p-ink-50: #e8edf6;
-  --p-success-600: #2f5d3a;
-  --p-warning-600: #8a5a1f;
-  --p-error-600: #8a3b1f;
-  --p-info-600: #3f5560;
-  --p-ai-600: #4a3d7a;
-  --p-ai-50: #edebf6;
-  --p-error-50: #f4ece5;
+  --p-bone-0: #ffffff;
+  --p-bone-50: #faf7fa;
+  --p-bone-100: #f3eef3;
+  --p-bone-150: #eae2ea;
+  --p-bone-200: #ddd1dd;
+  --p-ink-900: #110d11;
+  --p-ink-800: #1e171e;
+  --p-ink-700: #382c38;
+  --p-ink-600: #544554;
+  --p-ink-500: #6d5b6d;
+  --p-ink-400: #998799;
+  --p-plum-950: #1d071b;
+  --p-plum-900: #2c0c29;
+  --p-plum-800: #3e143b;
+  --p-plum-700: #581d54;
+  --p-plum-600: #72276c;
+  --p-plum-500: #91338a;
+  --p-plum-400: #b342aa;
+  --p-plum-300: #d685d0;
+  --p-plum-200: #ebb7e7;
+  --p-plum-100: #f8e2f6;
+  --p-crimson-600: #7c161d;
+  --p-crimson-500: #a3212a;
+  --p-crimson-100: #fae1e2;
+  --p-gold-600: #855d00;
+  --p-gold-500: #c98f05;
+  --p-gold-400: #e8ab1f;
+  --p-gold-100: #fbeec9;
+  --p-steel-600: #1d6e8c;
+  --p-steel-100: #dcecf3;
+  --p-turf-600: #0e6845;
+  --p-turf-300: #7fc9a9;
+  --p-turf-100: #d6efe3;
+  --p-ai-600: #3b49a0;
+  --p-ai-50: #e8eaf7;
 
   /* Layer 1 - the dark ramp, quoted from the source's own dark column */
-  --p-dark-950: #141311; /* stated on color.surface.sunken */
-  --p-dark-900: #1a1917; /* stated on color.surface.canvas */
-  --p-dark-800: #211f1c; /* stated on color.surface.default */
-  --p-dark-700: #2a2724; /* stated on color.surface.raised */
-  --p-dark-text-2: #b8b3aa; /* stated on color.text.secondary */
-  --p-dark-text-3: #928d84; /* stated on color.text.tertiary */
-  --p-accent-light: #7ea6e8; /* stated on color.text.link, and in prose: 'ink.600 becomes #7ea6e8' */
-  --p-error-light: #e0836a; /* stated on color.text.critical */
-  --p-ai-light: #a397dd; /* stated on color.semantic.ai */
+  --p-aubergine-950: #120f15; /* Dark canvas floor, the shell field and inputs. The darkest member of the primary's own family, not neutral black. */
+  --p-aubergine-900: #1a161e; /* Dark app background. */
+  --p-aubergine-800: #26202c; /* Dark cards, panels, table bodies. The owner's dark primary, placed where it covers the most of the screen a reader actually looks at. */
+  --p-aubergine-700: #342c3c; /* Dark overlays, popovers, dropdowns, and the current item on the shell field. */
+  --p-mauve-200: #dfd3e3; /* Dark secondary text. Tinted from the primary's own hue rather than grey. */
+  --p-mauve-300: #c3afca; /* Dark tertiary text. */
+  --p-crimson-light: #e9838a; /* Dark critical and error. */
+  --p-gold-light: #f0bf52; /* Dark warning and the wordmark mark. */
+  --p-steel-light: #7fc0da; /* Dark info, filed and recorded. Steel lifted for a ground built on #26202C. */
+  --p-turf-light: #7fc9a9; /* Dark success and the staffing category field. */
+  --p-ai-light: #a0a9e4; /* Dark AI. Guardrail G7 keeps this system-owned in both themes. */
 
   /* Layer 2 - semantic tokens, light */
-  --color-surface-canvas: var(--p-warm-100); /* App background. The field everything sits on. */
-  --color-surface-default: var(--p-warm-0); /* Cards, panels, table bodies, sheets. */
-  --color-surface-raised: var(--p-warm-0); /* Overlays, popovers, dropdowns, command palette. */
-  --color-surface-sunken: var(--p-warm-50); /* Table headers, inset wells, code and log areas. */
-  --color-surface-hover: var(--p-warm-50); /* Row and interactive-surface hover only. Never a resting state. */
-  --color-surface-selected: var(--p-ink-50); /* Selected row, active nav item, chosen segment. */
-  --color-surface-input: var(--p-warm-0); /* Field backgrounds across all form controls. */
-  --color-surface-overlay: rgba(23,23,26,.44); /* Scrim behind modals and sheets. */
-  --color-text-primary: var(--p-warm-900); /* Headings, values, member names, primary content. */
-  --color-text-secondary: var(--p-warm-700); /* Supporting copy, descriptions, explanatory lines. */
-  --color-text-tertiary: var(--p-warm-600); /* Metadata, timestamps, IDs, eyebrow labels. Contrast floor for small text. */
-  --color-text-disabled: var(--p-warm-500); /* Inactive controls only. Always paired with a stated reason. */
-  --color-text-inverse: var(--p-warm-0); /* On filled action and semantic surfaces. */
-  --color-text-link: var(--p-ink-600); /* Inline links and evidence references. */
-  --color-text-critical: var(--p-error-600); /* Overdue amounts, failed states, destructive labels. */
-  --color-border-subtle: rgba(23,23,26,.08); /* Row dividers inside a bounded container. */
-  --color-border-default: rgba(23,23,26,.14); /* Container edges, inputs, table outlines. The workhorse. */
-  --color-border-strong: rgba(23,23,26,.28); /* Secondary button outline, emphasised separation. */
-  --color-border-focus: var(--p-ink-600); /* Focus ring. Never brand-configurable. */
-  --color-border-error: var(--p-error-600); /* Invalid field outline, paired with a message. */
-  --color-action-primary: var(--p-ink-600); /* Primary button fill, active selection, links. */
-  --color-action-pressed: var(--p-ink-700); /* Pressed state on primary. */
-  --color-semantic-success: var(--p-success-600); /* Paid, confirmed, resolved, on-plan. */
-  --color-semantic-warning: var(--p-warning-600); /* Expiring, approaching a limit, needs review. */
-  --color-semantic-error: var(--p-error-600); /* Failed, denied, overdue, blocking. */
-  --color-semantic-info: var(--p-info-600); /* Neutral system information. Deliberately not the action hue. */
-  --color-semantic-ai: var(--p-ai-600); /* AI interpretation, recommendation, evidence and executed-action states. SYSTEM-OWNED — never inherits brand.accent. 9.31:1 on warm.0. */
-  --color-semantic-ai-wash: var(--p-ai-50); /* AI panel header and evidence-link background. The only wash that signals machine reasoning. */
-  --color-semantic-ai-border: var(--p-ai-600); /* AI container edge. Distinguishes an interpretation panel from an action panel at a glance. */
+  --color-surface-canvas: var(--p-bone-100); /* App background. The field everything sits on. */
+  --color-surface-default: var(--p-bone-0); /* Cards, panels, table bodies, sheets. In dark this is #26202C itself: the owner's dark primary on the largest readable area rather than on one panel. */
+  --color-surface-raised: var(--p-bone-0); /* Overlays, popovers, dropdowns, command palette. */
+  --color-surface-sunken: var(--p-bone-50); /* Table headers, inset wells, log areas. */
+  --color-surface-hover: var(--p-bone-50); /* Row and control hover. */
+  --color-surface-selected: var(--p-plum-100); /* Selected row, active tab, current nav item. */
+  --color-surface-input: var(--p-bone-0); /* Text inputs, selects, textareas. */
+  --color-surface-overlay: rgba(29,7,27,.52); /* The scrim behind a sheet or dialog. */
+  --color-text-primary: var(--p-ink-900); /* Body copy, headings, table cells. */
+  --color-text-secondary: var(--p-ink-600); /* Supporting copy, provenance lines, column headers. */
+  --color-text-tertiary: var(--p-ink-500); /* Captions and placeholders. The lightest text permitted below 18.66px. */
+  --color-text-disabled: var(--p-ink-400); /* Disabled controls only. Never placeholders: see CONTRAST. */
+  --color-text-inverse: var(--p-bone-0); /* Text on a filled action or a saturated field. **It is bone in both themes now, which it was not before.** The action fill used to be ink in light and bone in dark, so the label had to flip with it; the fill is a plum in both themes now, so the label does not. One value is the fact rather than an oversight. */
+  --color-text-on-bright: var(--p-ink-900); /* Text on a field that is bright in both themes -- the money category field is gold.400 in light and gold.light in dark, and both take ink at 9.43:1 and better. White on it is 2.04:1, the one pairing in this palette that looks deliberate and fails. */
+  --color-text-link: var(--p-plum-600); /* Inline links. Always underlined; colour is never the only signal. */
+  --color-text-critical: var(--p-crimson-600); /* Critical inline text. */
+  --color-border-subtle: rgba(17,13,17,.10); /* Internal divisions inside one component. */
+  --color-border-default: rgba(17,13,17,.18); /* Input borders, card edges, table rules. */
+  --color-border-strong: var(--p-ink-900); /* The 2px rule. The structural line, not a hairline -- and the thing that separates a large colour field from the canvas behind it, where a contrast ratio between two fields is not the right instrument. */
+  --color-border-focus: var(--p-ink-900); /* Focus ring. Maximum contrast in both themes, drawn with a 2px offset so it survives on a filled action. Guardrail G4: never configurable. */
+  --color-border-error: var(--p-crimson-500); /* The border of a field that failed validation. */
+  --color-action-primary: var(--p-plum-500); /* Primary action fill. **The owner's #91338A, and the reason it can be is G2.** The action colour was ink because the shell field and the success state were both the same green, so a saturated action would have shared a hue with a status. The primary shares a hue with nothing in this palette -- 51 degrees from error, 97 from warning, 148 from success, 108 from info, 73 from AI -- so the one pressable thing on the page is the brand itself. bone on it is 6.90:1 light and 4.91:1 dark; the fill clears its canvas by 6.02:1 and 3.63:1. */
+  --color-action-hover: var(--p-plum-600); /* Primary action, hovered. A declared token rather than a filter, because the retired rule was brightness(0.95) and that is one step per channel on a dark fill -- no hover state at all on the page's primary action. Light deepens, dark lifts. */
+  --color-action-pressed: var(--p-plum-700); /* Primary action, pressed. */
+  --color-semantic-success: var(--p-turf-600); /* Succeeded, active, paid, present. **Green stays, and only here.** It is a status rather than an identity: a paid invoice rendered in the brand colour would be a state the eye reads as a highlight, and this is the one job the retired green was doing that the primary cannot take over. */
+  --color-semantic-warning: var(--p-gold-600); /* Needs attention, due, expiring. */
+  --color-semantic-error: var(--p-crimson-500); /* Failed, refused, overdue, at risk. **Moved to a true red.** The retired error was a claret at 342 degrees, which sits 37 degrees from the new primary -- close enough that a refusal and the brand would have read as one family on a page carrying both. 356 degrees separates them. */
+  --color-semantic-info: var(--p-steel-600); /* Informational, filed, recorded. */
+  --color-semantic-ai: var(--p-ai-600); /* AI interpretation, recommendation and evidence. Guardrail G7: system-owned. **Moved from 247 to 232 degrees** for the same reason the error moved: a violet-indigo beside a plum primary is two purples, and G7 asks for a role nothing else can be mistaken for. */
+  --color-semantic-ai-wash: var(--p-ai-50); /* The ground of an AI region. */
+  --color-semantic-ai-border: var(--p-ai-600); /* The edge of an AI region. */
+  --color-brand-field: var(--p-plum-800); /* The shell field: the navigation rail and the sign-in panel. The one large committed colour, and in light it is the primary's own deep end. */
+  --color-brand-field-text: var(--p-bone-50); /* Text on the shell field. */
+  --color-brand-field-selected: var(--p-plum-600); /* The current item's ground on the shell field. A tint of the field rather than a bar down one side of it: the craft floor bans the one-sided bar and offers a tint as the alternative. */
+  --color-brand-field-muted: var(--p-plum-300); /* Group headings and secondary text on the shell field. Tinted from the field's own hue rather than grey, which is what the craft floor asks for on a coloured surface. 5.94:1 light, 9.33:1 dark. */
+  --color-brand-field-selected-text: var(--p-bone-0); /* Text on the current item's ground. Declared per theme rather than reusing color.text.inverse: on the dark theme's selected ground an inverted value was 1.94:1 once, a real failure. 9.45:1 light, 12.57:1 dark. */
+  --color-brand-mark: var(--p-gold-400); /* The wordmark's mark and the current-item marker on the shell field. Gold against the plum field rather than in it, which is the one place two committed colours meet on purpose. */
+  --color-category-money: var(--p-gold-400); /* Money: collections, recovery, payments, till. */
+  --color-category-compliance: var(--p-steel-600); /* Compliance: filings, privacy, audit, consent. */
+  --color-category-retention: var(--p-crimson-500); /* Retention: expiring memberships, cancellations, leads going cold. */
+  --color-category-staffing: var(--p-turf-600); /* Staffing and delivery: rotas, unstaffed classes, devices. */
+  --color-category-money-text: var(--p-ink-900); /* Text on the money field. Gold is light in both themes, so ink in both: 9.43:1 light, 11.27:1 dark. White on it is 2.04:1. */
+  --color-category-compliance-text: var(--p-bone-0); /* Text on the compliance field. Steel is dark in light and a light tint in dark, so the text flips: bone 5.74:1, then ink 9.60:1. */
+  --color-category-retention-text: var(--p-bone-0); /* Text on the retention field. Crimson flips the same way: bone 7.48:1, then ink 7.41:1. */
+  --color-category-staffing-text: var(--p-bone-0); /* Text on the staffing field. Turf flips the same way: bone 6.81:1, then ink 9.94:1. */
 
   /* Spacing. No value outside this scale ships. */
   --space-05: 2px;
@@ -93,87 +124,107 @@
 /* Dark is a remapping of the same token names -- never an inversion, and never a
  * second set of names. */
 :root[data-theme="dark"] {
-  --color-surface-canvas: var(--p-dark-900);
-  --color-surface-default: var(--p-dark-800);
-  --color-surface-raised: var(--p-dark-700);
-  --color-surface-sunken: var(--p-dark-950);
-  --color-surface-hover: rgba(255,255,255,.04);
-  --color-surface-selected: rgba(126,166,232,.16);
-  --color-surface-input: var(--p-dark-950);
-  --color-surface-overlay: rgba(0,0,0,.6);
-  --color-text-primary: var(--p-warm-50);
-  --color-text-secondary: var(--p-dark-text-2);
-  --color-text-tertiary: var(--p-dark-text-3);
-  --color-text-disabled: rgba(245,242,236,.38);
-  --color-text-inverse: var(--p-dark-900);
-  --color-text-link: var(--p-accent-light);
-  --color-text-critical: var(--p-error-light);
-  --color-border-subtle: rgba(255,255,255,.08);
-  --color-border-default: rgba(255,255,255,.13);
-  --color-border-strong: rgba(255,255,255,.26);
-  --color-border-focus: var(--p-accent-light);
-  --color-border-error: var(--p-error-light);
-  --color-action-primary: var(--p-accent-light);
-  /* --color-action-pressed: no dark value -- accent.pressed. See ds.json DARK_GAPS. */
-  --color-semantic-success: #6fae7f;
-  --color-semantic-warning: #d9a256;
-  --color-semantic-error: #e0836a;
-  --color-semantic-info: #8aa9b5;
+  --color-surface-canvas: var(--p-aubergine-900);
+  --color-surface-default: var(--p-aubergine-800);
+  --color-surface-raised: var(--p-aubergine-700);
+  --color-surface-sunken: var(--p-aubergine-950);
+  --color-surface-hover: rgba(255,255,255,.05);
+  --color-surface-selected: rgba(214,133,208,.14);
+  --color-surface-input: var(--p-aubergine-950);
+  --color-surface-overlay: rgba(0,0,0,.66);
+  --color-text-primary: var(--p-bone-50);
+  --color-text-secondary: var(--p-mauve-200);
+  --color-text-tertiary: var(--p-mauve-300);
+  --color-text-disabled: rgba(250,247,250,.38);
+  --color-text-inverse: var(--p-bone-0);
+  --color-text-on-bright: var(--p-ink-900);
+  --color-text-link: var(--p-plum-300);
+  --color-text-critical: var(--p-crimson-light);
+  --color-border-subtle: rgba(255,255,255,.09);
+  --color-border-default: rgba(255,255,255,.15);
+  --color-border-strong: var(--p-bone-50);
+  --color-border-focus: var(--p-bone-0);
+  --color-border-error: var(--p-crimson-light);
+  --color-action-primary: var(--p-plum-400);
+  --color-action-hover: var(--p-plum-300);
+  --color-action-pressed: var(--p-plum-200);
+  --color-semantic-success: var(--p-turf-light);
+  --color-semantic-warning: var(--p-gold-light);
+  --color-semantic-error: var(--p-crimson-light);
+  --color-semantic-info: var(--p-steel-light);
   --color-semantic-ai: var(--p-ai-light);
-  --color-semantic-ai-wash: rgba(163,151,221,.16);
+  --color-semantic-ai-wash: rgba(160,169,228,.16);
   --color-semantic-ai-border: var(--p-ai-light);
+  --color-brand-field: var(--p-aubergine-950);
+  --color-brand-field-text: var(--p-mauve-200);
+  --color-brand-field-selected: var(--p-aubergine-700);
+  --color-brand-field-muted: var(--p-mauve-300);
+  --color-brand-field-selected-text: var(--p-bone-50);
+  --color-brand-mark: var(--p-gold-light);
+  --color-category-money: var(--p-gold-light);
+  --color-category-compliance: var(--p-steel-light);
+  --color-category-retention: var(--p-crimson-light);
+  --color-category-staffing: var(--p-turf-light);
+  --color-category-money-text: var(--p-ink-900);
+  --color-category-compliance-text: var(--p-ink-900);
+  --color-category-retention-text: var(--p-ink-900);
+  --color-category-staffing-text: var(--p-ink-900);
 }
 
 /* The type scale, Latin. Arabic resolves through src/design/type.mjs. */
 :root {
-  --type-display-size: 34px;
-  --type-display-line: 1.10;
-  --type-display-weight: 500;
-  --type-display-tracking: -0.02em;
-  --type-h1-size: 26px;
-  --type-h1-line: 1.15;
-  --type-h1-weight: 500;
-  --type-h1-tracking: -0.018em;
+  --type-figure-size: 72px;
+  --type-figure-line: 0.90;
+  --type-figure-weight: 700;
+  --type-figure-tracking: -0.035em;
+  --type-figureSm-size: 44px;
+  --type-figureSm-line: 0.95;
+  --type-figureSm-weight: 700;
+  --type-figureSm-tracking: -0.03em;
+  --type-display-size: 40px;
+  --type-display-line: 1.05;
+  --type-display-weight: 700;
+  --type-display-tracking: -0.025em;
+  --type-h1-size: 28px;
+  --type-h1-line: 1.14;
+  --type-h1-weight: 700;
+  --type-h1-tracking: -0.02em;
   --type-h2-size: 20px;
-  --type-h2-line: 1.20;
-  --type-h2-weight: 500;
-  --type-h2-tracking: -0.014em;
+  --type-h2-line: 1.25;
+  --type-h2-weight: 600;
+  --type-h2-tracking: -0.012em;
   --type-h3-size: 16px;
-  --type-h3-line: 1.30;
-  --type-h3-weight: 500;
-  --type-h3-tracking: -0.01em;
+  --type-h3-line: 1.32;
+  --type-h3-weight: 600;
+  --type-h3-tracking: -0.008em;
   --type-h4-size: 14px;
-  --type-h4-line: 1.35;
-  --type-h4-weight: 500;
+  --type-h4-line: 1.36;
+  --type-h4-weight: 600;
   --type-h4-tracking: 0;
-  --type-bodyLg-size: 15px;
+  --type-bodyLg-size: 15.5px;
   --type-bodyLg-line: 1.60;
   --type-bodyLg-weight: 400;
   --type-bodyLg-tracking: 0;
-  --type-body-size: 14px;
+  --type-body-size: 14.5px;
   --type-body-line: 1.60;
   --type-body-weight: 400;
   --type-body-tracking: 0;
-  --type-bodySm-size: 12.5px;
+  --type-bodySm-size: 13px;
   --type-bodySm-line: 1.55;
   --type-bodySm-weight: 400;
   --type-bodySm-tracking: 0;
   --type-label-size: 12px;
-  --type-label-line: 1.35;
-  --type-label-weight: 500;
-  --type-label-tracking: 0.005em;
-  --type-caption-size: 11px;
+  --type-label-line: 1.30;
+  --type-label-weight: 600;
+  --type-label-tracking: 0.02em;
+  --type-caption-size: 11.5px;
   --type-caption-line: 1.40;
   --type-caption-weight: 400;
   --type-caption-tracking: 0;
-  --type-data-size: 13px;
+  --type-data-size: 13.5px;
   --type-data-line: 1.20;
   --type-data-weight: 500;
   --type-data-tracking: 0;
-  --type-eyebrow-size: 10px;
-  --type-eyebrow-line: 1.40;
-  --type-eyebrow-weight: 500;
-  --type-eyebrow-tracking: 0.09em;
 }
 
 /* Density. Four modes, three variables, nothing else moves. */
@@ -181,34 +232,33 @@
   --density-row: 34px;
   --density-control: 40px;
   --density-gap: 8px; /* spacing step −1 step from --space-3 */
-  --density-type-size: 12.5px; /* type.bodySm */
+  --density-type-size: 13px; /* type.bodySm */
   --density-type-line: 1.55;
 }
 :root, [data-density="default"] {
   --density-row: 40px;
   --density-control: 48px;
   --density-gap: 12px; /* spacing step base from --space-3 */
-  --density-type-size: 14px; /* type.body */
+  --density-type-size: 14.5px; /* type.body */
   --density-type-line: 1.60;
 }
 [data-density="touch"] {
   --density-row: 48px;
   --density-control: 52px;
   --density-gap: 16px; /* spacing step +1 step from --space-3 */
-  --density-type-size: 15px; /* type.bodyLg */
+  --density-type-size: 15.5px; /* type.bodyLg */
   --density-type-line: 1.60;
 }
 [data-density="spacious"] {
   --density-row: 56px;
   --density-control: 64px;
   --density-gap: 20px; /* spacing step +2 steps from --space-3 */
-  --density-type-size: 15px; /* type.bodyLg */
+  --density-type-size: 15.5px; /* type.bodyLg */
   --density-type-line: 1.60;
 }
 
-/* The Admin shell, from LAYOUTS: 12-column, 24px gutter, rail 240/56, content max 1440,
- * inspector 380 at bp.lg and 480 at bp.xl. Split view is list + inspector, never three
- * columns. */
+/* The Admin shell: 12-column, 24px gutter, rail 240/56, content max 1440, inspector 380
+ * at bp.lg and 480 at bp.xl. Split view is list + inspector, never three columns. */
 :root {
   --shell-columns: 12;
   --shell-gutter: 24px;
@@ -217,9 +267,10 @@
   --shell-content-max: 1440px;
   --shell-inspector: 380px;
   --shell-inspector-wide: 480px;
+  --shell-rule: 2px;
 }
 
-/* Breakpoints. The ranges are the source's; the behaviour is per surface. */
+/* Breakpoints. The behaviour at each is per surface; see ds.json. */
 :root {
   --bp-xs: 0px;
   --bp-sm: 600px;

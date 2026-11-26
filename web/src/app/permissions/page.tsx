@@ -169,6 +169,7 @@ export default async function PermissionsPage({
         <p className="muted" style={{ margin: 0 }}>{text("perms.gateLead")}</p>
         <DataGrid
           caption={text("perms.gateTitle")}
+          countLabel={fill(locale, "grid.count.actions", { count: answers.length }, numbering)}
           labelledBy="gate-heading"
           rows={answers}
           rowKey={(answer) => answer.action}
@@ -235,6 +236,7 @@ export default async function PermissionsPage({
             ) : (
               <DataGrid
                 caption={text("perms.audit")}
+                countLabel={fill(locale, "grid.count.auditEntries", { count: audit.length }, numbering)}
 labelledBy="audit-heading"
                 rows={audit}
                 rowKey={(entry) => String(entry.sequence)}

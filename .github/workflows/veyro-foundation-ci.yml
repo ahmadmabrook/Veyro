@@ -276,7 +276,7 @@ jobs:
       # tokens:check would pass. `veyro-product-experience-design/` is the authority, and
       # every source file is pinned by digest, so a design revision fails here until somebody
       # re-extracts and reads the diff.
-      - name: Design contracts and screen designs match the authoritative source
+      - name: Design system is coherent (tokens resolve, no layer-1 reach, no dead classes)
         working-directory: web
         run: npm run design:check
 

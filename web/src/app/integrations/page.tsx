@@ -145,6 +145,7 @@ export default async function IntegrationsPage() {
             ) : null}
             <DataGrid
               caption={text("integrations.installs")}
+              countLabel={null}
               labelledBy="installs-heading"
               rows={installs}
               rowKey={(install) => install.install_id}
@@ -187,8 +188,11 @@ export default async function IntegrationsPage() {
                     ) : missing.length === 0 ? (
                       text("integrations.allThree")
                     ) : (
-                      <span className="data" dir="ltr">
-                        {text("integrations.missing")} {missing.join(", ")}
+                      // Not `.data` and not `dir="ltr"` any more: these were field names, and
+                      // they are sentences now, so they take the reader's own direction.
+                      <span>
+                        {text("integrations.missing")}{" "}
+                        {missing.map((key) => text(key)).join(", ")}
                       </span>
                     );
                   },
@@ -226,6 +230,7 @@ export default async function IntegrationsPage() {
         ) : (
           <DataGrid
             caption={text("integrations.connections")}
+            countLabel={fill(locale, "grid.count.connections", { count: connections.length }, numbering)}
             labelledBy="connections-heading"
             rows={connections}
             rowKey={(connection) => connection.connection_id}
@@ -354,6 +359,7 @@ export default async function IntegrationsPage() {
             ) : null}
             <DataGrid
               caption={text("integrations.runs")}
+              countLabel={fill(locale, "grid.count.runs", { count: runs.length }, numbering)}
               labelledBy="runs-heading"
               rows={runs}
               rowKey={(run) => run.run_id}

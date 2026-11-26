@@ -4,213 +4,324 @@
 // can check a mapping against the design system without re-reading the HTML.
 
 export const PRIMITIVES = {
-  "warm.0": "#fffefb",
-  "warm.50": "#faf8f4",
-  "warm.100": "#f4f2ee",
-  "warm.150": "#ece9e3",
-  "warm.200": "#e0dcd4",
-  "warm.300": "#cbc6bc",
-  "warm.400": "#a8a29a",
-  "warm.500": "#85807a",
-  "warm.600": "#6b6a63",
-  "warm.700": "#57544d",
-  "warm.800": "#3d3b36",
-  "warm.900": "#17171a",
-  "ink.600": "#1b4079",
-  "ink.700": "#14315e",
-  "ink.50": "#e8edf6",
-  "success.600": "#2f5d3a",
-  "warning.600": "#8a5a1f",
-  "error.600": "#8a3b1f",
-  "info.600": "#3f5560",
-  "ai.600": "#4a3d7a",
-  "ai.50": "#edebf6",
-  "error.50": "#f4ece5",
-  "dark.950": "#141311",
-  "dark.900": "#1a1917",
-  "dark.800": "#211f1c",
-  "dark.700": "#2a2724",
-  "dark.text.2": "#b8b3aa",
-  "dark.text.3": "#928d84",
-  "accent.light": "#7ea6e8",
-  "error.light": "#e0836a",
-  "ai.light": "#a397dd"
+  "bone.0": "#ffffff",
+  "bone.50": "#faf7fa",
+  "bone.100": "#f3eef3",
+  "bone.150": "#eae2ea",
+  "bone.200": "#ddd1dd",
+  "ink.900": "#110d11",
+  "ink.800": "#1e171e",
+  "ink.700": "#382c38",
+  "ink.600": "#544554",
+  "ink.500": "#6d5b6d",
+  "ink.400": "#998799",
+  "plum.950": "#1d071b",
+  "plum.900": "#2c0c29",
+  "plum.800": "#3e143b",
+  "plum.700": "#581d54",
+  "plum.600": "#72276c",
+  "plum.500": "#91338a",
+  "plum.400": "#b342aa",
+  "plum.300": "#d685d0",
+  "plum.200": "#ebb7e7",
+  "plum.100": "#f8e2f6",
+  "crimson.600": "#7c161d",
+  "crimson.500": "#a3212a",
+  "crimson.100": "#fae1e2",
+  "gold.600": "#855d00",
+  "gold.500": "#c98f05",
+  "gold.400": "#e8ab1f",
+  "gold.100": "#fbeec9",
+  "steel.600": "#1d6e8c",
+  "steel.100": "#dcecf3",
+  "turf.600": "#0e6845",
+  "turf.300": "#7fc9a9",
+  "turf.100": "#d6efe3",
+  "ai.600": "#3b49a0",
+  "ai.50": "#e8eaf7",
+  "aubergine.950": "#120f15",
+  "aubergine.900": "#1a161e",
+  "aubergine.800": "#26202c",
+  "aubergine.700": "#342c3c",
+  "mauve.200": "#dfd3e3",
+  "mauve.300": "#c3afca",
+  "crimson.light": "#e9838a",
+  "gold.light": "#f0bf52",
+  "steel.light": "#7fc0da",
+  "turf.light": "#7fc9a9",
+  "ai.light": "#a0a9e4"
 };
 
 export const SEMANTIC = {
   "color.surface.canvas": {
-    "light": "warm.100",
-    "dark": "dark.900 #1a1917",
+    "light": "bone.100",
+    "dark": "aubergine.900",
     "use": "App background. The field everything sits on.",
     "css": "var(--color-surface-canvas)"
   },
   "color.surface.default": {
-    "light": "warm.0",
-    "dark": "dark.800 #211f1c",
-    "use": "Cards, panels, table bodies, sheets.",
+    "light": "bone.0",
+    "dark": "aubergine.800",
+    "use": "Cards, panels, table bodies, sheets. In dark this is #26202C itself: the owner's dark primary on the largest readable area rather than on one panel.",
     "css": "var(--color-surface-default)"
   },
   "color.surface.raised": {
-    "light": "warm.0 + e1",
-    "dark": "dark.700 #2a2724",
+    "light": "bone.0",
+    "dark": "aubergine.700",
     "use": "Overlays, popovers, dropdowns, command palette.",
     "css": "var(--color-surface-raised)"
   },
   "color.surface.sunken": {
-    "light": "warm.50",
-    "dark": "dark.950 #141311",
-    "use": "Table headers, inset wells, code and log areas.",
+    "light": "bone.50",
+    "dark": "aubergine.950",
+    "use": "Table headers, inset wells, log areas.",
     "css": "var(--color-surface-sunken)"
   },
   "color.surface.hover": {
-    "light": "warm.50",
-    "dark": "rgba(255,255,255,.04)",
-    "use": "Row and interactive-surface hover only. Never a resting state.",
+    "light": "bone.50",
+    "dark": "rgba(255,255,255,.05)",
+    "use": "Row and control hover.",
     "css": "var(--color-surface-hover)"
   },
   "color.surface.selected": {
-    "light": "ink.50",
-    "dark": "rgba(126,166,232,.16)",
-    "use": "Selected row, active nav item, chosen segment.",
+    "light": "plum.100",
+    "dark": "rgba(214,133,208,.14)",
+    "use": "Selected row, active tab, current nav item.",
     "css": "var(--color-surface-selected)"
   },
   "color.surface.input": {
-    "light": "warm.0",
-    "dark": "dark.950",
-    "use": "Field backgrounds across all form controls.",
+    "light": "bone.0",
+    "dark": "aubergine.950",
+    "use": "Text inputs, selects, textareas.",
     "css": "var(--color-surface-input)"
   },
   "color.surface.overlay": {
-    "light": "rgba(23,23,26,.44)",
-    "dark": "rgba(0,0,0,.6)",
-    "use": "Scrim behind modals and sheets.",
+    "light": "rgba(29,7,27,.52)",
+    "dark": "rgba(0,0,0,.66)",
+    "use": "The scrim behind a sheet or dialog.",
     "css": "var(--color-surface-overlay)"
   },
   "color.text.primary": {
-    "light": "warm.900",
-    "dark": "warm.50 #f5f2ec",
-    "use": "Headings, values, member names, primary content.",
+    "light": "ink.900",
+    "dark": "bone.50",
+    "use": "Body copy, headings, table cells.",
     "css": "var(--color-text-primary)"
   },
   "color.text.secondary": {
-    "light": "warm.700",
-    "dark": "dark.text.2 #b8b3aa",
-    "use": "Supporting copy, descriptions, explanatory lines.",
+    "light": "ink.600",
+    "dark": "mauve.200",
+    "use": "Supporting copy, provenance lines, column headers.",
     "css": "var(--color-text-secondary)"
   },
   "color.text.tertiary": {
-    "light": "warm.600",
-    "dark": "dark.text.3 #928d84",
-    "use": "Metadata, timestamps, IDs, eyebrow labels. Contrast floor for small text.",
+    "light": "ink.500",
+    "dark": "mauve.300",
+    "use": "Captions and placeholders. The lightest text permitted below 18.66px.",
     "css": "var(--color-text-tertiary)"
   },
   "color.text.disabled": {
-    "light": "warm.500",
-    "dark": "rgba(245,242,236,.38)",
-    "use": "Inactive controls only. Always paired with a stated reason.",
+    "light": "ink.400",
+    "dark": "rgba(250,247,250,.38)",
+    "use": "Disabled controls only. Never placeholders: see CONTRAST.",
     "css": "var(--color-text-disabled)"
   },
   "color.text.inverse": {
-    "light": "warm.0",
-    "dark": "dark.900",
-    "use": "On filled action and semantic surfaces.",
+    "light": "bone.0",
+    "dark": "bone.0",
+    "use": "Text on a filled action or a saturated field. **It is bone in both themes now, which it was not before.** The action fill used to be ink in light and bone in dark, so the label had to flip with it; the fill is a plum in both themes now, so the label does not. One value is the fact rather than an oversight.",
     "css": "var(--color-text-inverse)"
   },
+  "color.text.on-bright": {
+    "light": "ink.900",
+    "dark": "ink.900",
+    "use": "Text on a field that is bright in both themes -- the money category field is gold.400 in light and gold.light in dark, and both take ink at 9.43:1 and better. White on it is 2.04:1, the one pairing in this palette that looks deliberate and fails.",
+    "css": "var(--color-text-on-bright)"
+  },
   "color.text.link": {
-    "light": "ink.600",
-    "dark": "accent.light #7ea6e8",
-    "use": "Inline links and evidence references.",
+    "light": "plum.600",
+    "dark": "plum.300",
+    "use": "Inline links. Always underlined; colour is never the only signal.",
     "css": "var(--color-text-link)"
   },
   "color.text.critical": {
-    "light": "error.600",
-    "dark": "error.light #e0836a",
-    "use": "Overdue amounts, failed states, destructive labels.",
+    "light": "crimson.600",
+    "dark": "crimson.light",
+    "use": "Critical inline text.",
     "css": "var(--color-text-critical)"
   },
   "color.border.subtle": {
-    "light": "rgba(23,23,26,.08)",
-    "dark": "rgba(255,255,255,.08)",
-    "use": "Row dividers inside a bounded container.",
+    "light": "rgba(17,13,17,.10)",
+    "dark": "rgba(255,255,255,.09)",
+    "use": "Internal divisions inside one component.",
     "css": "var(--color-border-subtle)"
   },
   "color.border.default": {
-    "light": "rgba(23,23,26,.14)",
-    "dark": "rgba(255,255,255,.13)",
-    "use": "Container edges, inputs, table outlines. The workhorse.",
+    "light": "rgba(17,13,17,.18)",
+    "dark": "rgba(255,255,255,.15)",
+    "use": "Input borders, card edges, table rules.",
     "css": "var(--color-border-default)"
   },
   "color.border.strong": {
-    "light": "rgba(23,23,26,.28)",
-    "dark": "rgba(255,255,255,.26)",
-    "use": "Secondary button outline, emphasised separation.",
+    "light": "ink.900",
+    "dark": "bone.50",
+    "use": "The 2px rule. The structural line, not a hairline -- and the thing that separates a large colour field from the canvas behind it, where a contrast ratio between two fields is not the right instrument.",
     "css": "var(--color-border-strong)"
   },
   "color.border.focus": {
-    "light": "ink.600",
-    "dark": "accent.light",
-    "use": "Focus ring. Never brand-configurable.",
+    "light": "ink.900",
+    "dark": "bone.0",
+    "use": "Focus ring. Maximum contrast in both themes, drawn with a 2px offset so it survives on a filled action. Guardrail G4: never configurable.",
     "css": "var(--color-border-focus)"
   },
   "color.border.error": {
-    "light": "error.600",
-    "dark": "error.light",
-    "use": "Invalid field outline, paired with a message.",
+    "light": "crimson.500",
+    "dark": "crimson.light",
+    "use": "The border of a field that failed validation.",
     "css": "var(--color-border-error)"
   },
   "color.action.primary": {
-    "light": "ink.600",
-    "dark": "accent.light",
-    "use": "Primary button fill, active selection, links.",
+    "light": "plum.500",
+    "dark": "plum.400",
+    "use": "Primary action fill. **The owner's #91338A, and the reason it can be is G2.** The action colour was ink because the shell field and the success state were both the same green, so a saturated action would have shared a hue with a status. The primary shares a hue with nothing in this palette -- 51 degrees from error, 97 from warning, 148 from success, 108 from info, 73 from AI -- so the one pressable thing on the page is the brand itself. bone on it is 6.90:1 light and 4.91:1 dark; the fill clears its canvas by 6.02:1 and 3.63:1.",
     "css": "var(--color-action-primary)"
   },
+  "color.action.hover": {
+    "light": "plum.600",
+    "dark": "plum.300",
+    "use": "Primary action, hovered. A declared token rather than a filter, because the retired rule was brightness(0.95) and that is one step per channel on a dark fill -- no hover state at all on the page's primary action. Light deepens, dark lifts.",
+    "css": "var(--color-action-hover)"
+  },
   "color.action.pressed": {
-    "light": "ink.700",
-    "dark": "accent.pressed",
-    "use": "Pressed state on primary.",
+    "light": "plum.700",
+    "dark": "plum.200",
+    "use": "Primary action, pressed.",
     "css": "var(--color-action-pressed)"
   },
   "color.semantic.success": {
-    "light": "success.600",
-    "dark": "#6fae7f",
-    "use": "Paid, confirmed, resolved, on-plan.",
+    "light": "turf.600",
+    "dark": "turf.light",
+    "use": "Succeeded, active, paid, present. **Green stays, and only here.** It is a status rather than an identity: a paid invoice rendered in the brand colour would be a state the eye reads as a highlight, and this is the one job the retired green was doing that the primary cannot take over.",
     "css": "var(--color-semantic-success)"
   },
   "color.semantic.warning": {
-    "light": "warning.600",
-    "dark": "#d9a256",
-    "use": "Expiring, approaching a limit, needs review.",
+    "light": "gold.600",
+    "dark": "gold.light",
+    "use": "Needs attention, due, expiring.",
     "css": "var(--color-semantic-warning)"
   },
   "color.semantic.error": {
-    "light": "error.600",
-    "dark": "#e0836a",
-    "use": "Failed, denied, overdue, blocking.",
+    "light": "crimson.500",
+    "dark": "crimson.light",
+    "use": "Failed, refused, overdue, at risk. **Moved to a true red.** The retired error was a claret at 342 degrees, which sits 37 degrees from the new primary -- close enough that a refusal and the brand would have read as one family on a page carrying both. 356 degrees separates them.",
     "css": "var(--color-semantic-error)"
   },
   "color.semantic.info": {
-    "light": "info.600",
-    "dark": "#8aa9b5",
-    "use": "Neutral system information. Deliberately not the action hue.",
+    "light": "steel.600",
+    "dark": "steel.light",
+    "use": "Informational, filed, recorded.",
     "css": "var(--color-semantic-info)"
   },
   "color.semantic.ai": {
-    "light": "ai.600 #4a3d7a",
-    "dark": "ai.light #a397dd",
-    "use": "AI interpretation, recommendation, evidence and executed-action states. SYSTEM-OWNED — never inherits brand.accent. 9.31:1 on warm.0.",
+    "light": "ai.600",
+    "dark": "ai.light",
+    "use": "AI interpretation, recommendation and evidence. Guardrail G7: system-owned. **Moved from 247 to 232 degrees** for the same reason the error moved: a violet-indigo beside a plum primary is two purples, and G7 asks for a role nothing else can be mistaken for.",
     "css": "var(--color-semantic-ai)"
   },
   "color.semantic.ai.wash": {
-    "light": "ai.50 #edebf6",
-    "dark": "rgba(163,151,221,.16)",
-    "use": "AI panel header and evidence-link background. The only wash that signals machine reasoning.",
+    "light": "ai.50",
+    "dark": "rgba(160,169,228,.16)",
+    "use": "The ground of an AI region.",
     "css": "var(--color-semantic-ai-wash)"
   },
   "color.semantic.ai.border": {
-    "light": "ai.600 at 1px",
-    "dark": "ai.light at 1px",
-    "use": "AI container edge. Distinguishes an interpretation panel from an action panel at a glance.",
+    "light": "ai.600",
+    "dark": "ai.light",
+    "use": "The edge of an AI region.",
     "css": "var(--color-semantic-ai-border)"
+  },
+  "color.brand.field": {
+    "light": "plum.800",
+    "dark": "aubergine.950",
+    "use": "The shell field: the navigation rail and the sign-in panel. The one large committed colour, and in light it is the primary's own deep end.",
+    "css": "var(--color-brand-field)"
+  },
+  "color.brand.field.text": {
+    "light": "bone.50",
+    "dark": "mauve.200",
+    "use": "Text on the shell field.",
+    "css": "var(--color-brand-field-text)"
+  },
+  "color.brand.field.selected": {
+    "light": "plum.600",
+    "dark": "aubergine.700",
+    "use": "The current item's ground on the shell field. A tint of the field rather than a bar down one side of it: the craft floor bans the one-sided bar and offers a tint as the alternative.",
+    "css": "var(--color-brand-field-selected)"
+  },
+  "color.brand.field.muted": {
+    "light": "plum.300",
+    "dark": "mauve.300",
+    "use": "Group headings and secondary text on the shell field. Tinted from the field's own hue rather than grey, which is what the craft floor asks for on a coloured surface. 5.94:1 light, 9.33:1 dark.",
+    "css": "var(--color-brand-field-muted)"
+  },
+  "color.brand.field.selected.text": {
+    "light": "bone.0",
+    "dark": "bone.50",
+    "use": "Text on the current item's ground. Declared per theme rather than reusing color.text.inverse: on the dark theme's selected ground an inverted value was 1.94:1 once, a real failure. 9.45:1 light, 12.57:1 dark.",
+    "css": "var(--color-brand-field-selected-text)"
+  },
+  "color.brand.mark": {
+    "light": "gold.400",
+    "dark": "gold.light",
+    "use": "The wordmark's mark and the current-item marker on the shell field. Gold against the plum field rather than in it, which is the one place two committed colours meet on purpose.",
+    "css": "var(--color-brand-mark)"
+  },
+  "color.category.money": {
+    "light": "gold.400",
+    "dark": "gold.light",
+    "use": "Money: collections, recovery, payments, till.",
+    "css": "var(--color-category-money)"
+  },
+  "color.category.compliance": {
+    "light": "steel.600",
+    "dark": "steel.light",
+    "use": "Compliance: filings, privacy, audit, consent.",
+    "css": "var(--color-category-compliance)"
+  },
+  "color.category.retention": {
+    "light": "crimson.500",
+    "dark": "crimson.light",
+    "use": "Retention: expiring memberships, cancellations, leads going cold.",
+    "css": "var(--color-category-retention)"
+  },
+  "color.category.staffing": {
+    "light": "turf.600",
+    "dark": "turf.light",
+    "use": "Staffing and delivery: rotas, unstaffed classes, devices.",
+    "css": "var(--color-category-staffing)"
+  },
+  "color.category.money.text": {
+    "light": "ink.900",
+    "dark": "ink.900",
+    "use": "Text on the money field. Gold is light in both themes, so ink in both: 9.43:1 light, 11.27:1 dark. White on it is 2.04:1.",
+    "css": "var(--color-category-money-text)"
+  },
+  "color.category.compliance.text": {
+    "light": "bone.0",
+    "dark": "ink.900",
+    "use": "Text on the compliance field. Steel is dark in light and a light tint in dark, so the text flips: bone 5.74:1, then ink 9.60:1.",
+    "css": "var(--color-category-compliance-text)"
+  },
+  "color.category.retention.text": {
+    "light": "bone.0",
+    "dark": "ink.900",
+    "use": "Text on the retention field. Crimson flips the same way: bone 7.48:1, then ink 7.41:1.",
+    "css": "var(--color-category-retention-text)"
+  },
+  "color.category.staffing.text": {
+    "light": "bone.0",
+    "dark": "ink.900",
+    "use": "Text on the staffing field. Turf flips the same way: bone 6.81:1, then ink 9.94:1.",
+    "css": "var(--color-category-staffing-text)"
   }
 };
 

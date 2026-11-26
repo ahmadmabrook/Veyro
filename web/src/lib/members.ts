@@ -149,6 +149,12 @@ export function planName(stored: string): MessageKey | null {
   const known: Record<string, MessageKey> = {
     recurring: "plan.kindRecurring",
     prepaid: "plan.kindPrepaid",
+    // **The two shapes this map was missing**, which is the same finding it already records
+    // one paragraph up: a vocabulary the backend stores is never a label. `fixed_term` and
+    // `one_off` rendered raw in the members list's own kind column, in Latin letters beside
+    // Arabic headings, for as long as the column has existed.
+    fixed_term: "plan.kindFixedTerm",
+    one_off: "plan.kindOneOff",
     monthly: "plan.periodMonthly",
     quarterly: "plan.periodQuarterly",
     annual: "plan.periodAnnual",
@@ -161,6 +167,39 @@ export function planName(stored: string): MessageKey | null {
     cancelled: "plan.statusCancelled",
     expired: "plan.statusExpired",
     completed: "plan.statusCompleted",
+  };
+  return known[stored] ?? null;
+}
+
+/**
+ * The word for a duplicate signal, and for a ledger account kind.
+ *
+ * The same rule as `planName` above and the same defect: both vocabularies reached a reader
+ * raw. `email_match, legal_name_match` is what the duplicate queue showed an operator who is
+ * being asked to destroy one of two records, and `provider_clearing` is what the trial
+ * balance showed an accountant. An unmapped value falls through to its stored form, because a
+ * word nobody mapped is still more use than a blank.
+ */
+export function vocabulary(stored: string): MessageKey | null {
+  const known: Record<string, MessageKey> = {
+    email_match: "merge.signalEmail",
+    legal_name_match: "merge.signalName",
+    phone_match: "merge.signalPhone",
+    birth_date_match: "merge.signalBirthDate",
+    date_of_birth_match: "merge.signalBirthDate",
+    address_match: "merge.signalAddress",
+    cash: "ledger.kindCash",
+    bank: "ledger.kindBank",
+    receivable: "ledger.kindReceivable",
+    revenue: "ledger.kindRevenue",
+    contra_revenue: "ledger.kindContraRevenue",
+    unearned_revenue: "ledger.kindUnearnedRevenue",
+    provider_clearing: "ledger.kindProviderClearing",
+    provider_fee: "ledger.kindProviderFee",
+    tax_payable: "ledger.kindTaxPayable",
+    member_wallet: "ledger.kindMemberWallet",
+    suspense: "ledger.kindSuspense",
+    fx_gain_loss: "ledger.kindFxGainLoss",
   };
   return known[stored] ?? null;
 }

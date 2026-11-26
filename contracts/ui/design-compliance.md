@@ -1137,9 +1137,35 @@ two were not, and the detail is in the rules file.
   `.ds-money` on that tab and finding none.
 - **`DataGrid` rendered a bare numeral under every grid in the app.** §25: *"the count always
   states what is selected."* "2" under a table is a stray character to a reader who has not
-  been told what it counts. The component now takes the phrase; **33 call sites still pass
-  none and fall back to the number**, which is this ledger's open item rather than a default
-  worth keeping.
+  been told what it counts. The component takes the phrase, and **every grid now passes one or
+  has a written reason not to** -- the open item this ledger carried is closed.
+
+  **Removing a label put the banned character back, which is how the fix got its second
+  half.** The slot fell back to `rows.length`, so the twelve grids whose label was removed as
+  a duplicate immediately rendered the bare numeral again -- the fallback was a *known gap*
+  carried in this ledger, and the moment the gap closed everywhere else it became the way to
+  reintroduce it. There is no fallback now: a grid passes the phrase or passes
+  `countLabel={null}`, which says the page states the count itself, and
+  `tests/unit/ds-usage.test.mjs` requires one of the two per grid. Mutation-proven by removing
+  one label and watching the sweep name the file.
+
+  **Fourteen grids state no count, and that is the same rule rather than the gap surviving.**
+  Twelve of them sit under a page header whose own figures line already states the figure with
+  the same noun -- `1 brand · 1 site · 1 legal entity` over a sites grid, `8 products · 2 price
+  books · 2 promotions` over three of them -- the thirteenth is the resolved board, whose sub-line says
+  `7 resolved today`, and the fourteenth is the payments ledger, which prints `7 rows in this
+  window` under its own table. A count beneath any of those is the sentence twice, which
+  is what the field shell's message slot and the grid's own caption already forbid. **Found by
+  rendering all eighteen pages and comparing each count against `.ds-page-figures`**, not by
+  reading the call sites: the duplication is a property of what the page says, and a call site
+  cannot see the header above it. The day one of those grids takes a filter the header does not
+  apply, the two figures stop agreeing and the count earns its place back.
+
+  **The nouns are per-grid rather than one generic "N rows", because Arabic.** A shared
+  `{count} {noun}` would put the noun outside the plural selection, and Arabic agrees the noun
+  with the count across six categories -- `طلبان` for two with no numeral at all, `{count}
+  طلبات` for three to ten, `{count} طلبًا` for eleven and up. So each grid names what it counts
+  and both catalogues carry every form, which the per-plural-form sweep then checks.
 - **`Prose` is a fragment of inline spans**, so four of them at the top level of a page became
   one paragraph: *"...add up to the invoiced total.The design breaks this down by club."*
   `ProseNote` is the block form, so the next page cannot make the same mistake.

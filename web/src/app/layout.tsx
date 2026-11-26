@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { IBM_Plex_Mono, IBM_Plex_Sans, IBM_Plex_Sans_Arabic } from "next/font/google";
+import { Archivo, Barlow, Cairo } from "next/font/google";
 
 import Link from "next/link";
 
@@ -16,47 +16,43 @@ import { presentation } from "@/lib/preferences";
 import "./globals.css";
 
 /**
- * **The three faces the design is drawn in**, at exactly the weights it asks for.
+ * **The three faces this world is drawn in.** See `ds.json` FACES.
  *
- * The design documents load them in their own preamble:
+ * Archivo sets every quantity, because the signature move is the numeral on the back of a
+ * shirt: a grotesque with flat, confident figures that hold up at 72px and still align in a
+ * table at 13.5. Barlow sets Latin text -- a workhorse with the slightly condensed set width
+ * a dense operations screen wants. Cairo sets Arabic, a Kufi-influenced grotesque that sits
+ * beside both without a seam and is credible in this product's own region.
  *
- *     family=IBM+Plex+Sans:wght@400;450;500;600
- *     &family=IBM+Plex+Mono:wght@400;500
- *     &family=IBM+Plex+Sans+Arabic:wght@400;500;600
+ * **There is no monospace, and that is the change.** The retired system set every figure in
+ * IBM Plex Mono. Monospace is for code, not for "technical" -- and tabular alignment does not
+ * need it: `font-variant-numeric: tabular-nums` is a feature both Archivo and Cairo ship, so
+ * a column aligns without borrowing a typewriter's voice for money.
  *
- * **`globals.css` named them from the first commit and nothing ever loaded one**, so every
- * screen in this product rendered in the system face while the stylesheet said IBM Plex. A
- * font-family declaration for a font that is not there is not a typeface, it is a comment --
- * and no test could see it, because `getComputedStyle` reports the *declared* family whether
- * or not the browser found it.
- *
- * `next/font` self-hosts them at build time rather than linking to Google at runtime, which
- * is the same faces without a third party in every reader's request path -- and it is what
- * makes `font-display: swap` a flash of the right metrics rather than of the wrong font.
- *
- * **450 is requested by the design and not served.** Its preamble asks for `wght@400;450;500;600`
- * and Google answers with 400, 500 and 600 only -- so the design's own `font:450 12px` on nav
- * items and chips renders at 400 in the drawn documents too. Asking for it here would be
- * asking for a face that does not arrive; 400 is what the design actually looks like.
+ * `next/font` self-hosts at build time rather than linking to Google at runtime, which is the
+ * same faces without a third party in every reader's request path, and it is what makes
+ * `font-display: swap` a flash of the right metrics rather than of the wrong font. A
+ * `font-family` naming a face nothing loads is a comment, not a typeface, and this app has
+ * shipped that defect once already.
  */
-const plexSans = IBM_Plex_Sans({
+const figureFace = Archivo({
   subsets: ["latin"],
-  weight: ["400", "500", "600"],
-  variable: "--font-plex-sans",
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-figure",
   display: "swap",
 });
 
-const plexMono = IBM_Plex_Mono({
+const textFace = Barlow({
   subsets: ["latin"],
-  weight: ["400", "500"],
-  variable: "--font-plex-mono",
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-text",
   display: "swap",
 });
 
-const plexArabic = IBM_Plex_Sans_Arabic({
+const arabicFace = Cairo({
   subsets: ["arabic"],
-  weight: ["400", "500", "600"],
-  variable: "--font-plex-arabic",
+  weight: ["400", "600", "700"],
+  variable: "--font-arabic",
   display: "swap",
 });
 
@@ -170,16 +166,16 @@ export default async function RootLayout({
       // starts from.** FD-01, the live check-in, is unbuilt; this is the lookup, and it is
       // gated on the person read because without it there is nothing to find.
       { href: "/desk/lookup", label: "nav.lookup", allowed: people.allowed,
-        group: "nav.groupOperate", icon: "front-desk" },
+        group: "nav.groupDesk", icon: "front-desk" },
       { href: "/desk/trial", label: "nav.walkInTrial", allowed: people.allowed,
-        group: "nav.groupOperate", icon: "members" },
+        group: "nav.groupDesk", icon: "members" },
       // **Named for the screen rather than the surface**, as the walk-in is: FD-01 is unbuilt,
       // so an item called "Front desk" would promise a live check-in this build does not
       // have. Gated on the till permission, which is the one thing without which the page has
       // nothing to show -- and it is `configuration` with no financial class, so the entry is
       // not hiding a step-up.
       { href: "/desk/shift", label: "nav.shift", allowed: till.allowed,
-        group: "nav.groupMoney", icon: "front-desk" },
+        group: "nav.groupDesk", icon: "front-desk" },
 
       // **Members before People.** ADM-MEM-05 is the members list an operator opens;
       // `/people` is the duplicate queue and the record behind it. Both need the same
@@ -315,7 +311,7 @@ export default async function RootLayout({
       lang={locale}
       dir={dir}
       data-theme={theme}
-      className={`${plexSans.variable} ${plexMono.variable} ${plexArabic.variable}`}
+      className={`${textFace.variable} ${figureFace.variable} ${arabicFace.variable}`}
     >
       <body>
         {/* First focusable thing on every page: a keyboard user should not tab the whole nav. */}

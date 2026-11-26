@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { vocabulary } from "@/lib/members";
 import { redirect } from "next/navigation";
 
 import { Banner } from "@/components/ds/banner";
@@ -76,6 +77,7 @@ export default async function PeoplePage() {
         ) : (
           <DataGrid
             caption={text("people.duplicates")}
+            countLabel={fill(locale, "grid.count.duplicatePairs", { count: candidates.length }, numbering)}
 labelledBy="duplicates-heading"
             rows={candidates}
             rowKey={(candidate) => candidate.candidate_id}
@@ -88,7 +90,13 @@ labelledBy="duplicates-heading"
                 // precisely because a number is not enough -- so the reasons are the column
                 // that survives every width and the score is the one that drops.
                 priority: 1,
-                render: (candidate) => candidate.signals.join(", "),
+                render: (candidate) =>
+                  candidate.signals
+                    .map((signal) => {
+                      const key = vocabulary(signal);
+                      return key === null ? signal : t(locale, key);
+                    })
+                    .join(", "),
               },
               {
                 header: text("people.candidate"),

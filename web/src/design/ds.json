@@ -1,723 +1,1019 @@
 {
- "SEMANTIC": [
-  [
-   "color.surface.canvas",
-   "warm.100",
-   "dark.900 #1a1917",
-   "App background. The field everything sits on."
+  "WORLD": [
+    [
+      "Source",
+      "A Levantine graphic tradition carried in the owner's own primary: flat fully-saturated colour used as whole fields rather than accents, a bilingual lockup that sets Arabic and Latin as equals, and the numeral on the back of a shirt. The primary is #91338A, with #26202C as the ground the dark theme is built on. Recorded in full in .impeccable/surfaces/admin.md."
+    ],
+    [
+      "What the world lends",
+      "Type, palette, density and one signature move. It never supplies the layout, the navigation model or the controls, which stay standard web components. A crest, a stripe, a mascot or a shirt texture would be the costume rather than the grammar, and none ships."
+    ],
+    [
+      "Signature move",
+      "The monumental numeral. Every quantity the operator reads first is set in Archivo at type.figure on a baseline with its unit and its provenance beneath, never inside a bordered tile. A figure is the content, not an ornament on it."
+    ],
+    [
+      "Colour is quarantined",
+      "Colour appears only inside a region that is doing a job: the shell, a category field, a state, a data series, or selection. It is never scattered over the page as decoration. The primary is reserved for the brand's own two jobs -- the shell field and what can be pressed -- and a disabled action loses it."
+    ],
+    [
+      "One family, not one hue",
+      "The neutrals carry the primary's cast rather than a grey or a green one, so a page with no colour on it still reads as this product. The dark theme is #26202C's family all the way down. What is deliberately outside the family is the five status hues, because a state the eye reads as the brand is a state nobody notices."
+    ],
+    [
+      "Flatness",
+      "Screenprint on textile: matte, opaque, no gradient, no glass, no glow, no halo. Depth comes from a 2px rule and a solid field, not from a shadow. The one shadow in the system carries a real offset and blur and belongs to overlays only."
+    ]
   ],
-  [
-   "color.surface.default",
-   "warm.0",
-   "dark.800 #211f1c",
-   "Cards, panels, table bodies, sheets."
+  "PRIMITIVES": [
+    [
+      "bone.0",
+      "#ffffff"
+    ],
+    [
+      "bone.50",
+      "#faf7fa"
+    ],
+    [
+      "bone.100",
+      "#f3eef3"
+    ],
+    [
+      "bone.150",
+      "#eae2ea"
+    ],
+    [
+      "bone.200",
+      "#ddd1dd"
+    ],
+    [
+      "ink.900",
+      "#110d11"
+    ],
+    [
+      "ink.800",
+      "#1e171e"
+    ],
+    [
+      "ink.700",
+      "#382c38"
+    ],
+    [
+      "ink.600",
+      "#544554"
+    ],
+    [
+      "ink.500",
+      "#6d5b6d"
+    ],
+    [
+      "ink.400",
+      "#998799"
+    ],
+    [
+      "plum.950",
+      "#1d071b"
+    ],
+    [
+      "plum.900",
+      "#2c0c29"
+    ],
+    [
+      "plum.800",
+      "#3e143b"
+    ],
+    [
+      "plum.700",
+      "#581d54"
+    ],
+    [
+      "plum.600",
+      "#72276c"
+    ],
+    [
+      "plum.500",
+      "#91338a"
+    ],
+    [
+      "plum.400",
+      "#b342aa"
+    ],
+    [
+      "plum.300",
+      "#d685d0"
+    ],
+    [
+      "plum.200",
+      "#ebb7e7"
+    ],
+    [
+      "plum.100",
+      "#f8e2f6"
+    ],
+    [
+      "crimson.600",
+      "#7c161d"
+    ],
+    [
+      "crimson.500",
+      "#a3212a"
+    ],
+    [
+      "crimson.100",
+      "#fae1e2"
+    ],
+    [
+      "gold.600",
+      "#855d00"
+    ],
+    [
+      "gold.500",
+      "#c98f05"
+    ],
+    [
+      "gold.400",
+      "#e8ab1f"
+    ],
+    [
+      "gold.100",
+      "#fbeec9"
+    ],
+    [
+      "steel.600",
+      "#1d6e8c"
+    ],
+    [
+      "steel.100",
+      "#dcecf3"
+    ],
+    [
+      "turf.600",
+      "#0e6845"
+    ],
+    [
+      "turf.300",
+      "#7fc9a9"
+    ],
+    [
+      "turf.100",
+      "#d6efe3"
+    ],
+    [
+      "ai.600",
+      "#3b49a0"
+    ],
+    [
+      "ai.50",
+      "#e8eaf7"
+    ]
   ],
-  [
-   "color.surface.raised",
-   "warm.0 + e1",
-   "dark.700 #2a2724",
-   "Overlays, popovers, dropdowns, command palette."
+  "DARK_RAMP": [
+    [
+      "aubergine.950",
+      "#120f15",
+      "Dark canvas floor, the shell field and inputs. The darkest member of the primary's own family, not neutral black."
+    ],
+    [
+      "aubergine.900",
+      "#1a161e",
+      "Dark app background."
+    ],
+    [
+      "aubergine.800",
+      "#26202c",
+      "Dark cards, panels, table bodies. The owner's dark primary, placed where it covers the most of the screen a reader actually looks at."
+    ],
+    [
+      "aubergine.700",
+      "#342c3c",
+      "Dark overlays, popovers, dropdowns, and the current item on the shell field."
+    ],
+    [
+      "mauve.200",
+      "#dfd3e3",
+      "Dark secondary text. Tinted from the primary's own hue rather than grey."
+    ],
+    [
+      "mauve.300",
+      "#c3afca",
+      "Dark tertiary text."
+    ],
+    [
+      "crimson.light",
+      "#e9838a",
+      "Dark critical and error."
+    ],
+    [
+      "gold.light",
+      "#f0bf52",
+      "Dark warning and the wordmark mark."
+    ],
+    [
+      "steel.light",
+      "#7fc0da",
+      "Dark info, filed and recorded. Steel lifted for a ground built on #26202C."
+    ],
+    [
+      "turf.light",
+      "#7fc9a9",
+      "Dark success and the staffing category field."
+    ],
+    [
+      "ai.light",
+      "#a0a9e4",
+      "Dark AI. Guardrail G7 keeps this system-owned in both themes."
+    ]
   ],
-  [
-   "color.surface.sunken",
-   "warm.50",
-   "dark.950 #141311",
-   "Table headers, inset wells, code and log areas."
+  "SEMANTIC": [
+    [
+      "color.surface.canvas",
+      "bone.100",
+      "aubergine.900",
+      "App background. The field everything sits on."
+    ],
+    [
+      "color.surface.default",
+      "bone.0",
+      "aubergine.800",
+      "Cards, panels, table bodies, sheets. In dark this is #26202C itself: the owner's dark primary on the largest readable area rather than on one panel."
+    ],
+    [
+      "color.surface.raised",
+      "bone.0",
+      "aubergine.700",
+      "Overlays, popovers, dropdowns, command palette."
+    ],
+    [
+      "color.surface.sunken",
+      "bone.50",
+      "aubergine.950",
+      "Table headers, inset wells, log areas."
+    ],
+    [
+      "color.surface.hover",
+      "bone.50",
+      "rgba(255,255,255,.05)",
+      "Row and control hover."
+    ],
+    [
+      "color.surface.selected",
+      "plum.100",
+      "rgba(214,133,208,.14)",
+      "Selected row, active tab, current nav item."
+    ],
+    [
+      "color.surface.input",
+      "bone.0",
+      "aubergine.950",
+      "Text inputs, selects, textareas."
+    ],
+    [
+      "color.surface.overlay",
+      "rgba(29,7,27,.52)",
+      "rgba(0,0,0,.66)",
+      "The scrim behind a sheet or dialog."
+    ],
+    [
+      "color.text.primary",
+      "ink.900",
+      "bone.50",
+      "Body copy, headings, table cells."
+    ],
+    [
+      "color.text.secondary",
+      "ink.600",
+      "mauve.200",
+      "Supporting copy, provenance lines, column headers."
+    ],
+    [
+      "color.text.tertiary",
+      "ink.500",
+      "mauve.300",
+      "Captions and placeholders. The lightest text permitted below 18.66px."
+    ],
+    [
+      "color.text.disabled",
+      "ink.400",
+      "rgba(250,247,250,.38)",
+      "Disabled controls only. Never placeholders: see CONTRAST."
+    ],
+    [
+      "color.text.inverse",
+      "bone.0",
+      "bone.0",
+      "Text on a filled action or a saturated field. **It is bone in both themes now, which it was not before.** The action fill used to be ink in light and bone in dark, so the label had to flip with it; the fill is a plum in both themes now, so the label does not. One value is the fact rather than an oversight."
+    ],
+    [
+      "color.text.on-bright",
+      "ink.900",
+      "ink.900",
+      "Text on a field that is bright in both themes -- the money category field is gold.400 in light and gold.light in dark, and both take ink at 9.43:1 and better. White on it is 2.04:1, the one pairing in this palette that looks deliberate and fails."
+    ],
+    [
+      "color.text.link",
+      "plum.600",
+      "plum.300",
+      "Inline links. Always underlined; colour is never the only signal."
+    ],
+    [
+      "color.text.critical",
+      "crimson.600",
+      "crimson.light",
+      "Critical inline text."
+    ],
+    [
+      "color.border.subtle",
+      "rgba(17,13,17,.10)",
+      "rgba(255,255,255,.09)",
+      "Internal divisions inside one component."
+    ],
+    [
+      "color.border.default",
+      "rgba(17,13,17,.18)",
+      "rgba(255,255,255,.15)",
+      "Input borders, card edges, table rules."
+    ],
+    [
+      "color.border.strong",
+      "ink.900",
+      "bone.50",
+      "The 2px rule. The structural line, not a hairline -- and the thing that separates a large colour field from the canvas behind it, where a contrast ratio between two fields is not the right instrument."
+    ],
+    [
+      "color.border.focus",
+      "ink.900",
+      "bone.0",
+      "Focus ring. Maximum contrast in both themes, drawn with a 2px offset so it survives on a filled action. Guardrail G4: never configurable."
+    ],
+    [
+      "color.border.error",
+      "crimson.500",
+      "crimson.light",
+      "The border of a field that failed validation."
+    ],
+    [
+      "color.action.primary",
+      "plum.500",
+      "plum.400",
+      "Primary action fill. **The owner's #91338A, and the reason it can be is G2.** The action colour was ink because the shell field and the success state were both the same green, so a saturated action would have shared a hue with a status. The primary shares a hue with nothing in this palette -- 51 degrees from error, 97 from warning, 148 from success, 108 from info, 73 from AI -- so the one pressable thing on the page is the brand itself. bone on it is 6.90:1 light and 4.91:1 dark; the fill clears its canvas by 6.02:1 and 3.63:1."
+    ],
+    [
+      "color.action.hover",
+      "plum.600",
+      "plum.300",
+      "Primary action, hovered. A declared token rather than a filter, because the retired rule was brightness(0.95) and that is one step per channel on a dark fill -- no hover state at all on the page's primary action. Light deepens, dark lifts."
+    ],
+    [
+      "color.action.pressed",
+      "plum.700",
+      "plum.200",
+      "Primary action, pressed."
+    ],
+    [
+      "color.semantic.success",
+      "turf.600",
+      "turf.light",
+      "Succeeded, active, paid, present. **Green stays, and only here.** It is a status rather than an identity: a paid invoice rendered in the brand colour would be a state the eye reads as a highlight, and this is the one job the retired green was doing that the primary cannot take over."
+    ],
+    [
+      "color.semantic.warning",
+      "gold.600",
+      "gold.light",
+      "Needs attention, due, expiring."
+    ],
+    [
+      "color.semantic.error",
+      "crimson.500",
+      "crimson.light",
+      "Failed, refused, overdue, at risk. **Moved to a true red.** The retired error was a claret at 342 degrees, which sits 37 degrees from the new primary -- close enough that a refusal and the brand would have read as one family on a page carrying both. 356 degrees separates them."
+    ],
+    [
+      "color.semantic.info",
+      "steel.600",
+      "steel.light",
+      "Informational, filed, recorded."
+    ],
+    [
+      "color.semantic.ai",
+      "ai.600",
+      "ai.light",
+      "AI interpretation, recommendation and evidence. Guardrail G7: system-owned. **Moved from 247 to 232 degrees** for the same reason the error moved: a violet-indigo beside a plum primary is two purples, and G7 asks for a role nothing else can be mistaken for."
+    ],
+    [
+      "color.semantic.ai.wash",
+      "ai.50",
+      "rgba(160,169,228,.16)",
+      "The ground of an AI region."
+    ],
+    [
+      "color.semantic.ai.border",
+      "ai.600",
+      "ai.light",
+      "The edge of an AI region."
+    ],
+    [
+      "color.brand.field",
+      "plum.800",
+      "aubergine.950",
+      "The shell field: the navigation rail and the sign-in panel. The one large committed colour, and in light it is the primary's own deep end."
+    ],
+    [
+      "color.brand.field.text",
+      "bone.50",
+      "mauve.200",
+      "Text on the shell field."
+    ],
+    [
+      "color.brand.field.selected",
+      "plum.600",
+      "aubergine.700",
+      "The current item's ground on the shell field. A tint of the field rather than a bar down one side of it: the craft floor bans the one-sided bar and offers a tint as the alternative."
+    ],
+    [
+      "color.brand.field.muted",
+      "plum.300",
+      "mauve.300",
+      "Group headings and secondary text on the shell field. Tinted from the field's own hue rather than grey, which is what the craft floor asks for on a coloured surface. 5.94:1 light, 9.33:1 dark."
+    ],
+    [
+      "color.brand.field.selected.text",
+      "bone.0",
+      "bone.50",
+      "Text on the current item's ground. Declared per theme rather than reusing color.text.inverse: on the dark theme's selected ground an inverted value was 1.94:1 once, a real failure. 9.45:1 light, 12.57:1 dark."
+    ],
+    [
+      "color.brand.mark",
+      "gold.400",
+      "gold.light",
+      "The wordmark's mark and the current-item marker on the shell field. Gold against the plum field rather than in it, which is the one place two committed colours meet on purpose."
+    ],
+    [
+      "color.category.money",
+      "gold.400",
+      "gold.light",
+      "Money: collections, recovery, payments, till."
+    ],
+    [
+      "color.category.compliance",
+      "steel.600",
+      "steel.light",
+      "Compliance: filings, privacy, audit, consent."
+    ],
+    [
+      "color.category.retention",
+      "crimson.500",
+      "crimson.light",
+      "Retention: expiring memberships, cancellations, leads going cold."
+    ],
+    [
+      "color.category.staffing",
+      "turf.600",
+      "turf.light",
+      "Staffing and delivery: rotas, unstaffed classes, devices."
+    ],
+    [
+      "color.category.money.text",
+      "ink.900",
+      "ink.900",
+      "Text on the money field. Gold is light in both themes, so ink in both: 9.43:1 light, 11.27:1 dark. White on it is 2.04:1."
+    ],
+    [
+      "color.category.compliance.text",
+      "bone.0",
+      "ink.900",
+      "Text on the compliance field. Steel is dark in light and a light tint in dark, so the text flips: bone 5.74:1, then ink 9.60:1."
+    ],
+    [
+      "color.category.retention.text",
+      "bone.0",
+      "ink.900",
+      "Text on the retention field. Crimson flips the same way: bone 7.48:1, then ink 7.41:1."
+    ],
+    [
+      "color.category.staffing.text",
+      "bone.0",
+      "ink.900",
+      "Text on the staffing field. Turf flips the same way: bone 6.81:1, then ink 9.94:1."
+    ]
   ],
-  [
-   "color.surface.hover",
-   "warm.50",
-   "rgba(255,255,255,.04)",
-   "Row and interactive-surface hover only. Never a resting state."
+  "DARK_GAPS": [],
+  "TYPE_SCALE": [
+    [
+      "type.figure",
+      "72 / 0.90",
+      "700",
+      "-0.035em",
+      "The signature move. One quantity the operator reads first, set on a baseline with its unit and provenance beneath. Never inside a bordered tile, and never more than one register of it per region."
+    ],
+    [
+      "type.figureSm",
+      "44 / 0.95",
+      "700",
+      "-0.03em",
+      "A secondary quantity in the same baseline, and the figure a phone collapses to."
+    ],
+    [
+      "type.display",
+      "40 / 1.05",
+      "700",
+      "-0.025em",
+      "The opening sentence of a surface that leads with a verdict."
+    ],
+    [
+      "type.h1",
+      "28 / 1.14",
+      "700",
+      "-0.02em",
+      "Page title. One per screen."
+    ],
+    [
+      "type.h2",
+      "20 / 1.25",
+      "600",
+      "-0.012em",
+      "Section heading, sheet title, member name in a record header."
+    ],
+    [
+      "type.h3",
+      "16 / 1.32",
+      "600",
+      "-0.008em",
+      "Card title, subsection, exception headline."
+    ],
+    [
+      "type.h4",
+      "14 / 1.36",
+      "600",
+      "0",
+      "The smallest heading. Table group headers."
+    ],
+    [
+      "type.bodyLg",
+      "15.5 / 1.60",
+      "400",
+      "0",
+      "Reading copy on a surface at Spacious density."
+    ],
+    [
+      "type.body",
+      "14.5 / 1.60",
+      "400",
+      "0",
+      "Body copy and table cells."
+    ],
+    [
+      "type.bodySm",
+      "13 / 1.55",
+      "400",
+      "0",
+      "Dense tables and secondary copy."
+    ],
+    [
+      "type.label",
+      "12 / 1.30",
+      "600",
+      "0.02em",
+      "Field labels, column headers, the unit under a figure. Never a kicker above a heading."
+    ],
+    [
+      "type.caption",
+      "11.5 / 1.40",
+      "400",
+      "0",
+      "Provenance and footnotes. Latin only; Arabic resolves to 13px."
+    ],
+    [
+      "type.data",
+      "13.5 / 1.20",
+      "500",
+      "0",
+      "Tabular figures inside a grid. Archivo's tabular set, not a monospace costume."
+    ]
   ],
-  [
-   "color.surface.selected",
-   "ink.50",
-   "rgba(126,166,232,.16)",
-   "Selected row, active nav item, chosen segment."
+  "FACES": [
+    [
+      "Display and figures",
+      "Archivo",
+      "Self-hosted by next/font at build time, declared in src/app/layout.tsx. A grotesque with the flat confident numerals of a shirt number: it holds at 72px and still aligns in a table at 13.5. Carries type.figure, type.figureSm, type.display, type.h1 and every tabular figure."
+    ],
+    [
+      "Latin text",
+      "Barlow",
+      "Self-hosted by next/font at build time. A workhorse UI face at the sizes this product reads at, with the slightly condensed set width a dense operations screen needs."
+    ],
+    [
+      "Arabic",
+      "Cairo",
+      "Self-hosted by next/font at build time. A Kufi-influenced grotesque that sits beside Archivo and Barlow without a seam, and is regionally credible. Carries both Arabic text and Arabic display, and ships the tabular figures a mirrored column needs."
+    ],
+    [
+      "No monospace",
+      "none",
+      "The old system set every figure in a monospace face. Monospace is for code, not for 'technical'; tabular alignment is Archivo's tabular-figure feature, which aligns without borrowing a typewriter's voice."
+    ]
   ],
-  [
-   "color.surface.input",
-   "warm.0",
-   "dark.950",
-   "Field backgrounds across all form controls."
+  "CONTRAST": [
+    [
+      "color.text.primary · ink.900",
+      "#110d11",
+      "19.27:1",
+      "16.83:1",
+      "15.20:1",
+      "Pass everywhere, all sizes. AAA on all three."
+    ],
+    [
+      "color.text.secondary · ink.600",
+      "#544554",
+      "8.91:1",
+      "7.78:1",
+      "7.03:1",
+      "Pass everywhere, all sizes. AAA on bone.0."
+    ],
+    [
+      "color.text.tertiary · ink.500",
+      "#6d5b6d",
+      "6.24:1",
+      "5.44:1",
+      "4.92:1",
+      "Pass on all three at small text, including bone.150. The lightest text the system permits below 18.66px, and placeholders resolve to it rather than to ink.400."
+    ],
+    [
+      "ink.400",
+      "#998799",
+      "3.34:1",
+      "2.92:1",
+      "2.64:1",
+      "FAIL under 18.66px on every surface. Disabled controls and decoration only, never placeholder text. It is the one row in this table that is not a pass, and it is listed so the failure is a decision rather than an omission."
+    ],
+    [
+      "color.text.link · plum.600",
+      "#72276c",
+      "9.45:1",
+      "8.25:1",
+      "7.45:1",
+      "Pass. The primary's own mid-tone, so a link reads as the brand rather than as a second accent. White on plum.600 is 9.45:1 for a filled link block."
+    ],
+    [
+      "color.action.primary · plum.500",
+      "#91338a",
+      "6.90:1",
+      "6.02:1",
+      "5.44:1",
+      "The owner's #91338A. White on it is 6.90:1, so a filled action clears AA at every size, and the fill clears its own canvas at 6.02:1. As *text* on bone.150 it is 5.44:1, which also passes -- but the action is a fill here, not a text colour."
+    ],
+    [
+      "color.text.critical · crimson.600",
+      "#7c161d",
+      "10.56:1",
+      "9.22:1",
+      "8.33:1",
+      "Pass. White on crimson.600 is 10.56:1 for filled badges."
+    ],
+    [
+      "color.semantic.warning · gold.600",
+      "#855d00",
+      "5.89:1",
+      "5.15:1",
+      "4.65:1",
+      "Pass at small text on all three. The tightest semantic -- do not lighten. Gold reads as a field, not as text: the money category field is gold.400 and carries ink.900 at 9.43:1."
+    ],
+    [
+      "color.semantic.success · turf.600",
+      "#0e6845",
+      "6.81:1",
+      "5.94:1",
+      "5.37:1",
+      "Pass as text and as a filled surface -- white on fill is 6.81:1. The only green left in the system, and it is a status rather than an identity."
+    ],
+    [
+      "color.semantic.error · crimson.500",
+      "#a3212a",
+      "7.48:1",
+      "6.53:1",
+      "5.90:1",
+      "Pass at small text on all three. White on fill is 7.48:1."
+    ],
+    [
+      "color.semantic.info · steel.600",
+      "#1d6e8c",
+      "5.74:1",
+      "5.01:1",
+      "4.52:1",
+      "Pass at small text on all three. White on fill is 5.74:1."
+    ],
+    [
+      "color.semantic.ai · ai.600",
+      "#3b49a0",
+      "7.93:1",
+      "6.93:1",
+      "6.26:1",
+      "Pass all sizes. White on ai.600 is 7.93:1. Distinct from every other role by hue, and never shares a role with one."
+    ]
   ],
-  [
-   "color.surface.overlay",
-   "rgba(23,23,26,.44)",
-   "rgba(0,0,0,.6)",
-   "Scrim behind modals and sheets."
+  "GUARDRAILS": [
+    [
+      "G1",
+      "brand.accent must reach 4.5:1 against surface.default and surface.canvas, and its computed on-accent label colour must reach 4.5:1 against the accent itself.",
+      "Rejected at upload with the nearest passing value offered."
+    ],
+    [
+      "G2",
+      "brand.accent must sit a minimum perceptual distance from success, warning and error. A brand green close to success is refused.",
+      "This system resolves the same problem for itself rather than only for tenants, and the primary is what resolved it. The retired shell colour and the success state were both the same green, so a saturated action would have shared a hue with a status and the action had to be ink instead. #91338A shares a hue with nothing: 51 degrees from error, 73 from AI, 97 from warning, 108 from info, 148 from success. So the primary is the shell field *and* the one pressable thing on the page, which is what the owner asked for and what the old palette could not have given."
+    ],
+    [
+      "G3",
+      "brand.accent may never resolve into a status, money-state, safety or consent token. Enforced by the token boundary — the accent is simply not in scope for those components.",
+      "Not surfaced to the tenant."
+    ],
+    [
+      "G4",
+      "The focus ring is system-owned in both themes.",
+      "Not configurable. A tenant cannot ship an unnavigable product. Drawn as 2px with a 2px offset so it survives on a filled action, where a ring in the action's own colour would vanish."
+    ],
+    [
+      "G5",
+      "Dark-mode accent is derived from brand.accent, not configured separately.",
+      "Not surfaced. Prevents a tenant passing light mode and failing dark, which is the most common white-label accessibility failure."
+    ],
+    [
+      "G6",
+      "Logo requires a monochrome fallback before a brand can publish.",
+      "Blocks publish rather than degrading silently on receipts, invoices and exports."
+    ],
+    [
+      "G7",
+      "color.semantic.ai is system-owned in both themes and is not in scope for brand.accent.",
+      "AI interpretation, recommendation, evidence and executed-action states resolve to ai.* regardless of tenant branding."
+    ]
   ],
-  [
-   "color.text.primary",
-   "warm.900",
-   "warm.50 #f5f2ec",
-   "Headings, values, member names, primary content."
+  "ARABIC_RULES": [
+    [
+      "Line height +0.15",
+      "At any given size, Arabic gets 0.15 more line-height than Latin — type.body is 1.60 in Latin and 1.75 in Arabic. Diacritics and descenders need the room, and dense Arabic without it reads as a solid block."
+    ],
+    [
+      "Size floor 13px",
+      "Arabic never renders below 13px. type.caption (11.5) is a Latin-only token; its Arabic counterpart resolves to 13px. A caption that cannot be read is not a caption."
+    ],
+    [
+      "Weight up one step",
+      "Cairo reads optically lighter than Barlow at the same weight. Where Latin uses 400, Arabic uses 400; where Latin uses 500 or 600, Arabic uses 600; where Latin uses 700, Arabic uses 700."
+    ],
+    [
+      "Zero letter-spacing",
+      "Never apply tracking to Arabic — it breaks the joins. Any token carrying a track value drops it in Arabic, which is why type.label resolves to zero tracking in Arabic."
+    ],
+    [
+      "No italics",
+      "Arabic has no italic convention. Emphasis is weight or colour. Any component using italics for meaning must have a non-italic Arabic path."
+    ],
+    [
+      "Containers sized for Arabic",
+      "Arabic runs 15–30% longer than English here. Every label container, button and column is dimensioned against the Arabic string, not the English one."
+    ],
+    [
+      "Figures are Archivo, Arabic text is Cairo",
+      "Cairo carries Arabic-Indic numerals; Archivo carries Latin ones. A tabular column in an Arabic table switches family but keeps its alignment and width, because both faces ship tabular figures."
+    ],
+    [
+      "Numerals are a tenant setting",
+      "Latin or Arabic-Indic, chosen once per tenant and applied identically on screen, receipt, export and PDF. Never mixed within a tenant, and never decided per component. Money figures and identifiers a reader cites stay Latin."
+    ],
+    [
+      "Bidi isolation is mandatory",
+      "Money, phone numbers, member IDs, card last-four, times and Latin names are each wrapped in an isolated run. Without it JOD jumps to the wrong side of its amount."
+    ]
   ],
-  [
-   "color.text.secondary",
-   "warm.700",
-   "dark.text.2 #b8b3aa",
-   "Supporting copy, descriptions, explanatory lines."
+  "THEMES": [
+    [
+      "Veyro Admin",
+      "LIGHT FIRST · DARK OPT-IN",
+      "A back office with the lights on, read for hours at a stretch. Bone is a cleaner ground than warm paper for saturated category fields, which go muddy over cream. Dark ships as a true theme for early and late work, not a courtesy, and it is built on #26202C rather than on black."
+    ],
+    [
+      "Veyro Front Desk",
+      "LIGHT ONLY",
+      "Lobbies are bright, the screen is read at 1.5m, and staff do not choose their lighting. Dark would cost contrast headroom at exactly the moment resolution speed matters."
+    ],
+    [
+      "Veyro Coach",
+      "FOLLOWS SYSTEM",
+      "Gym-floor lighting swings from window glare to dim free-weight corners. This is the surface where user control genuinely earns its keep."
+    ],
+    [
+      "Veyro Member",
+      "FOLLOWS SYSTEM",
+      "Consumer expectation, plus evening and pre-dawn training. Dark is a first-class member experience here."
+    ],
+    [
+      "SaaS Console",
+      "DARK FIRST",
+      "Operated at night during incidents, beside other operations tooling. The one surface where dark is the default rather than the alternative."
+    ]
   ],
-  [
-   "color.text.tertiary",
-   "warm.600",
-   "dark.text.3 #928d84",
-   "Metadata, timestamps, IDs, eyebrow labels. Contrast floor for small text."
+  "CHARACTER": [
+    [
+      "Committed",
+      "Colour arrives as whole fields -- a plum rail, a gold block, a crimson block -- not as an accent sprinkled on grey. A grey screen with one accent colour is the category default without the category's polish, and this system refuses it."
+    ],
+    [
+      "Monumental",
+      "The quantity the operator came for is set at 72px on a baseline, not shrunk into a tile with a label above it. Scale is the hierarchy; a border around a number is a substitute for deciding it matters."
+    ],
+    [
+      "Flat",
+      "Screenprint, not glass. No gradient, no blur, no glow, no coloured halo. The structural line is a 2px rule in ink, and the only shadow in the system belongs to an overlay and carries a real offset and blur."
+    ],
+    [
+      "Bilingual by construction",
+      "Arabic and Latin are set as equals in one lockup, and every container is dimensioned against the Arabic string. Parity is structural here, not a translation pass at the end."
+    ],
+    [
+      "Honest",
+      "Where a figure cannot be derived, the surface says which fact is missing and what would supply it — in the operator's language, in one line, in the place the figure would have been. It never prints a plausible number, and it never explains itself to engineers on a working screen."
+    ],
+    [
+      "Quarantined",
+      "Colour appears only where it is doing a job. The action colour marks what can be pressed and nothing else; a disabled action loses it; a category field carries one kind of concern and does not leak into another."
+    ],
+    [
+      "Stable",
+      "Columns never move. Data changes inside a fixed grid, a row that reranks keeps its identity, and a row that changed holds its marker until it has been seen. A layout that reflows under new data is a layout the operator has to re-read."
+    ],
+    [
+      "Fast",
+      "34px rows where scanning is the job, tabular figures that align without effort, one authored motion moment rather than an entrance on every section. Speed is a visual property here, not only a performance one."
+    ]
   ],
-  [
-   "color.text.disabled",
-   "warm.500",
-   "rgba(245,242,236,.38)",
-   "Inactive controls only. Always paired with a stated reason."
+  "BRANDABLE": [
+    [
+      "brand.accent",
+      "A tenant's single accent, bounded by G1, G2 and G3.",
+      "Resolves into links, selection and the current-item marker. Never into a status, money, safety or consent token."
+    ],
+    [
+      "brand.logo",
+      "A tenant wordmark with a required monochrome fallback (G6).",
+      "Replaces the Veyro lockup on the shell field and on exports."
+    ],
+    [
+      "brand.field",
+      "Whether the shell field takes the tenant accent or stays plum.",
+      "Bounded by the same contrast rule as the accent: the computed on-field text must reach 4.5:1."
+    ],
+    [
+      "Not brandable: semantics",
+      "success, warning, error, info and ai are system-owned in both themes.",
+      "A tenant recolouring 'overdue' is a tenant shipping a safety defect."
+    ],
+    [
+      "Not brandable: the focus ring",
+      "G4.",
+      "Non-configurable in both themes."
+    ]
   ],
-  [
-   "color.text.inverse",
-   "warm.0",
-   "dark.900",
-   "On filled action and semantic surfaces."
+  "DENSITY": [
+    [
+      "Compact",
+      "34 / 40px",
+      "−1 step",
+      "13px",
+      "32px",
+      "Admin data grids, Console tenant lists, financial ledgers. Maximum rows per screen where scanning is the job."
+    ],
+    [
+      "Default",
+      "40 / 48px",
+      "base",
+      "14.5px",
+      "36px",
+      "Admin detail views, record inspectors, CRM, settings, forms."
+    ],
+    [
+      "Touch",
+      "48 / 52px",
+      "+1 step",
+      "15.5px",
+      "44px",
+      "Coach app, Front Desk, Kiosk, POS register. Never user-selectable on Front Desk or Kiosk."
+    ],
+    [
+      "Spacious",
+      "56 / 64px",
+      "+2 steps",
+      "15.5px",
+      "44px",
+      "Member app. Plus type.display and space.16 for first-run, milestones and progress moments."
+    ]
   ],
-  [
-   "color.text.link",
-   "ink.600",
-   "accent.light #7ea6e8",
-   "Inline links and evidence references."
+  "BREAKPOINTS": [
+    [
+      "bp.xs",
+      "0–599",
+      "Single column. The surface collapses to the single next decision with its figure monumental. Tables become drill-down lists, never shrunken grids."
+    ],
+    [
+      "bp.sm",
+      "600–899",
+      "Tablet portrait. Front Desk minimum. Rail collapses to icons."
+    ],
+    [
+      "bp.md",
+      "900–1199",
+      "Tablet landscape and small laptop. Admin usable: rail collapsed, inspector becomes an overlay rather than a column."
+    ],
+    [
+      "bp.lg",
+      "1200–1599",
+      "Admin target. Rail expanded at 240, content and inspector side by side."
+    ],
+    [
+      "bp.xl",
+      "1600+",
+      "Wide desktop. Content caps at 1440 and centres; the inspector widens to 480 rather than the table stretching indefinitely."
+    ]
   ],
-  [
-   "color.text.critical",
-   "error.600",
-   "error.light #e0836a",
-   "Overdue amounts, failed states, destructive labels."
+  "SHELL": [
+    [
+      "columns",
+      "12",
+      "The content grid."
+    ],
+    [
+      "gutter",
+      "24",
+      "px between columns."
+    ],
+    [
+      "rail",
+      "240",
+      "px, expanded."
+    ],
+    [
+      "rail_collapsed",
+      "56",
+      "px, icons only, from bp.sm down."
+    ],
+    [
+      "content_max",
+      "1440",
+      "px. Content caps and centres rather than stretching."
+    ],
+    [
+      "inspector",
+      "380",
+      "px at bp.lg."
+    ],
+    [
+      "inspector_wide",
+      "480",
+      "px at bp.xl."
+    ],
+    [
+      "rule",
+      "2",
+      "px. The world's structural line weight."
+    ]
   ],
-  [
-   "color.border.subtle",
-   "rgba(23,23,26,.08)",
-   "rgba(255,255,255,.08)",
-   "Row dividers inside a bounded container."
+  "LAYOUTS": [
+    [
+      "Veyro Admin",
+      "A pitch-green rail down the inside edge carrying the bilingual lockup and navigation grouped by what the operator is trying to do, over a bone field. Split view is list plus inspector, never three columns."
+    ],
+    [
+      "Front Desk",
+      "Two zones, no rail: a fixed capture strip at the top holding scan and search, and a resolution area below. Touch density, one modal depth maximum, keyboard focus returning to the scan field."
+    ],
+    [
+      "Veyro Coach",
+      "Single column, bottom nav of four plus a create action. Sheets capped at two levels. Primary actions in the lower third for one-handed reach. Two-pane only from bp.sm on tablet."
+    ],
+    [
+      "Veyro Member",
+      "Single column, Spacious. Bottom nav of five. One 'now' card owning the top of the viewport; everything else below the fold."
+    ],
+    [
+      "SaaS Console",
+      "The Admin shell at Compact density on the dark theme, with an incident banner slot above the rail that no other surface has."
+    ]
   ],
-  [
-   "color.border.default",
-   "rgba(23,23,26,.14)",
-   "rgba(255,255,255,.13)",
-   "Container edges, inputs, table outlines. The workhorse."
-  ],
-  [
-   "color.border.strong",
-   "rgba(23,23,26,.28)",
-   "rgba(255,255,255,.26)",
-   "Secondary button outline, emphasised separation."
-  ],
-  [
-   "color.border.focus",
-   "ink.600",
-   "accent.light",
-   "Focus ring. Never brand-configurable."
-  ],
-  [
-   "color.border.error",
-   "error.600",
-   "error.light",
-   "Invalid field outline, paired with a message."
-  ],
-  [
-   "color.action.primary",
-   "ink.600",
-   "accent.light",
-   "Primary button fill, active selection, links."
-  ],
-  [
-   "color.action.pressed",
-   "ink.700",
-   "accent.pressed",
-   "Pressed state on primary."
-  ],
-  [
-   "color.semantic.success",
-   "success.600",
-   "#6fae7f",
-   "Paid, confirmed, resolved, on-plan."
-  ],
-  [
-   "color.semantic.warning",
-   "warning.600",
-   "#d9a256",
-   "Expiring, approaching a limit, needs review."
-  ],
-  [
-   "color.semantic.error",
-   "error.600",
-   "#e0836a",
-   "Failed, denied, overdue, blocking."
-  ],
-  [
-   "color.semantic.info",
-   "info.600",
-   "#8aa9b5",
-   "Neutral system information. Deliberately not the action hue."
-  ],
-  [
-   "color.semantic.ai",
-   "ai.600 #4a3d7a",
-   "ai.light #a397dd",
-   "AI interpretation, recommendation, evidence and executed-action states. SYSTEM-OWNED — never inherits brand.accent. 9.31:1 on warm.0."
-  ],
-  [
-   "color.semantic.ai.wash",
-   "ai.50 #edebf6",
-   "rgba(163,151,221,.16)",
-   "AI panel header and evidence-link background. The only wash that signals machine reasoning."
-  ],
-  [
-   "color.semantic.ai.border",
-   "ai.600 at 1px",
-   "ai.light at 1px",
-   "AI container edge. Distinguishes an interpretation panel from an action panel at a glance."
+  "MOTION": [
+    [
+      "One authored moment",
+      "A surface gets one motion idea, not an entrance on every section. On Admin it is the queue: a row that reranks moves to its new position rather than disappearing and reappearing, and keeps its identity while it travels."
+    ],
+    [
+      "Exponential ease-out from visible",
+      "Everything animates from an already-visible default. Content never fades in from nothing, because a page that assembles itself is a page the operator waits for."
+    ],
+    [
+      "Durations",
+      "120ms for a control's own feedback, 200ms for a surface change, 320ms for a row travelling. Nothing is slower than 320ms on a working screen."
+    ],
+    [
+      "Reduced motion",
+      "prefers-reduced-motion removes travel and cross-fades and keeps state changes instant. A change marker is a colour and a rule, never only a movement, so nothing is lost."
+    ]
   ]
- ],
- "TYPE_SCALE": [
-  [
-   "type.display",
-   "34 / 1.10",
-   "500",
-   "-0.02em",
-   "Member milestones, first-run, progress reviews. The editorial register from 1c. Never on Admin."
-  ],
-  [
-   "type.h1",
-   "26 / 1.15",
-   "500",
-   "-0.018em",
-   "Page title. One per screen."
-  ],
-  [
-   "type.h2",
-   "20 / 1.20",
-   "500",
-   "-0.014em",
-   "Section heading, modal title, member name in a 360 header."
-  ],
-  [
-   "type.h3",
-   "16 / 1.30",
-   "500",
-   "-0.01em",
-   "Card title, subsection, exception headline."
-  ],
-  [
-   "type.h4",
-   "14 / 1.35",
-   "500",
-   "0",
-   "Dense group heading inside a panel."
-  ],
-  [
-   "type.bodyLg",
-   "15 / 1.60",
-   "400",
-   "0",
-   "Member app body, coach prose, explanatory paragraphs."
-  ],
-  [
-   "type.body",
-   "14 / 1.60",
-   "400",
-   "0",
-   "Default. Admin content, descriptions, table text."
-  ],
-  [
-   "type.bodySm",
-   "12.5 / 1.55",
-   "400",
-   "0",
-   "Secondary explanation, helper text under a field."
-  ],
-  [
-   "type.label",
-   "12 / 1.35",
-   "500",
-   "0.005em",
-   "Field labels, button text, chips, nav items."
-  ],
-  [
-   "type.caption",
-   "11 / 1.40",
-   "400",
-   "0",
-   "Legal, footnotes, timestamps. Latin only — Arabic floor is 13."
-  ],
-  [
-   "type.data",
-   "13 / 1.20",
-   "500",
-   "0",
-   "Mono tabular. Money, counts, sets, reps, macros, IDs. The reason columns align."
-  ],
-  [
-   "type.eyebrow",
-   "10 / 1.40",
-   "500",
-   "0.09em",
-   "Mono uppercase section markers. Latin only."
-  ]
- ],
- "DENSITY": [
-  [
-   "Compact",
-   "34 / 40px",
-   "−1 step",
-   "13px",
-   "32px",
-   "Admin data grids, Console tenant lists, financial ledgers. Maximum rows per screen where scanning is the job."
-  ],
-  [
-   "Default",
-   "40 / 48px",
-   "base",
-   "14px",
-   "36px",
-   "Admin detail views, Member 360 inspector, CRM, settings, forms."
-  ],
-  [
-   "Touch",
-   "48 / 52px",
-   "+1 step",
-   "15px",
-   "44px",
-   "Coach app, Front Desk, Kiosk, POS register. Never user-selectable on Front Desk or Kiosk."
-  ],
-  [
-   "Spacious",
-   "56 / 64px",
-   "+2 steps",
-   "16px",
-   "44px",
-   "Member app. Plus type.display and space.16 for first-run, milestones and progress moments."
-  ]
- ],
- "BREAKPOINTS": [
-  [
-   "bp.xs",
-   "0–599",
-   "Single column. Bottom nav of five. Sheets replace modals. Tables become drill-down lists, never shrunken grids."
-  ],
-  [
-   "bp.sm",
-   "600–899",
-   "Tablet portrait. Coach gains a two-pane client list. Front Desk minimum. Rail collapses to icons."
-  ],
-  [
-   "bp.md",
-   "900–1199",
-   "Tablet landscape and small laptop. Admin usable: rail collapsed, inspector becomes an overlay rather than a column."
-  ],
-  [
-   "bp.lg",
-   "1200–1599",
-   "Admin target. Rail expanded at 240, content and inspector side by side."
-  ],
-  [
-   "bp.xl",
-   "1600+",
-   "Wide desktop. Content caps at 1440 and centres; the inspector widens to 480 rather than the table stretching indefinitely."
-  ]
- ],
- "ARABIC_RULES": [
-  [
-   "Line height +0.15",
-   "At any given size, Arabic gets 0.15 more line-height than Latin — type.body is 1.60 in Latin and 1.75 in Arabic. Diacritics and descenders need the room, and dense Arabic without it is the single most common failure in localised SaaS."
-  ],
-  [
-   "Size floor 13px",
-   "Arabic never renders below 13px. type.caption (11) and type.eyebrow (10) are Latin-only tokens; their Arabic counterparts resolve to 13px. A caption that cannot be read is not a caption."
-  ],
-  [
-   "Weight up one step",
-   "Plex Sans Arabic reads optically lighter than Plex Sans at the same weight. Where Latin uses 400, Arabic uses 400; where Latin uses 450 or 500, Arabic uses 500; where Latin uses 500 for emphasis, Arabic uses 600."
-  ],
-  [
-   "Zero letter-spacing",
-   "Never apply tracking to Arabic — it breaks the joins. Any token carrying a track value drops it in Arabic, which is why type.eyebrow has no Arabic form and uses type.label instead."
-  ],
-  [
-   "No italics",
-   "Arabic has no italic convention. Emphasis is weight or colour. Any component using italics for meaning must have a non-italic Arabic path."
-  ],
-  [
-   "Containers sized for Arabic",
-   "Arabic runs 15–30% longer than English here. Every label container, button and column is dimensioned against the Arabic string, not the English one. Design reviews use the Arabic build for width decisions."
-  ],
-  [
-   "Mono is Latin-only",
-   "IBM Plex Mono has no Arabic. Tabular Arabic numerals use Plex Sans Arabic with tabular figures; a mono column in an Arabic table switches family but keeps its alignment and width."
-  ],
-  [
-   "Numerals are a tenant setting",
-   "Latin or Arabic-Indic, chosen once per tenant and applied identically on screen, receipt, export and PDF. Never mixed within a tenant, and never decided per component."
-  ],
-  [
-   "Bidi isolation is mandatory",
-   "Money, phone numbers, member IDs, card last-four, times and Latin lift names are each wrapped in an isolated run. Without it JOD jumps to the wrong side of its amount — a money-ambiguity defect, not a typographic one."
-  ]
- ],
- "CONTRAST": [
-  [
-   "color.text.primary · warm.900",
-   "#17171a",
-   "17.74:1",
-   "16.00:1",
-   "14.76:1",
-   "Pass everywhere, all sizes. AAA on all three."
-  ],
-  [
-   "color.text.secondary · warm.700",
-   "#57544d",
-   "7.49:1",
-   "6.75:1",
-   "6.23:1",
-   "Pass everywhere, all sizes."
-  ],
-  [
-   "color.text.tertiary · warm.600",
-   "#6b6a63",
-   "5.38:1",
-   "4.86:1",
-   "4.48:1",
-   "Pass on warm.0 and warm.100 — the small-text floor. FAILS on warm.150 by 0.02: large-text-only there, and the pairing is excluded from the CI allow-list."
-  ],
-  [
-   "warm.500",
-   "#85807a",
-   "3.88:1",
-   "3.50:1",
-   "3.23:1",
-   "FAIL under 18.66px on every surface. Large text, disabled controls and decoration only."
-  ],
-  [
-   "color.text.link · ink.600",
-   "#1b4079",
-   "10.13:1",
-   "9.14:1",
-   "8.43:1",
-   "Pass. Also passes inverse — white on ink.600 is 10.21:1."
-  ],
-  [
-   "color.text.critical · error.600",
-   "#8a3b1f",
-   "7.64:1",
-   "6.89:1",
-   "6.36:1",
-   "Pass. White on error.600 is 7.70:1 for filled badges."
-  ],
-  [
-   "color.semantic.warning",
-   "#8a5a1f",
-   "5.84:1",
-   "5.27:1",
-   "4.86:1",
-   "Pass. The tightest semantic — do not lighten. White on fill is 5.89:1."
-  ],
-  [
-   "color.semantic.success",
-   "#2f5d3a",
-   "7.58:1",
-   "6.84:1",
-   "6.31:1",
-   "Pass as text and as a filled surface — white on fill is 7.64:1."
-  ],
-  [
-   "color.semantic.ai · ai.600",
-   "#4a3d7a",
-   "9.31:1",
-   "8.40:1",
-   "7.75:1",
-   "Pass all sizes. White on ai.600 is 9.38:1. Distinct from ink.600 (10.13:1) by hue, not lightness — the two never share a role."
-  ]
- ],
- "GUARDRAILS": [
-  [
-   "G1",
-   "brand.accent must reach 4.5:1 against surface.default and surface.canvas, and its computed on-accent label colour must reach 4.5:1 against the accent itself.",
-   "Rejected at upload with the nearest passing shade of their own colour offered, shown side by side. They are never left without a route to a brand they recognise."
-  ],
-  [
-   "G2",
-   "brand.accent must sit a minimum perceptual distance from success, warning and error. A brand green close to success.600 fails.",
-   "“This green is too close to the colour Veyro uses for confirmed payments.” Alternative offered, with the reason stated in operational terms rather than colour theory."
-  ],
-  [
-   "G3",
-   "brand.accent may never resolve into a status, money-state, safety or consent token. Enforced by the token boundary — the accent is simply not in scope for those components.",
-   "Not surfaced, because it cannot be attempted. This is the difference between a guardrail and a guideline."
-  ],
-  [
-   "G4",
-   "The focus ring is system-owned in both themes.",
-   "Not configurable. A tenant cannot ship an unnavigable product."
-  ],
-  [
-   "G5",
-   "Dark-mode accent is derived from brand.accent, not configured separately.",
-   "Not surfaced. Prevents a tenant passing light mode and failing dark, which is the most common white-label accessibility regression."
-  ],
-  [
-   "G6",
-   "Logo requires a monochrome fallback before a brand can publish.",
-   "“Add a single-colour version — it is used on receipts, invoices and exports.” Blocks publish rather than degrading silently at the printer."
-  ],
-  [
-   "G7",
-   "color.semantic.ai is system-owned in both themes and is not in scope for brand.accent. AI interpretation, recommendation, evidence and executed-action states resolve to ai.* regardless of tenant.",
-   "Not surfaced, because it cannot be attempted. Rationale: a tenant brand on an AI panel makes machine inference look like a first-party assertion. Veyro carries the accountability for what its AI says, so Veyro carries the colour."
-  ]
- ],
- "THEMES": [
-  [
-   "Veyro Admin",
-   "LIGHT FIRST · DARK OPT-IN",
-   "Eight hours of tabular reading. Hairline rules and mono columns separate best on a light field, and warm paper is easier at length than a bright white. Dark ships as an opt-in for late shifts, not as a default, and is validated on the data grid before release."
-  ],
-  [
-   "Veyro Front Desk",
-   "LIGHT ONLY",
-   "Lobbies are bright, the screen is read at 1.5m, and staff do not choose their lighting. Dark would cost contrast headroom at exactly the moment resolution speed matters. A deliberate omission, not a gap."
-  ],
-  [
-   "Veyro Coach",
-   "FOLLOWS SYSTEM",
-   "Gym-floor lighting swings from window glare to dim free-weight corners. This is the surface where user control genuinely earns its keep — and the set logger is validated in both."
-  ],
-  [
-   "Veyro Member",
-   "FOLLOWS SYSTEM",
-   "Consumer expectation, plus evening and pre-dawn training sessions. Dark is a first-class member experience here, not a courtesy."
-  ],
-  [
-   "Internal SaaS Console",
-   "LIGHT FIRST · DARK OPT-IN",
-   "Same reasoning as Admin, with incident work often happening at night — which is precisely when the opt-in gets used."
-  ]
- ],
- "BRANDABLE": [
-  [
-   "brand.accent",
-   "One hue, replacing ink.600 for action and selection. The derived pressed, selected-wash and dark-mode variants are computed by the system, not configured — six tokens from one input."
-  ],
-  [
-   "brand.logo",
-   "Wordmark and mark, each with a required monochrome fallback for receipts, exports and single-colour contexts. Clear-space and minimum size enforced."
-  ],
-  [
-   "brand.appIcon",
-   "Member app icon per brand, validated against store requirements at upload."
-  ],
-  [
-   "brand.imagery",
-   "Photography for member home, class listings and store. Aspect ratios fixed by the system; content is the tenant’s."
-  ],
-  [
-   "brand.radiusScale",
-   "Optional, one step softer or sharper across the whole scale. Proportional — a tenant cannot round only the cards. Off by default."
-  ]
- ],
- "CHARACTER": [
-  [
-   "Intelligent",
-   "The system shows its reasoning. Evidence links, confidence, and “here is why” live in the type hierarchy rather than in badges announcing cleverness."
-  ],
-  [
-   "Confident",
-   "Few colours, generous type scale contrast, no decoration compensating for weak hierarchy. Nothing on screen is hedging."
-  ],
-  [
-   "Efficient",
-   "Hairlines over shadows, 34px rows where the work is, mono numerals that align without effort. Speed is a visual property here, not just a performance one."
-  ],
-  [
-   "Calm",
-   "Warm paper neutrals, semantic colour held in reserve, one accent. A busy Tuesday at Khalda should not look like an emergency."
-  ],
-  [
-   "Premium",
-   "Earned through restraint, alignment and consistency — the same way a well-set financial statement reads expensive without ornament."
-  ],
-  [
-   "Human, not playful",
-   "Editorial scale and plain-language copy for member moments; no mascots, no exclamation marks, no emoji in the product."
-  ],
-  [
-   "Technical, not cold",
-   "Mono for data, sans for speech. Warm greys rather than clinical blue-white — this is a business about bodies, not a laboratory."
-  ],
-  [
-   "Fit, not aggressive",
-   "No black-and-neon, no shouting weights, no motivational bombast. Strength shown through precision."
-  ]
- ],
- "LAYOUTS": [
-  [
-   "Veyro Admin",
-   "12-column, 24px gutter. Rail 240 expanded / 56 collapsed. Content max 1440. Inspector 380 at bp.lg, 480 at bp.xl. Split view is list + inspector, never three columns — the Member 360 decision from Phase 6 generalised."
-  ],
-  [
-   "Front Desk",
-   "Two zones, no rail: a fixed capture strip at the top holding scan and search, and a resolution area below. Touch density, one modal depth maximum, keyboard focus returning to the scan field after every action."
-  ],
-  [
-   "Veyro Coach",
-   "Single column, bottom nav of four plus a create action. Sheets capped at two levels. Primary actions in the lower third for one-handed reach. Two-pane only from bp.sm on tablet."
-  ],
-  [
-   "Veyro Member",
-   "Single column, Spacious. Bottom nav of five. One “now” card owning the top of the viewport; everything else below the fold. Sheets for swap, filter and quick choices."
-  ],
-  [
-   "SaaS Console",
-   "Same shell as Admin at Compact density, with an incident banner slot above the rail that no other surface has."
-  ]
- ],
- "PRIMITIVES": [
-  [
-   "warm.0",
-   "#fffefb"
-  ],
-  [
-   "warm.50",
-   "#faf8f4"
-  ],
-  [
-   "warm.100",
-   "#f4f2ee"
-  ],
-  [
-   "warm.150",
-   "#ece9e3"
-  ],
-  [
-   "warm.200",
-   "#e0dcd4"
-  ],
-  [
-   "warm.300",
-   "#cbc6bc"
-  ],
-  [
-   "warm.400",
-   "#a8a29a"
-  ],
-  [
-   "warm.500",
-   "#85807a"
-  ],
-  [
-   "warm.600",
-   "#6b6a63"
-  ],
-  [
-   "warm.700",
-   "#57544d"
-  ],
-  [
-   "warm.800",
-   "#3d3b36"
-  ],
-  [
-   "warm.900",
-   "#17171a"
-  ],
-  [
-   "ink.600",
-   "#1b4079"
-  ],
-  [
-   "ink.700",
-   "#14315e"
-  ],
-  [
-   "ink.50",
-   "#e8edf6"
-  ],
-  [
-   "success.600",
-   "#2f5d3a"
-  ],
-  [
-   "warning.600",
-   "#8a5a1f"
-  ],
-  [
-   "error.600",
-   "#8a3b1f"
-  ],
-  [
-   "info.600",
-   "#3f5560"
-  ],
-  [
-   "ai.600",
-   "#4a3d7a"
-  ],
-  [
-   "ai.50",
-   "#edebf6"
-  ],
-  [
-   "error.50",
-   "#f4ece5"
-  ]
- ],
- "DARK_RAMP": [
-  [
-   "dark.950",
-   "#141311",
-   "stated on color.surface.sunken"
-  ],
-  [
-   "dark.900",
-   "#1a1917",
-   "stated on color.surface.canvas"
-  ],
-  [
-   "dark.800",
-   "#211f1c",
-   "stated on color.surface.default"
-  ],
-  [
-   "dark.700",
-   "#2a2724",
-   "stated on color.surface.raised"
-  ],
-  [
-   "dark.text.2",
-   "#b8b3aa",
-   "stated on color.text.secondary"
-  ],
-  [
-   "dark.text.3",
-   "#928d84",
-   "stated on color.text.tertiary"
-  ],
-  [
-   "accent.light",
-   "#7ea6e8",
-   "stated on color.text.link, and in prose: 'ink.600 becomes #7ea6e8'"
-  ],
-  [
-   "error.light",
-   "#e0836a",
-   "stated on color.text.critical"
-  ],
-  [
-   "ai.light",
-   "#a397dd",
-   "stated on color.semantic.ai"
-  ]
- ],
- "DARK_GAPS": [
-  [
-   "color.action.pressed",
-   "accent.pressed",
-   "The source names `accent.pressed` on this token and gives it no value anywhere -- not in the ramps, not in the semantic table, not in the dark-mode note. Inventing a hex would be inventing design. The consequence, stated rather than hidden: a primary button's pressed state in dark mode falls back to the light mapping (ink.700), which is too dark against a dark field. Nothing in the build renders a pressed state yet, so the defect is latent; the day a component implements one, this is the value to ask for."
-  ]
- ]
 }

@@ -1,3 +1,4 @@
+import type { MessageKey } from "@/i18n/locale";
 import { api } from "@/lib/api";
 
 /**
@@ -266,3 +267,29 @@ export function weekSummary(sessions: ScheduledSession[]): {
 export function isUuid(value: string | undefined): value is string {
   return value !== undefined && /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(value);
 }
+
+/**
+ * What happened to a session, worded.
+ *
+ * **The change kind was rendered raw** on the session's own history -- `substitution`,
+ * `relocation`, `cancellation`, `handoff` -- which is MOD-019's closed vocabulary where a
+ * sentence belongs. The four are genuinely different acts and the words say which:
+ * `handoff` in particular is an *attendance* handover rather than anything to do with the
+ * room or the coach, and nothing about the stored word tells a reader that.
+ *
+ * `conflictWord` already does the same for a clash on ADM-SCH-03, which is why this is a
+ * map read by the screen rather than a sentence composed on the server: prose on the wire
+ * in a bilingual product is a field an Arabic reader can never be shown.
+ *
+ * An unmapped kind falls through to its stored form; the set is the module's and may grow.
+ */
+export function sessionChangeWord(kind: string): MessageKey | null {
+  return (SESSION_CHANGE as Record<string, MessageKey>)[kind] ?? null;
+}
+
+const SESSION_CHANGE = {
+  substitution: "schedule.change.substitution",
+  relocation: "schedule.change.relocation",
+  cancellation: "schedule.change.cancellation",
+  handoff: "schedule.change.handoff",
+} as const satisfies Record<string, MessageKey>;

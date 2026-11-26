@@ -24,9 +24,10 @@
     "fixture": "node tests/e2e/fixture.mjs",
     "e2e:mutate": "node tests/e2e/mutate.mjs",
     "design:extract": "node src/design/extract.mjs",
-    "design:check": "node src/design/extract.mjs --check && node src/design/screens.mjs --check && node src/design/coverage.mjs",
+    "design:check": "node src/design/system-check.mjs",
     "design:screens": "node src/design/screens.mjs",
-    "design:coverage": "node src/design/coverage.mjs"
+    "design:coverage": "node src/design/coverage.mjs",
+    "design:legacy-extract": "node src/design/extract.mjs --check && node src/design/screens.mjs --check && node src/design/coverage.mjs"
   },
   "dependencies": {
     "next": "16.4.6",

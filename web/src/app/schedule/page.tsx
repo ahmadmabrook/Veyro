@@ -280,6 +280,11 @@ export default async function SchedulePage({
                     severity={session.staff === null ? "critical" : "attention"}
                     category={text(
                       session.staff === null ? "cc.catStaffing" : "schedule.clockChange")}
+                    // Both are delivery problems -- an unstaffed class and a session whose
+                    // local time moved across a clock change are the same kind of concern,
+                    // which is the row's field; what differs is the severity, which is the
+                    // ordering and the wording.
+                    kind="staffing"
                     when={`${localDate(session)} ${localTime(session)}`}
                     headline={session.display_name}
                     // **Two bodies.** "0 places are held, so somebody is expecting a

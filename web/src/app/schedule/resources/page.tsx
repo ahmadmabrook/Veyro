@@ -170,6 +170,7 @@ export default async function SchedulingResourcesPage({
       ) : (
         <DataGrid
           caption={text("rooms.spaces")}
+          countLabel={null}
           labelledBy="rooms-heading"
           rows={spaces}
           rowKey={(row) => row.resource_id}

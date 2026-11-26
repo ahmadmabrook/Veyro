@@ -260,7 +260,7 @@ function MadeLink({
         <p className="data" dir="ltr" style={{
           margin: 0, wordBreak: "break-all",
           background: "var(--color-surface-sunken)",
-          padding: "var(--space-3)", borderRadius: "var(--radius-sm)",
+          padding: "var(--space-3)", borderRadius: "var(--radius-button)",
         }}>
           {made.token}
         </p>

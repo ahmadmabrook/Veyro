@@ -20,6 +20,7 @@ import {
   type ZoneDetail,
   type ZonePolicy,
 } from "@/lib/access";
+import { codeWord } from "@/lib/denial";
 import { numerals } from "@/lib/display";
 import { presentation } from "@/lib/preferences";
 
@@ -126,7 +127,7 @@ export default async function ZonePage({
           the system working. Four reader failures is a maintenance job. Mixing them in one
           count hides the second inside the first." The classification is MOD-022's own, by
           reason code, so two screens cannot disagree about which a refusal was. */}
-      <MetricRow label={text("access.metrics")} columns={4}>
+      <MetricRow label={text("access.metrics")}>
         <MetricCell
           label={text("access.insideNow")}
           {...(occupancy === null
@@ -227,23 +228,20 @@ export default async function ZonePage({
         </div>
       </section>
 
-      {zone.access_gaps.length > 0 ? (
-        <section className="ds-panel">
-          <div className="ds-panel-head">
-            <h2 className="ds-panel-title">{text("access.gaps")}</h2>
-          </div>
-          <div className="ds-panel-body">
-            <ul className="muted" style={{ margin: 0,
-              paddingInlineStart: "var(--space-5)" }}>
-              {zone.access_gaps.map((gap) => (
-                <li key={gap}>{gap}</li>
-              ))}
-            </ul>
-          </div>
-        </section>
-      ) : null}
+      {/* **`access_gaps` is not rendered, and that is deliberate.** The zone read returns a
+          list of this build's own limitations written for whoever maintains Veyro -- "no
+          signature is verified: a rotating credential's window and its replay cache are
+          checked", "safety_hold is always false: MOD-014's health classes are unreachable to
+          every caller in this build". Every one is true and useful, and none of it is
+          something a club manager looking at a door can act on or look up.
 
-      {decisions ? <DecisionLog page={decisions} locale={locale} /> : null}
+          The operator-facing half of the same honesty is on this page already and stays: the
+          panel above says exactly what the occupancy count is and is not, which is the one
+          disclosure somebody standing at this zone would make a decision on. The engineering
+          list is recorded in `.impeccable/surfaces/admin.md`; the backend contract is
+          protected, so the field keeps being returned and this surface stops printing it. */}
+
+      {decisions ? <DecisionLog page={decisions} locale={locale} numbering={numbering} /> : null}
       </div>
     </div>
   );
@@ -346,7 +344,10 @@ function OccupancyPanel({ occupancy, locale }: { occupancy: Occupancy; locale: L
   );
 }
 
-function DecisionLog({ page, locale }: { page: DecisionPage; locale: Locale }) {
+function DecisionLog(
+  { page, locale, numbering }:
+  { page: DecisionPage; locale: Locale; numbering: Numbering },
+) {
   const text = (key: MessageKey) => t(locale, key);
   return (
     <section className="ds-panel" aria-labelledby="decisions-heading">
@@ -358,6 +359,7 @@ function DecisionLog({ page, locale }: { page: DecisionPage; locale: Locale }) {
       ) : (
         <DataGrid
           caption={text("access.decisions")}
+          countLabel={fill(locale, "grid.count.decisions", { count: page.decisions.length }, numbering)}
           labelledBy="decisions-heading"
           rows={page.decisions}
           rowKey={(decision) => decision.decision_id}
@@ -382,13 +384,35 @@ function DecisionLog({ page, locale }: { page: DecisionPage; locale: Locale }) {
                   ) : (
                     decision.granted ? text("access.granted") : text("access.refused")
                   )}
-                  <div
-                    className="muted data"
-                    dir="ltr"
-                    style={{ fontSize: "var(--type-caption-size)" }}
-                  >
-                    {decision.code}
-                  </div>
+                  {/* **The code, worded.** This printed `granted_by_override` and
+                      `see_front_desk` raw -- a stored enumeration where a word belongs, on
+                      the board somebody reads to find out what happened at a door. The
+                      sentences are FD-03's own, read through one map, so the two screens
+                      cannot word one refusal two ways; a plain grant gets none, because the
+                      verdict above already says it. A code the map does not carry still
+                      shows, as data, because the set is the module's and may grow. */}
+                  {(() => {
+                    const word = codeWord(decision.code, decision.granted);
+                    if (word !== null) {
+                      return (
+                        <div
+                          className="muted"
+                          style={{ fontSize: "var(--type-caption-size)" }}
+                        >
+                          {text(word)}
+                        </div>
+                      );
+                    }
+                    return decision.code === "granted" ? null : (
+                      <div
+                        className="muted data"
+                        dir="ltr"
+                        style={{ fontSize: "var(--type-caption-size)" }}
+                      >
+                        {decision.code}
+                      </div>
+                    );
+                  })()}
                 </>
               ),
             },

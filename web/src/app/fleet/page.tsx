@@ -107,6 +107,7 @@ export default async function FleetPage() {
         ) : (
           <DataGrid
             caption={text("fleet.title")}
+            countLabel={null}
 labelledBy="fleet-heading"
             rows={fleet.devices}
             rowKey={(device) => device.device_id}

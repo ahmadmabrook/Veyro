@@ -80,6 +80,7 @@ export default async function DoorBoardPage() {
       ) : (
         <DataGrid
           caption={text("access.title")}
+          countLabel={fill(locale, "grid.count.doors", { count: zones.length }, numbering)}
 labelledBy="doors-heading"
           rows={zones}
           rowKey={(zone) => zone.zone_id}

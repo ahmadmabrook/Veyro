@@ -92,4 +92,4 @@ export function passesAA(foreground, background, { sizePx, bold = false } = {}) 
  * that pairing with this matrix "rather than the ramp being trusted", which is the whole
  * argument for keeping the surfaces as data.
  */
-export const MEASURED_SURFACES = ["warm.0", "warm.100", "warm.150"];
+export const MEASURED_SURFACES = ["bone.0", "bone.100", "bone.150"];

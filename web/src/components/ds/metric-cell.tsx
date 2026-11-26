@@ -40,6 +40,24 @@ import type { ReactNode } from "react";
  * stay neutral: 48 people in the building is a fact, not a problem, and colouring it red
  * during an unrelated outage teaches staff to distrust the colour. Only the outage and its
  * direct consequence carry severity." There is no `severity` prop, deliberately.
+ *
+ * ## What the redesign changed, and why the product reasoning above is untouched
+ *
+ * Every decision in this docstring is a *product* decision and all of them stand. What moved
+ * is the arrangement, on two counts the craft floor names by hand:
+ *
+ * **The label is beneath the figure, not above it.** A small tracked label above a heading is
+ * a kicker, which is banned outright -- "the heading carries its own weight; delete the label
+ * and let the heading speak". Here the figure *is* the heading, so the label becomes what it
+ * actually is: the unit and the period the figure is in, read after the number rather than
+ * before it. A screen reader gets "JOD 72.20, collected month to date", which is the sentence
+ * a person would say.
+ *
+ * **There is no tile.** The retired row was "a bordered grid whose 1px gaps are the
+ * dividers", which is the hero-metric template -- big number, small label, supporting stats,
+ * a box -- and a border around a number is a substitute for having decided it matters. The
+ * figures sit on a shared baseline in the open, separated by space, and the one rule on the
+ * row is the 2px line under it that closes the group.
  */
 
 export type Freshness = "live" | "stale" | "unavailable";
@@ -72,14 +90,18 @@ export function MetricCell({
   const missing = freshness === "unavailable";
   return (
     <div className="ds-metric" data-freshness={freshness}>
-      <div className="ds-metric-label">{label}</div>
       {missing ? (
         // Not a zero and not an em-dash. `MoneyValue`'s own rule for a figure nobody may see
-        // -- "never blank, never zero" -- generalised to a figure nobody can compute.
-        <p className="ds-metric-unavailable">{unavailableBecause}</p>
+        // -- "never blank, never zero" -- generalised to a figure nobody can compute. The
+        // label still leads here, because there is no figure for it to follow.
+        <>
+          <div className="ds-metric-label">{label}</div>
+          <p className="ds-metric-unavailable">{unavailableBecause}</p>
+        </>
       ) : (
         <>
-          <div className="ds-metric-value">{value}</div>
+          <div className="ds-metric-value ds-figure">{value}</div>
+          <div className="ds-metric-label">{label}</div>
           {stale ? (
             // "Replaces the comparison line with a timestamp in warning." The comparison is
             // not shown beside a stale figure at all: a change computed from a figure that is
@@ -106,42 +128,34 @@ export function MetricCell({
 }
 
 /**
- * The metric row. Four cells at bp.lg, 2×2 at bp.md, one horizontally scrolling row at bp.sm.
+ * The metric row. Four figures at bp.lg, 2×2 at bp.md, stacked at bp.xs.
  *
- * **It is a bordered grid whose 1px gaps are the dividers.** The canvas:
- * `grid-template-columns:repeat(4,minmax(0,1fr));gap:1px;background:rgba(23,23,26,.12);
- * border:1px solid rgba(23,23,26,.14);border-radius:4px;overflow:hidden`, each cell on its
- * own `warm.0` ground. Drawing the rules as cell borders instead would double them at every
- * seam and leave one missing at each end.
+ * **Space separates them, not rules.** The figures share a baseline and sit in the open; the
+ * group is closed by one 2px line beneath it. The retired row drew a bordered grid whose 1px
+ * gaps were the dividers, which boxed each figure -- see the note on `MetricCell`.
  *
- * The horizontal scroll at the narrowest width is the design's single exception to its own
- * rule and it says why: "the one place horizontal scroll is right, because they are peers
- * with no comparison axis."
+ * **It does not scroll sideways at any width.** The design made its one exception to its own
+ * rule here, on the grounds that the cells "are peers with no comparison axis", and that
+ * exception was for cells in a scrolling grid. A figure at this scale does not need one: at
+ * phone width the row stacks and each figure drops to `type.figureSm`, which is the same
+ * reading in a column. The sideways-scroll sweep covers every surface in this app and a
+ * deliberate exception is the kind of thing that stops being deliberate.
  */
 export function MetricRow({
   children,
   label,
-  columns = 4,
 }: {
   children: ReactNode;
   label: string;
-  /**
-   * How many cells sit in one row at `bp.lg`.
-   *
-   * **The canvases differ and the grid has to follow**: ADM-CC-01 draws four and ADM-MEM-01
-   * draws five. A fixed four leaves the fifth alone on a second row with three cells' worth
-   * of the grid's own 1px background showing beside it -- which reads as a cell that failed
-   * to render rather than as a row that ended. Found by looking at the page.
-   */
-  columns?: 3 | 4 | 5;
 }) {
+  // **No `columns` prop.** It set `--metric-columns` on a four-track grid, and a cell count
+  // is the wrong instrument: the figures differ in width because their *content* does, and an
+  // equal track forced the widest -- money, which carries a currency code -- to the same
+  // width as "8". The row is a flex line now, so each figure takes what it needs and the cell
+  // with no figure absorbs the rest. Callers that passed 3, 4 or 5 were describing how many
+  // cells they had, which the row can see for itself.
   return (
-    <div
-      className="ds-metric-row"
-      role="group"
-      aria-label={label}
-      style={{ "--metric-columns": columns } as React.CSSProperties}
-    >
+    <div className="ds-metric-row" role="group" aria-label={label}>
       {children}
     </div>
   );

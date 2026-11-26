@@ -22,13 +22,18 @@ import {
   resolveType,
 } from "../../src/design/type.mjs";
 
-test("the Latin scale is the twelve tokens the design system publishes", () => {
-  assert.equal(TOKEN_NAMES.length, 12);
-  assert.deepEqual(TOKEN_NAMES.slice(0, 3), ["type.display", "type.h1", "type.h2"]);
-  assert.equal(LATIN_SCALE["type.body"].sizePx, 14);
+test("the Latin scale is the thirteen tokens the design system publishes", () => {
+  assert.equal(TOKEN_NAMES.length, 13);
+  // The figure registers lead the scale, because the signature move is the numeral: a
+  // quantity is the largest thing on the page, not a label above a heading.
+  assert.deepEqual(TOKEN_NAMES.slice(0, 3), ["type.figure", "type.figureSm", "type.display"]);
+  assert.equal(LATIN_SCALE["type.body"].sizePx, 14.5);
   assert.equal(LATIN_SCALE["type.body"].lineHeight, 1.6);
-  assert.equal(LATIN_SCALE["type.data"].sizePx, 13);
-  assert.equal(LATIN_SCALE["type.display"].sizePx, 34);
+  assert.equal(LATIN_SCALE["type.data"].sizePx, 13.5);
+  assert.equal(LATIN_SCALE["type.figure"].sizePx, 72);
+  // There is no eyebrow register. It was a 10px tracked token whose only use was the kicker
+  // the craft floor bans, and which Arabic could never set because tracking breaks the joins.
+  assert.ok(!TOKEN_NAMES.includes("type.eyebrow"));
 });
 
 test("resolution refuses to answer without a script", () => {
@@ -69,28 +74,35 @@ test("no Arabic token renders below the 13px floor", () => {
   }
 });
 
-test("the two tokens under the floor are Latin-only and are handled, not shrunk", () => {
-  // type.caption is 11 and has no Arabic substitute: it resolves up to the floor.
-  assert.equal(LATIN_SCALE["type.caption"].sizePx, 11);
+test("the one token under the floor is Latin-only and is raised, not shrunk", () => {
+  // type.caption is 11.5 and has no Arabic substitute: it resolves up to the floor. It is the
+  // only token under 13 now, because the 10px eyebrow register is gone.
+  assert.equal(LATIN_SCALE["type.caption"].sizePx, 11.5);
   assert.equal(resolveType("type.caption", "arabic").sizePx, 13);
-  // type.eyebrow is 10 *and* tracked, so the foundations redirect it to type.label entirely.
-  assert.equal(LATIN_SCALE["type.eyebrow"].sizePx, 10);
-  const eyebrow = resolveType("type.eyebrow", "arabic");
-  assert.equal(eyebrow.name, "type.label", "eyebrow has no Arabic form; it uses type.label");
-  assert.equal(eyebrow.resolvedFrom, "type.eyebrow", "the caller can see the substitution");
-  assert.equal(eyebrow.sizePx, 13);
+  // Two tokens sit under the floor and they are handled differently, which is the
+  // distinction worth pinning: `type.label` is raised to 13 and keeps its own identity,
+  // while `type.caption` is declared Latin-only and has no Arabic form at all.
+  const under = TOKEN_NAMES.filter((n) => LATIN_SCALE[n].sizePx < ARABIC_SIZE_FLOOR);
+  assert.deepEqual(under, ["type.label", "type.caption"]);
+  assert.equal(resolveType("type.label", "arabic").sizePx, 13);
+  assert.equal(resolveType("type.label", "arabic").name, "type.label");
 });
 
 // --- rule 3: weight up one step -----------------------------------------------------------
 
 test("Arabic steps emphasis weights up and leaves 400 alone", () => {
   assert.equal(arabicWeight(400), 400);
-  assert.equal(arabicWeight(450), 500);
   assert.equal(arabicWeight(500), 600);
-  // Plex Sans Arabic reads optically lighter at the same weight, so a 500 heading would look
-  // lighter than its Latin counterpart rather than equal to it.
-  assert.equal(resolveType("type.h1", "latin").weight, 500);
-  assert.equal(resolveType("type.h1", "arabic").weight, 600);
+  assert.equal(arabicWeight(600), 600);
+  // 700 does not step further: it is the top of the ramp, and 800 is a weight neither face
+  // ships, so asking for it would ask for a font that does not arrive.
+  assert.equal(arabicWeight(700), 700);
+  // Cairo reads optically lighter at the same weight, so a 600 heading would look lighter
+  // than its Latin counterpart rather than equal to it.
+  assert.equal(resolveType("type.h2", "latin").weight, 600);
+  assert.equal(resolveType("type.h2", "arabic").weight, 600);
+  assert.equal(resolveType("type.h1", "latin").weight, 700);
+  assert.equal(resolveType("type.h1", "arabic").weight, 700);
   assert.equal(resolveType("type.body", "latin").weight, 400);
   assert.equal(resolveType("type.body", "arabic").weight, 400);
 });
@@ -109,19 +121,30 @@ test("no Arabic token carries tracking, because tracking breaks the joins", () =
   assert.ok(tracked.length >= 5, `expected tracked Latin tokens, found ${tracked.length}`);
 });
 
-// --- rule 7: mono is Latin-only -----------------------------------------------------------
+// --- rule 7: figures are Archivo, Arabic text is Cairo ------------------------------------
 
-test("a mono token switches family in Arabic but keeps its tabular alignment", () => {
+test("a figure token switches family in Arabic but keeps its tabular alignment", () => {
   const latin = resolveType("type.data", "latin");
   const arabic = resolveType("type.data", "arabic");
-  assert.match(latin.family, /Plex Mono/);
-  assert.match(arabic.family, /Plex Sans Arabic/);
+  assert.match(latin.family, /Archivo/);
+  assert.match(arabic.family, /Cairo/);
   assert.equal(arabic.tabular, true, "the column must still align: tabular figures");
+  // The monumental numeral is the same face as the table column, which is what makes the
+  // signature move and the data grid read as one system rather than two.
+  assert.match(resolveType("type.figure", "latin").family, /Archivo/);
+  assert.equal(resolveType("type.figure", "latin").tabular, true);
 });
 
-test("a non-mono token uses the sans family in both scripts", () => {
-  assert.match(resolveType("type.body", "latin").family, /Plex Sans'/);
-  assert.match(resolveType("type.body", "arabic").family, /Plex Sans Arabic/);
+test("a text token uses the text family in both scripts, and never the figure face", () => {
+  assert.match(resolveType("type.body", "latin").family, /Barlow/);
+  assert.match(resolveType("type.body", "arabic").family, /Cairo/);
+  assert.equal(resolveType("type.body", "latin").tabular, false);
+  // No token resolves to a monospace family: there is no mono role in this system.
+  for (const name of TOKEN_NAMES) {
+    for (const script of ["latin", "arabic"]) {
+      assert.doesNotMatch(resolveType(name, script).family, /Mono|mono/, `${name} ${script}`);
+    }
+  }
 });
 
 // --- the rules that components and reviews have to carry ----------------------------------
@@ -136,7 +159,7 @@ test("all nine Arabic rules are present in the data this module reads", () => {
     "Zero letter-spacing",
     "No italics",
     "Containers sized for Arabic",
-    "Mono is Latin-only",
+    "Figures are Archivo, Arabic text is Cairo",
     "Numerals are a tenant setting",
     "Bidi isolation is mandatory",
   ]) {
@@ -150,7 +173,7 @@ test("the four rules this module cannot enforce are the ones a component must", 
   // two by components and review, the last two by `src/i18n/conventions.mjs`, which has its
   // own parity suite against the backend.
   const enforcedHere = ["Line height +0.15", "Size floor 13px", "Weight up one step",
-                        "Zero letter-spacing", "Mono is Latin-only"];
+                        "Zero letter-spacing", "Figures are Archivo, Arabic text is Cairo"];
   const elsewhere = ARABIC_RULES.map((r) => r.rule).filter((r) => !enforcedHere.includes(r));
   assert.deepEqual(elsewhere, [
     "No italics",

@@ -3,7 +3,7 @@
  *
  * **Arabic is not Latin with a different font.** The foundations state nine rules, and five of
  * them alter a resolved token rather than its rendering: the line-height gains 0.15, the size
- * has a 13px floor, the weight steps up, tracking is dropped, and mono has no Arabic. A
+ * has a 13px floor, the weight steps up, and tracking is dropped. A
  * component that applied the Latin token to Arabic text would not look slightly wrong -- it
  * would be unreadable at `type.caption` and broken at the joins wherever tracking applied.
  *
@@ -26,8 +26,8 @@ export const SCRIPTS = ["latin", "arabic"];
 /**
  * Arabic never renders below this, in px.
  *
- * "A caption that cannot be read is not a caption." `type.caption` is 11 and `type.eyebrow`
- * is 10, so both are raised -- which is also why they are declared Latin-only.
+ * "A caption that cannot be read is not a caption." `type.caption` is 11.5, so it is raised --
+ * which is also why it is the one token declared Latin-only.
  */
 export const ARABIC_SIZE_FLOOR = 13;
 
@@ -35,23 +35,36 @@ export const ARABIC_SIZE_FLOOR = 13;
 export const ARABIC_LINE_HEIGHT_BONUS = 0.15;
 
 /**
- * The tokens the foundations declare Latin-only.
+ * The tokens the system declares Latin-only.
  *
- * `type.caption` is Latin-only because its 11px is under the floor; `type.eyebrow` because it
- * carries 0.09em of tracking *and* sits under the floor, and "any token carrying a track value
- * drops it in Arabic, which is why type.eyebrow has no Arabic form and uses type.label
- * instead."
+ * `type.caption` is Latin-only because its 11.5px is under the floor. **`type.eyebrow` is gone
+ * rather than redirected**: it was a 10px tracked register whose only use in this app was a
+ * kicker above a heading, which the craft floor bans outright, and which Arabic could never
+ * set anyway because tracking breaks the joins. Small labels resolve to `type.label`.
  */
-export const LATIN_ONLY = { "type.caption": null, "type.eyebrow": "type.label" };
+export const LATIN_ONLY = { "type.caption": null };
 
-/** Mono has no Arabic: "IBM Plex Mono has no Arabic." */
+/**
+ * The two families, per script.
+ *
+ * `figure` is the face every quantity is set in -- the signature move. In Arabic both roles
+ * are Cairo: it carries Arabic-Indic numerals and ships tabular figures, so a column keeps its
+ * alignment and its width across the family switch. There is no mono role any more; see
+ * `ds.json` FACES for why.
+ */
 export const FAMILIES = {
-  latin: { sans: "'IBM Plex Sans'", mono: "'IBM Plex Mono'" },
-  arabic: { sans: "'IBM Plex Sans Arabic'", mono: "'IBM Plex Sans Arabic'" },
+  latin: { text: "'Barlow'", figure: "'Archivo'" },
+  arabic: { text: "'Cairo'", figure: "'Cairo'" },
 };
 
-/** The tokens set in mono. `type.data` is the tabular column that makes money align. */
-export const MONO_TOKENS = new Set(["type.data", "type.eyebrow"]);
+/** The tokens set in the figure face. `type.data` is the tabular column that makes money align. */
+export const FIGURE_TOKENS = new Set([
+  "type.figure",
+  "type.figureSm",
+  "type.display",
+  "type.h1",
+  "type.data",
+]);
 
 export class TypeError_ extends Error {}
 
@@ -76,14 +89,15 @@ export const TOKEN_NAMES = ds.TYPE_SCALE.map(([name]) => name);
 /**
  * Arabic steps the weight up where Latin emphasises.
  *
- * "Where Latin uses 400, Arabic uses 400; where Latin uses 450 or 500, Arabic uses 500; where
- * Latin uses 500 for emphasis, Arabic uses 600." The scale's own weights are 400 and 500, and
- * every 500 in it is an emphasis weight -- a heading, a label, a mono value -- so 500 becomes
- * 600 and 400 stays.
+ * "Where Latin uses 400, Arabic uses 400; where Latin uses 500 or 600, Arabic uses 600; where
+ * Latin uses 700, Arabic uses 700." Cairo reads optically lighter than Barlow at the same
+ * weight, so the emphasis weights step up and the body weight stays. 700 does not step
+ * further: it is already the top of the ramp, and asking for 800 would ask for a weight
+ * neither face ships.
  */
 export function arabicWeight(latinWeight) {
   if (latinWeight <= 400) return latinWeight;
-  if (latinWeight === 450) return 500;
+  if (latinWeight >= 700) return 700;
   return 600;
 }
 
@@ -91,7 +105,7 @@ export function arabicWeight(latinWeight) {
  * Resolve a type token for a script. **The script is required.**
  *
  * Returns the substituted token name when the foundations redirect one, so a caller can see
- * that it asked for `type.eyebrow` in Arabic and got `type.label` -- rather than silently
+ * that it asked for `type.caption` in Arabic and got the 13px floor -- rather than silently
  * receiving different values under the name it asked for.
  */
 export function resolveType(name, script) {
@@ -104,7 +118,12 @@ export function resolveType(name, script) {
     return {
       ...latin,
       resolvedFrom: name,
-      family: MONO_TOKENS.has(name) ? FAMILIES.latin.mono : FAMILIES.latin.sans,
+      family: FIGURE_TOKENS.has(name) ? FAMILIES.latin.figure : FAMILIES.latin.text,
+      // **The Arabic branch reported this and the Latin one did not**, so a caller asking
+      // whether a token is tabular got `undefined` for half the product. Figures align in
+      // both scripts -- that is the whole reason the figure face was chosen over a mono --
+      // so both branches answer it.
+      tabular: FIGURE_TOKENS.has(name),
     };
   }
   // Arabic. A redirected token resolves through its substitute, so the substitute's own rules
@@ -122,10 +141,11 @@ export function resolveType(name, script) {
     weight: arabicWeight(base.weight),
     // "Never apply tracking to Arabic -- it breaks the joins."
     tracking: "0",
-    // "Mono is Latin-only ... a mono column in an Arabic table switches family but keeps its
-    // alignment and width", which is why the family changes and `fontVariantNumeric` does not.
-    family: FAMILIES.arabic.sans,
-    tabular: MONO_TOKENS.has(name),
+    // "A tabular column in an Arabic table switches family but keeps its alignment and
+    // width", which is why the family changes and `fontVariantNumeric` does not: Cairo
+    // carries Arabic-Indic numerals and ships tabular figures, so both roles resolve to it.
+    family: FAMILIES.arabic.text,
+    tabular: FIGURE_TOKENS.has(name),
     use: base.use,
   };
 }
