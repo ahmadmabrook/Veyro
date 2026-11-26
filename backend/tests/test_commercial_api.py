@@ -44,13 +44,29 @@ FROM = "2026-01-01T00:00:00+00:00"
 #: sixteen tests across MOD-017 and MOD-018 failed for a reason that had nothing to do with
 #: either module. CI never saw it because CI runs in UTC, where the two agree. Found while
 #: running the full suite at 02:00.
-TODAY = datetime.now(UTC).date()
-MEMBERSHIP_START = TODAY - timedelta(days=90)
+#:
+#: **And a function rather than a constant, which is the other half of the same lesson.** The
+#: first version was `TODAY = datetime.now(UTC).date()` at module scope, evaluated once at
+#: import -- so in a suite that takes twelve minutes it is *yesterday* for every test that
+#: runs after UTC midnight, while the service under test computes today. CI found it, which
+#: is the exact mirror of the finding above: the local-clock version was invisible to CI
+#: because CI runs in UTC, and this one is invisible locally because a local run rarely
+#: straddles 00:00Z. Four backend tests and three browser ones went red at 23:55 on a commit
+#: whose code was right. Evaluated per call, the window shrinks from the whole suite to the
+#: one test that straddles the boundary.
+def today() -> date:
+    """Today in UTC, now rather than at import."""
+    return datetime.now(UTC).date()
+
+
+def membership_start() -> date:
+    """Ninety days back, which is where this harness puts a settled membership."""
+    return today() - timedelta(days=90)
 
 
 def day(offset: int) -> str:
     """A date `offset` days from today, as the API spells one."""
-    return (TODAY + timedelta(days=offset)).isoformat()
+    return (today() + timedelta(days=offset)).isoformat()
 
 
 class CommercialApiTestCase(GatedApiTestCase):
@@ -216,7 +232,7 @@ class CommercialApiTestCase(GatedApiTestCase):
         here could only ever see the empty case.
         """
         owner = self.headers(tenant_id)
-        starts_on = starts_on or MEMBERSHIP_START.isoformat()
+        starts_on = starts_on or membership_start().isoformat()
         contract_key = self.contract(tenant_id, **(contract or {}))
         if not product_id or not variant_id:
             product_id, variant_id = self.membership_product(tenant_id)
@@ -281,7 +297,7 @@ class CommercialApiTestCase(GatedApiTestCase):
             "person_id": base["person_id"], "membership_terms_id": terms_id,
             "variant_id": variant_id or base["variant_id"], "amount_minor": amount_minor,
             "currency": currency,
-            "starts_on": starts_on or MEMBERSHIP_START.isoformat(),
+            "starts_on": starts_on or membership_start().isoformat(),
             "supersedes_agreement_id": base["agreement_id"], **self.correlation()},
             headers=owner)
         self.assertEqual(made.status_code, 201, made.text)
@@ -1903,7 +1919,7 @@ class ReviewRegressionTests(CommercialApiTestCase):
             "variant_id": variant_id, "price_resolution_id": resolution_id,
             # A tenth of the resolved price, which is what the row would have recorded.
             "amount_minor": 450, "currency": "JOD",
-            "starts_on": MEMBERSHIP_START.isoformat(), **self.correlation()},
+            "starts_on": membership_start().isoformat(), **self.correlation()},
             headers=owner)
         self.assertEqual(agreed.status_code, 201, agreed.text)
         self.assertEqual(agreed.json()["amount_minor"], 4500)
@@ -1926,7 +1942,7 @@ class ReviewRegressionTests(CommercialApiTestCase):
             "variant_id": variant_id,
             "price_resolution_id": str(resolved.json()["resolution_id"]),
             "amount_minor": 4500, "currency": "JOD",
-            "starts_on": MEMBERSHIP_START.isoformat(), **self.correlation()},
+            "starts_on": membership_start().isoformat(), **self.correlation()},
             headers=owner)
         self.assertEqual(refused.status_code, 409, refused.text)
         self.assertIn("another_variant", refused.text)
@@ -1953,7 +1969,7 @@ class ReviewRegressionTests(CommercialApiTestCase):
         agreement = self.client.post("/memberships/agreements", json={
             "person_id": person_id, "membership_terms_id": terms_id,
             "variant_id": variant_id, "amount_minor": 4500, "currency": "JOD",
-            "starts_on": MEMBERSHIP_START.isoformat(), **self.correlation()},
+            "starts_on": membership_start().isoformat(), **self.correlation()},
             headers=owner)
         agreement_id = str(agreement.json()["agreement_id"])
         self.assertEqual(self.client.post(
@@ -3291,7 +3307,7 @@ class CommandCentreReadTests(CommercialApiTestCase):
         jod = next(b for b in body["collected"] if b["currency"] == "JOD")
         # 4500 net at 1600bp tax = 5220 gross, settled in full.
         self.assertEqual(jod["collected_minor"], 5220)
-        self.assertEqual(body["month_to_date"]["last"], TODAY.isoformat())
+        self.assertEqual(body["month_to_date"]["last"], today().isoformat())
 
     def test_a_refund_is_subtracted_from_what_was_collected(self):
         """A month that took 5,220 and refunded 1,000 collected 4,220.
@@ -3443,7 +3459,7 @@ class CommandCentreReadTests(CommercialApiTestCase):
         # fixture starts ninety days back on purpose -- a freeze has to fall inside the
         # contract year it is decided in -- and that puts its activation in a month this read
         # is not about.
-        self.membership(tenant_id, starts_on=TODAY.isoformat())
+        self.membership(tenant_id, starts_on=today().isoformat())
         read = self.client.get(
             "/memberships/summary",
             headers=self.scoped(tenant_id, ["membership.record.read"]))
@@ -3457,7 +3473,7 @@ class CommandCentreReadTests(CommercialApiTestCase):
 
     def test_a_membership_ending_inside_the_window_is_expiring_with_its_value(self):
         tenant_id = self.tenant()
-        self.membership(tenant_id, starts_on=TODAY.isoformat())
+        self.membership(tenant_id, starts_on=today().isoformat())
         read = self.client.get(
             "/memberships/summary?expiring_within_days=60",
             headers=self.scoped(tenant_id, ["membership.record.read"]))
@@ -3471,7 +3487,7 @@ class CommandCentreReadTests(CommercialApiTestCase):
         """The window is the whole point: a board that listed every future end date would be
         a list of every member rather than the ones worth a call this week."""
         tenant_id = self.tenant()
-        self.membership(tenant_id, starts_on=TODAY.isoformat())
+        self.membership(tenant_id, starts_on=today().isoformat())
         read = self.client.get(
             "/memberships/summary?expiring_within_days=1",
             headers=self.scoped(tenant_id, ["membership.record.read"]))
@@ -4209,13 +4225,13 @@ class PlanChangeTests(CommercialApiTestCase):
     the product could not produce -- in the module that records what a member agreed to.
 
     The membership starts ten days ago so that today falls inside its current billing period,
-    which is what an upgrade prorates. The fixture's own `MEMBERSHIP_START` is ninety days
+    which is what an upgrade prorates. The fixture's own `membership_start()` is ninety days
     back and nothing in this build rolls a period forward, so a membership made the usual way
     is a month past its only period and an upgrade is correctly refused.
     """
 
     def live(self, tenant_id: str, **kwargs) -> dict:
-        starts = (TODAY - timedelta(days=10)).isoformat()
+        starts = (today() - timedelta(days=10)).isoformat()
         return self.membership(tenant_id, starts_on=starts, **kwargs)
 
     def preview(self, tenant_id: str, membership_id: str, to_agreement_id: str):
@@ -4231,12 +4247,12 @@ class PlanChangeTests(CommercialApiTestCase):
         owner = self.headers(tenant_id)
         base = self.live(tenant_id)
         target = self.supersede(
-            tenant_id, base, amount_minor=9000, starts_on=TODAY.isoformat(), sign=False)
+            tenant_id, base, amount_minor=9000, starts_on=today().isoformat(), sign=False)
         quote = self.preview(tenant_id, base["membership_id"], target)
         self.assertEqual(quote.status_code, 200, quote.text)
         body = quote.json()
         self.assertEqual(body["kind"], "upgrade")
-        self.assertEqual(body["effective_on"], TODAY.isoformat())
+        self.assertEqual(body["effective_on"], today().isoformat())
         self.assertTrue(body["takes_effect_immediately"])
         self.assertEqual(body["from_amount_minor"], 4500)
         self.assertEqual(body["to_amount_minor"], 9000)
@@ -4301,7 +4317,7 @@ class PlanChangeTests(CommercialApiTestCase):
         owner = self.headers(tenant_id)
         base = self.live(tenant_id)
         target = self.supersede(
-            tenant_id, base, amount_minor=9000, starts_on=TODAY.isoformat(), sign=False)
+            tenant_id, base, amount_minor=9000, starts_on=today().isoformat(), sign=False)
         done = self.client.post(
             f"/memberships/{base['membership_id']}/plan-change", json={
                 "to_agreement_id": target, "reason": "wants all clubs",
@@ -4312,7 +4328,7 @@ class PlanChangeTests(CommercialApiTestCase):
             headers=owner)
         self.assertEqual(done.status_code, 200, done.text)
         self.assertEqual(done.json()["kind"], "upgrade")
-        self.assertEqual(done.json()["effective_on"], TODAY.isoformat())
+        self.assertEqual(done.json()["effective_on"], today().isoformat())
         self.assertGreater(done.json()["due_minor"], 0)
 
     def test_the_disclosed_figure_is_compared_not_echoed(self):
@@ -4320,7 +4336,7 @@ class PlanChangeTests(CommercialApiTestCase):
         owner = self.headers(tenant_id)
         base = self.live(tenant_id)
         target = self.supersede(
-            tenant_id, base, amount_minor=9000, starts_on=TODAY.isoformat(), sign=False)
+            tenant_id, base, amount_minor=9000, starts_on=today().isoformat(), sign=False)
         refused = self.client.post(
             f"/memberships/{base['membership_id']}/plan-change", json={
                 "to_agreement_id": target, "reason": "wants all clubs",
@@ -4341,7 +4357,7 @@ class PlanChangeTests(CommercialApiTestCase):
         base = self.live(tenant_id)
         other = self.live(tenant_id)
         stray = self.supersede(
-            tenant_id, other, amount_minor=9000, starts_on=TODAY.isoformat(), sign=False)
+            tenant_id, other, amount_minor=9000, starts_on=today().isoformat(), sign=False)
         refused = self.preview(tenant_id, base["membership_id"], stray)
         self.assertEqual(refused.status_code, 409, refused.text)
         self.assertEqual(
@@ -4364,7 +4380,7 @@ class PlanChangeTests(CommercialApiTestCase):
         owner = self.headers(tenant_id)
         base = self.live(tenant_id)
         target = self.supersede(
-            tenant_id, base, amount_minor=9000, starts_on=TODAY.isoformat(), sign=False)
+            tenant_id, base, amount_minor=9000, starts_on=today().isoformat(), sign=False)
         while_drafted = self.client.get(
             f"/memberships/{base['membership_id']}", headers=owner)
         self.assertEqual(while_drafted.json()["agreement"]["agreement_id"],
@@ -4388,7 +4404,7 @@ class PlanChangeTests(CommercialApiTestCase):
         tenant_id = self.tenant()
         base = self.live(tenant_id)
         signed = self.supersede(
-            tenant_id, base, amount_minor=9000, starts_on=TODAY.isoformat())
+            tenant_id, base, amount_minor=9000, starts_on=today().isoformat())
         refused = self.preview(tenant_id, base["membership_id"], signed)
         self.assertEqual(refused.status_code, 409, refused.text)
         self.assertEqual(
@@ -4430,11 +4446,11 @@ class PlanChangeTests(CommercialApiTestCase):
         tenant_id = self.tenant()
         base = self.live(tenant_id)
         wrong = self.supersede(
-            tenant_id, base, amount_minor=2000, starts_on=TODAY.isoformat(), sign=False)
+            tenant_id, base, amount_minor=2000, starts_on=today().isoformat(), sign=False)
         refused = self.preview(tenant_id, base["membership_id"], wrong)
         self.assertEqual(refused.status_code, 409, refused.text)
         self.assertIn("takes_effect_on", refused.json()["error"])
-        self.assertIn(TODAY.isoformat(), refused.json()["error"])
+        self.assertIn(today().isoformat(), refused.json()["error"])
 
     def test_a_plan_change_does_not_cross_currencies(self):
         """Minor units are not comparable across two currencies, and here the credit is in one
@@ -4443,7 +4459,7 @@ class PlanChangeTests(CommercialApiTestCase):
         tenant_id = self.tenant()
         base = self.live(tenant_id)
         target = self.supersede(
-            tenant_id, base, amount_minor=9000, starts_on=TODAY.isoformat(),
+            tenant_id, base, amount_minor=9000, starts_on=today().isoformat(),
             currency="USD", sign=False)
         refused = self.preview(tenant_id, base["membership_id"], target)
         self.assertEqual(refused.status_code, 409, refused.text)
@@ -4458,7 +4474,7 @@ class PlanChangeTests(CommercialApiTestCase):
         owner = self.headers(tenant_id)
         base = self.live(tenant_id)
         target = self.supersede(
-            tenant_id, base, amount_minor=9000, starts_on=TODAY.isoformat(), sign=False)
+            tenant_id, base, amount_minor=9000, starts_on=today().isoformat(), sign=False)
         key = f"up-{uuid.uuid4().hex[:8]}"
         first = self.client.post(
             f"/memberships/{base['membership_id']}/plan-change", json={
@@ -4488,7 +4504,7 @@ class PlanChangeTests(CommercialApiTestCase):
         owner = self.headers(tenant_id)
         base = self.live(tenant_id)
         first_target = self.supersede(
-            tenant_id, base, amount_minor=9000, starts_on=TODAY.isoformat(), sign=False)
+            tenant_id, base, amount_minor=9000, starts_on=today().isoformat(), sign=False)
         key = f"up-{uuid.uuid4().hex[:8]}"
         done = self.client.post(
             f"/memberships/{base['membership_id']}/plan-change", json={
@@ -4499,7 +4515,7 @@ class PlanChangeTests(CommercialApiTestCase):
         self.assertEqual(done.status_code, 200, done.text)
         second_target = self.supersede(
             tenant_id, {**base, "agreement_id": first_target}, amount_minor=12000,
-            starts_on=TODAY.isoformat(), sign=False)
+            starts_on=today().isoformat(), sign=False)
         refused = self.client.post(
             f"/memberships/{base['membership_id']}/plan-change", json={
                 "to_agreement_id": second_target, "reason": "wants more",
@@ -4519,7 +4535,7 @@ class PlanChangeTests(CommercialApiTestCase):
         owner = self.headers(tenant_id)
         base = self.live(tenant_id)
         target = self.supersede(
-            tenant_id, base, amount_minor=9000, starts_on=TODAY.isoformat(), sign=False)
+            tenant_id, base, amount_minor=9000, starts_on=today().isoformat(), sign=False)
         self.client.post(
             f"/memberships/{base['membership_id']}/plan-change", json={
                 "to_agreement_id": target, "reason": "wants all clubs",
@@ -4552,7 +4568,7 @@ class PlanChangeTests(CommercialApiTestCase):
         owner = self.headers(tenant_id)
         base = self.live(tenant_id)
         target = self.supersede(
-            tenant_id, base, amount_minor=9000, starts_on=TODAY.isoformat(), sign=False)
+            tenant_id, base, amount_minor=9000, starts_on=today().isoformat(), sign=False)
         self.client.post(
             f"/memberships/{base['membership_id']}/plan-change", json={
                 "to_agreement_id": target, "reason": "wants all clubs",
@@ -4580,7 +4596,7 @@ class PlanChangeTests(CommercialApiTestCase):
         tenant_id = self.tenant()
         base = self.membership(tenant_id)
         target = self.supersede(
-            tenant_id, base, amount_minor=9000, starts_on=TODAY.isoformat(), sign=False)
+            tenant_id, base, amount_minor=9000, starts_on=today().isoformat(), sign=False)
         refused = self.preview(tenant_id, base["membership_id"], target)
         self.assertEqual(refused.status_code, 409, refused.text)
         self.assertEqual(
@@ -4666,7 +4682,7 @@ class SupersessionChainTests(CommercialApiTestCase):
         forked = self.client.post("/memberships/agreements", json={
             "person_id": base["person_id"], "membership_terms_id": base["terms_id"],
             "variant_id": base["variant_id"], "amount_minor": 5500, "currency": "JOD",
-            "starts_on": MEMBERSHIP_START.isoformat(),
+            "starts_on": membership_start().isoformat(),
             "supersedes_agreement_id": base["agreement_id"], **self.correlation()},
             headers=owner)
         self.assertEqual(forked.status_code, 409, forked.text)
@@ -4813,7 +4829,7 @@ class SupersessionChainTests(CommercialApiTestCase):
         # period closed a month ago: a window anchored on today contains no expiry at all and
         # the assertion would pass on an empty list, which is the vacuous-evidence shape this
         # repository keeps finding one layer in.
-        window = f"as_of={MEMBERSHIP_START.isoformat()}&expiring_within_days=365"
+        window = f"as_of={membership_start().isoformat()}&expiring_within_days=365"
         before = self.client.get(f"/memberships/summary?{window}", headers=owner)
         self.assertEqual(before.status_code, 200, before.text)
         self.assertEqual(before.json()["expiring"]["count"], 1, before.text)
@@ -4842,13 +4858,13 @@ class TrialTests(CommercialApiTestCase):
 
     def test_a_trial_product_gives_its_membership_an_end_date(self):
         tenant_id = self.tenant()
-        start = (TODAY - timedelta(days=2)).isoformat()
+        start = (today() - timedelta(days=2)).isoformat()
         live = self.membership(
             tenant_id, starts_on=start, terms_extra={"trial_days": 7})
         self.assertEqual(live["trial_days"], 7)
         # **Inclusive of the start day**, which is what "day 6 of 7" counts: a seven-day
         # trial starting on the 13th runs to the 19th, not the 20th.
-        self.assertEqual(live["ends_on"], (TODAY - timedelta(days=2) + timedelta(days=6))
+        self.assertEqual(live["ends_on"], (today() - timedelta(days=2) + timedelta(days=6))
                          .isoformat())
 
     def test_a_membership_that_is_not_a_trial_has_no_end_and_says_so(self):
@@ -4865,7 +4881,7 @@ class TrialTests(CommercialApiTestCase):
         was right and the answer was not."""
         tenant_id = self.tenant()
         owner = self.headers(tenant_id)
-        start = TODAY.isoformat()
+        start = today().isoformat()
         live = self.membership(tenant_id, starts_on=start, terms_extra={"trial_days": 7})
         again = self.client.post("/memberships", json={
             "agreement_id": live["agreement_id"],
@@ -4890,12 +4906,12 @@ class TrialTests(CommercialApiTestCase):
         tenant_id = self.tenant()
         owner = self.headers(tenant_id)
         live = self.membership(
-            tenant_id, starts_on=TODAY.isoformat(), terms_extra={"trial_days": 7})
+            tenant_id, starts_on=today().isoformat(), terms_extra={"trial_days": 7})
         one = self.client.get(f"/memberships/{live['membership_id']}", headers=owner)
         self.assertEqual(one.status_code, 200, one.text)
         self.assertEqual(one.json()["terms"]["trial_days"], 7, one.text)
         self.assertTrue(one.json()["terms"]["is_a_trial"])
-        self.assertEqual(one.json()["ends_on"], (TODAY + timedelta(days=6)).isoformat())
+        self.assertEqual(one.json()["ends_on"], (today() + timedelta(days=6)).isoformat())
 
         listed = self.client.get(
             f"/memberships?person_id={live['person_id']}", headers=owner)
@@ -5130,7 +5146,7 @@ class ConversionQuoteTests(CommercialApiTestCase):
         name a variant the picker did not offer."""
         tenant_id = self.tenant()
         live = self.membership(
-            tenant_id, starts_on=(TODAY - timedelta(days=5)).isoformat(),
+            tenant_id, starts_on=(today() - timedelta(days=5)).isoformat(),
             terms_extra={"trial_days": 7})
         made = self.client.post("/crm/leads", json={
             "person_id": live["person_id"], **self.correlation()},
@@ -5151,7 +5167,7 @@ class ConversionQuoteTests(CommercialApiTestCase):
         tenant_id = self.tenant()
         plan = self.plan(tenant_id)
         live = self.membership(
-            tenant_id, starts_on=(TODAY - timedelta(days=5)).isoformat(),
+            tenant_id, starts_on=(today() - timedelta(days=5)).isoformat(),
             terms_extra={"trial_days": 7})
         made = self.client.post("/crm/leads", json={
             "person_id": live["person_id"], **self.correlation()},
@@ -5319,7 +5335,7 @@ class PlanMoveTests(CommercialApiTestCase):
     """
 
     def live(self, tenant_id: str, **kwargs) -> dict:
-        starts = (TODAY - timedelta(days=10)).isoformat()
+        starts = (today() - timedelta(days=10)).isoformat()
         return self.membership(tenant_id, starts_on=starts, **kwargs)
 
     def policy(self, tenant_id: str, *, key: str, counted: bool = True,
@@ -5512,7 +5528,7 @@ class PlanMoveTests(CommercialApiTestCase):
         self.assertEqual(booked.status_code, 201, booked.text)
 
         target = self.supersede(
-            tenant_id, live, amount_minor=9000, starts_on=TODAY.isoformat(),
+            tenant_id, live, amount_minor=9000, starts_on=today().isoformat(),
             sign=False, variant_id=lean_variant, terms_id=lean_terms)
         done = self.client.post(
             f"/memberships/{live['membership_id']}/plan-change", json={
@@ -6039,7 +6055,7 @@ class PriceImpactTests(CommercialApiTestCase):
         # The same plan, joined two years ago, so that term has run out.
         self.joiner(
             tenant_id, variant_id=inside["variant_id"], terms_id=inside["terms_id"],
-            starts_on=(MEMBERSHIP_START - timedelta(days=640)).isoformat())
+            starts_on=(membership_start() - timedelta(days=640)).isoformat())
         body = self.impact(tenant_id, inside["variant_id"])
         self.assertEqual(body["on_this_plan"], 2, body)
         self.assertEqual(body["inside_a_commitment"], 1, body)
@@ -6069,7 +6085,7 @@ class PriceImpactTests(CommercialApiTestCase):
         first = self.membership(tenant_id)
         later = self.joiner(
             tenant_id, variant_id=first["variant_id"], terms_id=first["terms_id"],
-            starts_on=(MEMBERSHIP_START + timedelta(days=10)).isoformat())
+            starts_on=(membership_start() + timedelta(days=10)).isoformat())
         body = self.impact(tenant_id, first["variant_id"])
         self.assertEqual(body["on_this_plan"], 2, body)
         self.assertEqual(
@@ -6102,7 +6118,7 @@ class PriceImpactTests(CommercialApiTestCase):
         moved = self.client.post("/memberships/agreements", json={
             "person_id": base["person_id"], "membership_terms_id": base["terms_id"],
             "variant_id": other_variant, "amount_minor": 6000, "currency": "JOD",
-            "starts_on": MEMBERSHIP_START.isoformat(),
+            "starts_on": membership_start().isoformat(),
             "supersedes_agreement_id": base["agreement_id"], **self.correlation()},
             headers=self.headers(tenant_id))
         self.assertEqual(moved.status_code, 201, moved.text)
@@ -6123,7 +6139,7 @@ class PriceImpactTests(CommercialApiTestCase):
         has run out is not somebody a price rise reaches."""
         tenant_id = self.tenant()
         trial = self.membership(tenant_id, terms_extra={"trial_days": 7},
-                                starts_on=(MEMBERSHIP_START).isoformat())
+                                starts_on=(membership_start()).isoformat())
         # Its `ends_on` is 90 days in the past plus six, so the window has closed.
         self.assertIsNotNone(trial["ends_on"], trial)
         self.assertEqual(self.impact(tenant_id, trial["variant_id"])["on_this_plan"], 0)

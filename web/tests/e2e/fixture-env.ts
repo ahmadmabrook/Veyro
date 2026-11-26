@@ -38,6 +38,8 @@ export type Fixture = {
   coldLeadId: string;
   ownedLeadId: string;
   trialLeadId: string;
+  /** The trialist's `starts_on`, so a spec derives the day rather than assuming it. */
+  trialStart: string;
   /** ADM-CRM-07's own state: toured, then lost for joining elsewhere. */
   lostLeadId: string;
   /** ADM-CRM-06's conversion target: a Club plan on the `calendar` anchor. */
@@ -213,6 +215,13 @@ export function fixture(): Fixture {
     // ADM-SCH-05's uncounted-credit member. Required rather than optional, for the reason
     // below: a spec that skipped on a missing id would go green against a stale fixture.
     "VEYRO_E2E_PT_PERSON_ID",
+    // **The trial's start date, so a spec derives the day rather than assuming it.** The
+    // fixture puts the trialist on day 6 of 7; a suite that runs after UTC midnight finds
+    // them on day 7, and three assertions went red on `main` for it. The canvas's own
+    // figures are asserted in `tests/component/trial.test.ts`, where the card is built by
+    // hand and the clock cannot move; what this proves is that the page renders the day the
+    // seeded start implies, which is a second route to the same number.
+    "VEYRO_E2E_TRIAL_START",
     // ADM-MSH-07's commitment sentences, one member each. Required rather than optional,
     // because a spec that skipped on a missing id would go green against a stale fixture --
     // which is how a branch nobody renders stays unrendered.
@@ -275,6 +284,7 @@ export function fixture(): Fixture {
     coldLeadId: env.VEYRO_E2E_COLD_LEAD_ID!,
     ownedLeadId: env.VEYRO_E2E_OWNED_LEAD_ID!,
     trialLeadId: env.VEYRO_E2E_TRIAL_LEAD_ID!,
+    trialStart: env.VEYRO_E2E_TRIAL_START!,
     lostLeadId: env.VEYRO_E2E_LOST_LEAD_ID!,
     clubVariantId: env.VEYRO_E2E_CLUB_VARIANT_ID!,
     trialMembershipId: env.VEYRO_E2E_TRIAL_MEMBERSHIP_ID!,

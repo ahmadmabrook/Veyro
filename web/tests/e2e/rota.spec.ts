@@ -102,11 +102,12 @@ test.describe("the availability grid", () => {
   test("the marks the canvas prints are printed, so no fill stands alone", async ({ page }) => {
     // ADM-SCH-04 writes PT or CLS in a booked cell and OFF in an exception, and leaves the
     // two quiet states blank -- figure and ground, and the reason colour is not the only
-    // channel here. This build cannot tell a class from a personal-training session, so the
-    // two tones the canvas draws are one mark.
+    // channel here. **The two marks are two**, as of ADR-0019: this assertion read "Booked"
+    // against a comment saying the build could not tell a class from a personal session,
+    // which `0036` made false -- a stale assertion holding a closed gap on the page.
     const grid = page.locator("table.ds-week");
     await expect(grid.locator('.ds-rota-mark[data-state="booked"] .ds-rota-mark-text').first())
-      .toHaveText("Booked");
+      .toHaveText("CLS");
     await expect(
       grid.locator('.ds-rota-mark[data-state="exception"] .ds-rota-mark-text').first())
       .toHaveText("Off");
@@ -115,13 +116,14 @@ test.describe("the availability grid", () => {
       .toBe(0);
   });
 
-  test("every cell says its own state, because five fills is five things", async ({
+  test("every cell says its own state, because six fills is six things", async ({
     page,
   }) => {
-    // Colour never carries meaning alone, and the legend names all five.
+    // Colour never carries meaning alone, and the legend names all six.
     const legend = page.getByRole("list", { name: "What a cell means" });
-    for (const label of ["Available, unbooked", "Booked", "Booked, and the rota refuses it",
-                         "Exception", "Not working"]) {
+    for (const label of ["Available, unbooked", "A class is booked",
+                         "A personal session is booked",
+                         "Booked, and the rota refuses it", "Exception", "Not working"]) {
       await expect(legend).toContainText(label);
     }
     const marks = page.locator(".ds-rota-mark .ds-visually-hidden");
@@ -132,10 +134,14 @@ test.describe("the availability grid", () => {
     page,
   }) => {
     const gaps = page.locator("section").filter({ hasText: "What this grid does not do" });
-    await expect(gaps.getByRole("term").filter({ hasText: "Class or personal training" }))
-      .toBeVisible();
     await expect(gaps.getByRole("term").filter({ hasText: "The grid is hourly" }))
       .toBeVisible();
+    // **"Class or personal training" has left this list too**, and asserting its absence is
+    // what stops it coming back: it said nothing in this build distinguished the two, and
+    // `0036` made that false -- the gap note that outlives its gap, which this screen's own
+    // read was *returning to every caller* until ADR-0019 deleted it.
+    await expect(gaps.getByRole("term").filter({ hasText: "Class or personal training" }))
+      .toHaveCount(0);
     // **"Add an exception" has left this list**, which is what the note it used to carry
     // said would happen. These two tests previously asserted that the form did not exist
     // and that no button offered it; both were true and both were the gap, not the design.

@@ -22,7 +22,7 @@ import { inZone, monthDayLabel } from "@/lib/time";
 import {
   anyRota,
   CELL_LABEL,
-  CELL_MARK,
+  cellMark,
   cellState,
   hourLabel,
   hourSpan,
@@ -300,7 +300,7 @@ export default async function RotaPage({
                 time: hourLabel(hour),
                 cells: week.days.map((day) => {
                   const state: CellState = cellState(day, hour, week.sessions);
-                  const mark = CELL_MARK[state];
+                  const mark = cellMark(state, day, hour, week.sessions);
                   return (
                     // **The mark is visible, because the canvas prints one and colour must
                     // not be the only channel.** ADM-SCH-04 writes PT or CLS in a booked cell

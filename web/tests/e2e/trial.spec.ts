@@ -14,7 +14,32 @@ import { useDeskSession, useOwnerSession } from "./sign-in";
  * rather than drawn**: the classes count is zero because nothing in the fixture books this
  * person into a class, and "all spin" is a fact no read in this build produces.
  */
-const { trialLeadId, coldLeadId } = fixture();
+const { trialLeadId, coldLeadId, trialStart } = fixture();
+
+/**
+ * The day the trial is on **now**, derived from the seeded start rather than assumed.
+ *
+ * **The fixture and the assertions are two processes with two clocks.** Provisioning puts
+ * the trialist on day 6 of 7; CI provisions and then runs a ten-minute suite, so a run that
+ * begins at 23:58Z asserts at 00:02Z against a page correctly saying day 7 -- and three
+ * tests here went red on `main` for exactly that, on a commit whose code was right. The
+ * canvas's own figures (`DAY 6 OF 7 · 2 DAYS LEFT · ends tomorrow`) are asserted in
+ * `tests/component/trial.test.ts`, where the card is built by hand and no clock can move.
+ * What this file proves is that the page renders the day the seeded start implies, which is
+ * a second route to the same number rather than a weaker assertion.
+ */
+const OF_DAYS = 7;
+const midnightUtc = (iso: string) => Date.parse(`${iso}T00:00:00Z`);
+function trialDay(): { dayOf: number; daysLeft: number; urgency: RegExp } {
+  const start = midnightUtc(trialStart);
+  const today = midnightUtc(new Date().toISOString().slice(0, 10));
+  const dayOf = Math.floor((today - start) / 86_400_000) + 1;
+  const daysLeft = OF_DAYS - dayOf + 1;
+  // `urgencyKey`'s own three branches, which the page picks between on the server's figures.
+  const urgency = daysLeft === 2 ? /ends tomorrow/
+    : daysLeft <= 1 ? /ends today/ : /day \d+ of/i;
+  return { dayOf, daysLeft, urgency };
+}
 
 test.describe("the trial state of a lead profile", () => {
   test.beforeEach(async ({ page }) => {
@@ -26,7 +51,8 @@ test.describe("the trial state of a lead profile", () => {
     // **A running trial outranks the cold mark**, because a trialist is not somebody nobody
     // has rung -- the clock that matters is the one running out. `RecordHeader` draws one.
     const main = page.locator("#main");
-    await expect(main.getByText("Day 6 of 7")).toBeVisible();
+    const { dayOf } = trialDay();
+    await expect(main.getByText(`Day ${dayOf} of ${OF_DAYS}`)).toBeVisible();
     await expect(main.getByText("No contact")).toHaveCount(0);
   });
 
@@ -45,15 +71,16 @@ test.describe("the trial state of a lead profile", () => {
     // canvas's `High` -- and the word comes from the catalogue rather than the stored band,
     // which this app has five recorded defects from.
     const metrics = page.locator("#main section.metrics");
+    const { daysLeft } = trialDay();
     await expect(metrics).toContainText("4");
     await expect(metrics).toContainText("High");
-    await expect(metrics).toContainText("2");
+    await expect(metrics).toContainText(String(daysLeft));
   });
 
   test("the urgency line is the canvas's own sentence", async ({ page }) => {
     // "Her trial ends tomorrow" -- the server decides which of three it is, because
     // `ends_tomorrow` is a date comparison in the tenant's own frame.
-    await expect(page.locator("#main").getByRole("heading", { name: /ends tomorrow/ }))
+    await expect(page.locator("#main").getByRole("heading", { name: trialDay().urgency }))
       .toBeVisible();
   });
 

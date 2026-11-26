@@ -3974,3 +3974,84 @@ two definitions of when a credit may be spent -- and the case is one layer down,
 draw directly with a grant the list would never have offered. That is the fifth reading of an
 uncaught mutation, "the case exists and the layer is wrong", met from the service side rather
 than the surface's.
+
+
+**A sixth shape of the date-frame flake, and it is the exact mirror of the first: a date
+constant evaluated at import.** `TODAY = datetime.now(UTC).date()` at module scope was
+written to fix the local-clock version -- and its own comment says "CI never saw it because
+CI runs in UTC". The constant is read once when the module loads, and this suite takes twelve
+minutes, so for every test that runs after 00:00Z it is *yesterday* while the service under
+test computes today. **Only CI sees this one**, because only CI runs a long suite at 23:55Z:
+`main` went red with `AssertionError: 7 != 6` on a trial day count, a plan change refused with
+`this_agreement_starts_on_2026-11-25_and_the_change_takes_effect_on_2026-11-26`, and a walk-in
+resume answering `'created' != 'existing'` -- three different modules, one cause, on a commit
+whose code was right. It is `today()` now in all five harnesses, which shrinks the window from
+the whole suite to the one test that straddles the boundary. **The pair is worth remembering
+together: a local-clock date is invisible to CI, and an import-time date is invisible
+locally.**
+
+**And the same midnight produced two web failures with two different causes, both worth the
+rule.** A fixture date on the *edge* of a window falls out of it when the window moves: the
+payments header counts the last thirty days and the second dispute was seeded `isoDay(-30)`,
+so it was inside at 23:58 and outside at 00:02. **A fixture date belongs inside a window,
+never on its boundary.** And the trial spec asserted `Day 6 of 7` against a fixture that
+provisions in a *different process*: two clocks, minutes apart, and no way to make them one
+instant. The fix there is the one this file already states for an exact canvas case -- the
+literal figures are asserted in a component test where the card is built by hand and no clock
+can move, and the browser spec derives the expected day from the seeded start date the
+fixture now exports. That is a second route to the same number rather than a weaker
+assertion: the page computes it from the membership row and the spec from the seed.
+
+
+**"Run the whole suite, not the test you wrote" is in this file already, and ADM-SCH-05 broke
+it again for five tests in two screens it never touched.** The slice's own spec was run
+sixteen times over, twice in a row; the browser suite as a whole was not, and CI found what it
+would have:
+
+- **A fixture name is shared state, exactly as an id is.** The slice seeded its
+  personal-training member as `Hala Barakat` -- and FD-02's lookup searches a *name* prefix,
+  with `lookupPrefix: "hala"` and a spec asserting exactly two matches, because "a fixture
+  carries both members of the distinction a surface is about". A third Hala broke two tests in
+  a screen this slice had no reason to think about. The name is now unique in the fixture, and
+  the comment beside it says why.
+- **Two stale assertions holding a closed gap on the page.** `rota.spec.ts` asserted the mark
+  `Booked` and the gap term `Class or personal training`, both under comments saying the build
+  could not tell a class from a personal session -- which the same commit made false. That is
+  the gap-note-outliving-its-gap shape *in the test layer*, and it is why the replacement
+  asserts the term's **absence** rather than only the new wording: an assertion on the new text
+  alone would not notice a revert.
+- **A browser timezone the spec did not pin.** `instantFrom` composes the typed hour in the
+  browser's own zone -- deliberately, as "the honest reading of a desk booking an hour it is
+  standing in" -- so a spec typing `18:30` types it wherever the runner is. Locally that is the
+  club's zone and the evening class clashes; on CI it is UTC, so the hour is 21:30 at the club,
+  the class is three hours earlier, and the refusal that comes back is the rota's. The test
+  asserted one sentence and CI read the other; **both were correct, for two different hours.**
+  `test.use({ timezoneId: "Asia/Amman" })` makes the typed hour mean one thing and is the
+  ordinary case besides.
+
+**And the local full run is not a substitute for CI here -- in both directions.** The same
+suite locally reported fourteen failures: the five real ones, five timeouts (single tests
+taking four, eleven and fifteen minutes on a machine that had just finished a 3,200-test
+backend suite and a twenty-step gate), and **four that were my own invocation.** The fixture's
+worker subprocess takes `VEYRO_DATABASE_URL` from the environment and defaults to the
+documented dev port, so a run that set only `VEYRO_API_ORIGIN` ticked the worker against the
+*other* database: it printed `worker 10 runs, 0 failed` about a tenant that was not this one,
+and left this one with an empty timeline and no job metrics. Three operations tests and one
+timeline test then failed, correctly, about a product that was right. This file already
+records that trap and I walked into it anyway -- the tell is cheap and I did not look for it:
+`select count(*) from plt01.ppl_timeline_entries` against the database the API reads.
+
+**The fourth was real and is a fragility CI will eventually hit.** `operations.spec` drains the
+outbox with one `POST /events/dispatch`, and `dispatch_pending` claims `LIMIT 100` -- so one
+call was enough for as long as the specs sorting ahead of it wrote fewer than a hundred events,
+which is a property of spec order rather than of the product. At 143 pending the assertion read
+`143 · Oldest ...`. It loops now, bounded, ending on a short batch. **A drain that assumes one
+batch is a drain that depends on how much the rest of the suite wrote.**
+
+**A rota cell's mark is derived, because the refusal is one state and the kind is not.**
+`CELL_MARK` listed the class mark against `bookedConflict` while `cellState`'s own comment said
+the refusal outranks the kind -- two comments in one module disagreeing about one rule, with the
+code agreeing with the wrong one, so a refused *personal* session printed `CLS` on the screen
+whose subject is telling the two apart. `cellMark` reads the sessions; `sessionsIn` is the one
+filter both it and `cellState` ask, because two copies of "which sessions are in this cell" is
+the duplication this build finds most often.

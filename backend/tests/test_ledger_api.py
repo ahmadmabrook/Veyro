@@ -16,10 +16,11 @@ from __future__ import annotations
 
 import unittest
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 from tests.support import GatedApiTestCase
+
 
 #: **UTC, not the local clock.** Every service in this build takes its "today" from
 #: `datetime.now(UTC)`, and a fixture using `date.today()` disagrees with it in any timezone
@@ -28,15 +29,22 @@ from tests.support import GatedApiTestCase
 #: sixteen tests across MOD-017 and MOD-018 failed for a reason that had nothing to do with
 #: either module. CI never saw it because CI runs in UTC, where the two agree. Found while
 #: running the full suite at 02:00.
-TODAY = datetime.now(UTC).date()
+#:
+#: **A function, not a constant.** Evaluated once at import it is *yesterday* for every
+#: test that runs after UTC midnight, while the service computes today -- which only CI
+#: sees, because only CI runs a twelve-minute suite at 23:55Z. `test_commercial_api`
+#: carries the finding and its mirror, the local-clock version this replaced.
+def today() -> date:
+    """Today in UTC, now rather than at import."""
+    return datetime.now(UTC).date()
 
 
 def day(offset: int) -> str:
-    return (TODAY + timedelta(days=offset)).isoformat()
+    return (today() + timedelta(days=offset)).isoformat()
 
 
 def period_of(offset: int = 0) -> str:
-    moment = TODAY + timedelta(days=offset)
+    moment = today() + timedelta(days=offset)
     return f"{moment.year:04d}-{moment.month:02d}"
 
 

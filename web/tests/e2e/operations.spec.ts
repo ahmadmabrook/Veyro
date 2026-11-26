@@ -37,18 +37,29 @@ async function drainOutbox(page: import("@playwright/test").Page) {
   const cookies = await page.context().cookies();
   const token = cookies.find((cookie) => cookie.name === "veyro_session")?.value;
   expect(token, "the browser session carries the bearer token").toBeTruthy();
-  const response = await page.request.post(
-    `${process.env.VEYRO_API_ORIGIN ?? "http://127.0.0.1:8000"}/events/dispatch`,
-    {
-      headers: {
-        "X-Veyro-Tenant": fixture().tenantId,
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
+  // **Until it is empty, not once.** `dispatch_pending` claims `LIMIT 100`, and one call was
+  // enough for as long as the specs ahead of this one wrote fewer than a hundred events --
+  // which is a property of spec order rather than of the product, so it held on CI and broke
+  // locally at 143 pending with the assertion reading "143 · Oldest ...". The route reports
+  // what it dispatched, so the loop ends on a short batch; the bound is there because a
+  // drain that cannot finish is a hang rather than a failure.
+  for (let round = 0; round < 40; round += 1) {
+    const response = await page.request.post(
+      `${process.env.VEYRO_API_ORIGIN ?? "http://127.0.0.1:8000"}/events/dispatch`,
+      {
+        headers: {
+          "X-Veyro-Tenant": fixture().tenantId,
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        data: { correlation_id: crypto.randomUUID() },
       },
-      data: { correlation_id: crypto.randomUUID() },
-    },
-  );
-  expect(response.ok(), await response.text()).toBeTruthy();
+    );
+    expect(response.ok(), await response.text()).toBeTruthy();
+    const { events_dispatched: dispatched } = await response.json();
+    if (dispatched < 100) return;
+  }
+  throw new Error("the outbox is still not empty after forty relay rounds");
 }
 
 test.describe("the operations board", () => {

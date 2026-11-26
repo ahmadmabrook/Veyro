@@ -22,6 +22,7 @@ from typing import Any
 
 from tests.support import DSN, GatedApiTestCase
 
+
 #: **UTC, not the local clock.** Every service in this build takes its "today" from
 #: `datetime.now(UTC)`, and a fixture using `date.today()` disagrees with it in any timezone
 #: east of UTC for as long as the two dates differ -- three hours a night here. A journal
@@ -29,11 +30,18 @@ from tests.support import DSN, GatedApiTestCase
 #: sixteen tests across MOD-017 and MOD-018 failed for a reason that had nothing to do with
 #: either module. CI never saw it because CI runs in UTC, where the two agree. Found while
 #: running the full suite at 02:00.
-TODAY = datetime.now(UTC).date()
+#:
+#: **A function, not a constant.** Evaluated once at import it is *yesterday* for every
+#: test that runs after UTC midnight, while the service computes today -- which only CI
+#: sees, because only CI runs a twelve-minute suite at 23:55Z. `test_commercial_api`
+#: carries the finding and its mirror, the local-clock version this replaced.
+def today() -> date:
+    """Today in UTC, now rather than at import."""
+    return datetime.now(UTC).date()
 
 
 def day(offset: int) -> str:
-    return (TODAY + timedelta(days=offset)).isoformat()
+    return (today() + timedelta(days=offset)).isoformat()
 
 
 #: The weekday the default template runs on, chosen so its first occurrence is always two
@@ -51,12 +59,12 @@ def day(offset: int) -> str:
 #: docstring says "so a window is always open". This is the day-of-week form of the flake this
 #: module already records at the top of the file, and it cost twenty minutes of suspecting an
 #: unrelated change before a worktree at HEAD reproduced it.
-BOOKABLE_WEEKDAY = (TODAY + timedelta(days=2)).weekday()
+BOOKABLE_WEEKDAY = (today() + timedelta(days=2)).weekday()
 
 
 def next_weekday(weekday: int, *, after: int = 1) -> date:
     """The next date on `weekday` at least `after` days out, so a window is always open."""
-    moment = TODAY + timedelta(days=after)
+    moment = today() + timedelta(days=after)
     while moment.weekday() != weekday:
         moment += timedelta(days=1)
     return moment
@@ -102,7 +110,7 @@ class SchedulingApiTestCase(GatedApiTestCase):
         return str(created.json()["person_id"])
 
     def born(self, years_ago: int) -> str:
-        return (TODAY - timedelta(days=365 * years_ago + 10)).isoformat()
+        return (today() - timedelta(days=365 * years_ago + 10)).isoformat()
 
     def gym(self, *, timezone: str = "Asia/Amman") -> dict[str, Any]:
         """A tenant with a location, a studio, a coach, a service and spin bikes."""
@@ -463,12 +471,12 @@ class TimezoneTests(SchedulingApiTestCase):
         """
         gym = self.gym(timezone="Europe/London")
         # The last Sunday in March and the last in October, whichever is next.
-        year = TODAY.year if TODAY.month < 10 else TODAY.year + 1
+        year = today().year if today().month < 10 else today().year + 1
         start = date(year, 3, 1)
         template_id = self.published(gym, rule={
             "frequency": "weekly", "local_time": "18:00", "duration_minutes": 60,
-            "starts_on": max(start, TODAY + timedelta(days=1)).isoformat(),
-            "until": (max(start, TODAY + timedelta(days=1))
+            "starts_on": max(start, today() + timedelta(days=1)).isoformat(),
+            "until": (max(start, today() + timedelta(days=1))
                       + timedelta(days=90)).isoformat(),
             "weekdays": [1],
         })
@@ -485,9 +493,9 @@ class TimezoneTests(SchedulingApiTestCase):
         """02:30 does not exist on the day the clocks go forward. The session moves and the
         row records that it did, rather than an hour's difference being discovered later."""
         gym = self.gym(timezone="Europe/London")
-        year = TODAY.year if TODAY.month < 3 else TODAY.year + 1
+        year = today().year if today().month < 3 else today().year + 1
         march = date(year, 3, 1)
-        if march <= TODAY:
+        if march <= today():
             self.skipTest("the next spring-forward is outside the generation horizon")
         template_id = self.published(gym, rule={
             "frequency": "daily", "local_time": "01:30", "duration_minutes": 60,
@@ -1889,7 +1897,7 @@ class ConflictCheckTests(SchedulingApiTestCase):
         # **The dates, because the count cannot see this.** Eight of the past is still eight,
         # which is why the mutation that started the walk at the rule's first date came back
         # uncaught against a count assertion.
-        self.assertGreaterEqual(body["examined_from"], TODAY.isoformat())
+        self.assertGreaterEqual(body["examined_from"], today().isoformat())
         self.assertLess(body["examined_of"], body["occurrences"])
 
     def test_a_clash_inside_the_proposals_own_setup_margin_is_a_clash(self) -> None:

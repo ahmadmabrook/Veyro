@@ -142,18 +142,37 @@ export const CELL_LABEL: Record<CellState, MessageKey> = {
  * build distinguishes" them, which was true until `0036` and is the shape of gap note that
  * outlives its gap -- the one this repository keeps finding.
  *
- * A refused booking keeps the mark of whatever it is, because what the cell's border says is
- * that the rota refuses it: a reader needs both facts, and overwriting the kind with a third
- * mark would lose the one they can act on.
+ * **A refused booking keeps the mark of whatever it is**, because the cell's border is what
+ * says the rota refuses it: a reader needs both facts, and overwriting the kind would lose
+ * the one they can act on. That is why `bookedConflict` has no entry here and `cellMark`
+ * derives it -- a static map cannot, since the refusal is one state and the kind is not.
+ * **This map claimed otherwise for a commit**, listing the class mark against the conflict
+ * while `cellState`'s own comment says the refusal outranks the kind, so a refused personal
+ * session was marked `CLS`: two comments in one module disagreeing about one rule, and the
+ * code agreeing with the wrong one.
  */
-export const CELL_MARK: Record<CellState, MessageKey | null> = {
+export const CELL_MARK: Record<Exclude<CellState, "bookedConflict">, MessageKey | null> = {
   closed: null,
   open: null,
   exception: "rota.markOff",
   booked: "rota.markClass",
   bookedPersonal: "rota.markPersonal",
-  bookedConflict: "rota.markClass",
 };
+
+/**
+ * The mark a cell prints, with the conflict's taken from what is actually booked in it.
+ *
+ * Reachable: a personal session is created only where the coach's rota covers the hour, so a
+ * refused one is a rota somebody withdrew afterwards -- which `/rota` has a form for.
+ */
+export function cellMark(
+  state: CellState, day: RotaDay, hour: number, sessions: RotaSession[],
+): MessageKey | null {
+  if (state !== "bookedConflict") return CELL_MARK[state];
+  return sessionsIn(day, hour, sessions).every((one) => one.session_kind === "personal")
+    ? "rota.markPersonal"
+    : "rota.markClass";
+}
 
 /** `"09:30"` as minutes from midnight, so two wall-clock times can be compared. */
 export function minutesOf(clock: string): number {
@@ -210,6 +229,17 @@ const overlaps = (aStart: number, aEnd: number, bStart: number, bEnd: number) =>
  * checked first and the conflict wins over the plain one — a cell that is both is the single
  * thing this screen exists to show.
  */
+/** The sessions that fall in one cell -- one definition, because `cellMark` asks too. */
+export function sessionsIn(
+  day: RotaDay, hour: number, sessions: RotaSession[],
+): RotaSession[] {
+  const from = hour * 60;
+  const to = from + 60;
+  return sessions.filter(
+    (one) => one.local_date === day.date
+      && overlaps(from, to, minutesOf(one.starts_at_local), minutesOf(one.ends_at_local)));
+}
+
 export function cellState(
   day: RotaDay,
   hour: number,
@@ -217,9 +247,7 @@ export function cellState(
 ): CellState {
   const from = hour * 60;
   const to = from + 60;
-  const here = sessions.filter(
-    (one) => one.local_date === day.date
-      && overlaps(from, to, minutesOf(one.starts_at_local), minutesOf(one.ends_at_local)));
+  const here = sessionsIn(day, hour, sessions);
   if (here.length > 0) {
     // **A refusal outranks the kind**, because the kind is what a reader *is* and the refusal
     // is what somebody has to resolve: an hour the rota now says no to is the one thing this

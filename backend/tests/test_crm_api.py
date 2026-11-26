@@ -22,7 +22,7 @@ from app.crm import service as crm
 from app.errors import InvalidRequest
 from tests.support import GatedApiTestCase
 from tests.test_access_api import AccessApiTestCase
-from tests.test_commercial_api import TODAY, CommercialApiTestCase
+from tests.test_commercial_api import CommercialApiTestCase, today
 
 READ = ["crm.lead.read", "crm.source.read"]
 WRITE = ["crm.lead.write", "crm.touchpoint.write", "crm.source.write"]
@@ -607,7 +607,7 @@ class TrialColumnTests(CrmApiTestCase, CommercialApiTestCase):
     def test_a_lead_on_a_trial_product_is_counted_on_trial(self):
         tenant_id = self.tenant()
         live = self.membership(
-            tenant_id, starts_on=TODAY.isoformat(), terms_extra={"trial_days": 7})
+            tenant_id, starts_on=today().isoformat(), terms_extra={"trial_days": 7})
         self.lead_for(tenant_id, live["person_id"])
         counts = self.board_counts(tenant_id)
         self.assertEqual(counts["on_trial"], 1)
@@ -618,7 +618,7 @@ class TrialColumnTests(CrmApiTestCase, CommercialApiTestCase):
         """The other side of the same derivation, which an `on_trial`-only test cannot see: a
         rule that counted every active membership as a trial would pass that one."""
         tenant_id = self.tenant()
-        live = self.membership(tenant_id, starts_on=TODAY.isoformat())
+        live = self.membership(tenant_id, starts_on=today().isoformat())
         self.lead_for(tenant_id, live["person_id"])
         counts = self.board_counts(tenant_id)
         self.assertEqual(counts["joined"], 1)
@@ -631,9 +631,9 @@ class TrialColumnTests(CrmApiTestCase, CommercialApiTestCase):
         that trusted the status cache would leave somebody on trial for ever."""
         tenant_id = self.tenant()
         live = self.membership(
-            tenant_id, starts_on=(TODAY - timedelta(days=30)).isoformat(),
+            tenant_id, starts_on=(today() - timedelta(days=30)).isoformat(),
             terms_extra={"trial_days": 7})
-        self.assertEqual(live["ends_on"], (TODAY - timedelta(days=24)).isoformat())
+        self.assertEqual(live["ends_on"], (today() - timedelta(days=24)).isoformat())
         self.lead_for(tenant_id, live["person_id"])
         counts = self.board_counts(tenant_id)
         self.assertEqual((counts["on_trial"], counts["joined"]), (0, 0))
@@ -647,13 +647,13 @@ class TrialColumnTests(CrmApiTestCase, CommercialApiTestCase):
         column for ever. The successor is on an ordinary product, so the standing moves."""
         tenant_id = self.tenant()
         live = self.membership(
-            tenant_id, starts_on=TODAY.isoformat(), terms_extra={"trial_days": 7})
+            tenant_id, starts_on=today().isoformat(), terms_extra={"trial_days": 7})
         self.lead_for(tenant_id, live["person_id"])
         self.assertEqual(self.board_counts(tenant_id)["on_trial"], 1)
         # A successor on its own contract and its own product, which is what a conversion is.
         self.supersede(tenant_id, live, amount_minor=5500,
                        contract={"contract_key": f"c{uuid.uuid4().hex[:8]}"},
-                       starts_on=TODAY.isoformat())
+                       starts_on=today().isoformat())
         counts = self.board_counts(tenant_id)
         self.assertEqual(counts["joined"], 1)
         self.assertEqual(counts["on_trial"], 0)
@@ -668,8 +668,8 @@ class TrialColumnTests(CrmApiTestCase, CommercialApiTestCase):
         tenant_id = self.tenant()
         owner = self.headers(tenant_id)
         live = self.membership(
-            tenant_id, starts_on=TODAY.isoformat(), terms_extra={"trial_days": 7})
-        self.assertEqual(live["ends_on"], (TODAY + timedelta(days=6)).isoformat())
+            tenant_id, starts_on=today().isoformat(), terms_extra={"trial_days": 7})
+        self.assertEqual(live["ends_on"], (today() + timedelta(days=6)).isoformat())
         self.lead_for(tenant_id, live["person_id"])
         # **Through `plan-change`, which is what a conversion is.** `supersede` alone writes
         # the agreement and records no lifecycle change, which is the other half of this and
@@ -677,7 +677,7 @@ class TrialColumnTests(CrmApiTestCase, CommercialApiTestCase):
         target = self.supersede(
             tenant_id, live, amount_minor=9000, sign=False,
             contract={"contract_key": f"c{uuid.uuid4().hex[:8]}"},
-            starts_on=TODAY.isoformat())
+            starts_on=today().isoformat())
         quote = self.client.get(
             f"/memberships/{live['membership_id']}/plan-change-preview"
             f"?to_agreement_id={target}", headers=owner)
@@ -699,7 +699,7 @@ class TrialColumnTests(CrmApiTestCase, CommercialApiTestCase):
         self.assertIsNone(after.json()["ends_on"], after.text)
         # And a month later they are still a member rather than nobody.
         board = crm.board(self._tenant_pool, tenant_id,
-                          at=datetime.combine(TODAY + timedelta(days=30),
+                          at=datetime.combine(today() + timedelta(days=30),
                                               datetime.min.time(), tzinfo=UTC))
         counts = {c["stage"]: c["count"] for c in board["columns"]}
         self.assertEqual(counts["joined"], 1)
@@ -715,7 +715,7 @@ class TrialColumnTests(CrmApiTestCase, CommercialApiTestCase):
         tenant_id = self.tenant()
         owner = self.headers(tenant_id)
         live = self.membership(
-            tenant_id, starts_on=TODAY.isoformat(), terms_extra={"trial_days": 7})
+            tenant_id, starts_on=today().isoformat(), terms_extra={"trial_days": 7})
         self.lead_for(tenant_id, live["person_id"])
         listed = self.client.get("/crm/leads", headers=owner).json()
         self.assertEqual(len(listed["leads"]), 1, listed)
@@ -737,13 +737,13 @@ class TrialColumnTests(CrmApiTestCase, CommercialApiTestCase):
         tenant_id = self.tenant()
         owner = self.headers(tenant_id)
         live = self.membership(
-            tenant_id, starts_on=TODAY.isoformat(), terms_extra={"trial_days": 7})
+            tenant_id, starts_on=today().isoformat(), terms_extra={"trial_days": 7})
         self.supersede(tenant_id, live, amount_minor=5500,
                        contract={"contract_key": f"c{uuid.uuid4().hex[:8]}"},
-                       starts_on=TODAY.isoformat())
+                       starts_on=today().isoformat())
         after = self.client.get(
             f"/memberships/{live['membership_id']}", headers=owner)
-        self.assertEqual(after.json()["ends_on"], (TODAY + timedelta(days=6)).isoformat())
+        self.assertEqual(after.json()["ends_on"], (today() + timedelta(days=6)).isoformat())
 
     def test_a_membership_outranks_a_trial_where_somebody_has_both(self):
         """Having a real membership is the later and stronger fact, and the board's columns are
@@ -764,7 +764,7 @@ class TrialColumnTests(CrmApiTestCase, CommercialApiTestCase):
         times."""
         tenant_id = self.tenant()
         live = self.membership(
-            tenant_id, starts_on=(TODAY + timedelta(days=7)).isoformat(),
+            tenant_id, starts_on=(today() + timedelta(days=7)).isoformat(),
             terms_extra={"trial_days": 7})
         self.lead_for(tenant_id, live["person_id"])
         counts = self.board_counts(tenant_id)
@@ -778,7 +778,7 @@ class TrialColumnTests(CrmApiTestCase, CommercialApiTestCase):
         tenant_id = self.tenant()
         owner = self.headers(tenant_id)
         live = self.membership(
-            tenant_id, starts_on=(TODAY - timedelta(days=30)).isoformat(),
+            tenant_id, starts_on=(today() - timedelta(days=30)).isoformat(),
             contract={"notice_days": 0, "cancellation_mode": "immediate"})
         self.lead_for(tenant_id, live["person_id"])
         self.assertEqual(self.board_counts(tenant_id)["joined"], 1)
@@ -801,7 +801,7 @@ class TrialColumnTests(CrmApiTestCase, CommercialApiTestCase):
         agreement = self.client.post("/memberships/agreements", json={
             "person_id": person_id, "membership_terms_id": terms_id,
             "variant_id": variant_id, "amount_minor": 4500, "currency": "JOD",
-            "starts_on": TODAY.isoformat(), **self.correlation()}, headers=owner)
+            "starts_on": today().isoformat(), **self.correlation()}, headers=owner)
         self.assertEqual(agreement.status_code, 201, agreement.text)
         agreement_id = str(agreement.json()["agreement_id"])
         signed = self.client.post(
@@ -833,7 +833,7 @@ class TrialCardTests(CrmApiTestCase, CommercialApiTestCase, AccessApiTestCase):
     def trialist(self, tenant_id: str, *, days: int = 7, back: int = 5) -> dict:
         """A lead who is on day `back + 1` of a `days`-day trial."""
         live = self.membership(
-            tenant_id, starts_on=(TODAY - timedelta(days=back)).isoformat(),
+            tenant_id, starts_on=(today() - timedelta(days=back)).isoformat(),
             terms_extra={"trial_days": days})
         made = self.client.post("/crm/leads", json={
             "person_id": live["person_id"], **self.correlation()},
@@ -1291,8 +1291,8 @@ class WalkInTrialTests(CrmApiTestCase, CommercialApiTestCase):
                                          "agreement": "created", "signature": "recorded",
                                          "trial": "created"})
         self.assertEqual(body["trial_days"], 7)
-        self.assertEqual(body["starts_on"], TODAY.isoformat())
-        self.assertEqual(body["ends_on"], (TODAY + timedelta(days=6)).isoformat())
+        self.assertEqual(body["starts_on"], today().isoformat())
+        self.assertEqual(body["ends_on"], (today() + timedelta(days=6)).isoformat())
         # **The stage moved on the touchpoint, not on the trial.** A walk-in visited, and
         # `stage_from_touchpoint` is what keeps the board's count and the timeline agreeing.
         self.assertEqual(body["stage"], "contacted")
@@ -1385,7 +1385,7 @@ class WalkInTrialTests(CrmApiTestCase, CommercialApiTestCase):
         drawn = self.client.post("/memberships/agreements", json={
             "person_id": person_id, "membership_terms_id": plan["membership_terms_id"],
             "variant_id": plan["variant_id"], "amount_minor": 4500, "currency": "JOD",
-            "starts_on": TODAY.isoformat(), **self.correlation()},
+            "starts_on": today().isoformat(), **self.correlation()},
             headers=self.headers(tenant_id))
         self.assertEqual(drawn.status_code, 201, drawn.text)
         started = self.walk_in(tenant_id, person_id=person_id, legal_name=None, phone=None)

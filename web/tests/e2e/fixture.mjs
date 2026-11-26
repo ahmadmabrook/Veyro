@@ -1562,9 +1562,13 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
             entitlement_type: "service_credit", is_counted: false,
             correlation_id: cid() },
   });
+  // **Not another "Hala", which is the collision this fixture shipped once.** FD-02's lookup
+  // searches a *name* prefix and its spec asserts exactly two matches for `hala`, so adding a
+  // third person whose name starts with it broke two tests in a screen this slice never
+  // touched. A fixture is shared state: a name is as much a seeded value as an id.
   const ptPerson = await call("/people", {
     method: "POST", ...as(token),
-    body: { legal_name: "Hala Barakat", date_of_birth: "1990-03-14",
+    body: { legal_name: "Nadia Zahran", date_of_birth: "1990-03-14",
             correlation_id: cid() },
   });
   await call("/member-entitlements/grants", {
@@ -1991,7 +1995,12 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
     body: { payment_id: settled.payment_id, provider_case_ref: "ACME-CASE-40119",
             dispute_kind: "chargeback", reason_code: "fraudulent",
             amount_minor: 1500, currency: invoice.currency,
-            opened_on: isoDay(-30), respond_due_on: isoDay(4),
+            // **Twenty days back, not thirty.** The payments header counts the last thirty
+            // days, so a dispute opened on day -30 sits on the window's first day -- and
+            // when the fixture is provisioned at 23:58 and the suite asserts at 00:02 the
+            // window has moved and the dispute has fallen out of it. `main` went red for
+            // exactly that. A fixture date belongs inside a window, never on its edge.
+            opened_on: isoDay(-20), respond_due_on: isoDay(4),
             idempotency_key: randomUUID(), correlation_id: cid() },
   });
 
@@ -3359,6 +3368,7 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
     touredLeadId: touredLead.lead_id,
     ownedLeadId: ownedLead.lead_id,
     trialLeadId: trialLead.lead_id,
+    trialStart,
     lostLeadId: lostLead.lead_id,
     clubVariantId: clubProduct.variants[0].variant_id,
     trialMembershipId: trialMembership.membership_id,
@@ -3464,6 +3474,7 @@ if (invokedDirectly) {
       `VEYRO_E2E_COLD_LEAD_ID=${fixture.coldLeadId}`,
       `VEYRO_E2E_OWNED_LEAD_ID=${fixture.ownedLeadId}`,
       `VEYRO_E2E_TRIAL_LEAD_ID=${fixture.trialLeadId}`,
+      `VEYRO_E2E_TRIAL_START=${fixture.trialStart}`,
       `VEYRO_E2E_LOST_LEAD_ID=${fixture.lostLeadId}`,
       `VEYRO_E2E_CLUB_VARIANT_ID=${fixture.clubVariantId}`,
       `VEYRO_E2E_TRIAL_MEMBERSHIP_ID=${fixture.trialMembershipId}`,

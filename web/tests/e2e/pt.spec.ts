@@ -5,6 +5,18 @@ import { fixture } from "./fixture-env";
 import { useDeskSession, useOwnerSession } from "./sign-in";
 
 /**
+ * **The browser's own zone is the hour the reader typed**, which `instantFrom` argues is the
+ * honest reading of a desk booking an hour it is standing in -- so a spec that types `18:30`
+ * is typing it in whatever zone the runner is in. Locally that is the club's and the class
+ * clash is real; on CI it is UTC, so `18:30` is 21:30 at the club, the evening class is three
+ * hours earlier and the refusal that comes back is the rota's rather than the coach's. The
+ * test asserted "Already booked" and CI read "The rota does not cover this hour" -- both
+ * correct, for two different hours. Pinning the zone to the club's makes the typed hour mean
+ * one thing, and is also the ordinary case: a receptionist is in the building.
+ */
+test.use({ timezoneId: "Asia/Amman" });
+
+/**
  * ADM-SCH-05 · SCHEDULE PT, against the real routes. ADR-0019.
  *
  * **Two members, because the canvas's figure and its button need different fixtures.** The

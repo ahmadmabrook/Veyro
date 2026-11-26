@@ -7,6 +7,7 @@ import {
   anyRota,
   CELL_LABEL,
   CELL_MARK,
+  cellMark,
   cellState,
   hourLabel,
   hourSpan,
@@ -326,9 +327,22 @@ describe("the catalogue", () => {
     expect(CELL_MARK.open).toBeNull();
     expect(CELL_MARK.exception).toBeTruthy();
     expect(CELL_MARK.booked).toBeTruthy();
-    // A refused booking is still a booking, so it carries the same mark; what distinguishes
-    // it is the edge and its accessible name, which says the rota refuses it.
-    expect(CELL_MARK.bookedConflict).toBe(CELL_MARK.booked);
+    expect(CELL_MARK.bookedPersonal).toBeTruthy();
+    // **A refused booking keeps the mark of what it is**, which a static map cannot give it:
+    // the refusal is one state and the kind is not, so `CELL_MARK` has no conflict entry and
+    // `cellMark` reads the sessions. It listed the class mark against the conflict for a
+    // commit, so a refused *personal* session printed `CLS` -- a false statement on the one
+    // screen whose subject is telling the two apart.
+    const hour = 18;
+    const refused = (kind: "class" | "personal") => [session({
+      session_kind: kind, conflicts_with_availability: true,
+      starts_at_local: "18:00", ends_at_local: "19:00",
+    })];
+    const where = day();
+    expect(cellMark("bookedConflict", where, hour, refused("class")))
+      .toBe(CELL_MARK.booked);
+    expect(cellMark("bookedConflict", where, hour, refused("personal")))
+      .toBe(CELL_MARK.bookedPersonal);
     for (const key of Object.values(CELL_MARK)) {
       if (key === null) continue;
       expect(MESSAGES.en[key], `${key} missing from English`).toBeTruthy();
