@@ -2,11 +2,13 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { Banner } from "@/components/ds/banner";
+import { NotYet } from "@/components/not-yet";
+import { MetricCell, MetricRow } from "@/components/ds/metric-cell";
 import { MoneyValue } from "@/components/ds/money-value";
 import { PageHeader } from "@/components/ds/page-header";
-import { Prose, ProseNote } from "@/components/prose";
+import { ProseNote } from "@/components/prose";
 import { Withheld } from "@/components/withheld";
-import { fill, t, type Locale, type MessageKey } from "@/i18n/locale";
+import { fill, formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
 import { currentSession, failureMessage, gateAll, gateMessage, gateVerdict } from "@/lib/api";
 import {
   evidenceFrom,
@@ -161,27 +163,39 @@ export default async function DisputesPage({
   return (
     <Shell
       locale={locale}
+      // **How many and how much, promoted.** A chargeback has a deadline and an amount that
+      // is forfeited if it passes, and both figures sat at `type.bodySm` beside the as-of
+      // date. The date stays on the figures line, which is where freshness belongs.
+      metrics={
+        list.count === 0 ? undefined : (
+          <MetricRow label={text("dispute.heading")}>
+            <MetricCell
+              label={text("dispute.heading")}
+              value={<span className="data" dir="ltr">
+                {formatInteger(list.count, numbering)}
+              </span>}
+            />
+            {/* `owed` — money being taken back, which is the kind this is. */}
+            {exposure === null ? null : (
+              <MetricCell
+                label={text("dispute.atStake")}
+                value={
+                  <MoneyValue
+                    kind="owed"
+                    amountMinor={exposure.amount_minor}
+                    currency={exposure.currency}
+                  />
+                }
+              />
+            )}
+          </MetricRow>
+        )
+      }
       figures={
         list.count === 0 ? (
           text("dispute.noneOpen")
         ) : (
-          <>
-            {fill(locale, "dispute.count", { count: list.count }, numbering)}
-            {exposure === null ? null : (
-              <>
-                {" · "}
-                {/* `owed` — money being taken back, which is the kind this is. */}
-                <MoneyValue
-                  kind="owed"
-                  amountMinor={exposure.amount_minor}
-                  currency={exposure.currency}
-                />{" "}
-                {text("dispute.atStake")}
-              </>
-            )}
-            {" · "}
-            <span className="data" dir="ltr">{list.as_of}</span>
-          </>
+          <span className="data" dir="ltr">{list.as_of}</span>
         )
       }
     >
@@ -226,17 +240,7 @@ export default async function DisputesPage({
         ))
       )}
 
-      <section className="page-section">
-        <h2 style={{ margin: 0 }}>{text("dispute.notYet")}</h2>
-        <dl className="facts">
-          <dt className="muted">{text("dispute.submitTitle")}</dt>
-          <dd style={{ margin: 0 }}><Prose>{text("dispute.submitWhy")}</Prose></dd>
-          <dt className="muted">{text("dispute.acceptTitle")}</dt>
-          <dd style={{ margin: 0 }}><Prose>{text("dispute.acceptWhy")}</Prose></dd>
-          <dt className="muted">{text("dispute.heldTitle")}</dt>
-          <dd style={{ margin: 0 }}><Prose>{text("dispute.heldWhy")}</Prose></dd>
-        </dl>
-      </section>
+      <NotYet locale={locale} items={["dispute.submitTitle", "dispute.acceptTitle", "dispute.heldTitle"]} />
     </Shell>
   );
 }
@@ -390,10 +394,17 @@ function Shell({
   locale,
   children,
   figures,
+  metrics,
 }: {
   locale: Locale;
   children: React.ReactNode;
   figures?: React.ReactNode;
+  /**
+   * The metric row, immediately under the header. A slot rather than the first child: the
+   * refusal and read-failure returns have a header and nothing to measure, and an empty set
+   * already says so in a banner.
+   */
+  metrics?: React.ReactNode;
 }) {
   return (
     <div className="stack">
@@ -401,6 +412,7 @@ function Shell({
         title={t(locale, "dispute.heading")}
         {...(figures ? { figures } : {})}
       />
+      {metrics}
       {children}
     </div>
   );

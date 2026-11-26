@@ -113,7 +113,6 @@ test.describe("the conversion quote", () => {
       await expect(main.getByRole("heading", { name: "Carries over" })).toBeVisible();
       await expect(main.getByText("4 visits")).toBeVisible();
       await expect(main.getByText(/\b0 class attendances\b/)).toHaveCount(0);
-      await expect(main).toContainText("Nothing is re-entered");
     });
 
   test("says it is converting from a trial, and how long that trial is", async ({ page }) => {
@@ -129,12 +128,9 @@ test.describe("the conversion quote", () => {
     const gaps = page.locator("#main").locator("section.page-section").filter({
       has: page.getByRole("heading", { name: "What this screen does not do yet" }),
     });
-    await expect(gaps.getByRole("term").filter({ hasText: "Taking the first payment" }))
-      .toBeVisible();
-    await expect(gaps.getByRole("term").filter({ hasText: "Sending a payment link" }))
-      .toBeVisible();
-    await expect(gaps.getByRole("term").filter({ hasText: "Writing the conversion itself" }))
-      .toBeVisible();
+    await expect(gaps).toContainText("Taking the first payment");
+    await expect(gaps).toContainText("Sending a payment link");
+    await expect(gaps).toContainText("Writing the conversion itself");
     await expect(gaps).toContainText("payment provider");
     await expect(gaps).not.toContainText("stronger sign-in");
   });

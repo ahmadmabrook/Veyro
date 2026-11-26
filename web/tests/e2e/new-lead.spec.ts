@@ -184,10 +184,8 @@ test.describe("the add-lead form at an ordinary sign-in", () => {
     const gaps = page.locator("section.page-section").filter({
       has: page.getByRole("heading", { name: "What this screen does not do yet" }),
     });
-    await expect(gaps.getByRole("term").filter({ hasText: "Starting a trial" }))
-      .toBeVisible();
-    await expect(gaps.getByRole("term").filter({ hasText: "Assigning the lead" }))
-      .toBeVisible();
+    await expect(gaps).toContainText("Starting a trial");
+    await expect(gaps).toContainText("Assigning the lead");
 
     // **This asserted "nothing in this build marks a product as a trial", and ADR-0010 D7
     // made that false.** It was the *reason* under the old state rather than the finding:

@@ -3,7 +3,6 @@ import { redirect } from "next/navigation";
 import { Banner } from "@/components/ds/banner";
 import { MetricCell, MetricRow } from "@/components/ds/metric-cell";
 import { PageHeader } from "@/components/ds/page-header";
-import { ProseNote } from "@/components/prose";
 import { formatInteger, t, type MessageKey } from "@/i18n/locale";
 import { currentSession, gate, failureMessage } from "@/lib/api";
 import { readMembershipSummary, type MembershipSummary } from "@/lib/command-centre-reads";
@@ -110,12 +109,14 @@ export default async function MembershipReportPage() {
       <section className="page-section" aria-labelledby="churn-reasons">
         <h2 id="churn-reasons">{text("membershipReport.whyTitle")}</h2>
         <Banner severity="info">{text("membershipReport.whyUnavailable")}</Banner>
-        <ProseNote>{text("membershipReport.whyAlsoSensitive")}</ProseNote>
+        {/* The second reason the prose is not shown (a reason column is where a health fact
+            ends up, behind a routine permission) is gone, and so is the engineering reason
+            cohort retention is not built: the banner states the one refusal a reader acts
+            on, and the heading below states the gap. */}
       </section>
 
       <section className="page-section" aria-labelledby="cohort">
         <h2 id="cohort">{text("membershipReport.cohortTitle")}</h2>
-        <ProseNote>{text("membershipReport.cohortWhy")}</ProseNote>
       </section>
     </>
   );

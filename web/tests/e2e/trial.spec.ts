@@ -87,8 +87,13 @@ test.describe("the trial state of a lead profile", () => {
   test("and the sentence under it is about use rather than a prediction", async ({ page }) => {
     const main = page.locator("#main");
     await expect(main.getByText(/used the trial more than most/)).toBeVisible();
-    await expect(main.getByText(/not a prediction about whether they will join/))
-      .toBeVisible();
+    // **The refusal to predict is carried by the label, not by a sentence disclaiming one.**
+    // MOD-020 refuses a no-show score outright and the same reasoning holds here, so the cell
+    // is labelled by what it measures. The prototype's own name for it was CONVERSION
+    // LIKELIHOOD; asserting that word is absent is the property, where the removed clause was
+    // one wording of it.
+    await expect(main).toContainText("engagement");
+    await expect(main.getByText(/likelihood/i)).toHaveCount(0);
   });
 
   test("the conversion is a link now, and the gap sentences are gone with the gap",

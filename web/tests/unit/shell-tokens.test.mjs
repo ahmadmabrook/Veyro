@@ -21,6 +21,7 @@ import { fileURLToPath } from "node:url";
 
 const read = (name) => readFileSync(fileURLToPath(new URL(name, import.meta.url)), "utf8");
 const contracts = JSON.parse(read("../../src/design/contracts.json"));
+const ds = JSON.parse(read("../../src/design/ds.json"));
 const css = read("../../src/design/tokens.generated.css");
 const globals = read("../../src/app/globals.css");
 
@@ -73,8 +74,14 @@ test("the shell is two panes and there is no third track", () => {
 });
 
 test("each density mode emits the row, control and step the source states", () => {
-  for (const mode of contracts.density) {
-    const [row, control] = mode.row_and_control.split("/").map((s) => parseInt(s.trim(), 10));
+  // **Read from `ds.json`, which is what the generator reads.** This compared the emitted CSS
+  // against `contracts.json` -- extracted from the retired design source and no longer
+  // consulted by `generate.mjs`, so it was a pin pointing at a file the thing it pins had
+  // stopped reading. It passed for as long as the two happened to agree and failed the hour
+  // the density changed, naming the generator rather than the stale source.
+  for (const [name, rowAndControl] of ds.DENSITY) {
+    const mode = { mode: name };
+    const [row, control] = rowAndControl.split("/").map((s) => parseInt(s.trim(), 10));
     // The selector is an attribute one rather than `:root`, so a screen can set a density on
     // its own wrapper -- which ADM-MEM-05 does, and which `:root[...]` silently did not do.
     const selector =

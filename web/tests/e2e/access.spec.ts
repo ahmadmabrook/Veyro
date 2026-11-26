@@ -87,12 +87,24 @@ test.describe("a zone", () => {
     await expect(page.getByText("Advisory only")).toBeVisible();
   });
 
-  test("names what the zone cannot do rather than implying it can", async ({ page }) => {
-    // `access_gaps` is the service's own list. A surface that dropped it would present a
-    // zone as fully capable while its signature verification does not exist.
-    await expect(page.getByRole("heading", { name: "What this zone cannot do" })).toBeVisible();
-    await expect(page.getByText(/no signature is verified/)).toBeVisible();
-  });
+  test("discloses what the occupancy count is, which is the half a reader can act on",
+    async ({ page }) => {
+      // **`access_gaps` is no longer rendered, and this asserted that it was.** That field
+      // is the service's own list of this build's limitations, written for whoever maintains
+      // Veyro -- "no signature is verified", "safety_hold is always false" -- every line of
+      // it true and none of it something a club manager looking at a door can act on or look
+      // up. The backend contract is protected, so the field keeps being returned and this
+      // surface stops printing it.
+      //
+      // The operator-facing half of the same honesty is the disclosure that stays, and it is
+      // the one somebody standing at this zone makes a decision on: what the occupancy count
+      // is and is not. So that is what this asserts, plus the absence of the engineering
+      // list, because a revert is the direction that matters.
+      const main = page.locator("#main");
+      await expect(main).toContainText("Advisory only");
+      await expect(main).not.toContainText(/no signature is verified/);
+      await expect(main).not.toContainText(/safety_hold|access_gaps/);
+    });
 
   test("shows the discreet line the member saw, marked as withheld", async ({ page }) => {
     // **`.first()`, because the log holds more than one of these now.** FD-03 needed a
@@ -100,7 +112,12 @@ test.describe("a zone", () => {
     // locator that resolved to exactly one row was a test coupled to how many rows the
     // fixture happened to have. The subject is any refusal's two halves, not a particular
     // member's.
-    const row = page.getByRole("row").filter({ hasText: "see_front_desk" }).first();
+    // **Located by what a reader sees, not by the stored code.** This took
+    // `hasText: "see_front_desk"`, which is the enum MOD-022 stores for the discreet public
+    // line -- and printing an enum where a sentence belongs is this project's most-repeated
+    // surface defect, so the board words it. A test pinned to the code was pinning the
+    // defect; the code's absence is asserted at the end of this test instead.
+    const row = page.getByRole("row").filter({ hasText: "Refused" }).first();
     await expect(row).toBeVisible();
     await expect(row).toContainText("Refused");
     // **One cell, not the row.** Paragraph 1944: the member standing in the lobby is told one
@@ -135,7 +152,8 @@ test.describe("a zone", () => {
     await page.goto("/");
     const aal = await assuranceLevel(page);
     await page.goto(`/access/${creds.zoneId}`);
-    const row = page.getByRole("row").filter({ hasText: "see_front_desk" }).first();
+    const row = page.getByRole("row").filter({ hasText: "Refused" }).first();
+    await expect(page.locator("#main")).not.toContainText("see_front_desk");
     if (aal >= 2) {
       await expect(row).toContainText("this member holds nothing that admits them here");
     } else {
@@ -162,7 +180,7 @@ test.describe("a zone", () => {
     await page.getByRole("button", { name: "العربية" }).click();
     await page.waitForURL(`/access/${creds.zoneId}`);
     await expect(page.locator("html")).toHaveAttribute("dir", "rtl");
-    await expect(page.getByText("ما لا تستطيع هذه المنطقة فعله")).toBeVisible();
+    await expect(page.locator("#main")).not.toContainText("ما لا تستطيع هذه المنطقة فعله");
     // The clock range is a Latin run inside RTL text; without `dir` the bidi algorithm moves
     // the dash and the colon and the window reads as a different one.
     const window = page.getByText("00:00–23:59");

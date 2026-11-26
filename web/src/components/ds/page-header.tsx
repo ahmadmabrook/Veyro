@@ -35,7 +35,13 @@ export function PageHeader({
   actions,
   id,
 }: {
-  title: string;
+  /**
+   * The page's name. A node rather than a string, because a title is sometimes composed --
+   * a record's own name beside a withheld marker, a heading whose count is `.data`. It was
+   * `string`, and three screens hand-rolled the whole component's markup rather than widen
+   * it, which is the §8 deviation this type was making unavoidable.
+   */
+  title: ReactNode;
   /**
    * The figures line: counts, scope, freshness. Nodes rather than a string so a count can be
    * `.data` and a money figure can be a `MoneyValue`.
@@ -68,11 +74,8 @@ export function PageHeader({
  * a control that does nothing is worse than one that is absent, and an empty cell reads as a
  * fact about the subject -- so what is missing is named rather than drawn.
  */
-export function NotYet({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <section className="page-section">
-      <h2>{title}</h2>
-      <dl className="facts">{children}</dl>
-    </section>
-  );
-}
+/* **`NotYet` has gone from this file.** It drew a titled section with a definition list --
+   a name and a two-sentence justification per absence -- and `src/components/not-yet.tsx`
+   replaced it with one line of names. Two components under one name is the duplication this
+   system rules out everywhere else, and nine screens were still on this one after the first
+   pass took eighteen off it. */

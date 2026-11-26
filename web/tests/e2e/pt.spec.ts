@@ -144,7 +144,7 @@ test.describe("the booking screen", () => {
   test("names the hour this screen cannot do, rather than drawing a dead control",
     async ({ page }) => {
       const notYet = page.locator("section").filter({
-        has: page.getByRole("heading", { name: "What this screen cannot do" }),
+        has: page.getByRole("heading", { name: "What this screen does not do yet" }),
       });
       await expect(notYet).toContainText("Point of Sale");
       await expect(notYet).toContainText("weekly");

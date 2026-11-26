@@ -1,6 +1,7 @@
-import Link from "next/link";
 
 import { Banner } from "@/components/ds/banner";
+import { NotYet } from "@/components/not-yet";
+import { MetricCell, MetricRow } from "@/components/ds/metric-cell";
 import { PageHeader } from "@/components/ds/page-header";
 import { PersonName } from "@/components/person-name";
 import { withheldRemedy } from "@/lib/mask";
@@ -159,35 +160,53 @@ export default async function ClassCheckInPage(
     ? null : inZone(roster.starts_at, detail.timezone);
   const studio = detail?.resources.find((r) => r.resource_kind === "studio")
     ?? detail?.resources.find((r) => r.resource_kind === "room");
+  // **The class's identity, each part dropped rather than guessed.** Built as a list so the
+  // separator belongs to the join rather than to each part: with the counts moved out of this
+  // line, whichever part is last must not carry a trailing one -- and a class with no
+  // scheduling read at all has no line rather than an empty one.
+  const identity: React.ReactNode[] = [
+    ...(when === null ? [] : [
+      <>
+        <span className="data">{when.time}</span>
+        {" "}
+        <span className="muted">{when.zone}</span>
+      </>,
+    ]),
+    ...(detail?.staff ? [detail.staff] : []),
+    ...(studio ? [studio.display_name] : []),
+  ];
 
   return (
     <div className="stack" data-density="touch">
-      {/* **The canvas's own header line**: "Spin · 19:00 · Dana · Studio 2 · 12 of 18 here ·
-          Waitlist · 3". The title is the class, because that is what a receptionist is
-          looking at; each part after it is dropped rather than guessed when the scheduling
-          read is refused or the session has no coach or studio assigned. */}
+      {/* **The canvas's own header line**: "Spin · 19:00 · Dana · Studio 2". The title is the
+          class, because that is what a receptionist is looking at; each part after it is
+          dropped rather than guessed when the scheduling read is refused or the session has
+          no coach or studio assigned.
+          **What is left here is the class's identity, not its figures.** "12 of 18 here" was
+          the last thing on this line and it is the number a desk is standing there to read,
+          so it is a figure below rather than 14px of caption beside a studio name. */}
       <PageHeader
         title={detail?.display_name ?? text("desk.title")}
-        figures={
-          <>
-            {when !== null ? (
-              <>
-                <span className="data">{when.time}</span>
-                {" "}
-                <span className="muted">{when.zone}</span>
-                {" · "}
-              </>
-            ) : null}
-            {detail?.staff ? <>{detail.staff}{" · "}</> : null}
-            {studio ? <>{studio.display_name}{" · "}</> : null}
-            <span className="data">{count(here)}</span>
-            {" "}
-            {fill(locale, "desk.ofHere", { places: count(places) })}
-            {" · "}
-            {fill(locale, "desk.waitlist", { count: count(queue.length) })}
-          </>
-        }
+        {...(identity.length === 0 ? {} : {
+          figures: identity.map((part, index) => (
+            <span key={index}>{index === 0 ? null : " · "}{part}</span>
+          )),
+        })}
       />
+
+      {/* **Who is here, and who is still waiting.** The label under the first figure is the
+          message the header line used to carry, so "12" is read as "12 of 18 here" and the
+          denominator is not lost on its way out of that line. */}
+      <MetricRow label={text("desk.roster")}>
+        <MetricCell
+          label={fill(locale, "desk.ofHere", { places: count(places) })}
+          value={count(here)}
+        />
+        <MetricCell
+          label={text("desk.waitlistHeading")}
+          value={count(queue.length)}
+        />
+      </MetricRow>
       {detail === null ? (
         <p className="muted">{text("desk.classUnknown")}</p>
       ) : null}
@@ -261,20 +280,7 @@ export default async function ClassCheckInPage(
         </section>
       ) : null}
 
-      <section className="page-section ds-desk-gaps">
-        <h2>{text("desk.notYet")}</h2>
-        <dl className="facts">
-          <dt>{text("desk.gapRelease")}</dt>
-          <dd>{text("desk.gapReleaseWhy")}</dd>
-          <dt>{text("desk.gapNotify")}</dt>
-          <dd>{text("desk.gapNotifyWhy")}</dd>
-          <dt>{text("desk.gapScan")}</dt>
-          <dd>{text("desk.gapScanWhy")}</dd>
-        </dl>
-        <p className="muted">
-          <Link href={`/schedule/${sessionId}`}>{text("desk.openSession")}</Link>
-        </p>
-      </section>
+      <NotYet locale={locale} items={["desk.gapRelease", "desk.gapNotify", "desk.gapScan"]} />
     </div>
   );
 }

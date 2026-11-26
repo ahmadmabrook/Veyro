@@ -4,7 +4,8 @@ import { redirect } from "next/navigation";
 import { Banner } from "@/components/ds/banner";
 import { Button } from "@/components/ds/button";
 import { Field } from "@/components/ds/field";
-import { NotYet, PageHeader } from "@/components/ds/page-header";
+import { PageHeader } from "@/components/ds/page-header";
+import { NotYet } from "@/components/not-yet";
 import { WithheldLink } from "@/components/withheld";
 import { withheldRemedy } from "@/lib/mask";
 import { fill, t, type MessageKey } from "@/i18n/locale";
@@ -163,16 +164,10 @@ export default async function LookupPage({
         </>
       )}
 
-      <NotYet title={text("lookup.notYet")}>
-        <dt>{text("lookup.gapPhoto")}</dt>
-        <dd>{text("lookup.gapPhotoWhy")}</dd>
-        <dt>{text("lookup.gapLetIn")}</dt>
-        <dd>{text("lookup.gapLetInWhy")}</dd>
-        <dt>{text("lookup.gapPlan")}</dt>
-        <dd>{text("lookup.gapPlanWhy")}</dd>
-        <dt>{text("lookup.gapPartialPhone")}</dt>
-        <dd>{text("lookup.gapPartialPhoneWhy")}</dd>
-      </NotYet>
+      <NotYet
+        locale={locale}
+        items={["lookup.gapPhoto", "lookup.gapLetIn", "lookup.gapPlan", "lookup.gapPartialPhone"]}
+      />
     </>
   );
 }

@@ -4,7 +4,6 @@ import { redirect } from "next/navigation";
 import { Banner } from "@/components/ds/banner";
 import { DataGrid } from "@/components/ds/data-grid";
 import { PageHeader } from "@/components/ds/page-header";
-import { ProseNote } from "@/components/prose";
 import { fill, t, type MessageKey } from "@/i18n/locale";
 import { ApiError, currentSession, gateAll, gateMessage, gateVerdict } from "@/lib/api";
 import { listRoles, readCatalog } from "@/lib/authz";
@@ -189,8 +188,10 @@ export default async function InvitePage() {
               ]}
             />
           )}
-          <ProseNote>{text("invite.listIsDerived")}</ProseNote>
-          <ProseNote>{text("invite.nothingSent")}</ProseNote>
+          {/* Both notes have gone. "Nothing has been emailed" is already an attention
+              banner beside the link itself in `invite-form`, which is where it decides
+              something; a second copy stacked here, away from any link, is the sentence said
+              twice. The other explained how the pending states are derived. */}
         </div>
       </section>
     </Shell>

@@ -84,7 +84,7 @@ test.describe("the localization screen", () => {
   });
 
   test("names what it cannot do, with the reason for each", async ({ page }) => {
-    const notYet = page.getByRole("heading", { name: "What this screen cannot do" });
+    const notYet = page.getByRole("heading", { name: "What this screen does not do yet" });
     await expect(notYet).toBeVisible();
     // The three absences, each a different kind: a design decision, work, and a dependency.
     await expect(page.getByText(/Publishing a configuration value is a financial-class/))

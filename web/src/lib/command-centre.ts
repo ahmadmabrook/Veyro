@@ -221,8 +221,6 @@ export const AI_PANEL = {
  * quoted from the design so a reader can see what is missing rather than inferring it.
  */
 export const UNANSWERABLE = {
-  /** The fourth metric. ADM-CRM-* is unbuilt, so there is no lead and no conversion. */
-  leadConversion: "cc.gapLeads" as MessageKey,
   /** The scope switcher the heading's "all locations" comes from. */
   scope: "cc.gapScope" as MessageKey,
 } as const;

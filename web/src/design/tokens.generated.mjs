@@ -294,9 +294,9 @@ export const SEMANTIC = {
     "css": "var(--color-category-retention)"
   },
   "color.category.staffing": {
-    "light": "turf.600",
-    "dark": "turf.light",
-    "use": "Staffing and delivery: rotas, unstaffed classes, devices.",
+    "light": "ai.600",
+    "dark": "ai.light",
+    "use": "Staffing and delivery: rotas, unstaffed classes, devices. **Not green, and that is the one category colour this palette had to move.** Green means success everywhere a reader has ever seen it, and the rows under this badge are classes with no coach -- so a green field above \"4 classes have no coach\" tells somebody the thing needing them is fine. The other three categories are safe because their semantic readings agree with their contents: money is money, a compliance item is a filing at risk, a retention item is a loss. Indigo is the AI hue and carries no collision here, because AI is a wash with a border and never a solid field -- the two are different components, not two uses of one badge.",
     "css": "var(--color-category-staffing)"
   },
   "color.category.money.text": {
@@ -320,7 +320,7 @@ export const SEMANTIC = {
   "color.category.staffing.text": {
     "light": "bone.0",
     "dark": "ink.900",
-    "use": "Text on the staffing field. Turf flips the same way: bone 6.81:1, then ink 9.94:1.",
+    "use": "Text on the staffing field. Indigo flips the same way as the other three: bone 7.93:1 on ai.600, then ink 8.46:1 on ai.light.",
     "css": "var(--color-category-staffing-text)"
   }
 };

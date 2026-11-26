@@ -3,11 +3,19 @@ import { redirect } from "next/navigation";
 
 import { Banner } from "@/components/ds/banner";
 import { Button } from "@/components/ds/button";
+import { MetricCell, MetricRow } from "@/components/ds/metric-cell";
 import { PageHeader } from "@/components/ds/page-header";
+import { NotYet } from "@/components/not-yet";
 import { LeadCard, PipelineColumn } from "@/components/ds/pipeline-column";
 import { Withheld } from "@/components/withheld";
-import { ProseNote } from "@/components/prose";
-import { fill, t, type Locale, type MessageKey, type Numbering } from "@/i18n/locale";
+import {
+  fill,
+  formatInteger,
+  t,
+  type Locale,
+  type MessageKey,
+  type Numbering,
+} from "@/i18n/locale";
 import { ApiError, currentSession, gateAll, gateMessage, gateVerdict } from "@/lib/api";
 import { readNames } from "@/lib/desk-reads";
 import { isWithheld, withheldRemedy } from "@/lib/people";
@@ -219,7 +227,10 @@ export default async function LeadsPage({
             countLabel={fill(locale, "leads.countLabel", { count: rows.length }, numbering)}
             nameWithheld={nameWithheld}
           />
-          <ProseNote>{text("leads.ageCarriesColour")}</ProseNote>
+          {/* Removed: a note saying age is the column that matters, that a lead decays by
+              the hour, and that the list is ordered oldest-contact-first. The order is
+              visible in the table and the mark is on the column; explaining how the screen
+              is arranged is not a fact a reader acts on. */}
         </>
       ) : (
         <Board
@@ -231,16 +242,10 @@ export default async function LeadsPage({
           numbering={numbering}
         />
       )}
-      <ProseNote>{text("leads.nameIsElsewhere")}</ProseNote>
-      <section className="page-section" aria-labelledby="leads-gaps">
-        <h2 id="leads-gaps">{text("leads.gaps")}</h2>
-        <dl className="facts">
-          <dt>{text("leads.gapSuggestionLabel")}</dt>
-          <dd>{text("leads.gapSuggestion")}</dd>
-          <dt>{text("leads.gapConversionLabel")}</dt>
-          <dd>{text("leads.gapConversion")}</dd>
-        </dl>
-      </section>
+      {/* The gaps named rather than explained: each `why` was a paragraph about a
+          provider, a module or this repository, which is not something a salesperson
+          can act on. The label is the fact -- this screen does not do that yet. */}
+      <NotYet locale={locale} items={["leads.gapSuggestionLabel", "leads.gapConversionLabel"]} />
     </Shell>
   );
 }
@@ -353,15 +358,35 @@ function Shell({
       <PageHeader
         id="leads-heading"
         title={text("leads.heading")}
-        figures={board === null ? undefined : (
-          <>
-            {fill(locale, "leads.openLeads", { count: board.open_leads }, numbering)}
-            {" · "}
-            {fill(locale, "leads.goingCold", { count: board.going_cold }, numbering)}
-          </>
-        )}
         actions={action}
       />
+
+      {/* **Both figures are the screen, so neither stays a footnote.** The canvas's own
+          argument for this board is that "age is the sortable column that matters -- a
+          lead's value decays by the hour", and the two counts it leads with were a single
+          line at `type.bodySm`: how many leads are open, and how many of them nobody has
+          rung. There is nothing else on this header to keep, so the figures line goes with
+          them rather than carrying one clause for the sake of having one.
+
+          **The cold count is a figure and not a severity.** `MetricCell` has no `severity`
+          prop, deliberately -- the canvas's own note is that a count is a fact rather than a
+          problem -- and the chip below is what acts on it. */}
+      {board === null ? null : (
+        <MetricRow label={text("leads.title")}>
+          <MetricCell
+            label={text("leads.title")}
+            value={<span className="data" dir="ltr">
+              {formatInteger(board.open_leads, numbering)}
+            </span>}
+          />
+          <MetricCell
+            label={text("leads.cold")}
+            value={<span className="data" dir="ltr">
+              {formatInteger(board.going_cold, numbering)}
+            </span>}
+          />
+        </MetricRow>
+      )}
 
       <nav aria-label={text("leads.title")} className="chips">
         <Link href={here({ filter: "all" })} aria-current={filter === "all" ? "page" : undefined}>

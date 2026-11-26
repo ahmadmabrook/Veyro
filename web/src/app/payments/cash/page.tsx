@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { PageHeader } from "@/components/ds/page-header";
+import { NotYet } from "@/components/not-yet";
 import { ProseNote } from "@/components/prose";
 import { fill, formatInteger, formatMoney, t, type MessageKey, type Numbering } from "@/i18n/locale";
 import { currentSession, gate, gateMessage } from "@/lib/api";
@@ -110,7 +111,8 @@ export default async function CashPage() {
   return (
     <div className="stack">
       <PageHeader title={text("cash.heading")} />
-      <ProseNote>{text("cash.title")}</ProseNote>
+      {/* Removed: a note whose whole content was "Cash drawers" -- the page title said
+          a second time, directly under the title. */}
 
       <section className="page-section" aria-labelledby="cash-open">
         <h2 id="cash-open">{text("cash.openTitle")}</h2>
@@ -164,23 +166,7 @@ export default async function CashPage() {
         )}
       </section>
 
-      <section className="page-section" aria-labelledby="cash-gaps">
-        <h2 id="cash-gaps">{text("cash.gapsTitle")}</h2>
-        <dl className="facts">
-          {([
-            ["cash.gapCosignLabel", "cash.gapCosign"],
-            ["cash.gapThresholdLabel", "cash.gapThreshold"],
-            ["cash.gapSpanLabel", "cash.gapSpan"],
-            ["cash.gapEntryLabel", "cash.entryNote"],
-            ["cash.gapWhoLabel", "cash.gapWho"],
-          ] as [MessageKey, MessageKey][]).map(([label, why]) => (
-            <div key={label} style={{ display: "contents" }}>
-              <dt className="muted">{text(label)}</dt>
-              <dd style={{ margin: 0 }}>{text(why)}</dd>
-            </div>
-          ))}
-        </dl>
-      </section>
+      <NotYet locale={locale} items={["cash.gapCosignLabel", "cash.gapThresholdLabel", "cash.gapSpanLabel", "cash.gapEntryLabel", "cash.gapWhoLabel"]} />
     </div>
   );
 }

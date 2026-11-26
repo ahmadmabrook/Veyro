@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { Banner } from "@/components/ds/banner";
+import { NotYet } from "@/components/not-yet";
 import { PageHeader } from "@/components/ds/page-header";
 import { t, type MessageKey } from "@/i18n/locale";
 import { gateAll, gateMessage, gateVerdict } from "@/lib/api";
@@ -122,19 +123,7 @@ export default async function AddMemberPage() {
       {/* Named rather than drawn, with the product's reason for each. A control that does
           nothing is worse than one that is not there, and a field whose value this build
           would drop on the floor is worse still. */}
-      <section className="page-section ds-walk-in-gaps">
-        <h2>{t(locale, "walkIn.notYet")}</h2>
-        <dl className="facts">
-          <dt>{t(locale, "walkIn.gapSale")}</dt>
-          <dd>{t(locale, "walkIn.gapSaleWhy")}</dd>
-          <dt>{t(locale, "walkIn.gapEmergency")}</dt>
-          <dd>{t(locale, "walkIn.gapEmergencyWhy")}</dd>
-          <dt>{t(locale, "walkIn.gapWaiver")}</dt>
-          <dd>{t(locale, "walkIn.gapWaiverWhy")}</dd>
-          <dt>{t(locale, "walkIn.gapEmailCheck")}</dt>
-          <dd>{t(locale, "walkIn.gapEmailCheckWhy")}</dd>
-        </dl>
-      </section>
+      <NotYet locale={locale} items={["walkIn.gapSale", "walkIn.gapEmergency", "walkIn.gapWaiver", "walkIn.gapEmailCheck"]} />
     </>
   );
 }

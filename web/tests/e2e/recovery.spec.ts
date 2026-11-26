@@ -159,9 +159,11 @@ test.describe("the recovery workspace", () => {
     // exist is worse than its absence.
     await expect(page.getByRole("button", { name: /send/i })).toHaveCount(0);
     await expect(page.getByRole("checkbox")).toHaveCount(0);
-    const notYet = page.locator("section").filter({ hasText: "What this screen cannot do" });
+    const notYet = page.locator("section").filter({ hasText: "What this screen does not do yet" });
     await expect(notYet).toContainText("Nothing in this build sends");
-    await expect(notYet).toContainText("no table in this build holds one");
+    // The sentence that explained *why* this gap exists has gone with the section that
+    // held it: the names above are what a reader needs, and the reasoning is in
+    // `contracts/ui/design-compliance.md`.
   });
 
   test("the stored vocabularies read in Arabic, not in English", async ({ page }) => {

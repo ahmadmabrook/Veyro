@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { Banner } from "@/components/ds/banner";
+import { MetricCell, MetricRow } from "@/components/ds/metric-cell";
 import { PageHeader } from "@/components/ds/page-header";
 import { DataGrid } from "@/components/ds/data-grid";
 import { fill, formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
@@ -110,10 +111,22 @@ export default async function IntegrationsPage() {
   return (
     <Shell
       locale={locale}
+      // **The subject of the board is how many third parties are installed**, and it was
+      // one of three equal clauses at `type.bodySm`. Promoted; the two fault counts stay on
+      // the figures line, where each is a qualifier on the figure above rather than a
+      // measurement of its own -- and each has its own banner and section below in any case.
+      metrics={
+        <MetricRow label={text("integrations.title")}>
+          <MetricCell
+            label={text("integrations.installs")}
+            value={<span className="data" dir="ltr">
+              {formatInteger(installs.length, numbering)}
+            </span>}
+          />
+        </MetricRow>
+      }
       figures={
         <>
-          {fill(locale, "integrations.installsCounted", { count: installs.length }, numbering)}
-          {" \u00b7 "}
           {fill(locale, "integrations.unmetCounted", { count: unmet.length }, numbering)}
           {" \u00b7 "}
           {fill(locale, "integrations.deadCounted", { count: dead.length }, numbering)}
@@ -475,6 +488,7 @@ function Shell({
   locale,
   children,
   figures,
+  metrics,
 }: {
   locale: Locale;
   children: React.ReactNode;
@@ -487,10 +501,17 @@ function Shell({
    * out whether anything on it needed them.
    */
   figures?: React.ReactNode;
+  /**
+   * The metric row, immediately under the header. A slot rather than the first child: the
+   * refusal return has a header and nothing to count, and a row showing a zero there would
+   * read as a tenant with no integrations rather than a session that may not see them.
+   */
+  metrics?: React.ReactNode;
 }) {
   return (
     <div className="stack">
       <PageHeader title={t(locale, "integrations.title")} {...(figures ? { figures } : {})} />
+      {metrics}
       {children}
       {/* **The lead paragraph moved to the foot.** The design's page header is a title and a
           line of figures -- every drawn canvas does the same -- so an explanation of what the

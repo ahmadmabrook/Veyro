@@ -2,9 +2,9 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { Banner } from "@/components/ds/banner";
+import { NotYet } from "@/components/not-yet";
 import { PageHeader } from "@/components/ds/page-header";
 import { RecordHeader } from "@/components/ds/record-header";
-import { Prose, ProseNote } from "@/components/prose";
 import { Withheld } from "@/components/withheld";
 import { fill, t, type Locale, type MessageKey } from "@/i18n/locale";
 import { currentSession, failureMessage, gateAll, gateMessage, gateVerdict } from "@/lib/api";
@@ -14,7 +14,6 @@ import { isWithheld, readPerson, withheldRemedy } from "@/lib/people";
 import { numerals } from "@/lib/display";
 import { presentation } from "@/lib/preferences";
 import {
-  NO_UNTICKED_ROWS,
   scopesToSimulate,
   readAssignments,
   readLastSeen,
@@ -215,6 +214,12 @@ export default async function StaffProfilePage({
               )
               : name
         }
+        // **The link to the person's record, restored.** It used to sit at the bottom of this
+        // page inside the "not yet" section, which is where a cross-link goes to be lost: that
+        // section was prose and was replaced, taking the one route from a staff record to the
+        // person it is about with it. A record's cross-links belong in its header, beside the
+        // name, which is also where a reader looks for them.
+        actions={<Link href={`/people/${personId}`}>{text("staff.openRecord")}</Link>}
         {...(profile.employment_state === "ended"
           ? { band: { text: text("staff.bandLeft"), tone: "critical" as const } }
           : profile.employment_state === "suspended"
@@ -378,7 +383,6 @@ export default async function StaffProfilePage({
             {fill(locale, "staff.lapsed", { count: split.lapsed.length }, numbering)}
           </p>
         ) : null}
-        <ProseNote>{text("staff.attributionIsAnId")}</ProseNote>
       </section>
 
       <section className="page-section">
@@ -434,13 +438,10 @@ export default async function StaffProfilePage({
             ))}
           </ul>
         )}
-        <ProseNote>{text(NO_UNTICKED_ROWS)}</ProseNote>
-        {grants !== null && grants.length > 0 ? (
-          <ProseNote>{text("staff.catalogueIsEnglish")}</ProseNote>
-        ) : null}
-        {grants?.some((one) => one.reach === "unreachable") ? (
-          <ProseNote>{text("staff.aal3Unreachable")}</ProseNote>
-        ) : null}
+        {/* Four notes have gone from this record: why the grantor is an id, why there are
+            no unticked rows, why the catalogue's own words are English, and what an unticked
+            row means. The last of those is still said per row -- "only a passkey sign-in can
+            use it", with "granted and unusable" for a screen reader -- at the point of use. */}
       </section>
 
       {/* The canvas's red notice, rendered because all three of its claims are true here. */}
@@ -448,18 +449,7 @@ export default async function StaffProfilePage({
         {text("staff.tierFour")} <strong>{text("staff.cannotGrantWhatYouLack")}</strong>
       </Banner>
 
-      <section className="page-section">
-        <h2 style={{ margin: 0 }}>{text("staff.notYet")}</h2>
-        <dl className="facts">
-          <dt className="muted">{text("staff.saveTitle")}</dt>
-          <dd style={{ margin: 0 }}><Prose>{text("staff.saveWhy")}</Prose></dd>
-          <dt className="muted">{text("staff.endTitle")}</dt>
-          <dd style={{ margin: 0 }}><Prose>{text("staff.endWhy")}</Prose></dd>
-        </dl>
-        <p style={{ margin: 0 }}>
-          <Link href={`/people/${personId}`}>{text("staff.openRecord")}</Link>
-        </p>
-      </section>
+      <NotYet locale={locale} items={["staff.saveTitle", "staff.endTitle"]} />
     </div>
   );
 }

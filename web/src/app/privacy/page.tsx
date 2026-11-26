@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { Banner } from "@/components/ds/banner";
+import { MetricCell, MetricRow } from "@/components/ds/metric-cell";
 import { PageHeader } from "@/components/ds/page-header";
 import { DataGrid } from "@/components/ds/data-grid";
 import { Prose } from "@/components/prose";
@@ -117,16 +118,29 @@ export default async function PrivacyPage() {
       locale={locale}
       figures={
         <>
-          {fill(locale, "privacy.requestsCounted", { count: requests.length }, numbering)}
-          {" \u00b7 "}
           {fill(locale, "privacy.queueCounted", { count: queue.length }, numbering)}
           {" \u00b7 "}
           {fill(locale, "privacy.holdsCounted", { count: liveHolds.length }, numbering)}
-          {reach === null ? null : (
-            <> {"\u00b7 "}{fill(locale, "privacy.residueCounted",
-              { count: reach.residue_count }, numbering)}</>
-          )}
         </>
+      }
+      /* **The residue leads, because it is the most important number this screen holds** --
+         what this build cannot erase, which is a statement about the software rather than
+         about this tenant. It and the request count were two clauses of a four-part 14px
+         line, which set the page's own subject at the size of a footnote. What is left above
+         is the pair a reader acts on *today*: what needs somebody, and what is preserved. */
+      metrics={
+        <MetricRow label={text("privacy.title")}>
+          {reach === null ? null : (
+            <MetricCell
+              label={text("privacy.residue")}
+              value={formatInteger(reach.residue_count, numbering)}
+            />
+          )}
+          <MetricCell
+            label={text("privacy.requests")}
+            value={formatInteger(requests.length, numbering)}
+          />
+        </MetricRow>
       }
     >
       {failed ? <Banner severity="critical">{text("error.unexpected")}</Banner> : null}
@@ -456,9 +470,17 @@ function Shell({
   locale,
   children,
   figures,
+  metrics,
 }: {
   locale: Locale;
   children: React.ReactNode;
+  /**
+   * The lead figures, immediately under the header.
+   *
+   * A `MetricRow` rather than more of the figures line: the type scale runs from 13px to
+   * 88px and this screen was rendering its subject at the bottom of it.
+   */
+  metrics?: React.ReactNode;
   /**
    * The counts under the title.
    *
@@ -472,6 +494,7 @@ function Shell({
   return (
     <div className="stack">
       <PageHeader title={t(locale, "privacy.title")} {...(figures ? { figures } : {})} />
+      {metrics}
       {children}
       {/* **The lead paragraph moved to the foot.** The design's page header is a title and a
           line of figures -- every drawn canvas does the same -- so an explanation of what the

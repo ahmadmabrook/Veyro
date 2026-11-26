@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 
 import { Banner } from "@/components/ds/banner";
 import { PageHeader } from "@/components/ds/page-header";
+import { MetricCell, MetricRow } from "@/components/ds/metric-cell";
 import { DataGrid } from "@/components/ds/data-grid";
 import { fill, formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
 import { currentSession, gate, failureMessage, gateMessage } from "@/lib/api";
@@ -63,18 +64,23 @@ export default async function DoorBoardPage() {
   const unpoliced = zones.filter((zone) => zone.live_policy_version === null).length;
 
   return (
-    <Shell
-      locale={locale}
-      figures={
-        <>
-          {fill(locale, "access.zonesCounted", { count: zones.length }, numbering)}
-          {" \u00b7 "}
-          {fill(locale, "access.noPolicyCount", { count: unpoliced }, numbering)}
-          {" \u00b7 "}
-          {t(locale, "members.scope")}
-        </>
-      }
-    >
+    <Shell locale={locale} figures={t(locale, "members.scope")}>
+      {/* **The two counts are figures, not a footnote.** They were a 14px line under the
+          title, which put the number a reader came for at the size of a caption -- and one
+          of the two is the board's own severe answer: a zone with no live policy decides
+          nothing. The scope stays in the header line, because "all locations" is not a
+          quantity. */}
+      <MetricRow label={text("access.title")}>
+        <MetricCell
+          label={text("access.title")}
+          value={formatInteger(zones.length, numbering)}
+        />
+        <MetricCell
+          label={text("access.noPolicyBand")}
+          value={formatInteger(unpoliced, numbering)}
+        />
+      </MetricRow>
+
       {zones.length === 0 ? (
         <Banner severity="info">{text("access.empty")}</Banner>
       ) : (

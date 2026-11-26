@@ -5,6 +5,7 @@ import { Banner } from "@/components/ds/banner";
 import { MetricCell } from "@/components/ds/metric-cell";
 import { RecordHeader } from "@/components/ds/record-header";
 import { Timeline, TimelineItem } from "@/components/ds/timeline";
+import { NotYet } from "@/components/not-yet";
 import { ProseNote } from "@/components/prose";
 import { Withheld } from "@/components/withheld";
 import {
@@ -266,7 +267,6 @@ export default async function LeadPage({
           </h2>
           <p>{text(usageSentence(running))}</p>
           <ProseNote>{text("trial.visitsAreEntries")}</ProseNote>
-          <ProseNote>{text("trial.engagementIsUse")}</ProseNote>
           {/* **One `dd` per `dt`.** `.facts` is a two-column grid whose items are the `dt`
               and the `dd` themselves, so a second `dd` under one `dt` is auto-placed into a
               track with **zero width**: 5,687 pixels tall, `visibility: visible`, and a box
@@ -282,7 +282,9 @@ export default async function LeadPage({
           <p>
             <Link href={`/leads/${leadId}/convert`}>{text("trial.convert")}</Link>
           </p>
-          <ProseNote>{text("trial.convertShowsTheCost")}</ProseNote>
+          {/* Removed: a note describing what the conversion screen shows and that it
+              does not take the payment. That screen states the charge and its absence
+              where the figures are, which is the point of use. */}
         </section>
       )}
 
@@ -405,8 +407,13 @@ export default async function LeadPage({
               ADM-MSH-07's judgement: this app has no side sheet, and `?lost=1` keeps the
               member's context on screen while giving "Keep it open" something to do. A
               permanently-open destructive form has no way out. */}
-          <section className="page-section" aria-labelledby="lead-lost">
-            <h2 id="lead-lost">{text("lost.title")}</h2>
+          {/* **The heading is drawn only where it names something.** With the sheet shut and
+              the lead not lost, this section is one link -- and it carried an `h2` reading
+              "Mark lost" directly above a link reading "Mark lost", which is the sentence said
+              twice that the grid's caption and the field shell's message slot both rule out.
+              The section keeps its accessible name either way. */}
+          <section className="page-section" aria-label={text("lost.title")}>
+            {lead.lost || sheetOpen ? <h2>{text("lost.title")}</h2> : null}
             {lead.lost ? (
               <div className="stack">
                 <Banner severity="info">
@@ -423,12 +430,6 @@ export default async function LeadPage({
                 </Banner>
                 {lead.lost_detail === null
                   ? null : <ProseNote>{lead.lost_detail}</ProseNote>}
-                {/* **The stage is still there**, which is the decision this screen exists to
-                    make visible: a sixth stage would have needed a backwards edge on reopen,
-                    and that would make the board's own counts unreconstructable. */}
-                <ProseNote>
-                  {fill(locale, "lost.stageKept", { stage })}
-                </ProseNote>
                 <ProseNote>{text(recontactSentence(lead.recontactable))}</ProseNote>
                 <ReopenForm locale={locale} leadId={leadId} />
               </div>
@@ -447,7 +448,6 @@ export default async function LeadPage({
                   }))}
                 />
                 <ProseNote>{text("lost.note")}</ProseNote>
-                <ProseNote>{text("lost.feedsReport")}</ProseNote>
                 <Link href={`/leads/${leadId}`}>{text("lost.keepOpen")}</Link>
               </div>
             ) : (
@@ -457,19 +457,10 @@ export default async function LeadPage({
         </>
       ) : null}
 
-      <ProseNote>{text("leads.nameIsElsewhere")}</ProseNote>
-
-      <section className="page-section" aria-labelledby="lead-gaps">
-        <h2 id="lead-gaps">{text("leads.gaps")}</h2>
-        <dl className="facts">
-          <dt>{text("lead.gapTrialLabel")}</dt>
-          <dd>{text("lead.gapTrial")}</dd>
-          <dt>{text("lead.gapPhoneLabel")}</dt>
-          <dd>{text("lead.gapPhone")}</dd>
-          <dt>{text("lead.gapWhatsAppLabel")}</dt>
-          <dd>{text("lead.gapWhatsApp")}</dd>
-        </dl>
-      </section>
+      {/* The gaps named rather than explained: each `why` was a paragraph about a
+          provider, a module or this repository, which is not something a salesperson
+          can act on. The label is the fact -- this screen does not do that yet. */}
+      <NotYet locale={locale} items={["lead.gapTrialLabel", "lead.gapPhoneLabel", "lead.gapWhatsAppLabel"]} />
 
       <Link href="/leads">{text("lead.backToBoard")}</Link>
     </div>

@@ -2,10 +2,11 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 
 import { Banner } from "@/components/ds/banner";
+import { NotYet } from "@/components/not-yet";
 import { DataGrid } from "@/components/ds/data-grid";
+import { MetricCell, MetricRow } from "@/components/ds/metric-cell";
 import { MoneyValue } from "@/components/ds/money-value";
 import { PageHeader } from "@/components/ds/page-header";
-import { Prose } from "@/components/prose";
 import { Withheld } from "@/components/withheld";
 import { fill, formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
 import { currentSession, failureMessage, gateAll, gateMessage, gateVerdict } from "@/lib/api";
@@ -133,24 +134,39 @@ export default async function PaymentsPage({
   return (
     <Shell
       locale={locale}
-      // "JOD 41,280.00 collected · 1–19 August · all locations · 6 failed, 3 refunded,
-      // 2 disputed" -- and the last clause is only the non-zero parts, because a clean
-      // period says nothing here.
+      // **The money is the figure, and it is no longer the size of a footnote.** The canvas's
+      // header line is "JOD 41,280.00 collected · 1–19 August · all locations · 6 failed,
+      // 3 refunded, 2 disputed", and rendering all four clauses at `type.bodySm` made the
+      // number a manager opens this page for the same size as the scope beside it. Collected
+      // is promoted to a `MetricCell`; the window, the scope and the exceptions stay on the
+      // figures line, which is what they are. The last clause is still only the non-zero
+      // parts, because a clean period says nothing here.
+      metrics={
+        <MetricRow label={text("payments.heading")}>
+          <MetricCell
+            label={text("payments.collected")}
+            // **Not a zero and not an em-dash.** The figure needs its own permission, so a
+            // session without it is told which fact is missing rather than shown a total
+            // that reads as nothing collected.
+            {...(collected === null
+              ? {
+                  freshness: "unavailable" as const,
+                  unavailableBecause: text("payments.collectedUnavailable"),
+                }
+              : {
+                  value: (
+                    <MoneyValue
+                      kind="aggregate"
+                      amountMinor={collected.collected_minor}
+                      currency={collected.currency}
+                    />
+                  ),
+                })}
+          />
+        </MetricRow>
+      }
       figures={
         <>
-          {collected === null ? (
-            text("payments.collectedUnavailable")
-          ) : (
-            <>
-              <MoneyValue
-                kind="aggregate"
-                amountMinor={collected.collected_minor}
-                currency={collected.currency}
-              />{" "}
-              {text("payments.collected")}
-            </>
-          )}
-          {" · "}
           <span className="data" dir="ltr">{ledger.since} — {ledger.until}</span>
           {" · "}
           {text("payments.allLocations")}
@@ -166,14 +182,14 @@ export default async function PaymentsPage({
       }
     >
       {/* The canvas's two chips. Links rather than client state, so the view is in the URL. */}
-      <nav className="ds-segmented" aria-label={text("payments.views")}>
+      <nav className="ds-filter-bar" aria-label={text("payments.views")}>
         <Link
           href="/payments?filter=needs_action"
           {...(needsAction ? { "aria-current": "page" as const } : {})}
-        >
+         className="ds-filter-chip">
           {fill(locale, "payments.needsAction", { count: ledger.needs_action }, numbering)}
         </Link>
-        <Link href="/payments" {...(needsAction ? {} : { "aria-current": "page" as const })}>
+        <Link href="/payments" {...(needsAction ? {} : { "aria-current": "page" as const })} className="ds-filter-chip">
           {text("payments.all")}
         </Link>
       </nav>
@@ -348,21 +364,7 @@ export default async function PaymentsPage({
       {/* What this screen cannot do, at the foot. Both are the design's own tier 3 and tier
           4 and both are real: a refund needs a typed amount *and* a second person, and
           nothing in this build has a form for either. */}
-      <section className="page-section">
-        <h2 style={{ margin: 0 }}>{text("payments.notYet")}</h2>
-        <dl className="facts">
-          <dt className="muted">{text("payments.refundTitle")}</dt>
-          {/* **Rendered, not printed.** The reason names a permission in backticks, which
-              is how every such note in this repository is written -- and `/privacy`'s board
-              already learned that printing the delimiters puts punctuation nobody wrote in
-              front of a reader. */}
-          <dd style={{ margin: 0 }}><Prose>{text("payments.refundWhy")}</Prose></dd>
-          <dt className="muted">{text("payments.exportTitle")}</dt>
-          <dd style={{ margin: 0 }}>{text("payments.exportWhy")}</dd>
-          <dt className="muted">{text("payments.locationTitle")}</dt>
-          <dd style={{ margin: 0 }}>{text("payments.locationWhy")}</dd>
-        </dl>
-      </section>
+      <NotYet locale={locale} items={["payments.refundTitle", "payments.exportTitle", "payments.locationTitle"]} />
     </Shell>
   );
 }
@@ -371,10 +373,18 @@ function Shell({
   locale,
   children,
   figures,
+  metrics,
 }: {
   locale: Locale;
   children: React.ReactNode;
   figures?: React.ReactNode;
+  /**
+   * The metric row, immediately under the header. A separate slot rather than the first
+   * child, because the three early returns on this page — refused, no session, read failed
+   * — have a header and no figure to show, and a row of one `unavailable` cell above a
+   * refusal banner would say the same thing twice.
+   */
+  metrics?: React.ReactNode;
 }) {
   return (
     <div className="stack">
@@ -385,6 +395,7 @@ function Shell({
         title={t(locale, "payments.heading")}
         {...(figures ? { figures } : {})}
       />
+      {metrics}
       {children}
     </div>
   );

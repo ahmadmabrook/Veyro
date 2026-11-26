@@ -2,6 +2,8 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { Banner } from "@/components/ds/banner";
+import { NotYet } from "@/components/not-yet";
+import { MetricCell, MetricRow } from "@/components/ds/metric-cell";
 import { PageHeader } from "@/components/ds/page-header";
 import { WeekGrid } from "@/components/ds/week-grid";
 import { ProseNote } from "@/components/prose";
@@ -157,8 +159,9 @@ export default async function RotaPage({
   const mayWrite = (await gate("scheduling.availability.write")).allowed;
   // **This week's dated absences, which is what the canvas's button adds and the only thing
   // this screen withdraws.** A weekly working pattern is the rota itself rather than an
-  // exception to it, and writing one is a different screen; `rota.exceptionsScope` says so
-  // rather than leaving a reader to wonder why their Tuesdays are not listed.
+  // exception to it, and writing one is a different screen; `rota.formWhat`, on the form
+  // itself, says so rather than leaving a reader to wonder why their Tuesdays are listed
+  // nowhere here.
   const exceptions = week.days.flatMap((day) =>
     day.windows
       .filter((w) => !w.recurring && w.kind === "time_off" && w.window_id !== null)
@@ -192,11 +195,10 @@ export default async function RotaPage({
           </span>
         }
       />
-      {/* **A lead, not a heading.** The canvas sets this sentence at 19px because its card
-          excerpt has no page title above it; here the `PageHeader` is the h1, so making this
-          an `h2` would put a heading level in front of the section headings -- the sibling of
-          the two-`h1` defect the staff record shipped. The reports index does the same. */}
-      <ProseNote>{text("rota.title")}</ProseNote>
+      {/* The one-word lead ("Rota") under a page headed "Availability" is gone: it repeated
+          the title and said nothing the sub-line beneath does not. The scope note on the
+          exceptions list went too -- `rota.formWhat`, on the form itself, is the same
+          sentence and is where somebody about to write one reads it. */}
 
       {/* The canvas's own sub-line: who, which week, which club, and the hours figure. */}
       <p className="muted" style={{ margin: 0 }}>
@@ -205,17 +207,24 @@ export default async function RotaPage({
         {fill(locale, "rota.weekOf", { first: monthDayLabel(week.window.first_day, locale) })}
         {week.location_name === null ? null : <>{" · "}{week.location_name}</>}
         {" · "}
-        {week.open_minutes === null
-          ? fill(locale, "rota.hoursBookedNoRota",
-                 { booked: hours(week.booked_minutes) })
-          : fill(locale, "rota.hoursBooked", {
-              booked: hours(week.booked_minutes),
-              open: hours(week.open_minutes),
-            })}
-        {" · "}
         {text("rota.timezone")}{" "}
         <span className="data" dir="ltr">{week.timezone}</span>
       </p>
+
+      {/* **The hours this resource is booked for, at the scale the screen is about them.**
+          It was one clause of a 14px line between the week's name and its timezone -- the
+          one quantity a rota exists to answer, set as a footnote. The denominator stays in
+          the comparison beneath, because "26 hours" without "of 34" is a number nobody can
+          act on, and a resource with no rota has no denominator at all rather than a zero. */}
+      <MetricRow label={text("rota.hoursLabel")}>
+        <MetricCell
+          label={text("rota.hoursLabel")}
+          value={hours(week.booked_minutes)}
+          comparison={week.open_minutes === null
+            ? text("rota.hoursBookedNoRotaShort")
+            : fill(locale, "rota.hoursOpen", { open: hours(week.open_minutes) })}
+        />
+      </MetricRow>
 
       {staff !== null && staff.resources.length > 1 ? (
         <nav className="ds-filter-bar" aria-label={text("rota.whichResource")}>
@@ -391,7 +400,6 @@ export default async function RotaPage({
           />
 
           <h3>{text("rota.exceptionsTitle")}</h3>
-          <ProseNote>{text("rota.exceptionsScope")}</ProseNote>
           {exceptions.length === 0 ? (
             <p className="muted">{text("rota.noExceptions")}</p>
           ) : (
@@ -415,23 +423,7 @@ export default async function RotaPage({
         </section>
       ) : null}
 
-      <section className="page-section" aria-labelledby="rota-gaps">
-        <h2 id="rota-gaps">{text("rota.gapsTitle")}</h2>
-        <dl className="facts">
-          {([
-            // **"Add an exception" has left this list**, which is what the note it used to
-            // carry said would happen: it was the one form here that was never blocked, and
-            // the only thing missing was the remedy a routine, uncorrectable write needs.
-            ["rota.gapKindLabel", "rota.gapKind"],
-            ["rota.gapHourLabel", "rota.gapHour"],
-          ] as [MessageKey, MessageKey][]).map(([label, why]) => (
-            <div key={label} style={{ display: "contents" }}>
-              <dt className="muted">{text(label)}</dt>
-              <dd style={{ margin: 0 }}>{text(why)}</dd>
-            </div>
-          ))}
-        </dl>
-      </section>
+      <NotYet locale={locale} items={["rota.gapKindLabel", "rota.gapHourLabel"]} />
     </>
   );
 }

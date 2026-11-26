@@ -94,9 +94,9 @@ test.describe("the cash board", () => {
   }) => {
     // A co-sign and a tolerance. Both are refusals with reasons rather than omissions, and
     // the tolerance is the unusual direction: this build is *stricter* than the design.
-    const gaps = page.locator("section").filter({ hasText: "What this screen does not do" });
-    await expect(gaps.getByRole("term").filter({ hasText: "A co-sign" })).toBeVisible();
-    await expect(gaps.getByRole("term").filter({ hasText: "A tolerance" })).toBeVisible();
+    const gaps = page.locator("section").filter({ hasText: "What this screen does not do yet" });
+    await expect(gaps).toContainText("A co-sign");
+    await expect(gaps).toContainText("A tolerance");
     await expect(gaps).toContainText("stricter rather than looser");
   });
 
@@ -221,7 +221,16 @@ test.describe("a reader who may not open a drawer", () => {
     // same shape as a refusal — which is why this says which of the four it is.
     await useReaderSession(page);
     await page.goto(AT);
-    await expect(page.locator("main")).toContainText("finance.cash.session");
+    // **The finding is that a refusal is distinguished from a failure, not that a permission
+    // id is printed.** This pinned the literal `finance.cash.session`, which is a dotted
+    // backend identifier on an operator's screen -- the one thing the directive bars outright
+    // -- and the page says the same thing in words a reader can take to whoever grants it.
+    // What has to stay true: the reader is told what is needed, told which of the four
+    // states this is, and shown no drawer.
+    const main = page.locator("main");
+    await expect(main).toContainText("running a till");
+    await expect(main).not.toContainText(/\b[a-z]+\.[a-z_]+\.[a-z_]+\b/);
+    await expect(main).toContainText(/permission|sign-in|could not/i);
     await expect(page.locator(".ds-cash-drawer")).toHaveCount(0);
   });
 });

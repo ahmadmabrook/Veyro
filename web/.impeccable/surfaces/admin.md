@@ -18,9 +18,11 @@ Arabic and Latin as equals, and the numeral on the back of a shirt. **#91338A ow
 shell and the action** -- one colour for the product's identity and for the one thing on a
 page that can be pressed -- with **#26202C** as the ground the dark theme is built on. Bone is
 the working ground and ink the text, both carrying the primary's own cast rather than a grey
-or a green one. Crimson, gold, steel and turf are category fields, each a solid block carrying
-one kind of concern, and each kept a measured hue distance from the primary so a state is
-never mistaken for the brand. Screenprint flatness throughout:
+or a green one. Crimson, gold, steel and indigo are category fields, each a solid block
+carrying one kind of concern, and each kept a measured hue distance from the primary so a
+state is never mistaken for the brand. Indigo replaced the green here after the Command Center
+was rendered and read: a green badge sat above "4 classes have no coach", which told a manager
+the thing needing them was fine. Screenprint flatness throughout:
 no gradient, no glass, no glow, no rounded-card soup. Rules are 2px and black, not
 hairlines. Archivo sets every quantity; Barlow sets Latin text; Cairo sets Arabic.
 
@@ -135,7 +137,7 @@ Eight material fixes were returned. Six are done and verified in the browser:
 
 1. The figure row is a flex line, so figures size to their own content and the prose cell
    absorbs the rest. Measured: 72px, three figures, tops at 148/148/148.
-2. The chip carries kind. Money is gold, compliance steel, retention crimson, staffing turf,
+2. The chip carries kind. Money is gold, compliance steel, retention crimson, staffing indigo,
    each with the text colour that clears AA on it in both themes -- in dark every category is
    a light tint, so all four take ink there.
 3. The dark rail was **1.00:1** against the dark canvas; no value in the shell's ramp separates
@@ -203,10 +205,16 @@ mode, replacing the green this surface shipped with. What moved and what did not
 - **Error moved to a true red and AI to an indigo.** The retired error was a claret 37 degrees
   from the new primary and the AI violet was 57 -- close enough that a refusal or an inference
   would have read as the brand. They are 51 and 73 now.
-- **Green survives in one job.** Success, and the staffing category that shares its ramp. A
-  status is not an identity, and a paid invoice in the brand colour is a highlight rather than
-  a state.
-- **Nothing about the structure moved.** Same type scale, same density, same signature move,
+- **Green survives in one job: success.** A status is not an identity, and a paid invoice in
+  the brand colour is a highlight rather than a state. The staffing category shared green's
+  ramp when this was written and no longer does -- the sentence was true of the rule and false
+  of the build until somebody looked at a screen against it, which is the cheapest instrument
+  this surface has and the one that was not used for a week.
+- **The structure moved afterwards, and not with the palette.** The type scale was rebuilt
+  around a monumental figure (88px) with the body at 16px and a navigation label at 15px
+  rather than 13; the four density modes grew a step; every screen that counts something now
+  leads with the count. Those are answers to "the fonts are small and the UI is boring", not
+  to the colour. What the palette change itself moved: same signature move,
   same craft floor. Every contrast pairing was recomputed from the shipped hexes before it was
   written down, and the one that got tighter -- warning on the darkest ground -- was corrected
   rather than tolerated.

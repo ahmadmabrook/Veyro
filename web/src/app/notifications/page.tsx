@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
 
 import { Banner } from "@/components/ds/banner";
+import { NotYet } from "@/components/not-yet";
+import { MetricCell, MetricRow } from "@/components/ds/metric-cell";
 import { PageHeader } from "@/components/ds/page-header";
 import { DataGrid } from "@/components/ds/data-grid";
 import { fill, formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
@@ -105,14 +107,29 @@ export default async function NotificationsPage() {
   return (
     <Shell
       locale={locale}
+      // **What was authored and what is stuck, promoted.** Nothing in this build sends, so
+      // the waiting count is the whole subject of the screen -- and it was the middle clause
+      // of three at `type.bodySm`, the same size as the suppression count beside it. The
+      // suppressions stay on the figures line: that list is its own section with its own
+      // rule, and it is not what a reader opens this page to find out.
+      metrics={
+        <MetricRow label={text("notify.title")}>
+          <MetricCell
+            label={text("notify.authored")}
+            value={<span className="data" dir="ltr">
+              {formatInteger(rows.length, numbering)}
+            </span>}
+          />
+          <MetricCell
+            label={text("notify.waitingCount")}
+            value={<span className="data" dir="ltr">
+              {formatInteger(waiting.length, numbering)}
+            </span>}
+          />
+        </MetricRow>
+      }
       figures={
-        <>
-          {fill(locale, "notify.authoredCounted", { count: rows.length }, numbering)}
-          {" \u00b7 "}
-          {fill(locale, "notify.waitingCounted", { count: waiting.length }, numbering)}
-          {" \u00b7 "}
-          {fill(locale, "notify.suppressedCounted", { count: liveSuppressions.length }, numbering)}
-        </>
+        fill(locale, "notify.suppressedCounted", { count: liveSuppressions.length }, numbering)
       }
     >
       {failed ? <Banner severity="critical">{text("error.unexpected")}</Banner> : null}
@@ -428,6 +445,7 @@ function Shell({
   locale,
   children,
   figures,
+  metrics,
 }: {
   locale: Locale;
   children: React.ReactNode;
@@ -440,24 +458,23 @@ function Shell({
    * out whether anything on it needed them.
    */
   figures?: React.ReactNode;
+  /**
+   * The metric row, immediately under the header. A slot rather than the first child: the
+   * refusal return has a header and nothing to count, and a zero there would read as a
+   * tenant that has sent nothing rather than a session that may not see what it has.
+   */
+  metrics?: React.ReactNode;
 }) {
   return (
     <div className="stack">
       <PageHeader title={t(locale, "notify.title")} {...(figures ? { figures } : {})} />
+      {metrics}
       {children}
 
       {/* **What ADM-COM-02 and ADM-COM-04 draw and this build has no read for.** Named here
           rather than left to be noticed, which is the members list's precedent: an absent
           block reads as a fact about the product rather than about the screen. */}
-      <section className="page-section">
-        <h2 style={{ margin: 0 }}>{t(locale, "notify.notYet")}</h2>
-        <dl className="facts">
-          <dt className="muted">{t(locale, "notify.noMatrixTitle")}</dt>
-          <dd style={{ margin: 0 }}>{t(locale, "notify.noMatrixWhy")}</dd>
-          <dt className="muted">{t(locale, "notify.noPairTitle")}</dt>
-          <dd style={{ margin: 0 }}>{t(locale, "notify.noPairWhy")}</dd>
-        </dl>
-      </section>
+      <NotYet locale={locale} items={["notify.noMatrixTitle", "notify.noPairTitle"]} />
       {/* **The lead paragraph moved to the foot.** The design's page header is a title and a
           line of figures -- every drawn canvas does the same -- so an explanation of what the
           screen is was pushing the data a manager opens the page for below the fold. What is

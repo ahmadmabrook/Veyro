@@ -79,7 +79,4 @@ describe("the footnote the canvas insists on", () => {
     expect(note).toContain("rather than a fresh record");
   });
 
-  it("and says why the reason is one of four rather than a sentence", () => {
-    expect(MESSAGES.en["lost.feedsReport"] as string).toContain("source effectiveness");
-  });
 });

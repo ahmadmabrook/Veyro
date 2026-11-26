@@ -87,12 +87,16 @@ describe("the rail", () => {
         <RailGroup id="g" label="Operate">
           {/* A plain anchor: this test is about the list structure, and `next/link` would
               drag the router in for nothing. */}
-          <li><span><RailItem icon="command-center" label="Command Center" /></span></li>
+          <li><span><RailItem label="Command Center" /></span></li>
         </RailGroup>
       </ul>,
     );
     const section = container.querySelector(".ds-rail-section")!;
     expect(section.tagName).toBe("LI");
+    // **The glyph belongs to the group now, and an item carries none.** Twenty-six
+    // destinations drew twenty-six icons, three of them duplicates, so the mark beside a
+    // label distinguished nothing and competed with the label that did.
+    expect(section.querySelector(".ds-rail-items svg")).toBeNull();
     const nested = section.querySelector("ul")!;
     expect(nested.getAttribute("aria-labelledby")).toBe("g");
     expect([...nested.children].every((child) => child.tagName === "LI")).toBe(true);
@@ -100,9 +104,9 @@ describe("the rail", () => {
 
   it("renders a count beside an item that has one, and nothing where there is none", () => {
     const { container, rerender } = render(
-      <RailItem icon="members" label="Members" count="4,812" />);
+      <RailItem label="Members" count="4,812" />);
     expect(container.querySelector(".ds-rail-count")!.textContent).toBe("4,812");
-    rerender(<RailItem icon="doors" label="Doors" />);
+    rerender(<RailItem label="Doors" />);
     expect(container.querySelector(".ds-rail-count")).toBeNull();
   });
 });

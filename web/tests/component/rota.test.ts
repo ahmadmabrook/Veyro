@@ -301,11 +301,10 @@ describe("whether the grid is worth drawing", () => {
 describe("the catalogue", () => {
   const KEYS: MessageKey[] = [
     "rota.heading", "rota.title", "rota.whichResource", "rota.timezone", "rota.weekOf",
-    "rota.hoursBooked", "rota.hoursBookedNoRota", "rota.gridTitle",
+    "rota.hoursLabel", "rota.hoursOpen", "rota.hoursBookedNoRotaShort", "rota.gridTitle",
     "rota.legend", "rota.conflictsTitle", "rota.noConflicts", "rota.conflictLead",
     "rota.noRotaTitle", "rota.noRotaBody", "rota.nothingToDraw", "rota.reasonMasked",
-    "rota.reasonMaskedWhy", "rota.gapsTitle", "rota.gapKindLabel", "rota.gapKind",
-    "rota.gapExceptionLabel", "rota.gapException", "rota.gapHourLabel", "rota.gapHour",
+    "rota.reasonMaskedWhy", "rota.gapKindLabel", "rota.gapHourLabel",
     "rota.pickResourceInLink", "rota.noResources", "rota.refusedWhy", "schedule.coaches",
     "rota.whichWeek", "rota.previousWeek", "rota.thisWeek", "rota.nextWeek",
   ];
@@ -370,12 +369,11 @@ describe("the catalogue", () => {
     }
   });
 
-  it("says the exception form is unblocked rather than refused", () => {
-    // `scheduling.availability.write` is the one scheduling permission that is routine
-    // rather than stepped-up, and the catalogue says why. So the missing form is the next
-    // piece of work, not a button that would answer 403 -- which is the reason every other
-    // write form in this app is absent.
-    expect(MESSAGES.en["rota.gapException"]).toContain("routine");
-    expect(MESSAGES.en["rota.gapException"]).toContain("not a refusal");
-  });
+  // **The test that asserted why the exception form is absent is gone, and the question is
+  // which it was asserting.** The finding was that `scheduling.availability.write` is
+  // routine rather than stepped-up, so the missing form is work rather than a refusal --
+  // and that is a fact about this repository, not about a rota. It was on the screen as two
+  // sentences of justification, which is the thing the character line bans: "it never
+  // explains itself to engineers on a working screen". The reasoning lives in
+  // `contracts/ui/design-compliance.md`; the screen names the absence and stops.
 });

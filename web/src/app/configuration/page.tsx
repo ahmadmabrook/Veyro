@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { Banner } from "@/components/ds/banner";
+import { MetricCell, MetricRow } from "@/components/ds/metric-cell";
 import { PageHeader } from "@/components/ds/page-header";
 import { DataGrid } from "@/components/ds/data-grid";
 import { fill, formatInteger, t, type MessageKey } from "@/i18n/locale";
@@ -77,17 +78,52 @@ export default async function ConfigurationPage({
       <PageHeader title={text("config.title")}
         figures={
           <>
-            {fill(locale, "config.keysCounted", { count: definitions?.length ?? 0 }, numbering)}
-            {" \u00b7 "}
             {fill(locale, "config.unsetCounted", { count: unset }, numbering)}
-            {" \u00b7 "}
-            {fill(locale, "config.flagsCounted", { count: Object.keys(flags ?? {}).length }, numbering)}
             {killSwitches === 0
               ? null
               : <> {"\u00b7 "}{fill(locale, "config.killCounted", { count: killSwitches }, numbering)}</>}
           </>
         }
        />
+
+      {/* **How many keys and how many flags, at the size of a figure.** Both were a 14px
+          line under the title -- the size of a footnote for the two counts this board is a
+          board of. What stays in that line is the pair that qualifies them: how many values
+          nobody set, and a kill switch where there is one.
+          **A refused or unread count is not a zero.** The registry and the flags are
+          separate permissions and either read can fail, and `?? 0` rendered both as nothing
+          declared -- which at this size would read as a tenant with no configuration rather
+          than as an answer this session did not get. */}
+      <MetricRow label={text("config.title")}>
+        {mayConfig.allowed && definitions !== null ? (
+          <MetricCell
+            label={text("config.registry")}
+            value={formatInteger(definitions.length, numbering)}
+          />
+        ) : (
+          <MetricCell
+            label={text("config.registry")}
+            freshness="unavailable"
+            unavailableBecause={mayConfig.allowed
+              ? text("error.unexpected")
+              : text(gateMessage(mayConfig))}
+          />
+        )}
+        {mayFlags.allowed && flags !== null ? (
+          <MetricCell
+            label={text("config.flags")}
+            value={formatInteger(Object.keys(flags).length, numbering)}
+          />
+        ) : (
+          <MetricCell
+            label={text("config.flags")}
+            freshness="unavailable"
+            unavailableBecause={mayFlags.allowed
+              ? text("error.unexpected")
+              : text(gateMessage(mayFlags))}
+          />
+        )}
+      </MetricRow>
 
       <section className="page-section">
         <h2 id="config-heading" style={{ margin: 0 }}>

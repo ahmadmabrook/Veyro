@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 
@@ -56,7 +59,21 @@ test.describe("the Command Center", () => {
       const scope = document.querySelector("[data-density]");
       return scope ? getComputedStyle(scope).getPropertyValue("--density-row").trim() : null;
     });
-    expect(row).toBe("34px");
+    // **Read from the design source, never copied.** `shell-tokens.test.mjs` carries the
+    // reason in full -- "four precision slips in this project were all caused by a number
+    // being copied rather than referenced" -- and this assertion was one: it pinned 34px,
+    // which stopped being Compact's row height when the density modes were rebuilt around a
+    // larger type scale, and failed for the design having changed rather than the screen.
+    // `process.cwd()` rather than `import.meta.url`: Playwright transpiles a spec to CJS, so
+    // `import.meta` is a syntax error there and takes the whole run with it. The config's
+    // directory is the cwd.
+    const ds = JSON.parse(readFileSync(
+      join(process.cwd(), "src/design/ds.json"), "utf8",
+    )) as { DENSITY: string[][] };
+    const compact = ds.DENSITY.find((mode) => mode[0] === "Compact");
+    expect(compact, "Compact is not in the design source's density table").toBeDefined();
+    const rows = compact?.[1];
+    expect(row).toBe(`${String(rows).split("/")[0]?.trim()}px`);
   });
 
   test("renders four metric cells, and the fourth has no figure", async ({ page }) => {
@@ -64,16 +81,29 @@ test.describe("the Command Center", () => {
     // Four, or five when a tenant bills in two currencies: the collected cell is per
     // currency, which is the money rule rather than a layout choice.
     expect(await metrics.count()).toBeGreaterThanOrEqual(4);
-    const leads = metrics.filter({ hasText: "LEAD CONVERSION" });
-    await expect(leads).toHaveAttribute("data-freshness", "unavailable");
-    // Not a zero and not an em-dash: both read as a measurement. **The reason is now
-    // addressed to the operator**, where it used to name `ADM-CRM-*`, a screen id from the
-    // design folder, on the product's front door. The finding this asserts is unchanged --
-    // the cell carries a reason instead of a figure -- and what it no longer asserts is that
-    // the reason is written for an engineer.
-    await expect(leads).toContainText(/lead/i);
-    await expect(leads).not.toContainText(/ADM-[A-Z]+|MOD-\d+/);
-    await expect(leads.locator(".ds-metric-value")).toHaveCount(0);
+    // **The fourth cell has a figure now, and this test asserted the gap rather than the
+    // finding.** It pinned `data-freshness="unavailable"` on a LEAD CONVERSION cell whose
+    // reason said Veyro is not tracking leads yet -- which stopped being true when `/leads`
+    // shipped, so the product's front door was telling every owner it could not do something
+    // it does. The cell reads from `crm.board` and carries a real count.
+    //
+    // What survives is the finding underneath: **no cell fabricates a figure.** A number here
+    // is a measurement, an absent one carries a reason, and neither is ever a zero or an
+    // em dash standing in for one. That is asserted over every cell rather than over the one
+    // that happened to be unavailable, so it cannot go stale the next time a gap closes.
+    const leads = metrics.filter({ hasText: /LEADS/i }).first();
+    await expect(leads.locator(".ds-metric-value")).toHaveCount(1);
+    for (const cell of await metrics.all()) {
+      const unavailable =
+        (await cell.getAttribute("data-freshness")) === "unavailable";
+      if (unavailable) {
+        await expect(cell.locator(".ds-metric-value")).toHaveCount(0);
+        await expect(cell.locator(".ds-metric-unavailable")).not.toHaveText(/^\s*(0|—)\s*$/);
+      } else {
+        await expect(cell.locator(".ds-metric-value")).toHaveCount(1);
+      }
+    }
+    await expect(metrics.first()).not.toContainText(/ADM-[A-Z]+|MOD-\d+/);
   });
 
   test("the collected figure has a comparison that is not a fabricated zero", async ({
@@ -82,8 +112,17 @@ test.describe("the Command Center", () => {
     // `change_bp` is null with no baseline, and `0%` would read as "unchanged" — a confident
     // wrong answer about a month nobody can compare against.
     const collected = page.locator(".ds-metric").filter({ hasText: "COLLECTED" }).first();
+    // **The finding is the absent zero, not the wording.** This pinned "compare against",
+    // which was the tail of a seven-word statement of what is missing -- and that statement
+    // used to lead, pushing the pace (the one figure a manager can act on) to the end of the
+    // line. The pace leads now and the absence reads "first month on record". What has to
+    // stay true is that nothing fabricates a change: no `0%`, and no delta arrow over a month
+    // with no baseline.
     await expect(collected.locator(".ds-metric-value")).toContainText("JOD");
-    await expect(collected.locator(".ds-metric-comparison")).toContainText(/compare against/);
+    const comparison = collected.locator(".ds-metric-comparison");
+    await expect(comparison).toContainText("pace");
+    await expect(comparison).not.toContainText("0%");
+    await expect(collected.locator(".ds-metric-delta")).toHaveCount(0);
   });
 
   test("the queue carries all four classes the fixture seeded, in the design's order", async ({
@@ -110,24 +149,41 @@ test.describe("the Command Center", () => {
       .toHaveText("2 payments are in recovery");
   });
 
-  test("severity is an edge-mark and a category and the wording, never the bar alone", async ({
+  test("severity is never colour, and the field at the row's head carries kind", async ({
     page,
   }) => {
-    // §38's contract, and the contrast matrix: a signal carried only by a coloured edge is a
-    // colour-only signal. The row's category and its own words carry it too, which is what
-    // this asserts alongside the measured border.
+    // §38's contract: a signal carried only by colour is a colour-only signal. **This used
+    // to assert a 3px severity edge and the property is now satisfied more strongly than the
+    // edge satisfied it** -- the direction contract says the field at a row's head carries
+    // "its kind", and keying it on severity made three of the four `color.category.*` tokens
+    // unread while every row wore another category's declared colour (retention rendering
+    // gold, which is money's). The field carries kind now, so severity has no colour channel
+    // at all rather than a second one: it is the queue's worst-first order, the "2 critical"
+    // in the head, and each headline stating the fact in words.
+    //
+    // So what is asserted is the property rather than the mechanism -- severity is readable
+    // without colour, and no two categories share a field.
     const money = row(page, "money");
     await expect(money).toHaveAttribute("data-severity", "critical");
-    // **The edge is a 3px block, not a border**, so it runs the row's full height whatever
-    // the content does -- a `border-inline-start` stops at the padding box and leaves the
-    // mark short on a tall row. Measuring the block is measuring what a reader sees.
-    const edge = await money.locator(".ds-attention-edge").evaluate((el) => {
-      const box = el.getBoundingClientRect();
-      return { width: Math.round(box.width), colour: getComputedStyle(el).backgroundColor };
-    });
-    expect(edge.width).toBe(3);
-    expect(edge.colour).not.toBe("rgba(0, 0, 0, 0)");
     await expect(money.locator(".ds-attention-category")).toHaveText(/MONEY/i);
+
+    const fields = await page.locator(".ds-attention").evaluateAll((rows) =>
+      rows.map((r) => ({
+        category: r.getAttribute("data-category"),
+        severity: r.getAttribute("data-severity"),
+        field: getComputedStyle(
+          r.querySelector(".ds-attention-category") as Element,
+        ).backgroundColor,
+      })),
+    );
+    // One field per kind, and no kind sharing another's.
+    const byCategory = new Map(fields.map((f) => [f.category, f.field]));
+    expect(byCategory.size).toBe(new Set(byCategory.values()).size);
+    // And two rows of the same severity in different kinds do not match, which is what
+    // proves the field is not keyed on severity.
+    const critical = fields.filter((f) => f.severity === "critical");
+    expect(critical.length).toBeGreaterThanOrEqual(2);
+    expect(new Set(critical.map((f) => f.field)).size).toBe(critical.length);
   });
 
   test("staffing is a condensed row in the info tone, as the canvas draws it", async ({

@@ -144,15 +144,22 @@ describe("the interpretation panel", () => {
 });
 
 describe("what the screen says it cannot do", () => {
-  it("gives the fourth metric a reason in the operator's language, not a module id", () => {
-    // **The finding this test was written for still holds**: the cell with no figure carries
-    // a reason rather than a zero or an em-dash, because both of those read as a measurement.
-    // What changed is who the reason is addressed to. It used to name `ADM-CRM-*`, a screen
-    // id from the design folder, on the product's front door -- and a screen id is not
-    // something a gym owner can act on or even look up.
-    const reason = t("en", UNANSWERABLE.leadConversion);
-    expect(reason.toLowerCase()).toContain("lead");
-    expect(reason).not.toMatch(/ADM-[A-Z]+|MOD-\d+|[a-z]+_[a-z]+/);
+  it("gives a figure-less metric a reason in the operator's language, not a module id", () => {
+    // **The fourth metric has a figure now, and that is why this test moved.** It was
+    // permanently "unavailable" carrying "Veyro is not tracking leads yet" -- false since
+    // the CRM shipped: a Leads entry sits in the rail and the board returns a count per
+    // stage. A gap note outliving its gap, on the product's front door.
+    //
+    // The finding was never about that one cell. It is that a cell with no figure carries a
+    // *reason* rather than a zero or an em-dash, because both of those read as a
+    // measurement, and that the reason is addressed to a gym owner rather than to us. Both
+    // still hold for the two ways a figure can be missing -- the read was refused, or it
+    // failed -- so the assertion moved to those.
+    for (const key of ["cc.refusedPanel", "cc.failedPanel"] as const) {
+      const reason = t("en", key);
+      expect(reason.length).toBeGreaterThan(12);
+      expect(reason).not.toMatch(/ADM-[A-Z]+|MOD-\d+|[a-z]+_[a-z]+/);
+    }
   });
 
   it("no message a reader sees carries a module id or an internal identifier", () => {

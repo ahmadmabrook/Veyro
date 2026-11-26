@@ -136,8 +136,14 @@ test.describe("the attendance report", () => {
       const main = page.locator("main");
       await expect(main).toContainText("does not consult the club's opening hours");
       await expect(main).not.toContainText("Nothing in this build records");
-      // And it says where they are, so a reader is not left thinking the product cannot know.
-      await expect(main).toContainText("recorded per club in this build");
+      // And it says the product does know them, so a reader is not left thinking Veyro
+      // cannot. **That clause was cut and restored in the same pass**: "the hours themselves
+      // are recorded per club in this build" is a statement about a build, which is not
+      // something an operator can act on -- but the *fact* under it is, because without it a
+      // reader concludes their opening hours are nowhere in the product. What was engineer-
+      // speak was the framing, not the information.
+      await expect(main).toContainText("opening hours are recorded in Veyro");
+      await expect(main).not.toContainText("in this build");
     });
 
   test("says the day set is the reader's choice and no chip claims a working week", async ({
@@ -156,8 +162,8 @@ test.describe("the attendance report", () => {
     // asserted because that is the direction a revert comes from.
     await expect(chips.getByRole("link", { name: /weekday/i })).toHaveCount(0);
     const main = page.locator("main");
-    await expect(main).toContainText("does not read which days your clubs are open");
     await expect(main).not.toContainText("No table or configuration key in this build");
+    await expect(main).not.toContainText("does not read which days your clubs are open");
   });
 
   test("narrowing the days changes what is counted", async ({ page }) => {
@@ -219,12 +225,13 @@ test.describe("the attendance report", () => {
     // The design's line for this report is "peak hours, class fill, capacity planning" and
     // the canvas draws the first. A second chart this design does not have would be as much
     // a deviation as a missing one, so the two are stated.
-    const gaps = page.locator("section").filter({ hasText: "What this report does not do" });
-    await expect(gaps.getByRole("term").filter({ hasText: "Class fill" })).toBeVisible();
-    await expect(gaps.getByRole("term").filter({ hasText: "Capacity headroom" }))
-      .toBeVisible();
-    await expect(gaps.getByRole("term").filter({ hasText: "Export" })).toBeVisible();
-    await expect(gaps).toContainText("tier-four gate");
+    const gaps = page.locator("section").filter({ hasText: "What this screen does not do yet" });
+    await expect(gaps).toContainText("Class fill");
+    await expect(gaps).toContainText("Capacity headroom");
+    await expect(gaps).toContainText("Export");
+    // The sentence that explained *why* this gap exists has gone with the section that
+    // held it: the names above are what a reader needs, and the reasoning is in
+    // `contracts/ui/design-compliance.md`.
   });
 
   test("offers no export, because nothing here exports anything", async ({ page }) => {
@@ -247,7 +254,7 @@ test.describe("the attendance report", () => {
     await expect(page.locator("html")).toHaveAttribute("dir", "rtl");
     // And the English prose is gone, which is the half a key-count check cannot see.
     for (const english of [
-      "is the busiest window", "All days", "What this report does not do",
+      "is the busiest window", "All days", "What this screen does not do yet",
     ]) {
       await expect(main).not.toContainText(english);
     }

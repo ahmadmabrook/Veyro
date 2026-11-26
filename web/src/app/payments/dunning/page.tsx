@@ -2,7 +2,8 @@ import { redirect } from "next/navigation";
 
 import { Banner } from "@/components/ds/banner";
 import { DataGrid } from "@/components/ds/data-grid";
-import { NotYet, PageHeader } from "@/components/ds/page-header";
+import { PageHeader } from "@/components/ds/page-header";
+import { NotYet } from "@/components/not-yet";
 import { fill, formatInteger, t, type MessageKey } from "@/i18n/locale";
 import { currentSession, gate, gateMessage, gateVerdict } from "@/lib/api";
 import { numerals } from "@/lib/display";
@@ -176,14 +177,17 @@ export default async function DunningRulesPage() {
         <p className="ds-note">{text("dunning.floorNote")}</p>
       </section>
 
-      <NotYet title={text("dunning.notYet")}>
-        {policy.not_settable.map((one) => (
-          <div key={one.setting} style={{ display: "contents" }}>
-            <dt>{text(`dunning.not_settable.${one.setting}` as MessageKey)}</dt>
-            <dd>{text(`dunning.waits.${one.waits_on}` as MessageKey)}</dd>
-          </div>
-        ))}
-      </NotYet>
+      {/* **The names are the server's and the reasoning is not.** `not_settable` comes from
+          the policy read, so this list is what the build actually cannot set rather than a
+          list somebody maintained -- and each entry used to carry what it waits on, which is
+          a dispatcher, a sweep or a case-writing path. A tenant needs to know the setting is
+          not theirs to change; which component is missing is this repository's business. */}
+      <NotYet
+        locale={locale}
+        items={policy.not_settable.map(
+          (one) => `dunning.not_settable.${one.setting}` as MessageKey,
+        )}
+      />
     </div>
   );
 }

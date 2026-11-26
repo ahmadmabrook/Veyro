@@ -2,9 +2,18 @@ import { redirect } from "next/navigation";
 
 import { Banner } from "@/components/ds/banner";
 import { StateChips } from "@/components/ds/choice-chips";
-import { NotYet, PageHeader } from "@/components/ds/page-header";
+import { MetricCell, MetricRow } from "@/components/ds/metric-cell";
+import { PageHeader } from "@/components/ds/page-header";
+import { NotYet } from "@/components/not-yet";
 import { monthDay } from "@/i18n/dates";
-import { fill, formatMoney, isolate, t, type MessageKey } from "@/i18n/locale";
+import {
+  fill,
+  formatInteger,
+  formatMoney,
+  isolate,
+  t,
+  type MessageKey,
+} from "@/i18n/locale";
 import { shapeDigits } from "@/i18n/conventions.mjs";
 import { currentSession, gateMessage } from "@/lib/api";
 import {
@@ -82,25 +91,33 @@ export default async function LocalizationPage() {
       <PageHeader
         title={text("localization.title")}
         figures={
-          <>
-            {/* **The first figure in this product that follows the tenant's numeral setting,
-                and it reads oddly on purpose.** An English reader on an `arab` tenant sees
-                `٢ languages offered`, because `conventions.mjs` is explicit that numbering is
-                never derived from locale -- "a tenant must not get Arabic-Indic digits merely
-                because a string was Arabic", and the rule runs the other way too. The canvas
-                says the same thing from the front: "Arabic-Indic for counts, dates and times.
-                One rule per tenant, never mixed and never decided per component." Passing
-                `latn` here to make the English line look ordinary would be deciding it per
-                component, which is the one thing the rule forbids -- so the figure above the
-                chips obeys the chip that is filled, which is also the only demonstration on
-                this screen that the setting reaches anything at all. */}
-            {fill(locale, "localization.languagesCounted",
-                  { count: conventions.languages_offered.length }, conventions.numerals)}
-            {" · "}
-            {text(conventions.numerals === "arab" ? "localization.arab" : "localization.latn")}
-          </>
+          text(conventions.numerals === "arab" ? "localization.arab" : "localization.latn")
         }
       />
+
+      {/* **The first figure in this product that follows the tenant's numeral setting, and
+          it reads oddly on purpose.** An English reader on an `arab` tenant sees `٢` over
+          "languages offered", because `conventions.mjs` is explicit that numbering is never
+          derived from locale -- "a tenant must not get Arabic-Indic digits merely because a
+          string was Arabic", and the rule runs the other way too. The canvas says the same
+          thing from the front: "Arabic-Indic for counts, dates and times. One rule per
+          tenant, never mixed and never decided per component." Passing `latn` here to make
+          the English line look ordinary would be deciding it per component, which is the one
+          thing the rule forbids -- so the figure obeys the chip that is filled, which is also
+          the only demonstration on this screen that the setting reaches anything at all.
+
+          **And it is the figure, so it is at figure size.** It was a clause at
+          `type.bodySm` beside the numeral system it demonstrates, which made the one number
+          on the screen the same size as the word next to it. The word stays on the figures
+          line: it is not a quantity. */}
+      <MetricRow label={text("localization.conventions")}>
+        <MetricCell
+          label={text("localization.languages")}
+          value={<span className="data" dir="ltr">
+            {formatInteger(conventions.languages_offered.length, conventions.numerals)}
+          </span>}
+        />
+      </MetricRow>
 
       <section className="page-section">
         {/* No id: nothing on this screen is named by it, and an id a reader could
@@ -186,14 +203,10 @@ export default async function LocalizationPage() {
         <p className="ds-note">{text("localization.monthNames")}</p>
       </section>
 
-      <NotYet title={text("localization.notYet")}>
-        <dt>{text("localization.notYetWrite")}</dt>
-        <dd>{text("localization.notYetWriteWhy")}</dd>
-        <dt>{text("localization.notYetReach")}</dt>
-        <dd>{text("localization.notYetReachWhy")}</dd>
-        <dt>{text("localization.notYetReceipt")}</dt>
-        <dd>{text("localization.notYetReceiptWhy")}</dd>
-      </NotYet>
+      <NotYet
+        locale={locale}
+        items={["localization.notYetWrite", "localization.notYetReach", "localization.notYetReceipt"]}
+      />
     </div>
   );
 }

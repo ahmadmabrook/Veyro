@@ -120,17 +120,15 @@ test.describe("a refusal at an ordinary sign-in", () => {
       // and a screen that drew the buttons would be offering a receptionist three controls
       // that do nothing.
       const gaps = page.locator(".ds-denial-gaps");
-      await expect(gaps.getByRole("term").filter({ hasText: "Renewing the membership" }))
-        .toBeVisible();
-      await expect(gaps.getByRole("term").filter({ hasText: "Selling a day pass" }))
-        .toBeVisible();
-      await expect(gaps.getByRole("term").filter({ hasText: "Showing their photo" }))
-        .toBeVisible();
-      await expect(gaps).toContainText("reserved to the owner of this build");
+      await expect(gaps).toContainText("Renewing the membership");
+      await expect(gaps).toContainText("Selling a day pass");
+      await expect(gaps).toContainText("Showing their photo");
+      // The sentence that explained *why* this gap exists has gone with the section that
+      // held it: the names above are what a reader needs, and the reasoning is in
+      // `contracts/ui/design-compliance.md`.
       // And the half of the canvas's own header line this screen does not carry, said here
       // rather than left to differ silently from the drawing.
-      await expect(gaps.getByRole("term").filter({ hasText: "Naming the club and the plan" }))
-        .toBeVisible();
+      await expect(gaps).toContainText("Naming the club and the plan");
     });
 
   test("reads in Arabic, including the badge", async ({ page }) => {

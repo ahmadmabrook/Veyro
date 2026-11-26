@@ -40,6 +40,13 @@ export type NavItem = {
   allowed: boolean;
   /** The group heading this item sits under: OPERATE, PEOPLE, MONEY, DELIVER, SETTINGS. */
   group: MessageKey;
+  /**
+   * One conventional mark for the item's *group*, not for the item.
+   *
+   * Every item in a group declares the same name and the rail draws it once, on the
+   * heading: twenty-six glyphs for twenty-six destinations is decoration at this count,
+   * and three of ours were already duplicates.
+   */
   icon: IconName;
   /** "4,812" beside Members. Absent where there is nothing to count. */
   count?: string;
@@ -74,12 +81,12 @@ export function AppNav({ locale, items }: { locale: Locale; items: NavItem[] }) 
           key={group.label}
           id={`rail-${group.label.replace(".", "-")}`}
           label={t(locale, group.label)}
+          {...(group.items[0] === undefined ? {} : { groupIcon: group.items[0].icon })}
         >
           {group.items.map((item) => (
             <li key={item.href}>
               <NavLink href={item.href}>
                 <RailItem
-                  icon={item.icon}
                   label={t(locale, item.label)}
                   {...(item.count === undefined ? {} : { count: item.count })}
                 />

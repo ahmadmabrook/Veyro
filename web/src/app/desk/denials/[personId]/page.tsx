@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { Banner } from "@/components/ds/banner";
+import { NotYet } from "@/components/not-yet";
 import { PageHeader } from "@/components/ds/page-header";
 import { StatusBadge } from "@/components/ds/status-badge";
 import { fill, t, type MessageKey } from "@/i18n/locale";
@@ -250,19 +251,7 @@ export default async function DenialPage(
         )}
       </section>
 
-      <section className="page-section ds-denial-gaps">
-        <h2>{text("denial.notYet")}</h2>
-        <dl className="facts">
-          <dt>{text("denial.gapRenew")}</dt>
-          <dd>{text("denial.gapRenewWhy")}</dd>
-          <dt>{text("denial.gapDayPass")}</dt>
-          <dd>{text("denial.gapDayPassWhy")}</dd>
-          <dt>{text("denial.gapWhere")}</dt>
-          <dd>{text("denial.gapWhereWhy")}</dd>
-          <dt>{text("denial.gapPhoto")}</dt>
-          <dd>{text("denial.gapPhotoWhy")}</dd>
-        </dl>
-      </section>
+      <NotYet locale={locale} items={["denial.gapRenew", "denial.gapDayPass", "denial.gapWhere", "denial.gapPhoto"]} />
     </div>
   );
 }

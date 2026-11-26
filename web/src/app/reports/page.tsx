@@ -3,7 +3,7 @@ import Link from "next/link";
 
 import { Banner } from "@/components/ds/banner";
 import { PageHeader } from "@/components/ds/page-header";
-import { ProseNote } from "@/components/prose";
+import { NotYet } from "@/components/not-yet";
 import { t, type MessageKey } from "@/i18n/locale";
 import { currentSession, gateAll, gateVerdict } from "@/lib/api";
 import { presentation } from "@/lib/preferences";
@@ -62,7 +62,6 @@ export default async function ReportsPage() {
   return (
     <>
       <PageHeader title={text("reports.heading")} />
-      <ProseNote>{text("reports.lead")}</ProseNote>
 
       {unreachable ? (
         <Banner severity="critical">{text("reports.gateUnreachable")}</Banner>
@@ -94,22 +93,20 @@ export default async function ReportsPage() {
         </ul>
       )}
 
-      <section className="page-section" aria-labelledby="reports-unbuilt">
-        <h2 id="reports-unbuilt">{text("reports.notBuilt")}</h2>
-        <dl className="facts">
-          {UNBUILT.map((entry) => (
-            <div key={entry.name} style={{ display: "contents" }}>
-              <dt className="muted">{text(entry.name)}</dt>
-              <dd style={{ margin: 0 }}>{text(entry.why)}</dd>
-            </div>
-          ))}
-        </dl>
-      </section>
+      {/* **The four reports this build cannot produce, and the export gate, in one line
+          each.** Both used to be titled sections: a definition list of two-sentence
+          justifications, and three sentences about a control that is absent. An index is a
+          claim about what can be reported, so a short one does have to say why it is short
+          -- but the reader needs the names, not the reasoning.
 
-      <section className="page-section" aria-labelledby="reports-export">
-        <h2 id="reports-export">{text("reports.exportTitle")}</h2>
-        <ProseNote>{text("reports.exportBody")}</ProseNote>
-      </section>
+          **They are one line, not two**, which they briefly were: the export gate kept a
+          hand-rolled copy of the component's own markup beside it, so the page said "Not
+          here yet" twice with a rule between them and rendered the component's heading id
+          twice over. A second absence is another name in the same list. */}
+      <NotYet
+        locale={locale}
+        items={[...UNBUILT.map((entry) => entry.name), "reports.exportShort"]}
+      />
     </>
   );
 }

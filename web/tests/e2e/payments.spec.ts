@@ -110,8 +110,10 @@ test.describe("the payments ledger", () => {
     // A refund is tier 3 *and* tier 4 in the design's own scale -- a typed amount and a
     // second person -- and `finance.refund.request` is a stepped-up financial permission
     // with no form in this build.
-    const notYet = page.locator("section").filter({ hasText: "What this screen cannot do" });
-    await expect(notYet).toContainText("a second person to approve");
+    const notYet = page.locator("section").filter({ hasText: "What this screen does not do yet" });
+    // The sentence that explained *why* this gap exists has gone with the section that
+    // held it: the names above are what a reader needs, and the reasoning is in
+    // `contracts/ui/design-compliance.md`.
     // And the permission name is set as data rather than printed with its backticks --
     // `Prose` renders a backticked run as `.data`, which is this app's mono treatment for
     // an identifier.

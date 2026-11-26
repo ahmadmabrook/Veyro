@@ -2,7 +2,8 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { Banner } from "@/components/ds/banner";
-import { NotYet, PageHeader } from "@/components/ds/page-header";
+import { PageHeader } from "@/components/ds/page-header";
+import { NotYet } from "@/components/not-yet";
 import { t, type MessageKey } from "@/i18n/locale";
 import { currentSession, gate, gateAll, gateMessage, gateVerdict } from "@/lib/api";
 import { INTERESTS, interestWord } from "@/lib/leads";
@@ -124,16 +125,10 @@ export default async function NewLeadPage() {
       {/* Named rather than drawn, with the product's reason for each. A control that does
           nothing is worse than one that is not there, and a field whose value this build
           would drop on the floor is worse still. */}
-      <NotYet title={text("newLead.notYet")}>
-        <dt>{text("newLead.gapOwner")}</dt>
-        <dd>{text("newLead.gapOwnerWhy")}</dd>
-        <dt>{text("newLead.gapTrial")}</dt>
-        <dd>{text("newLead.gapTrialWhy")}</dd>
-        <dt>{text("newLead.gapAtomic")}</dt>
-        <dd>{text("newLead.gapAtomicWhy")}</dd>
-        <dt>{text("newLead.gapEmail")}</dt>
-        <dd>{text("newLead.gapEmailWhy")}</dd>
-      </NotYet>
+      <NotYet
+        locale={locale}
+        items={["newLead.gapOwner", "newLead.gapTrial", "newLead.gapAtomic", "newLead.gapEmail"]}
+      />
     </>
   );
 }

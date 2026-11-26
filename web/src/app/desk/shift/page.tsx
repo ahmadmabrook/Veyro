@@ -2,7 +2,8 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { Banner } from "@/components/ds/banner";
-import { NotYet, PageHeader } from "@/components/ds/page-header";
+import { PageHeader } from "@/components/ds/page-header";
+import { NotYet } from "@/components/not-yet";
 import { CloseDrawerForm } from "@/app/payments/cash/close-form";
 import { fill, formatMoney, t, type MessageKey } from "@/i18n/locale";
 import { currentSession, gate, gateAll, gateMessage, gateVerdict } from "@/lib/api";
@@ -232,16 +233,10 @@ export default async function ShiftPage({
         </section>
       )}
 
-      <NotYet title={text("deskShift.notYet")}>
-        <dt>{text("deskShift.gapReport")}</dt>
-        <dd>{text("deskShift.gapReportWhy")}</dd>
-        <dt>{text("deskShift.gapThreshold")}</dt>
-        <dd>{text("deskShift.gapThresholdWhy")}</dd>
-        <dt>{text("deskShift.gapAbandon")}</dt>
-        <dd>{text("deskShift.gapAbandonWhy")}</dd>
-        <dt>{text("deskShift.gapWhichSite")}</dt>
-        <dd>{text("deskShift.gapWhichSiteWhy")}</dd>
-      </NotYet>
+      <NotYet
+        locale={locale}
+        items={["deskShift.gapReport", "deskShift.gapThreshold", "deskShift.gapAbandon", "deskShift.gapWhichSite"]}
+      />
     </>
   );
 }

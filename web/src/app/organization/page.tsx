@@ -1,9 +1,10 @@
 import { redirect } from "next/navigation";
 
 import { Banner } from "@/components/ds/banner";
+import { MetricCell, MetricRow } from "@/components/ds/metric-cell";
 import { PageHeader } from "@/components/ds/page-header";
 import { DataGrid } from "@/components/ds/data-grid";
-import { fill, t, type Locale, type MessageKey } from "@/i18n/locale";
+import { fill, formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
 import { currentSession, gate, failureMessage, gateMessage } from "@/lib/api";
 import {
   composeTree,
@@ -76,21 +77,39 @@ export default async function OrganizationPage() {
 
   const { tree, orphanBrands, orphanLocations } = composed;
 
+  // Named rather than reduced inline, because the two figures above the header and the cards
+  // beneath it are the same count read to different depths.
+  const brandCount = tree.reduce((sum, node) => sum + node.brands.length, 0);
+  const siteCount = tree.reduce(
+    (sum, node) => sum + node.brands.reduce((n, brand) => n + brand.locations.length, 0),
+    0,
+  );
+
   return (
     <Shell
       locale={locale}
-      figures={
-        <>
-          {fill(locale, "org.brandsCounted", { count: tree.reduce(
-            (sum, node) => sum + node.brands.length, 0) }, numbering)}
-          {" \u00b7 "}
-          {fill(locale, "org.sitesCounted", { count: tree.reduce((sum, node) =>
-            sum + node.brands.reduce((n, brand) => n + brand.locations.length, 0), 0) }, numbering)}
-          {" \u00b7 "}
-          {fill(locale, "org.entitiesCounted", { count: tree.reduce(
-            (sum, node) => sum + node.entities.length, 0) }, numbering)}
-        </>
+      // **The hierarchy's own spine, promoted.** Brands and sites are what this screen is
+      // the list of, and they were two of three equal clauses at `type.bodySm` -- the same
+      // size as who invoices, which is a different question and has its own block on every
+      // card below. The entity count stays on the figures line.
+      metrics={
+        <MetricRow label={text("org.title")}>
+          <MetricCell
+            label={text("org.brands")}
+            value={<span className="data" dir="ltr">
+              {formatInteger(brandCount, numbering)}
+            </span>}
+          />
+          <MetricCell
+            label={text("org.locations")}
+            value={<span className="data" dir="ltr">
+              {formatInteger(siteCount, numbering)}
+            </span>}
+          />
+        </MetricRow>
       }
+      figures={fill(locale, "org.entitiesCounted", { count: tree.reduce(
+        (sum, node) => sum + node.entities.length, 0) }, numbering)}
     >
       {tree.length === 0 ? (
         <Banner severity="info">{text("org.none")}</Banner>
@@ -210,6 +229,7 @@ function Shell({
   locale,
   children,
   figures,
+  metrics,
 }: {
   locale: Locale;
   children: React.ReactNode;
@@ -222,10 +242,16 @@ function Shell({
    * out whether anything on it needed them.
    */
   figures?: React.ReactNode;
+  /**
+   * The metric row, immediately under the header. A slot rather than the first child:
+   * the refusal and read-failure returns have a header and nothing to count.
+   */
+  metrics?: React.ReactNode;
 }) {
   return (
     <div className="stack">
       <PageHeader title={t(locale, "org.title")} {...(figures ? { figures } : {})} />
+      {metrics}
       {children}
       {/* The lead moved to the foot; see `PageHeader`. */}
       <p className="ds-screen-note">{t(locale, "org.lead")}</p>

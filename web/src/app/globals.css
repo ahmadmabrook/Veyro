@@ -331,6 +331,29 @@ table {
 }
 
 /**
+ * An absent value, said in words.
+ *
+ * **A table that says "nothing here" three ways in one row reads as three kinds of broken.**
+ * The members list had "No member profile", "None found" and an em dash in adjacent cells --
+ * each defensible on its own, because each distinguishes a different *kind* of absence, and
+ * together a column of them competing at body weight with the rows that do carry a figure.
+ *
+ * The em dash cells were already subordinate by construction: one character, no words. This
+ * is the same subordination for the cells that have to use words, because the distinction
+ * they carry is real -- a person with no member profile is a lead rather than a member, and
+ * "none found" is a bounded read saying it looked rather than claiming nothing exists.
+ *
+ * So the rule is not "use one phrase", it is **an absent value never reads as loudly as a
+ * present one**. Caption size and the tertiary ink put it a step below the figures around it,
+ * and the eye skips the column rather than reading eight sentences down it.
+ */
+.ds-absent {
+  color: var(--color-text-tertiary);
+  font-size: var(--type-caption-size);
+  line-height: var(--type-caption-line);
+}
+
+/**
  * Secondary text on the shell field is tinted from the field's own hue.
  *
  * The craft floor is explicit: "On colored surfaces tint secondary text from that hue or the
@@ -879,22 +902,13 @@ table {
 
 /* bp.md 900–1199: rail collapsed to icons, inspector becomes an overlay rather than a column. */
 @media (max-width: 1199px) {
-  .ds-shell-body {
-    grid-template-columns: var(--shell-rail-collapsed) minmax(0, 1fr);
-  }
-
-  .ds-shell-rail {
-    padding-inline: var(--space-2);
-  }
-
-  .ds-shell-rail .ds-rail-label {
-    position: absolute;
-    inline-size: 1px;
-    block-size: 1px;
-    overflow: hidden;
-    clip-path: inset(50%);
-    white-space: nowrap;
-  }
+  /* **The rail no longer collapses to icons here, and the research is why.** It used to
+     drop to 56px and hide every label, which was already against NN/g's finding that a
+     navigation icon needs a permanent text label and that hiding navigation behind icons
+     alone is the thing not to do. It became unusable rather than merely weak once the
+     glyphs moved to the six group headings: labels hidden, groups hidden, a 56px column of
+     nothing. The rail keeps its labels at every width it is a rail at, and below 900 it is
+     a bottom strip that keeps them too. */
 
   .ds-shell[data-has-inspector="true"] .ds-shell-content {
     grid-template-columns: minmax(0, 1fr);
@@ -905,8 +919,10 @@ table {
   }
 }
 
-/* bp.xs 0–599: single column, and the rail becomes a bottom nav. */
-@media (max-width: 599px) {
+/* bp.sm and below: single column, and the rail becomes a bottom nav that keeps its
+   labels. It began at 599 while 600-1199 collapsed the rail to icons; with the labels
+   now load-bearing the strip takes over wherever an expanded rail would not fit. */
+@media (max-width: 899px) {
   .ds-shell-body {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -1029,7 +1045,14 @@ table {
   /* The rail's links are navigation, not prose: the global underline would make thirteen
      rows of ruled text. The affordance is the row, its hover ground and its current state. */
   text-decoration: none;
-  font-size: var(--type-label-size);
+  /* **A navigation label is read more often than anything else in this app, so it is not set
+     at the smallest size in the scale.** It was `label` (13px), which is the size the system
+     reserves for a figure's caption and a column header -- things read once to orient and
+     then ignored. A rail item is a target somebody hits twenty times a shift, often standing
+     at a counter rather than sitting at a desk, and 13px is where a reader starts leaning in.
+     `h4` is the interactive-label step and is what the density modes already size their rows
+     around. */
+  font-size: var(--type-h4-size);
   line-height: 1.3;
   font-weight: var(--type-body-weight);
   letter-spacing: 0;
@@ -1051,6 +1074,23 @@ table {
   line-height: 1.4;
   color: var(--color-brand-field-muted);
   font-variant-numeric: tabular-nums;
+}
+
+/* **Everything in the rail but the current item recedes, which is the one Linear 2026
+   finding this world can take without giving up its field.** Their principle is "don't
+   compete for attention you haven't earned" and "structure should be felt not seen", and
+   their remedy was to dim the whole sidebar -- which would cost this product the committed
+   colour its character is built on. So the field stays at full strength and the *items*
+   recede instead: a destination you are not on is secondary ink on the field, the one you
+   are on is full. The muted token is tinted from the field's own hue rather than greyed,
+   which is what the craft floor asks for on a coloured surface, and it clears AA at 5.94:1
+   so receding costs no legibility. */
+.ds-rail-list a {
+  color: var(--color-brand-field-muted);
+}
+
+.ds-rail-list a:hover {
+  color: var(--color-brand-field-text);
 }
 
 .ds-rail-list a:hover {
@@ -1103,9 +1143,13 @@ table {
   padding-block-start: var(--space-2);
 }
 
-/* The group label is a block inside its list item; the items are the nested list. */
+/* The group label is a line inside its list item; the items are the nested list. It is a
+   flex row because the group carries the rail's one icon -- see `chrome.tsx` for why the
+   glyphs moved off the twenty-six destinations and onto the six headings. */
 .ds-rail-group {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
 }
 
 .ds-rail-items {
@@ -1973,7 +2017,7 @@ table {
   display: inline-flex;
   align-items: baseline;
   gap: var(--space-1);
-  font-size: 15px;
+  font-size: var(--type-data-size);
   line-height: 1.2;
   font-weight: var(--type-data-weight);
 }
@@ -2006,16 +2050,19 @@ table {
 
 .ds-attention-headline {
   margin: var(--space-2) 0 0;
-  font-size: 15.5px;
+  font-size: var(--type-h3-size);
   line-height: 1.35;
   font-weight: var(--type-h3-weight);
   letter-spacing: var(--type-h3-tracking);
   color: var(--color-text-primary);
 }
 
+/* **The body of an attention row is the content of this screen, not a note on it.** It was
+   set at the small register, so the thing an owner opens the Command Center to read was the
+   smallest prose on the page -- 516 of the 1,500 characters in the main region. */
 .ds-attention-evidence {
   margin: 4px 0 0;
-  font-size: var(--type-bodySm-size);
+  font-size: var(--type-body-size);
   line-height: 1.62;
   color: var(--color-text-secondary);
   max-inline-size: 88ch;
@@ -2054,32 +2101,14 @@ table {
 /* --- The period toggle ---------------------------------------------------
  * `Today | 7 days | Month`, selected bordered, the others plain.
  */
-.ds-segmented {
-  display: inline-flex;
-  gap: var(--space-1);
-  align-items: center;
-}
-
-.ds-segmented a {
-  font-size: var(--type-label-size);
-  line-height: 1;
-  font-weight: var(--type-body-weight);
-  color: var(--color-text-secondary);
-  padding: 8px 10px;
-  border-radius: var(--radius-button);
-  border: 1px solid transparent;
-  text-decoration: none;
-}
-
-.ds-segmented a[aria-current="page"] {
-  font-weight: var(--type-label-weight);
-  color: var(--color-text-primary);
-  border-color: var(--color-border-strong);
-}
-
-.ds-segmented a:hover {
-  background: var(--color-surface-hover);
-}
+/* **`.ds-segmented` is gone, and it was the same control under a second name.** Two screens
+   drew their "pick one of these and the page changes" row with it and ten drew the same thing
+   with `.ds-filter-bar` and `.ds-filter-chip`. The two were not even consistent: a segmented
+   link carried `border: 1px solid transparent`, so an unselected option read as plain text
+   beside a selected one with a border, while an unselected chip carries a visible edge and
+   reads as a control. That is one-module-two-definitions in the design system itself -- the
+   finding this project records most often -- and the tell was a reader not seeing that
+   "Needs action · 5" on the payments ledger was pressable. */
 
 /* --- The AI panel --------------------------------------------------------
  *
@@ -2378,6 +2407,18 @@ table {
   min-inline-size: 0;
 }
 
+/* **The groups inside the chrome wrap too, or the one that cannot shrink sets the width.**
+   `.ds-chrome-end` wraps and its children did not, so the language/theme pair held a 364px
+   box on a 375px screen and pushed the document 5px sideways. It appeared when the type
+   scale rose: the same controls, wider labels. */
+.ds-chrome-end > * {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  min-inline-size: 0;
+}
+
 /* The avatar: 26px, a circle, the warm ramp. Initials rather than a photo -- there is no
  * object store, and a broken image is worse than initials. */
 .ds-chrome-avatar {
@@ -2429,22 +2470,19 @@ table {
 /* The current period, which is the only one this build can answer. Not a link, because there
  * is nowhere else to go: a segment that did nothing would be the dead control the rest of
  * this surface refuses to draw. */
-.ds-segment-current {
-  font-size: var(--type-label-size);
-  line-height: 1;
-  font-weight: var(--type-label-weight);
-  color: var(--color-text-primary);
-  padding: 8px 11px;
-  border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius-button);
-}
+/* **`.ds-segment-current` is gone with its one caller.** It drew a bordered, rounded,
+   button-shaped element -- the shape of every pressable thing in this system -- around the
+   one period the Command Center can answer, which nobody could press. A false affordance is
+   worse than an absent control: a reader reaches for it, nothing happens, and what they
+   learn is that this product's controls are unreliable. The period is a scope statement in
+   the header's own line now. */
 
 /* A section title that shares a baseline with its own counts: `font:500 14.5px/1.3`. The
  * canvas's "Needs you now" is a heading at body-plus rather than at `type.h2` -- the queue
  * below it is the weight on the page, and a 20px heading over it would compete. */
 .ds-section-title {
   margin: 0;
-  font-size: 14.5px;
+  font-size: var(--type-h4-size);
   line-height: 1.3;
   font-weight: var(--type-label-weight);
   letter-spacing: 0;
@@ -2564,7 +2602,7 @@ table {
 
 .ds-person-name {
   display: block;
-  font-size: 12.5px;
+  font-size: var(--type-body-size);
   font-weight: 500;
   line-height: 1.3;
 }
@@ -2626,14 +2664,14 @@ table {
 
 .ds-record-name {
   margin: 0;
-  font-size: 22px;
+  font-size: var(--type-h2-size);
   font-weight: 500;
   line-height: 1.2;
   letter-spacing: -0.016em;
 }
 
 .ds-record-band {
-  font-size: 9.5px;
+  font-size: var(--type-label-size);
   line-height: 1.4;
   border: 1px solid currentColor;
   padding: 2px 6px;
@@ -2676,7 +2714,7 @@ table {
 .ds-tab {
   display: block;
   padding-block-end: 9px;
-  font-size: 11.5px;
+  font-size: var(--type-bodySm-size);
   line-height: 1.4;
   font-weight: 400;
   color: var(--color-text-secondary);
@@ -2739,7 +2777,7 @@ table {
 .ds-timeline-title {
   margin: 0;
   flex: 1;
-  font-size: 12.5px;
+  font-size: var(--type-h4-size);
   font-weight: 500;
   line-height: 1.3;
 }
@@ -2747,7 +2785,7 @@ table {
 .ds-timeline-filters { display: flex; gap: 2px; flex-wrap: wrap; }
 
 .ds-timeline-filter {
-  font-size: 10.5px;
+  font-size: var(--type-label-size);
   line-height: 1;
   padding: 5px 8px;
   border-radius: var(--radius-card);
@@ -2777,14 +2815,14 @@ table {
 
 .ds-timeline-clock {
   display: block;
-  font-size: 10.5px;
+  font-size: var(--type-caption-size);
   line-height: 1.4;
   color: var(--color-text-primary);
 }
 
 .ds-timeline-day {
   display: block;
-  font-size: 9.5px;
+  font-size: var(--type-label-size);
   line-height: 1.4;
   font-weight: 400;
   color: var(--color-text-tertiary);
@@ -2810,11 +2848,11 @@ table {
   align-items: baseline;
 }
 
-.ds-timeline-what { flex: 1; font-size: 12.5px; font-weight: 500; line-height: 1.45; }
+.ds-timeline-what { flex: 1; font-size: var(--type-bodySm-size); font-weight: 500; line-height: 1.45; }
 
 .ds-timeline-meta {
   margin: 2px 0 0;
-  font-size: 11.5px;
+  font-size: var(--type-caption-size);
   line-height: 1.55;
   color: var(--color-text-secondary);
 }
@@ -2851,7 +2889,7 @@ table {
   line-height: var(--type-caption-line);
 }
 
-.ds-panel-title { margin: 0; font-size: 12.5px; font-weight: 500; line-height: 1.3; }
+.ds-panel-title { margin: 0; font-size: var(--type-h4-size); font-weight: 500; line-height: 1.3; }
 .ds-panel-body { padding: 11px 14px; display: flex; flex-direction: column; gap: 7px; }
 
 .ds-panel-note {
@@ -2950,7 +2988,7 @@ table {
 
 .ds-matrix-eyebrow {
   font-family: var(--font-text), system-ui, sans-serif;
-  font-size: 9.5px;
+  font-size: var(--type-label-size);
   letter-spacing: 0.08em;
   color: var(--color-text-tertiary);
 }
@@ -3003,7 +3041,7 @@ table {
   background: var(--color-brand-field);
   color: var(--color-brand-mark);
   font-family: var(--font-text), system-ui, sans-serif;
-  font-size: 13px;
+  font-size: var(--type-label-size);
   font-weight: 500;
   line-height: 24px;
   text-align: center;
@@ -3011,7 +3049,7 @@ table {
 }
 
 .ds-login-name {
-  font-size: 15px;
+  font-size: var(--type-h4-size);
   font-weight: 500;
   line-height: 1.2;
   letter-spacing: -0.012em;
@@ -3102,10 +3140,12 @@ table {
   color: var(--color-text-link);
 }
 
+/* What each report contains is the reason a reader picks one. Secondary type on the only
+   content the index has made the whole screen read as a footnote. */
 .ds-report-summary {
   margin: 3px 0 0;
-  font-size: var(--type-bodySm-size);
-  line-height: var(--type-bodySm-line);
+  font-size: var(--type-body-size);
+  line-height: var(--type-body-line);
   color: var(--color-text-secondary);
 }
 
@@ -3340,14 +3380,17 @@ table {
  * had just changed, and the conclusion under a chart is ordinary content that was there when
  * the page loaded. The design draws no edge mark on this box either.
  */
+/* The attendance report's own stated purpose: "the conclusion is written in words beneath
+   the chart. A manager should not have to interpret a heat strip to find the actionable
+   hour." A conclusion set smaller than the table above it is not a conclusion. */
 .ds-conclusion {
   margin: var(--space-3) 0 0;
   padding: 10px 11px;
   background: var(--color-surface-sunken);
   border-radius: 4px;
   max-inline-size: 78ch;
-  font-size: var(--type-bodySm-size);
-  line-height: var(--type-bodySm-line);
+  font-size: var(--type-body-size);
+  line-height: var(--type-body-line);
   color: var(--color-text-primary);
   text-wrap: pretty;
 }
@@ -4072,3 +4115,34 @@ table {
 /* No `:focus-visible` rule: the global `:where(a, ...)` one already rings every link, and a
  * second would be two definitions of one ring -- which is the duplication this stylesheet's
  * own `.ds-button` comment records. */
+
+/* **What a screen does not offer yet, in one line.** It replaced nineteen titled sections of
+   explanation -- see `components/not-yet.tsx` for why the reasons went and the names stayed.
+   Secondary text, a rule above it so it reads as an aside to the content rather than as part
+   of it, and no heading: a landmark in the page outline is a promise that what follows is
+   worth reading, which is not true of an absence. */
+/**
+ * The wrapper exists for the accessible name, not for a box.
+ *
+ * A `<section>` with no accessible name is exposed as nothing at all, so the heading inside
+ * is what makes this a region a screen reader can reach -- and the heading is visually
+ * hidden, so the wrapper must not add a single pixel to what a sighted reader sees. The
+ * paragraph inside keeps the rule and the spacing it always had.
+ */
+.ds-notyet-section {
+  margin: 0;
+}
+
+.ds-notyet {
+  margin: var(--space-8) 0 0;
+  padding-block-start: var(--space-4);
+  border-block-start: 1px solid var(--color-border-subtle);
+  color: var(--color-text-tertiary);
+  font-size: var(--type-bodySm-size);
+  line-height: var(--type-bodySm-line);
+}
+
+.ds-notyet-lead {
+  color: var(--color-text-secondary);
+  font-weight: 600;
+}

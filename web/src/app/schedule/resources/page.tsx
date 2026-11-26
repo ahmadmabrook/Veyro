@@ -2,10 +2,12 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { Banner } from "@/components/ds/banner";
+import { NotYet } from "@/components/not-yet";
 import { DataGrid } from "@/components/ds/data-grid";
+import { MetricCell, MetricRow } from "@/components/ds/metric-cell";
 import { PageHeader } from "@/components/ds/page-header";
 import { ProseNote } from "@/components/prose";
-import { fill, t, type MessageKey } from "@/i18n/locale";
+import { fill, formatInteger, t, type MessageKey } from "@/i18n/locale";
 import {
   currentSession,
   failureMessage,
@@ -110,14 +112,18 @@ export default async function SchedulingResourcesPage({
     <div className="stack">
       <PageHeader
         title={text("rooms.heading")}
-        figures={
-          <>
-            {fill(locale, "rooms.count", { count: spaces.length }, numbering)}
-            {" · "}
-            {fill(locale, "rooms.described", { count: described.length }, numbering)}
-          </>
-        }
+        figures={fill(locale, "rooms.described", { count: described.length }, numbering)}
       />
+
+      {/* The count of spaces, at the scale the screen is about it. The described count stays
+          in the line above, because the two together are the fact a reader acts on: how many
+          rooms there are, and how many of them have had their capacity stated. */}
+      <MetricRow label={t(locale, "rooms.spaces")}>
+        <MetricCell
+          label={t(locale, "rooms.spaces")}
+          value={formatInteger(spaces.length, numbering)}
+        />
+      </MetricRow>
 
       {/* The schedule's own view bar, so this is a fourth view rather than an orphan page:
           the canvas draws it as a card beside the week and the rota, and a route nothing
@@ -237,19 +243,7 @@ export default async function SchedulingResourcesPage({
         </div>
       </section>
 
-      <section className="ds-panel">
-        <div className="ds-panel-head">
-          <h2 className="ds-panel-title">{text("rooms.notYet")}</h2>
-        </div>
-        <div className="ds-panel-body">
-          <dl className="facts">
-            <dt>{text("rooms.editTitle")}</dt>
-            <dd style={{ margin: 0 }}><ProseNote>{text("rooms.editWhy")}</ProseNote></dd>
-            <dt>{text("rooms.assignTitle")}</dt>
-            <dd style={{ margin: 0 }}><ProseNote>{text("rooms.assignWhy")}</ProseNote></dd>
-          </dl>
-        </div>
-      </section>
+      <NotYet locale={locale} items={["rooms.editTitle", "rooms.assignTitle"]} />
     </div>
   );
 }

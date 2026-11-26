@@ -2,6 +2,8 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { Banner } from "@/components/ds/banner";
+import { NotYet } from "@/components/not-yet";
+import { MetricCell, MetricRow } from "@/components/ds/metric-cell";
 import { PageHeader } from "@/components/ds/page-header";
 import { DataGrid } from "@/components/ds/data-grid";
 import { fill, formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
@@ -114,15 +116,44 @@ export default async function CatalogPage({
     <Shell
       locale={locale}
       figures={
-        <>
-          {fill(locale, "catalog.productsCounted", { count: products.length }, numbering)}
-          {" \u00b7 "}
-          {fill(locale, "catalog.booksCounted", { count: books.length }, numbering)}
-          {" \u00b7 "}
-          {fill(locale, "catalog.promotionsCounted", { count: promotions.length }, numbering)}
-        </>
+        fill(locale, "catalog.promotionsCounted", { count: promotions.length }, numbering)
       }
     >
+      {/* **What a tenant sells and what it is priced from, at the size of a figure.** All
+          three counts were a 14px line under the title, which is the size of a footnote for
+          the two numbers this board is a board of. Promotions stays in that line: it is the
+          third block rather than the subject.
+          **A refused count is not a zero.** Products and prices are separate gates, so a
+          reader may hold one and not the other -- and a 72px "0" over a refusal would read
+          as a tenant with no catalogue. `unavailable` is the cell's own answer for a figure
+          that cannot be computed, and it says which of the two it is. */}
+      <MetricRow label={text("catalog.title")}>
+        {mayProducts.allowed ? (
+          <MetricCell
+            label={text("catalog.products")}
+            value={formatInteger(products.length, numbering)}
+          />
+        ) : (
+          <MetricCell
+            label={text("catalog.products")}
+            freshness="unavailable"
+            unavailableBecause={text(gateMessage(mayProducts))}
+          />
+        )}
+        {mayPrices.allowed ? (
+          <MetricCell
+            label={text("catalog.books")}
+            value={formatInteger(books.length, numbering)}
+          />
+        ) : (
+          <MetricCell
+            label={text("catalog.books")}
+            freshness="unavailable"
+            unavailableBecause={text(gateMessage(mayPrices))}
+          />
+        )}
+      </MetricRow>
+
       {failed ? <Banner severity="critical">{text("error.unexpected")}</Banner> : null}
 
       <section className="page-section">
@@ -478,17 +509,7 @@ function Shell({
           members list set the precedent and the reason is the same: a column rendered
           empty reads as a fact about the product rather than about the screen, and a
           reader comparing this with the design needs to know which of the two it is. */}
-      <section className="page-section">
-        <h2 style={{ margin: 0 }}>{t(locale, "catalog.notYet")}</h2>
-        <dl className="facts">
-          <dt className="muted">{t(locale, "catalog.noStockTitle")}</dt>
-          <dd style={{ margin: 0 }}>{t(locale, "catalog.noStockWhy")}</dd>
-          <dt className="muted">{t(locale, "catalog.noTaxTitle")}</dt>
-          <dd style={{ margin: 0 }}>{t(locale, "catalog.noTaxWhy")}</dd>
-          <dt className="muted">{t(locale, "catalog.noThresholdTitle")}</dt>
-          <dd style={{ margin: 0 }}>{t(locale, "catalog.noThresholdWhy")}</dd>
-        </dl>
-      </section>
+      <NotYet locale={locale} items={["catalog.noStockTitle", "catalog.noTaxTitle", "catalog.noThresholdTitle"]} />
       {/* **The lead paragraph moved to the foot.** The design's page header is a title and a
           line of figures -- every drawn canvas does the same -- so an explanation of what the
           screen is was pushing the data a manager opens the page for below the fold. What is

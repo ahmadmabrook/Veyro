@@ -2,7 +2,8 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { Banner } from "@/components/ds/banner";
-import { NotYet, PageHeader } from "@/components/ds/page-header";
+import { PageHeader } from "@/components/ds/page-header";
+import { NotYet } from "@/components/not-yet";
 import { fill, t, type MessageKey } from "@/i18n/locale";
 import { currentSession, gate, gateAll, gateMessage, gateVerdict } from "@/lib/api";
 import { listSellablePlans } from "@/lib/leads-reads";
@@ -140,16 +141,10 @@ export default async function WalkInTrialPage() {
         />
       )}
 
-      <NotYet title={text("deskTrial.notYet")}>
-        <dt>{text("deskTrial.gapCredential")}</dt>
-        <dd>{text("deskTrial.gapCredentialWhy")}</dd>
-        <dt>{text("deskTrial.gapInvitation")}</dt>
-        <dd>{text("deskTrial.gapInvitationWhy")}</dd>
-        <dt>{text("deskTrial.gapOwner")}</dt>
-        <dd>{text("deskTrial.gapOwnerWhy")}</dd>
-        <dt>{text("deskTrial.gapNumber")}</dt>
-        <dd>{text("deskTrial.gapNumberWhy")}</dd>
-      </NotYet>
+      <NotYet
+        locale={locale}
+        items={["deskTrial.gapCredential", "deskTrial.gapInvitation", "deskTrial.gapOwner", "deskTrial.gapNumber"]}
+      />
     </>
   );
 }

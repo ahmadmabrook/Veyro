@@ -5,6 +5,7 @@ import { Banner } from "@/components/ds/banner";
 import { MetricCell } from "@/components/ds/metric-cell";
 import { MoneyValue } from "@/components/ds/money-value";
 import { PageHeader } from "@/components/ds/page-header";
+import { NotYet } from "@/components/not-yet";
 import { ProseNote } from "@/components/prose";
 import {
   fill, formatMoney, t, type Locale, type MessageKey,
@@ -144,7 +145,6 @@ export default async function ConvertPage({
 
       <section className="page-section">
         <h2>{text("convert.pickPlan")}</h2>
-        <ProseNote>{text("convert.pickPlanHint")}</ProseNote>
         {plans.length === 0 ? (
           <Banner severity="info">{text("convert.noPlans")}</Banner>
         ) : (
@@ -237,9 +237,10 @@ export default async function ConvertPage({
                 })}
               </ProseNote>
             ) : null}
-            {chargeShape(quote) === "full_period" ? (
-              <ProseNote>{text("convert.notProrated")}</ProseNote>
-            ) : null}
+            {/* Removed: a note explaining why this contract does not prorate. The
+                prorated and full-period cases already read differently in the metric
+                cell above ("{amount} for the first period, which runs to {date}"), so
+                what went is the mechanism rather than the distinction. */}
             <ProseNote>
               {fill(locale as Locale, "convert.figuresFor", {
                 date: monthDayLabel(quote.today, locale),
@@ -247,6 +248,11 @@ export default async function ConvertPage({
             </ProseNote>
           </section>
 
+          {/* **The whole section is conditional, not just its contents.** Both children are
+              conditional -- a lead with no classes, visits or touchpoints that is not
+              converting from a trial renders neither -- so the section drew a heading with
+              nothing under it, which reads as a block that failed to load. */}
+          {carriesOver(quote).length > 0 || fromTrial(quote) ? (
           <section className="page-section">
             <h2>{text("convert.carriesTitle")}</h2>
             {/* Nothing with a count of zero is claimed: "her four class attendances carry
@@ -262,8 +268,6 @@ export default async function ConvertPage({
                 ))}
               </ul>
             ) : null}
-            <ProseNote>{text("convert.nothingReEntered")}</ProseNote>
-            <ProseNote>{text("convert.credentialElsewhere")}</ProseNote>
             {fromTrial(quote) && quote.trial !== null ? (
               <ProseNote>
                 {fill(locale as Locale, "convert.fromTrial", {
@@ -271,27 +275,20 @@ export default async function ConvertPage({
                   date: monthDayLabel(quote.trial.ends_on, locale),
                 })}
               </ProseNote>
-            ) : (
-              <ProseNote>{text("convert.notFromTrial")}</ProseNote>
-            )}
+            ) : null}
           </section>
+          ) : null}
         </>
       )}
 
-      <section className="page-section">
-        <h2>{text("convert.actionsTitle")}</h2>
-        <dl className="facts">
-          {[...BLOCKED_ACTIONS,
-            { key: "convert.actionConvert" as MessageKey,
-              why: "convert.actionConvertWhy" as MessageKey }].map((one) => (
-            <div key={one.key} style={{ display: "contents" }}>
-              <dt>{text(one.key)}</dt>
-              <dd>{text(one.why)}</dd>
-            </div>
-          ))}
-        </dl>
-        <ProseNote>{text("convert.sameRecord")}</ProseNote>
-      </section>
+      {/* **The three acts this screen does not do, named and not explained.** The list used
+          to carry a paragraph per act saying which provider each waits on and that the owner
+          reserves real expenditure -- true, and governance rather than anything a receptionist
+          can act on. What they need is that the charge does not happen here. */}
+      <NotYet
+        locale={locale}
+        items={[...BLOCKED_ACTIONS.map((one) => one.key), "convert.actionConvert"]}
+      />
 
       <Link href={`/leads/${leadId}`}>{text("convert.backToLead")}</Link>
     </div>

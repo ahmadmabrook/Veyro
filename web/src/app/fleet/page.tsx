@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { Banner } from "@/components/ds/banner";
 import { DataGrid } from "@/components/ds/data-grid";
 import { fill, formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
+import { MetricCell, MetricRow } from "@/components/ds/metric-cell";
 import { PageHeader } from "@/components/ds/page-header";
 import { currentSession, gate, failureMessage, gateMessage } from "@/lib/api";
 import { readEntries } from "@/lib/access";
@@ -81,14 +82,12 @@ export default async function FleetPage() {
           ? text("fleet.allAnswering")
           : fill(locale, "fleet.someDown", { count: attention.size }, numbering)
       }
-      // The board's own three answers, as figures: how many devices, how many need somebody,
-      // and when the reachability was worked out. The last is the one a reader has to have:
-      // nothing polls, so the board is "as of" when it loaded.
+      // **What is left here is what is not a figure.** How many need somebody stays, because
+      // the title says it as a sentence and this line is where the count behind that sentence
+      // belongs; and the freshness is the one a reader has to have, since nothing polls, so
+      // the board is "as of" when it loaded.
       figures={
         <>
-          <span className="data">{formatInteger(fleet.devices.length, numbering)}</span>{" "}
-          {text("fleet.counted")}
-          {" \u00b7 "}
           <span className="data">{formatInteger(attention.size, numbering)}</span>{" "}
           {text("fleet.attention").toLocaleLowerCase(locale)}
           {" \u00b7 "}
@@ -97,6 +96,18 @@ export default async function FleetPage() {
         </>
       }
     >
+      {/* **How much hardware there is, at the size of a figure.** It was a 14px count in the
+          line above, which is the size of a footnote for the one number this board is a board
+          of. The attention count is not promoted beside it: the title already states it as a
+          sentence and the section below names the devices one by one, so a third statement of
+          the same number would be the figure said three times. */}
+      <MetricRow label={text("fleet.title")}>
+        <MetricCell
+          label={text("fleet.title")}
+          value={formatInteger(fleet.devices.length, numbering)}
+        />
+      </MetricRow>
+
       <section className="page-section">
         {/* The grid's accessible name. Visible, it was the third "Devices" on a screen
             whose rail entry and title already said so -- and the title says what was found

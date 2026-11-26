@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { Banner } from "@/components/ds/banner";
+import { NotYet } from "@/components/not-yet";
 import { MetricCell, MetricRow } from "@/components/ds/metric-cell";
 import { PageHeader } from "@/components/ds/page-header";
 import { Prose, ProseNote } from "@/components/prose";
@@ -373,28 +374,12 @@ export default async function AttendanceReportPage({
         {report.zones.length > 1 && zone === null ? (
           <ProseNote>{text("attendanceReport.presentations")}</ProseNote>
         ) : null}
-        <ProseNote>{text("attendanceReport.weekendNotDeclared")}</ProseNote>
+        {/* The note explaining why the day chips name days rather than "weekdays" is gone:
+            the chips read "Sun–Thu" and "Mon–Fri", so it explained the labelling rather
+            than any figure. What a figure must not be read as stays above. */}
       </section>
 
-      <section className="page-section" aria-labelledby="attendance-gaps">
-        <h2 id="attendance-gaps">{text("attendanceReport.gapsTitle")}</h2>
-        {/* `.facts` is a two-column grid whose items are the `dt` and the `dd`
-            themselves, so each pair is wrapped in `display: contents` -- a plain `div`
-            makes the div the grid item and puts both labels on one row with their values
-            beneath, which is a defect no assertion about text can see. */}
-        <dl className="facts">
-          {([
-            ["attendanceReport.gapClassFillLabel", "attendanceReport.gapClassFill"],
-            ["attendanceReport.gapCapacityLabel", "attendanceReport.gapCapacity"],
-            ["attendanceReport.gapExportLabel", "attendanceReport.gapExport"],
-          ] as [MessageKey, MessageKey][]).map(([label, why]) => (
-            <div key={label} style={{ display: "contents" }}>
-              <dt className="muted">{text(label)}</dt>
-              <dd style={{ margin: 0 }}>{text(why)}</dd>
-            </div>
-          ))}
-        </dl>
-      </section>
+      <NotYet locale={locale} items={["attendanceReport.gapClassFillLabel", "attendanceReport.gapCapacityLabel", "attendanceReport.gapExportLabel"]} />
     </>
   );
 }

@@ -2,11 +2,12 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { Banner } from "@/components/ds/banner";
+import { NotYet } from "@/components/not-yet";
 import { DataGrid } from "@/components/ds/data-grid";
+import { MetricCell, MetricRow } from "@/components/ds/metric-cell";
 import { PageHeader } from "@/components/ds/page-header";
-import { Prose, ProseNote } from "@/components/prose";
 import { WithheldLink } from "@/components/withheld";
-import { fill, t, type Locale, type MessageKey, type Numbering } from "@/i18n/locale";
+import { fill, formatInteger, t, type Locale, type MessageKey, type Numbering } from "@/i18n/locale";
 import {
   currentSession, failureMessage, gateAll, gateMessage, gateVerdict,
 } from "@/lib/api";
@@ -186,12 +187,22 @@ export default async function StaffPage({
         // the same distinction for the same reason: a figure that reports only part of the
         // table invites the reader to look for the rest.
         <>
-          {fill(locale, "staff.working", { count: list.by_state.active ?? 0 }, numbering)}
-          {" · "}
           {fill(locale, "staff.onRecord", { count: list.total }, numbering)}
           {" · "}
           <span className="data" dir="ltr">{utcStamp(new Date().toISOString())}</span>
         </>
+      }
+      metrics={
+        /* **The team working today, at the screen's own scale.** It was one clause of a
+            14px line. The count on record stays in that line, because the distinction
+            between the two is the point it was added to make: a figure reporting only part
+            of the table invites a reader to look for the rest. */
+        <MetricRow label={t(locale, "staff.heading")}>
+          <MetricCell
+            label={t(locale, "staff.state.active")}
+            value={formatInteger(list.by_state.active ?? 0, numbering)}
+          />
+        </MetricRow>
       }
       invite={!["denied", "unreachable_level"].includes(gateVerdict(mayInvite))}
     >
@@ -357,22 +368,21 @@ export default async function StaffPage({
           restrictedLabel={
             mayRoles.allowed ? text("staff.unanswered") : text("staff.restricted")}
         />
-        <ProseNote>{text("staff.seenIsWhy")}</ProseNote>
+        {/* The note arguing why LAST SEEN is a pair rather than a date has gone. The finding
+            it argued for is the banner above, and each row's own standing word is the column. */}
       </section>
 
-      <section className="page-section">
-        <h2 style={{ margin: 0 }}>{text("staff.notYet")}</h2>
-        <dl className="facts">
-          <dt className="muted">{text("staff.inviteTitle")}</dt>
-          <dd style={{ margin: 0 }}><Prose>{text("staff.inviteWhy")}</Prose></dd>
-          <dt className="muted">{text("staff.certTitle")}</dt>
-          <dd style={{ margin: 0 }}><Prose>{text("staff.certWhy")}</Prose></dd>
-          <dt className="muted">{text("staff.scopeTitle")}</dt>
-          <dd style={{ margin: 0 }}><Prose>{text("staff.scopeWhy")}</Prose></dd>
-          <dt className="muted">{text("staff.writesTitle")}</dt>
-          <dd style={{ margin: 0 }}><Prose>{text("staff.writesWhy")}</Prose></dd>
-        </dl>
-      </section>
+      {/* **Two of the four this list used to carry are built, and it was saying they are not.**
+          "Invite someone" is the control in this screen's own header, and a club manager
+          seeing only their own club is what ADR-0014 made true for this exact route -- both
+          were titles whose retired bodies read "this works, that does not", so converting
+          the section to its names kept the half that had stopped being a gap. What is
+          genuinely absent is the *sending*: the invitation and its seven-day link are
+          written and nothing emails or texts them, which is the one external blocker here. */}
+      <NotYet
+        locale={locale}
+        items={["staff.sendTitle", "staff.certTitle", "staff.writesTitle"]}
+      />
     </Shell>
   );
 }
@@ -490,11 +500,13 @@ function SeenCell({
 }
 
 function Shell({
-  locale, children, figures, invite,
+  locale, children, figures, metrics, invite,
 }: {
   locale: Locale;
   children: React.ReactNode;
   figures?: React.ReactNode;
+  /** The team's own figure, already formatted. The screen's subject, at the screen's scale. */
+  metrics?: React.ReactNode;
   /** The way into ADM-STF-03, absent where the gate refuses outright. */
   invite?: boolean;
 }) {
@@ -511,6 +523,7 @@ function Shell({
           ),
         } : {})}
       />
+      {metrics}
       {children}
     </div>
   );

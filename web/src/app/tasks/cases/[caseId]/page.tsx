@@ -2,16 +2,17 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { Banner } from "@/components/ds/banner";
-import { MetricCell } from "@/components/ds/metric-cell";
+import { PageHeader } from "@/components/ds/page-header";
+import { NotYet } from "@/components/not-yet";
+import { MetricCell, MetricRow } from "@/components/ds/metric-cell";
 import { Timeline, TimelineItem } from "@/components/ds/timeline";
-import { ProseNote } from "@/components/prose";
 import { Withheld } from "@/components/withheld";
 import { fill, t, type Locale, type MessageKey } from "@/i18n/locale";
 import { ApiError, currentSession, gateAll, gateMessage, gateVerdict } from "@/lib/api";
 import { numerals } from "@/lib/display";
 import { presentation } from "@/lib/preferences";
 import {
-  UNANSWERABLE, caseStatusWord, compactDuration, priorityWord, sheetControls, sourceWord,
+  caseStatusWord, compactDuration, priorityWord, sheetControls, sourceWord,
   stateWord, subjectKindWord, word,
   type AttentionItem,
 } from "@/lib/tasks";
@@ -145,7 +146,7 @@ export default async function AttentionItemPage({
     <Shell locale={locale} item={item}>
       {/* The four facts the canvas prints under the headline. `MetricCell` is the design's own
           component for a labelled figure, which is what each of these is. */}
-      <div className="ds-metric-row">
+      <MetricRow label={text("case.title")}>
         <MetricCell
           label={text("case.factOwner")}
           value={
@@ -163,7 +164,7 @@ export default async function AttentionItemPage({
           label={text("case.factSource")}
           value={word(locale, sourceWord(item.source), item.source)}
         />
-      </div>
+      </MetricRow>
 
       {/* **The state is a sentence, not only a badge.** `StatusBadge`'s vocabulary is closed
           over membership, payment, booking and access, and an item's state is none of them --
@@ -249,12 +250,6 @@ export default async function AttentionItemPage({
             ))}
           </ul>
         )}
-        {/* Where there is something to say it about. An empty list already says it is
-            empty, and a note about what each row does not carry, over no rows, is noise. */}
-        {item.affected.length === 0
-          ? null
-          : <ProseNote>{text(UNANSWERABLE.affectedNames)}</ProseNote>}
-
         {item.withdrawn.length > 0 ? (
           <>
             <h3>{text("case.withdrawnHeading")}</h3>
@@ -271,7 +266,6 @@ export default async function AttentionItemPage({
                 </li>
               ))}
             </ul>
-            <ProseNote>{text("case.withdrawnNote")}</ProseNote>
           </>
         ) : null}
       </section>
@@ -309,12 +303,9 @@ export default async function AttentionItemPage({
       <section className="page-section" aria-labelledby="case-actions">
         <h2 id="case-actions">{text("case.actionsHeading")}</h2>
 
-        {/* **Visible and inert, which is the canvas's own rule** -- and the one place a
-            disabled control is right in this app, because the remedy is the button beside it
-            rather than somewhere a reader has to go and find. */}
-        {item.state === "someone_else" ? (
-          <ProseNote>{text("case.inertBecause")}</ProseNote>
-        ) : null}
+        {/* The note explaining why these controls are inert has gone: the state line above
+            already says somebody else is handling this and that every action does nothing
+            until you take it over, which is the same sentence at the point of use. */}
         {item.state === "resolved" ? (
           <Banner severity="info">{text("case.resolvedNoReopen")}</Banner>
         ) : null}
@@ -363,34 +354,15 @@ export default async function AttentionItemPage({
         </p>
       </section>
 
-      <section className="page-section" aria-labelledby="case-gaps">
-        <h2 id="case-gaps">{text("tasks.gaps")}</h2>
-        <dl className="facts">
-          <Gap locale={locale} label="tasks.gapSideSheetLabel" why={UNANSWERABLE.sideSheet} />
-          <Gap locale={locale} label="tasks.gapUndoLabel" why={UNANSWERABLE.undo} />
-          <Gap locale={locale} label="tasks.gapReopenLabel" why={UNANSWERABLE.reopen} />
-          <Gap locale={locale} label="tasks.gapBatchLabel" why={UNANSWERABLE.batchMessage} />
-          <Gap locale={locale} label="tasks.gapScopeLabel" why={UNANSWERABLE.scope} />
-        </dl>
-      </section>
+      <NotYet
+        locale={locale}
+        items={["tasks.gapSideSheetLabel", "tasks.gapUndoLabel", "tasks.gapReopenLabel",
+                "tasks.gapBatchLabel", "tasks.gapScopeLabel"]}
+      />
     </Shell>
   );
 }
 
-function Gap({
-  locale, label, why,
-}: {
-  locale: Locale;
-  label: MessageKey;
-  why: MessageKey;
-}) {
-  return (
-    <>
-      <dt className="muted">{t(locale, label)}</dt>
-      <dd style={{ margin: 0 }}>{t(locale, why)}</dd>
-    </>
-  );
-}
 
 /**
  * An affected member's name, the withheld marker, or the kind where there is no name to be had.
@@ -420,27 +392,23 @@ function Shell({
   const text = (key: MessageKey) => t(locale, key);
   return (
     <div className="stack">
-      <div className="ds-page-head">
-        <div className="ds-page-head-text">
-          <h1 style={{ margin: 0 }}>{item?.title ?? text("case.title")}</h1>
-          {item === undefined ? null : (
-            <p className="muted" style={{ margin: 0 }}>
-              <span className="data" dir="ltr">{item.case_number}</span>
-              {" · "}
-              {fill(locale, "case.raised", { when: utcStamp(item.opened_at) })}
-              {" · "}
-              {word(locale, caseStatusWord(item.status), item.status)}
-              {item.priority === "normal"
-                ? ""
-                : ` · ${word(locale, priorityWord(item.priority), item.priority)}`}
-              {item.running_sla_clock_id === null ? "" : ` · ${text("case.hasClock")}`}
-            </p>
-          )}
-        </div>
-        <div className="ds-page-head-end">
-          <Link href="/tasks">{text("case.backToTasks")}</Link>
-        </div>
-      </div>
+      <PageHeader
+        title={item?.title ?? text("case.title")}
+        figures={item === undefined ? undefined : (
+          <>
+            <span className="data" dir="ltr">{item.case_number}</span>
+            {" · "}
+            {fill(locale, "case.raised", { when: utcStamp(item.opened_at) })}
+            {" · "}
+            {word(locale, caseStatusWord(item.status), item.status)}
+            {item.priority === "normal"
+              ? ""
+              : ` · ${word(locale, priorityWord(item.priority), item.priority)}`}
+            {item.running_sla_clock_id === null ? "" : ` · ${text("case.hasClock")}`}
+          </>
+        )}
+        actions={<Link href="/tasks">{text("case.backToTasks")}</Link>}
+      />
       {children}
     </div>
   );

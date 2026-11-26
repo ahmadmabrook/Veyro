@@ -48,9 +48,11 @@ test.describe("the rooms and resources card", () => {
   });
 
   test("counts the spaces and how many are described", async ({ page }) => {
-    const figures = page.locator(".ds-page-figures");
-    await expect(figures).toContainText(/space/);
-    await expect(figures).toContainText("with a stated capacity");
+    // The header region, not one element of it: the space count leads as a figure now and
+    // the described count stays in the line beneath, which is the same two facts.
+    const head = (await page.locator(".ds-page-head, .ds-metric-row").allInnerTexts()).join(" ");
+    expect(head).toMatch(/space/i);
+    expect(head).toContain("with a stated capacity");
   });
 
   test("lists only spaces, because only a place holds people", async ({ page }) => {
@@ -71,7 +73,7 @@ test.describe("the rooms and resources card", () => {
 
   test("names the two routes that do not exist", async ({ page }) => {
     const notYet = page.locator("section").filter({
-      hasText: "What this screen cannot do",
+      hasText: "What this screen does not do yet",
     });
     await expect(notYet).toContainText("Change a capacity or move equipment");
     await expect(notYet).toContainText("stricter");

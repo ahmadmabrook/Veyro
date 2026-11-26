@@ -2,7 +2,8 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { Banner } from "@/components/ds/banner";
-import { NotYet, PageHeader } from "@/components/ds/page-header";
+import { PageHeader } from "@/components/ds/page-header";
+import { NotYet } from "@/components/not-yet";
 import { t, type MessageKey } from "@/i18n/locale";
 import { currentSession, gate, gateAll, gateMessage, gateVerdict } from "@/lib/api";
 import { isUuid } from "@/lib/scheduling";
@@ -130,16 +131,10 @@ export default async function NewClassPage({
         />
       )}
 
-      <NotYet title={text("newClass.notYet")}>
-        <dt>{text("newClass.gapCeiling")}</dt>
-        <dd>{text("newClass.gapCeilingWhy")}</dd>
-        <dt>{text("newClass.gapWaitlist")}</dt>
-        <dd>{text("newClass.gapWaitlistWhy")}</dd>
-        <dt>{text("newClass.gapQualified")}</dt>
-        <dd>{text("newClass.gapQualifiedWhy")}</dd>
-        <dt>{text("newClass.gapEdit")}</dt>
-        <dd>{text("newClass.gapEditWhy")}</dd>
-      </NotYet>
+      <NotYet
+        locale={locale}
+        items={["newClass.gapCeiling", "newClass.gapWaitlist", "newClass.gapQualified", "newClass.gapEdit"]}
+      />
 
       <p className="muted ds-walk-in-note">
         <Link href={`/schedule?site=${chosen}`}>{text("newClass.backToCalendar")}</Link>

@@ -3,7 +3,9 @@ import { redirect } from "next/navigation";
 
 import { Banner } from "@/components/ds/banner";
 import { DataGrid } from "@/components/ds/data-grid";
-import { NotYet, PageHeader } from "@/components/ds/page-header";
+import { MetricCell, MetricRow } from "@/components/ds/metric-cell";
+import { PageHeader } from "@/components/ds/page-header";
+import { NotYet } from "@/components/not-yet";
 import { fill, formatInteger, formatMoney, t, type MessageKey } from "@/i18n/locale";
 import { currentSession, gate, gateAll, gateMessage, gateVerdict } from "@/lib/api";
 import { planName, repriceable, type Plan } from "@/lib/plans";
@@ -117,10 +119,19 @@ export default async function PlansPage({
 
   return (
     <>
-      <PageHeader
-        title={text("plans.heading")}
-        figures={fill(locale, "plans.lead", { count: rows.length }, numbering)}
-      />
+      <PageHeader title={text("plans.heading")} />
+      {/* **The catalogue's size, at the size of a figure.** It was the whole of the figures
+          line -- one 14px sentence -- on the screen where a tenant picks which plan to
+          re-price. With nothing to sell the banner below says so, so a `0` here would be the
+          same sentence twice. */}
+      {rows.length === 0 ? null : (
+        <MetricRow label={text("plans.heading")}>
+          <MetricCell
+            label={text("plans.tableCaption")}
+            value={formatInteger(rows.length, numbering)}
+          />
+        </MetricRow>
+      )}
 
       {rows.length === 0 ? (
         <Banner severity="attention" title={text("plans.noPlans")}>
@@ -204,16 +215,10 @@ export default async function PlansPage({
       {plan !== undefined ? <PriceSheet
         plan={plan} write={write} today={today} locale={locale} /> : null}
 
-      <NotYet title={text("plans.notYet")}>
-        <dt>{text("plans.gapEntitlements")}</dt>
-        <dd>{text("plans.gapEntitlementsWhy")}</dd>
-        <dt>{text("plans.gapHistory")}</dt>
-        <dd>{text("plans.gapHistoryWhy")}</dd>
-        <dt>{text("plans.gapOneRequestEach")}</dt>
-        <dd>{text("plans.gapOneRequestEachWhy")}</dd>
-        <dt>{text("plans.gapPriority")}</dt>
-        <dd>{text("plans.gapPriorityWhy")}</dd>
-      </NotYet>
+      <NotYet
+        locale={locale}
+        items={["plans.gapEntitlements", "plans.gapHistory", "plans.gapOneRequestEach", "plans.gapPriority"]}
+      />
     </>
   );
 }

@@ -273,3 +273,55 @@ test("no screen paints its own severity colour", () => {
     "these reference a semantic colour directly; the severity belongs to a DS component",
   );
 });
+
+/**
+ * A class a component owns is not written by a screen.
+ *
+ * §8 of the direction contract bans a hand-rolled copy of an approved component, and the
+ * copies this project keeps finding are not whole components -- they are a screen writing
+ * the component's own class names onto its own markup. The members board did it with
+ * `ds-page-head`; the reports index did it with `ds-notyet`, which put "Not here yet" on the
+ * page twice with a rule between the two and rendered the component's heading `id` twice
+ * over, so the second region was unreachable by name.
+ *
+ * **The tell is always the same and no other check sees it.** The class is defined, so the
+ * undefined-class sweep passes; both copies render, so every assertion about text passes;
+ * and the duplication is one line in a file nobody is reading. It is found by looking at the
+ * page, which is the instrument this project relies on far too heavily for something a
+ * substring can answer.
+ */
+const OWNED = [
+  ["ds-notyet", "src/components/not-yet.tsx"],
+  ["ds-page-head", "src/components/ds/page-header.tsx"],
+  ["ds-metric", "src/components/ds/metric-cell.tsx"],
+  ["ds-metric-row", "src/components/ds/metric-cell.tsx"],
+  ["ds-metric-delta", "src/components/ds/delta.tsx"],
+  ["ds-grid-table", "src/components/ds/data-grid.tsx"],
+];
+
+test("no screen writes a class its component owns", () => {
+  const offences = [];
+  for (const [cls, owner] of OWNED) {
+    for (const { path, text } of files) {
+      if (path.endsWith(owner.replace("src/", ""))) continue;
+      // The exact class, not a longer one that merely starts with it.
+      const re = new RegExp(`className="[^"]*\\b${cls}\\b[^"]*"`);
+      if (re.test(text)) offences.push(`${path} writes .${cls}, which ${owner} owns`);
+    }
+  }
+  assert.deepEqual(
+    offences, [],
+    `a screen is hand-rolling a component's markup:\n  ${offences.join("\n  ")}`,
+  );
+});
+
+test("the owned-class list names classes that exist and components that own them", () => {
+  // A list naming a class nothing defines, or a component that does not write it, is a sweep
+  // that passes by looking at nothing -- the vacuity this file exists to prevent.
+  const css = readFileSync(join(WEB, "src/app/globals.css"), "utf8");
+  for (const [cls, owner] of OWNED) {
+    assert.ok(css.includes(`.${cls}`), `.${cls} is not defined in globals.css`);
+    const src = readFileSync(join(WEB, owner), "utf8");
+    assert.ok(src.includes(cls), `${owner} does not write .${cls}, so it does not own it`);
+  }
+});

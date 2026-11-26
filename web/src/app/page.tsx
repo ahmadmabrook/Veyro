@@ -3,11 +3,11 @@ import { MoneyValue } from "@/components/ds/money-value";
 import { AttentionQueue, AttentionRow } from "@/components/ds/attention-row";
 import { Banner } from "@/components/ds/banner";
 import { MetricCell, MetricRow } from "@/components/ds/metric-cell";
+import { PageHeader } from "@/components/ds/page-header";
 import { MESSAGES, fill, formatInteger, formatMoney, t, type MessageKey, type Numbering } from "@/i18n/locale";
 import { ApiError, currentSession, gate, gateAll } from "@/lib/api";
 import { listLegalEntities, type LegalEntity } from "@/lib/organization";
 import {
-  UNANSWERABLE,
   heading as headingFor,
   orderQueue,
   queueCounts,
@@ -28,6 +28,8 @@ import {
   type Visits,
 } from "@/lib/command-centre-reads";
 import { numerals } from "@/lib/display";
+import type { Board } from "@/lib/leads";
+import { readBoard } from "@/lib/leads-reads";
 import { presentation } from "@/lib/preferences";
 import { redirect } from "next/navigation";
 
@@ -111,24 +113,28 @@ export default async function CommandCentre() {
   // Six gates, asked together. The design's loading section describes four independent
   // requests each with its own skeleton; this renders on the server, so the equivalent is
   // that one refusal or one failure costs one panel rather than the page.
-  const [mayRevenue, mayMembership, mayVisits, mayDunning, mayInvoices, maySchedule] =
-    await gateAll([
+  const [
+    mayRevenue, mayMembership, mayVisits, mayDunning, mayInvoices, maySchedule, mayLeads,
+  ] = await gateAll([
       "finance.revenue.read",
       "membership.record.read",
       "access.zone.read",
       "finance.dunning.read",
       "finance.account.read",
       "scheduling.schedule.read",
+      "crm.lead.read",
     ] as const);
 
-  const [collections, membership, visits, dunning, filings, unstaffed] = await Promise.all([
-    read(mayRevenue.allowed, () => readCollections()),
-    read(mayMembership.allowed, () => readMembershipSummary()),
-    read(mayVisits.allowed, () => readVisits()),
-    read(mayDunning.allowed, () => readDunningCases()),
-    read(mayInvoices.allowed, () => readRejectedFilings()),
-    read(maySchedule.allowed, () => readUnstaffed()),
-  ]);
+  const [collections, membership, visits, dunning, filings, unstaffed, leads] =
+    await Promise.all([
+      read(mayRevenue.allowed, () => readCollections()),
+      read(mayMembership.allowed, () => readMembershipSummary()),
+      read(mayVisits.allowed, () => readVisits()),
+      read(mayDunning.allowed, () => readDunningCases()),
+      read(mayInvoices.allowed, () => readRejectedFilings()),
+      read(maySchedule.allowed, () => readUnstaffed()),
+      read(mayLeads.allowed, () => readBoard()),
+    ]);
 
   // **A UUID is not a label.** The collections block breaks down by legal entity, and the
   // first version printed the entity's id -- so the one figure on this page that names a part
@@ -179,9 +185,8 @@ export default async function CommandCentre() {
     <div className="stack" data-density="compact">
       {/* The canvas's header row: `display:flex;gap:16px;align-items:flex-end;flex-wrap:wrap`
           with the title and its sub-line on the left and the period toggle at the end. */}
-      <header className="ds-page-head">
-        <div className="ds-page-head-text">
-        <h1 style={{ margin: 0 }}>
+      <PageHeader
+        title={<>
           {/* **`head.key`, not a hard-coded clear heading.** The first version branched on
               the count here and threw away the key `heading()` had just chosen -- so a
               session that could see three of the four feeds read "Nothing needs you right
@@ -190,37 +195,36 @@ export default async function CommandCentre() {
           {head.count === 0
             ? text(head.key)
             : fill(locale, head.key, { count: head.count }, numbering)}
-        </h1>
+        </>}
+        figures={<>
         {/* The design's sub-line: "Wednesday 19 August · all locations · data through 08:38".
             The scope is stated because there is no switcher to change it, and the gap says so
             rather than letting "all locations" read as a choice somebody made. */}
-        <p className="muted" style={{ margin: 0 }}>
+        {/* **The period reads here, not as a control that cannot be pressed.** It was a
+            bordered, rounded, button-shaped `<span>` at the end of the header row -- the
+            shape of every pressable thing in this system, for the one period this build can
+            answer. A reader reaches for it, nothing happens, and they have learned that this
+            product's controls are unreliable. It is a scope statement and it sits with the
+            other two, which is where a reader is already looking for "what am I looking
+            at". The other two periods stay named in the gaps. */}
+          {text("cc.periodMonth")}
+          {" · "}
           {text("cc.scope")}
           {collections.allowed && collections.data
             ? <> {" · "} {text("cc.asOf")}{" "}
                 <span className="data" dir="ltr">{collections.data.as_of}</span></>
             : null}
+        </>}
+      />
+      {head.count === 0 ? (
+        // Canvas 4: "No illustration, no 'all caught up!' -- it reports the day and offers
+        // the next useful thing. A manager who sees this should feel informed, not
+        // congratulated." So this is a sentence, not a celebration -- and when the page
+        // could not read everything, it says what it is a statement about instead.
+        <p style={{ margin: 0 }}>
+          {text(complete ? "cc.headingClearBody" : "cc.headingPartialBody")}
         </p>
-        {head.count === 0 ? (
-          // Canvas 4: "No illustration, no 'all caught up!' -- it reports the day and offers
-          // the next useful thing. A manager who sees this should feel informed, not
-          // congratulated." So this is a sentence, not a celebration -- and when the page
-          // could not read everything, it says what it is a statement about instead.
-          <p style={{ margin: 0 }}>
-            {text(complete ? "cc.headingClearBody" : "cc.headingPartialBody")}
-          </p>
-        ) : null}
-        </div>
-        {/* **Today · 7 days · Month.** Links rather than controls, so the period survives
-            being sent to somebody and works with no JavaScript -- and only `Month` is
-            answerable today, which is why the other two are named in the gaps rather than
-            drawn as segments that change nothing. */}
-        <nav className="ds-segmented" aria-label={text("cc.period")}>
-          <span aria-current="page" className="ds-segment-current">
-            {text("cc.periodMonth")}
-          </span>
-        </nav>
-      </header>
+      ) : null}
 
       {/* **No visible heading over the metrics.** The canvas puts the row straight under the
           sub-line: the four labels are the heading, and a "Today's figures" above them would
@@ -231,13 +235,15 @@ export default async function CommandCentre() {
           <CollectedMetric panel={collections} locale={locale} money={money} />
           <MembersMetric panel={membership} locale={locale} numbering={numbering} />
           <VisitsMetric panel={visits} locale={locale} numbering={numbering} />
-          {/* The fourth. `unavailable` rather than a zero or an em-dash: both of those read
-              as a measurement, and ADM-CRM-* is unbuilt so there is no lead to convert. */}
-          <MetricCell
-            label={text("cc.metricLeads")}
-            freshness="unavailable"
-            unavailableBecause={text(UNANSWERABLE.leadConversion)}
-          />
+          {/* **The fourth was a permanent "unavailable" telling every owner that Veyro
+              does not track leads, and it had been false since the CRM shipped.** A `/leads`
+              entry sits in the rail, the board returns a count per stage, and this screen
+              said there was nothing to report -- a gap note outliving its gap, on the most
+              read screen in the product, which is this repository's own most recorded
+              defect. It is the 30-day *conversion rate* that is still underivable: the board
+              carries no time window. Open leads and leads going cold are real, they are what
+              an owner acts on in the morning, and they are what this cell says now. */}
+          <LeadsMetric panel={leads} locale={locale} numbering={numbering} />
         </MetricRow>
       </section>
 
@@ -378,16 +384,27 @@ function CollectedMetric({
                 },
               })}
           comparison={
-            <>
-              {/* `null` is not zero: a tenant with nothing last month cannot say whether this
-                  month is down, and a 0% would read as "unchanged". */}
-              {block.change_bp === null
-                ? t(locale, "cc.noBaseline")
-                : t(locale, "cc.vsLastMonth")}
-              {" · "}
-              {t(locale, "cc.pace")}{" "}
-              <span className="data">{money(block.pace_minor, block.currency)}</span>
-            </>
+            /* **The pace leads where there is nothing to compare against.** `null` is not
+               zero -- a tenant with nothing last month cannot say whether this month is down,
+               and 0% would read as "unchanged" -- but announcing that absence *first* put a
+               seven-word apology directly under the largest figure on the screen and pushed
+               the one number a manager can act on to the end of the line. With a baseline the
+               comparison leads, because the delta arrow above it is its subject. */
+            block.change_bp === null ? (
+              <>
+                {t(locale, "cc.pace")}{" "}
+                <span className="data">{money(block.pace_minor, block.currency)}</span>
+                {" · "}
+                {t(locale, "cc.noBaseline")}
+              </>
+            ) : (
+              <>
+                {t(locale, "cc.vsLastMonth")}
+                {" · "}
+                {t(locale, "cc.pace")}{" "}
+                <span className="data">{money(block.pace_minor, block.currency)}</span>
+              </>
+            )
           }
         />
       ))}
@@ -424,6 +441,45 @@ function MembersMetric({
           {fill(locale, "cc.joinedLeft", { joined: month.joined, left: month.left }, numbering)}
         </>
       }
+    />
+  );
+}
+
+/**
+ * Open leads, with the ones going cold beneath.
+ *
+ * **It replaced a cell that had been permanently "unavailable" and permanently wrong.** The
+ * sentence read "Veyro is not tracking leads yet, so there is no conversion rate to show",
+ * and it had been false since the CRM landed: the rail carries a Leads entry, the board
+ * returns a count per stage and a count going cold. What is genuinely still underivable is
+ * the *30-day conversion rate* the cell was labelled for, because the board carries no time
+ * window -- so the cell reports what the module answers rather than what the label wanted.
+ *
+ * **Going cold is the comparison line, not a second cell**, because the two are one thought:
+ * how many are open, and how many of them are slipping. NN/g's limit of two large elements
+ * per screen is what stops a figure row becoming the tile wall it replaced.
+ */
+function LeadsMetric({
+  panel,
+  locale,
+  numbering,
+}: {
+  panel: Panel<Board>;
+  locale: "en" | "ar";
+  numbering: "latn" | "arab";
+}) {
+  const label = t(locale, "cc.metricLeads");
+  if (!panel.allowed || panel.data === null) {
+    return (
+      <MetricCell label={label} freshness="unavailable"
+        unavailableBecause={t(locale, panel.allowed ? "cc.failedPanel" : "cc.refusedPanel")} />
+    );
+  }
+  return (
+    <MetricCell
+      label={label}
+      value={formatInteger(panel.data.open_leads, numbering)}
+      comparison={fill(locale, "leads.goingCold", { count: panel.data.going_cold }, numbering)}
     />
   );
 }

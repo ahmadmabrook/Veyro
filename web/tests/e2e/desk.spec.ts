@@ -52,7 +52,8 @@ test.describe("the class a desk is checking people into", () => {
   test("counts who is here against the session's places", async ({ page }) => {
     // A class with free seats is "0 of 12 here", not "0 of 1": the denominator is MOD-019's
     // capacity and the roster has no cached total.
-    await expect(page.locator(".ds-page-head")).toContainText("of 12 here");
+    expect((await page.locator(".ds-page-head, .ds-metric-row").allInnerTexts()).join(" "))
+      .toContain("of 12 here");
   });
 
   test("identifies a member whose name is withheld, rather than showing only a marker",
@@ -82,14 +83,15 @@ test.describe("the class a desk is checking people into", () => {
       // the three waiting are notified — you do not have to remember." Nothing in this
       // build does either, and a screen that repeated it would be telling a receptionist to
       // forget something nobody is holding.
-      const gaps = page.locator(".ds-desk-gaps");
-      await expect(gaps.getByRole("term")
-        .filter({ hasText: "Releasing a place when the class starts" })).toBeVisible();
-      await expect(gaps).toContainText("you do not have to remember");
-      await expect(gaps.getByRole("term")
-        .filter({ hasText: "Telling the people waiting" })).toBeVisible();
-      await expect(gaps.getByRole("term")
-        .filter({ hasText: "Reading a card" })).toBeVisible();
+      const gaps = page.locator("section").filter({
+        hasText: "What this screen does not do yet",
+      });
+      await expect(gaps).toContainText("Releasing a place when the class starts");
+      // The sentence that explained *why* this gap exists has gone with the section that
+      // held it: the names above are what a reader needs, and the reasoning is in
+      // `contracts/ui/design-compliance.md`.
+      await expect(gaps).toContainText("Telling the people waiting");
+      await expect(gaps).toContainText("Reading a card");
     });
 
   test("no accessibility violations", async ({ page }) => {
@@ -239,7 +241,8 @@ test.describe("what a weaker credential is given", () => {
 
 /** How many the header says are here, read from the figure rather than from the rows. */
 async function presentCount(page: Page): Promise<number> {
-  const text = await page.locator(".ds-page-head").innerText();
+  // The header region, not one element of it: the "here" count leads as a figure now.
+    const text = (await page.locator(".ds-page-head, .ds-metric-row").allInnerTexts()).join(" ");
   const found = text.match(/(\d+) of \d+ here/);
   expect(found, `no "N of M here" in ${text}`).not.toBeNull();
   return Number(found![1]);

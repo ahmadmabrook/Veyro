@@ -53,7 +53,7 @@
   --p-crimson-light: #e9838a; /* Dark critical and error. */
   --p-gold-light: #f0bf52; /* Dark warning and the wordmark mark. */
   --p-steel-light: #7fc0da; /* Dark info, filed and recorded. Steel lifted for a ground built on #26202C. */
-  --p-turf-light: #7fc9a9; /* Dark success and the staffing category field. */
+  --p-turf-light: #7fc9a9; /* Dark success. Success is the whole of what green does in this palette -- the staffing category took this token until a green badge was found sitting above "4 classes have no coach". */
   --p-ai-light: #a0a9e4; /* Dark AI. Guardrail G7 keeps this system-owned in both themes. */
 
   /* Layer 2 - semantic tokens, light */
@@ -97,11 +97,11 @@
   --color-category-money: var(--p-gold-400); /* Money: collections, recovery, payments, till. */
   --color-category-compliance: var(--p-steel-600); /* Compliance: filings, privacy, audit, consent. */
   --color-category-retention: var(--p-crimson-500); /* Retention: expiring memberships, cancellations, leads going cold. */
-  --color-category-staffing: var(--p-turf-600); /* Staffing and delivery: rotas, unstaffed classes, devices. */
+  --color-category-staffing: var(--p-ai-600); /* Staffing and delivery: rotas, unstaffed classes, devices. **Not green, and that is the one category colour this palette had to move.** Green means success everywhere a reader has ever seen it, and the rows under this badge are classes with no coach -- so a green field above "4 classes have no coach" tells somebody the thing needing them is fine. The other three categories are safe because their semantic readings agree with their contents: money is money, a compliance item is a filing at risk, a retention item is a loss. Indigo is the AI hue and carries no collision here, because AI is a wash with a border and never a solid field -- the two are different components, not two uses of one badge. */
   --color-category-money-text: var(--p-ink-900); /* Text on the money field. Gold is light in both themes, so ink in both: 9.43:1 light, 11.27:1 dark. White on it is 2.04:1. */
   --color-category-compliance-text: var(--p-bone-0); /* Text on the compliance field. Steel is dark in light and a light tint in dark, so the text flips: bone 5.74:1, then ink 9.60:1. */
   --color-category-retention-text: var(--p-bone-0); /* Text on the retention field. Crimson flips the same way: bone 7.48:1, then ink 7.41:1. */
-  --color-category-staffing-text: var(--p-bone-0); /* Text on the staffing field. Turf flips the same way: bone 6.81:1, then ink 9.94:1. */
+  --color-category-staffing-text: var(--p-bone-0); /* Text on the staffing field. Indigo flips the same way as the other three: bone 7.93:1 on ai.600, then ink 8.46:1 on ai.light. */
 
   /* Spacing. No value outside this scale ships. */
   --space-05: 2px;
@@ -164,7 +164,7 @@
   --color-category-money: var(--p-gold-light);
   --color-category-compliance: var(--p-steel-light);
   --color-category-retention: var(--p-crimson-light);
-  --color-category-staffing: var(--p-turf-light);
+  --color-category-staffing: var(--p-ai-light);
   --color-category-money-text: var(--p-ink-900);
   --color-category-compliance-text: var(--p-ink-900);
   --color-category-retention-text: var(--p-ink-900);
@@ -173,55 +173,55 @@
 
 /* The type scale, Latin. Arabic resolves through src/design/type.mjs. */
 :root {
-  --type-figure-size: 72px;
-  --type-figure-line: 0.90;
+  --type-figure-size: 88px;
+  --type-figure-line: 0.92;
   --type-figure-weight: 700;
-  --type-figure-tracking: -0.035em;
-  --type-figureSm-size: 44px;
-  --type-figureSm-line: 0.95;
+  --type-figure-tracking: -0.055em;
+  --type-figureSm-size: 52px;
+  --type-figureSm-line: 0.96;
   --type-figureSm-weight: 700;
-  --type-figureSm-tracking: -0.03em;
-  --type-display-size: 40px;
-  --type-display-line: 1.05;
+  --type-figureSm-tracking: -0.045em;
+  --type-display-size: 46px;
+  --type-display-line: 1.04;
   --type-display-weight: 700;
-  --type-display-tracking: -0.025em;
-  --type-h1-size: 28px;
-  --type-h1-line: 1.14;
+  --type-display-tracking: -0.035em;
+  --type-h1-size: 32px;
+  --type-h1-line: 1.15;
   --type-h1-weight: 700;
   --type-h1-tracking: -0.02em;
-  --type-h2-size: 20px;
-  --type-h2-line: 1.25;
+  --type-h2-size: 23px;
+  --type-h2-line: 1.26;
   --type-h2-weight: 600;
   --type-h2-tracking: -0.012em;
-  --type-h3-size: 16px;
-  --type-h3-line: 1.32;
+  --type-h3-size: 18px;
+  --type-h3-line: 1.34;
   --type-h3-weight: 600;
   --type-h3-tracking: -0.008em;
-  --type-h4-size: 14px;
-  --type-h4-line: 1.36;
+  --type-h4-size: 15px;
+  --type-h4-line: 1.38;
   --type-h4-weight: 600;
   --type-h4-tracking: 0;
-  --type-bodyLg-size: 15.5px;
-  --type-bodyLg-line: 1.60;
+  --type-bodyLg-size: 17px;
+  --type-bodyLg-line: 1.50;
   --type-bodyLg-weight: 400;
   --type-bodyLg-tracking: 0;
-  --type-body-size: 14.5px;
-  --type-body-line: 1.60;
+  --type-body-size: 16px;
+  --type-body-line: 1.45;
   --type-body-weight: 400;
   --type-body-tracking: 0;
-  --type-bodySm-size: 13px;
-  --type-bodySm-line: 1.55;
+  --type-bodySm-size: 14px;
+  --type-bodySm-line: 1.43;
   --type-bodySm-weight: 400;
   --type-bodySm-tracking: 0;
-  --type-label-size: 12px;
-  --type-label-line: 1.30;
+  --type-label-size: 13px;
+  --type-label-line: 1.25;
   --type-label-weight: 600;
   --type-label-tracking: 0.02em;
-  --type-caption-size: 11.5px;
-  --type-caption-line: 1.40;
+  --type-caption-size: 13px;
+  --type-caption-line: 1.38;
   --type-caption-weight: 400;
   --type-caption-tracking: 0;
-  --type-data-size: 13.5px;
+  --type-data-size: 15px;
   --type-data-line: 1.20;
   --type-data-weight: 500;
   --type-data-tracking: 0;
@@ -229,32 +229,32 @@
 
 /* Density. Four modes, three variables, nothing else moves. */
 [data-density="compact"] {
-  --density-row: 34px;
-  --density-control: 40px;
+  --density-row: 40px;
+  --density-control: 44px;
   --density-gap: 8px; /* spacing step −1 step from --space-3 */
-  --density-type-size: 13px; /* type.bodySm */
-  --density-type-line: 1.55;
+  --density-type-size: 14px; /* type.bodySm */
+  --density-type-line: 1.43;
 }
 :root, [data-density="default"] {
-  --density-row: 40px;
-  --density-control: 48px;
-  --density-gap: 12px; /* spacing step base from --space-3 */
-  --density-type-size: 14.5px; /* type.body */
-  --density-type-line: 1.60;
-}
-[data-density="touch"] {
   --density-row: 48px;
   --density-control: 52px;
+  --density-gap: 12px; /* spacing step base from --space-3 */
+  --density-type-size: 16px; /* type.body */
+  --density-type-line: 1.45;
+}
+[data-density="touch"] {
+  --density-row: 56px;
+  --density-control: 60px;
   --density-gap: 16px; /* spacing step +1 step from --space-3 */
-  --density-type-size: 15.5px; /* type.bodyLg */
-  --density-type-line: 1.60;
+  --density-type-size: 17px; /* type.bodyLg */
+  --density-type-line: 1.50;
 }
 [data-density="spacious"] {
-  --density-row: 56px;
-  --density-control: 64px;
+  --density-row: 64px;
+  --density-control: 68px;
   --density-gap: 20px; /* spacing step +2 steps from --space-3 */
-  --density-type-size: 15.5px; /* type.bodyLg */
-  --density-type-line: 1.60;
+  --density-type-size: 17px; /* type.bodyLg */
+  --density-type-line: 1.50;
 }
 
 /* The Admin shell: 12-column, 24px gutter, rail 240/56, content max 1440, inspector 380

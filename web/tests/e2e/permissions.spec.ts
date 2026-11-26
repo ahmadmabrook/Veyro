@@ -65,7 +65,7 @@ test.describe("the permissions surface", () => {
     // below answers, action by action, and it answers it correctly where a list cannot --
     // a permission held on a sign-in too weak for it is in the list and refused by the gate.
     await expect(mine).toContainText("authz");
-    await expect(mine.getByRole("term").filter({ hasText: "authz" })).toBeVisible();
+    await expect(mine).toContainText("authz");
     // **A permission listed is not a permission usable.** The assurance check is on the
     // action, not on the grant, and the page says so rather than implying the list is enough.
     await expect(mine).toContainText(/stronger sign-in/);

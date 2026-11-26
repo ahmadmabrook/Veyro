@@ -2,13 +2,14 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { Banner } from "@/components/ds/banner";
-import { ProseNote } from "@/components/prose";
+import { PageHeader } from "@/components/ds/page-header";
+import { NotYet } from "@/components/not-yet";
 import { fill, t, type Locale, type MessageKey } from "@/i18n/locale";
 import { ApiError, currentSession, gateAll, gateMessage, gateVerdict } from "@/lib/api";
 import { numerals } from "@/lib/display";
 import { presentation } from "@/lib/preferences";
 import {
-  TASK_VIEWS, UNANSWERABLE, dueLabel, dueState, isTaskView, metaLine, sourceWord,
+  TASK_VIEWS, dueLabel, dueState, isTaskView, metaLine, sourceWord,
   taskStatusWord, word,
   type CaseRow, type QueueRow, type TaskRow, type TaskView, type Workload,
 } from "@/lib/tasks";
@@ -166,37 +167,24 @@ export default async function TasksPage({
         />
       )}
 
-      <ProseNote>{text("tasks.inHandOnly")}</ProseNote>
-      <ProseNote>{text("tasks.blockedFirst")}</ProseNote>
-      <ProseNote>{text("tasks.separateFromException")}</ProseNote>
-      <ProseNote>{text("tasks.sourceAlwaysNamed")}</ProseNote>
-
-      <section className="page-section" aria-labelledby="tasks-gaps">
-        <h2 id="tasks-gaps">{text("tasks.gaps")}</h2>
-        <dl className="facts">
-          <Gap locale={locale} label="tasks.gapAssignedByLabel" why={UNANSWERABLE.assignedBy} />
-          <Gap locale={locale} label="tasks.gapScopeLabel" why={UNANSWERABLE.scope} />
-          <Gap locale={locale} label="tasks.gapSideSheetLabel" why={UNANSWERABLE.sideSheet} />
-        </dl>
-      </section>
+      {/* The "this list is work in hand" note has gone with them: the chips name the view
+          and the rows are the view, so the list need not describe its own filter. */}
+      {/* **Three paragraphs explaining the screen's own rules have gone.** They said a
+          blocked task carries no checkbox, that completing a task does not resolve the
+          exception it came from, and that a task always names its source -- each of which
+          the screen already shows: the checkbox is absent, the link is there, the source is
+          a column. GOV.UK's test is the one that settles it: "if you find yourself having to
+          explain how the user interface works, that's a sign something has gone wrong", and
+          a reader gets through about a fifth of the words on a page anyway. The rules are
+          still true and still enforced; they are now shown rather than narrated. */}
+      <NotYet
+        locale={locale}
+        items={["tasks.gapAssignedByLabel", "tasks.gapScopeLabel", "tasks.gapSideSheetLabel"]}
+      />
     </Shell>
   );
 }
 
-function Gap({
-  locale, label, why,
-}: {
-  locale: Locale;
-  label: MessageKey;
-  why: MessageKey;
-}) {
-  return (
-    <>
-      <dt className="muted">{t(locale, label)}</dt>
-      <dd style={{ margin: 0 }}>{t(locale, why)}</dd>
-    </>
-  );
-}
 
 /**
  * The page's own chrome: a title, the three chips, and the compact density the members-list
@@ -214,14 +202,11 @@ function Shell({
   const text = (key: MessageKey) => t(locale, key);
   return (
     <div className="stack" data-density="compact">
-      <div className="ds-page-head">
-        <div className="ds-page-head-text">
-          <h1 id="tasks-heading" style={{ margin: 0 }}>{text("tasks.title")}</h1>
-        </div>
-        <div className="ds-page-head-end">
-          <Link href="/tasks/resolved">{text("resolved.title")}</Link>
-        </div>
-      </div>
+      <PageHeader
+        id="tasks-heading"
+        title={text("tasks.title")}
+        actions={<Link href="/tasks/resolved">{text("resolved.title")}</Link>}
+      />
 
       {workload === null ? null : (
         <nav aria-label={text("tasks.title")} className="ds-filter-bar">

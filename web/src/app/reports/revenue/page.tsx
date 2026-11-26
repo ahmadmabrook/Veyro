@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 
 import { Banner } from "@/components/ds/banner";
 import { DataGrid } from "@/components/ds/data-grid";
+import { Delta } from "@/components/ds/delta";
 import { MetricCell, MetricRow } from "@/components/ds/metric-cell";
 import { MoneyValue } from "@/components/ds/money-value";
 import { PageHeader } from "@/components/ds/page-header";
@@ -131,10 +132,12 @@ export default async function RevenueReportPage() {
         ))
       )}
 
-      <ProseNote>{text("revenue.separateFacts")}</ProseNote>
+      {/* Two notes are gone: why collected and invoiced are separate columns, which
+          justified the layout rather than any figure, and what the "Raised by hand" row is
+          — whose one actionable claim, that the sources add up to the invoiced total, is
+          already in `sourcesAreNet` below. What each money figure means stays. */}
       <ProseNote>{text("revenue.sourcesAreNet")}</ProseNote>
       <ProseNote>{text("revenue.positionNote")}</ProseNote>
-      <ProseNote>{text("reports.unattributedWhy")}</ProseNote>
       <ProseNote>{text("reports.entityNotClub")}</ProseNote>
     </>
   );
@@ -273,9 +276,7 @@ function CurrencyBlock({
                 // **Not a zero.** No comparable figure last month is a different fact from a
                 // month that matched exactly, and "0.0%" would claim the second.
                 return delta ? (
-                  <span className="ds-metric-delta data" data-tone={delta.tone} dir="ltr">
-                    {delta.text}
-                  </span>
+                  <Delta text={delta.text} tone={delta.tone} />
                 ) : (
                   <span className="muted">{text("revenue.noComparison")}</span>
                 );

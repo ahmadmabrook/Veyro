@@ -53,10 +53,8 @@ test.describe("the freeze block at an ordinary sign-in", () => {
 
   test("says what it cannot do, including the two the canvas draws", async ({ page }) => {
     const block = page.locator("section").filter({ hasText: "Freeze this membership" });
-    await expect(block.getByRole("term").filter({ hasText: "An override at the limit" }))
-      .toBeVisible();
-    await expect(block.getByRole("term").filter({ hasText: "A thirty-second undo" }))
-      .toBeVisible();
+    await expect(block).toContainText("An override at the limit");
+    await expect(block).toContainText("A thirty-second undo");
   });
 });
 

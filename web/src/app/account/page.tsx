@@ -1,8 +1,9 @@
 import { redirect } from "next/navigation";
 
 import { Banner } from "@/components/ds/banner";
+import { MetricCell, MetricRow } from "@/components/ds/metric-cell";
 import { PageHeader } from "@/components/ds/page-header";
-import { fill, t, type Locale, type MessageKey } from "@/i18n/locale";
+import { fill, formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
 import type { AuthEvent, DeviceFact, SessionFact } from "@/lib/account";
 import { listAuthEvents, listDevices, listSessions } from "@/lib/account-reads";
 import type { PasskeyFact } from "@/lib/passkey";
@@ -71,14 +72,25 @@ export default async function AccountPage() {
         <>
           {fill(locale, "account.sessionsCounted", { count: live.length }, numbering)}
           {" \u00b7 "}
-          {fill(locale, "account.devicesCounted",
-            { count: devices.filter((one) => one.revoked_at === null).length }, numbering)}
-          {" \u00b7 "}
           {fill(locale, "account.assuranceLevel",
             { level: String(Number(session.aal ?? 1)) })}
         </>
       }
     >
+      {/* **How many devices are remembered, at the size of a figure.** It was a 14px count
+          beside two others, and it is the one of the three a reader acts on: a device is
+          remembered so a sign-in from it is not challenged, and revoking one is permanent.
+          The live-session count stays in the line above, because the only noun keys this
+          catalogue has for a session mean *other* sessions -- which excludes the one being
+          read -- and a figure labelled by the wrong set is worse than a small one. */}
+      <MetricRow label={text("account.devices")}>
+        <MetricCell
+          label={text("account.devices")}
+          value={formatInteger(
+            devices.filter((one) => one.revoked_at === null).length, numbering)}
+        />
+      </MetricRow>
+
       <AccountView
         locale={locale}
         numbering={numbering}

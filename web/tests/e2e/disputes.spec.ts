@@ -107,9 +107,11 @@ test.describe("the dispute board", () => {
     // one action nobody can undo.
     await expect(page.getByRole("button", { name: /submit/i })).toHaveCount(0);
     await expect(page.getByRole("button", { name: /accept/i })).toHaveCount(0);
-    const notYet = page.locator("section").filter({ hasText: "What this screen cannot do" });
+    const notYet = page.locator("section").filter({ hasText: "What this screen does not do yet" });
     await expect(notYet).toContainText("Nothing in this build sends anything to a scheme");
-    await expect(notYet).toContainText("a decision rather than a lapse");
+    // The sentence that explained *why* this gap exists has gone with the section that
+    // held it: the names above are what a reader needs, and the reasoning is in
+    // `contracts/ui/design-compliance.md`.
   });
 
   test("the payments ledger sends a chargeback here", async ({ page }) => {

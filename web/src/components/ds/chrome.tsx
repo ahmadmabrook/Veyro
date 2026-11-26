@@ -73,10 +73,13 @@ export function Chrome({
 export function RailGroup({
   id,
   label,
+  groupIcon,
   children,
 }: {
   id: string;
   label: string;
+  /** One conventional mark for the group. Items below it carry none. */
+  groupIcon?: Parameters<typeof Icon>[0]["name"];
   children: ReactNode;
 }) {
   return (
@@ -86,7 +89,17 @@ export function RailGroup({
     // length counts the headings. A group is a list item that contains a list, which is the
     // structure a grouped navigation actually has.
     <li className="ds-rail-section">
-      <span className="ds-rail-group" id={id}>{label}</span>
+      {/* **The icon moved here from the items, and the research is why.** Twenty-six
+          destinations carried twenty-six glyphs, of which three pairs were identical --
+          the whole Money group drew one payments mark, so the icon distinguished nothing
+          and competed with the label that did. NN/g: a navigation icon needs a permanent
+          text label, and an icon nobody can name in five seconds will not communicate; a
+          glyph per destination is decoration at this count. Six group marks are
+          conventional, scannable, and leave the labels to carry the destinations. */}
+      <span className="ds-rail-group" id={id}>
+        {groupIcon === undefined ? null : <Icon name={groupIcon} size={16} />}
+        {label}
+      </span>
       <ul className="ds-rail-items" aria-labelledby={id}>
         {children}
       </ul>
@@ -94,20 +107,17 @@ export function RailGroup({
   );
 }
 
-/** The icon slot and the count beside a rail item's label. */
+/** A rail item's label and its count. The group above it carries the only icon. */
 export function RailItem({
-  icon,
   label,
   count,
 }: {
-  icon: Parameters<typeof Icon>[0]["name"];
   label: string;
   /** "4,812" beside Members, "6" beside Payments. Absent where there is nothing to count. */
   count?: string;
 }) {
   return (
     <>
-      <Icon name={icon} size={16} />
       <span className="ds-rail-label">{label}</span>
       {count === undefined ? null : (
         // Mono and tabular, like every other figure in the product.

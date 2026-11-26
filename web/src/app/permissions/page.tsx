@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 
 import { Banner } from "@/components/ds/banner";
 import { CapabilityMatrix, MATRIX_GLYPH } from "@/components/ds/capability-matrix";
+import { MetricCell, MetricRow } from "@/components/ds/metric-cell";
 import { PageHeader } from "@/components/ds/page-header";
 import { DataGrid } from "@/components/ds/data-grid";
 import { fill, formatInteger, t, type Locale, type MessageKey, type Numbering } from "@/i18n/locale";
@@ -131,16 +132,23 @@ export default async function PermissionsPage({
   return (
     <div className="stack">
       <PageHeader title={text("perms.title")}
-        figures={
-          <>
-            {fill(locale, "perms.rolesCounted", { count: roles.length }, numbering)}
-            {" \u00b7 "}
-            {fill(locale, "perms.heldCounted", { count: mine?.permissions.length ?? 0 }, numbering)}
-            {" \u00b7 "}
-            {fill(locale, "perms.auditCounted", { count: audit.length }, numbering)}
-          </>
-        }
+        figures={fill(locale, "perms.auditCounted", { count: audit.length }, numbering)}
        />
+      {/* **The two numbers this page is about, at the size of the subject.** All three sat
+          in one 14px line, so what a tenant holds read as a footnote beside the audit depth.
+          The log's own count stays above: it is the length of a record rather than a
+          statement about who may do what, and the chain's verdict below is what a reader
+          acts on. */}
+      <MetricRow label={text("perms.title")}>
+        <MetricCell
+          label={text("perms.roles")}
+          value={formatInteger(roles.length, numbering)}
+        />
+        <MetricCell
+          label={text("perms.held")}
+          value={formatInteger(mine?.permissions.length ?? 0, numbering)}
+        />
+      </MetricRow>
 
       <section className="page-section">
         <h2 style={{ margin: 0 }}>{text("perms.mine")}</h2>

@@ -2,7 +2,8 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { Banner } from "@/components/ds/banner";
-import { NotYet, PageHeader } from "@/components/ds/page-header";
+import { PageHeader } from "@/components/ds/page-header";
+import { NotYet } from "@/components/not-yet";
 import { numerals } from "@/lib/display";
 import { fill, t, type MessageKey } from "@/i18n/locale";
 import { currentSession, gate, gateAll, gateMessage } from "@/lib/api";
@@ -141,19 +142,15 @@ export default async function SchedulePtPage({
         />
       </section>
 
-      <NotYet title={text("pt.notYetTitle")}>
-        {/* POS-05 has no implementation at all, so the canvas's own zero-credit button has
-            nowhere to go. Named rather than drawn as a dead control. */}
-        <dt>{text("pt.gapPosLabel")}</dt>
-        <dd>{text("pt.gapPos")}</dd>
-        {/* A standing weekly slot is a template with a rule, which the class machinery
-            already is; whether a tenant wants one is a product question nobody has asked. */}
-        <dt>{text("pt.gapRecurringLabel")}</dt>
-        <dd>{text("pt.gapRecurring")}</dd>
-        {/* MOD-013 authors a notification and sends nothing. */}
-        <dt>{text("pt.gapNotifyLabel")}</dt>
-        <dd>{text("pt.gapNotify")}</dd>
-      </NotYet>
+      {/* Three absences, named. The reasoning each used to carry -- POS-05 has no
+          implementation so the zero-credit button has nowhere to go, a standing weekly slot
+          is a template question nobody has asked, MOD-013 authors a notification and sends
+          nothing -- is in `contracts/ui/design-compliance.md`, which is where a reader of
+          this repository looks and a receptionist does not. */}
+      <NotYet
+        locale={locale}
+        items={["pt.gapPosLabel", "pt.gapRecurringLabel", "pt.gapNotifyLabel"]}
+      />
     </>
   );
 }

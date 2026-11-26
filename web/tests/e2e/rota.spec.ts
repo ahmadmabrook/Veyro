@@ -133,9 +133,8 @@ test.describe("the availability grid", () => {
   test("names what the grid does not do, and no longer counts the form among it", async ({
     page,
   }) => {
-    const gaps = page.locator("section").filter({ hasText: "What this grid does not do" });
-    await expect(gaps.getByRole("term").filter({ hasText: "The grid is hourly" }))
-      .toBeVisible();
+    const gaps = page.locator("section").filter({ hasText: "What this screen does not do yet" });
+    await expect(gaps).toContainText("The grid is hourly");
     // **"Class or personal training" has left this list too**, and asserting its absence is
     // what stops it coming back: it said nothing in this build distinguished the two, and
     // `0036` made that false -- the gap note that outlives its gap, which this screen's own
@@ -169,7 +168,7 @@ test.describe("the availability grid", () => {
     await expect(main).toContainText("محجوز، والجدول يرفضه");
     await expect(main).toContainText("ما لا يفعله هذا المخطط");
     for (const english of [
-      "Booked, and the rota refuses it", "What this grid does not do", "Not working",
+      "Booked, and the rota refuses it", "What this screen does not do yet", "Not working",
     ]) {
       await expect(main).not.toContainText(english);
     }

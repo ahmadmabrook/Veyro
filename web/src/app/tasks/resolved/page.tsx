@@ -3,8 +3,10 @@ import { redirect } from "next/navigation";
 
 import { Banner } from "@/components/ds/banner";
 import { DataGrid } from "@/components/ds/data-grid";
-import { ProseNote } from "@/components/prose";
-import { fill, t, type Locale, type MessageKey, type Numbering } from "@/i18n/locale";
+import { MetricCell, MetricRow } from "@/components/ds/metric-cell";
+import { PageHeader } from "@/components/ds/page-header";
+import { NotYet } from "@/components/not-yet";
+import { formatInteger, t, type Locale, type MessageKey, type Numbering } from "@/i18n/locale";
 import { ApiError, currentSession, gateAll, gateMessage, gateVerdict } from "@/lib/api";
 import { numerals } from "@/lib/display";
 import { presentation } from "@/lib/preferences";
@@ -120,21 +122,16 @@ export default async function ResolvedPageView() {
                 </>
               ),
             },
-            {
-              // **A reference, not a name.** `tasks.case.read` is routine, so a resolver's
-              // legal name here would be a way around the permission that guards a person's
-              // record -- MOD-010's `events.event.read` finding, which the list route itself
-              // answers for by carrying ids only.
-              header: text("resolved.colResolver"),
-              kind: "person",
-              priority: 2,
-              render: (row: ResolvedCase) =>
-                row.resolved_by === null ? (
-                  <span className="muted">{"—"}</span>
-                ) : (
-                  <span className="data" dir="ltr">{row.resolved_by}</span>
-                ),
-            },
+            // **There is no RESOLVER column, and that is the honest render rather than a
+            // deviation.** `resolved_by` is an *identity* id and the link to a person is
+            //MOD-014's, which this read does not cross -- so the only thing this build can
+            //put in that cell is a uuid. Forty identical 36-character ids is a column an
+            //operator cannot act on, taking a quarter of the table's width, and an id in a
+            //person column reads as a name that failed to load. The absence is named in the
+            //gap line instead. The permission reasoning that chose an id over a name still
+            //holds and is why a name cannot simply be fetched: `tasks.case.read` is routine,
+            //so naming the resolver here would be a way around the permission guarding a
+            // person's record -- MOD-010's `events.event.read` finding.
             {
               header: text("resolved.colTook"),
               kind: "text",
@@ -159,8 +156,11 @@ export default async function ResolvedPageView() {
         />
       )}
 
-      <ProseNote>{text("resolved.readOnly")}</ProseNote>
-      <ProseNote>{text("resolved.resolverIsAnIdentity")}</ProseNote>
+      <NotYet locale={locale} items={["resolved.gapResolver"]} />
+
+      {/* Two notes have gone: that this list is read-only with no un-resolve, and why the
+          RESOLVER column carries an id rather than a name. Neither changes what a reader does
+          here -- the page offers no control for either to qualify. */}
     </Shell>
   );
 }
@@ -177,26 +177,37 @@ function Shell({
   const text = (key: MessageKey) => t(locale, key);
   return (
     <div className="stack" data-density="compact">
-      <div className="ds-page-head">
-        <div className="ds-page-head-text">
-          <h1 id="resolved-heading" style={{ margin: 0 }}>{text("resolved.title")}</h1>
-        </div>
-        <div className="ds-page-head-end">
-          <Link href="/tasks">{text("case.backToTasks")}</Link>
-        </div>
-      </div>
+      <PageHeader
+        id="resolved-heading"
+        title={text("resolved.title")}
+        actions={<Link href="/tasks">{text("case.backToTasks")}</Link>}
+      />
 
-      {/* The canvas's sub-line: "7 resolved today · Median 41 minutes · all locations". */}
+      {/* **The two figures the canvas states, at the scale they deserve.** Its sub-line is
+          "7 resolved today · Median 41 minutes", which is the whole subject of this board --
+          how much got finished and how long it took -- so they lead rather than sitting in
+          grey under the title. A median with nothing behind it is `unavailable` rather than a
+          zero: `MetricCell`'s own rule, because an em dash there reads as a measurement of no
+          time at all. */}
       {page === null ? null : (
-        <p className="muted" style={{ margin: 0 }}>
-          {fill(locale, "resolved.count", { count: page.resolved }, numbering)}
-          {" · "}
-          {page.median_seconds === null
-            ? text("resolved.noMedian")
-            : fill(locale, "resolved.median", {
-                took: durationWords(page.median_seconds, locale),
-              })}
-        </p>
+        <MetricRow label={text("resolved.title")}>
+          <MetricCell
+            label={text("resolved.figResolved")}
+            value={formatInteger(page.resolved, numbering)}
+          />
+          {page.median_seconds === null ? (
+            <MetricCell
+              label={text("resolved.figMedian")}
+              freshness="unavailable"
+              unavailableBecause={text("resolved.noMedian")}
+            />
+          ) : (
+            <MetricCell
+              label={text("resolved.figMedian")}
+              value={durationWords(page.median_seconds, locale)}
+            />
+          )}
+        </MetricRow>
       )}
 
       {children}

@@ -34,8 +34,16 @@ test.describe("a lead that said no", () => {
     });
     await expect(lost).toContainText("Marked lost on");
     await expect(lost).toContainText("Joined somewhere else");
-    await expect(lost).toContainText("Still at Toured");
-    await expect(lost).toContainText("the stage does not move");
+    // **The stage metric is the assertion now, and the sentence explaining it has gone.**
+    // D8 is that a lost lead keeps the stage it reached, and the thing that says so is the
+    // stage itself: this lead is lost and STAGE still reads Toured. The sentence that used to
+    // sit in this panel ("Still at Toured, because the stage does not move") restated what
+    // the reader could already see two inches above, so a test pinning it was asserting the
+    // prose rather than the behaviour. Read where the reader reads it, with the absence of
+    // the old wording asserted because that is the direction a revert comes from.
+    const stage = page.locator("#main").locator(".ds-metric").filter({ hasText: "stage" });
+    await expect(stage).toContainText("Toured");
+    await expect(page.locator("#main")).not.toContainText("the stage does not move");
   });
 
   test("draws the free-text detail a salesperson wrote", async ({ page }) => {

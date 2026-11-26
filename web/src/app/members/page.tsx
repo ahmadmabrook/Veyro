@@ -1,6 +1,9 @@
 import Link from "next/link";
 
+import { MetricCell, MetricRow } from "@/components/ds/metric-cell";
+import { PageHeader } from "@/components/ds/page-header";
 import { Banner } from "@/components/ds/banner";
+import { NotYet } from "@/components/not-yet";
 import { Button } from "@/components/ds/button";
 import { WithheldLink } from "@/components/withheld";
 import { DataGrid } from "@/components/ds/data-grid";
@@ -8,7 +11,6 @@ import { fill, formatInteger, t, type MessageKey } from "@/i18n/locale";
 import { ApiError, gateAll, gateMessage, gateVerdict } from "@/lib/api";
 import {
   LIFECYCLE_STATES,
-  UNANSWERABLE,
   isLifecycleState,
   membershipsByPerson,
   stateCounts,
@@ -137,7 +139,7 @@ export default async function MembersPage({
   const counts = stateCounts(page.by_state);
 
   return (
-    <Shell locale={locale} action={addMember}>
+    <Shell locale={locale} action={addMember} lead={formatInteger(page.total, numbering)}>
       <section className="ds-page-section">
         <h2 id="members-heading" className="ds-visually-hidden">{text("members.title")}</h2>
 
@@ -153,7 +155,7 @@ export default async function MembersPage({
                   {index > 0 ? " \u00b7 " : ""}
                   <span className="data">{formatInteger(count, numbering)}</span>{" "}
                   {state === "none"
-                    ? text("members.noProfile")
+                    ? text("members.stateNone")
                     : stateName(state) === null
                       ? state
                       : text(stateName(state) as MessageKey)}
@@ -252,7 +254,7 @@ export default async function MembersPage({
                     )}
                     <div className="muted" style={caption}>
                       {row.member_number === null ? (
-                        text("members.noNumber")
+                        <span className="ds-absent">{text("members.noNumber")}</span>
                       ) : (
                         <span className="data" dir="ltr">{row.member_number}</span>
                       )}
@@ -266,7 +268,7 @@ export default async function MembersPage({
                 priority: 1,
                 render: (row) => {
                   if (row.lifecycle_state === null) {
-                    return <span className="muted">{text("members.noProfile")}</span>;
+                    return <span className="ds-absent">{text("members.noProfile")}</span>;
                   }
                   const named = stateName(row.lifecycle_state);
                   // A state the vocabulary does not know is shown as stored rather than as
@@ -287,7 +289,7 @@ export default async function MembersPage({
                 render: (row) => {
                   const membership = held.get(row.person_id);
                   return membership === undefined ? (
-                    <span className="muted">{text("members.noMembership")}</span>
+                    <span className="ds-absent">{text("members.noMembership")}</span>
                   ) : (
                     <>
                       {/* **Three more stored values that were rendered as labels.** Kind,
@@ -335,57 +337,19 @@ export default async function MembersPage({
           />
         )}
 
-        {/* "Showing 1-50 of 18 matching · 4,812 total" -- the design's own footer, and the
-            difference between the two numbers is the point: a filtered list that reported
-            only its own length would imply the records that did not match do not exist. */}
-        <p className="muted" style={{ margin: 0, fontSize: "var(--type-caption-size)" }}>
-          {text("members.showing")}{" "}
-          <span className="data">{formatInteger(page.people.length, numbering)}</span>{" "}
-          {text("members.ofTotal")}{" "}
-          <span className="data">{formatInteger(page.matching, numbering)}</span>{" "}
-          {text("members.matching")}
-          {" · "}
-          <span className="data">{formatInteger(page.total, numbering)}</span>{" "}
-          {text("members.totalLabel")}
-        </p>
+        {/* **The footer is gone, and the two numbers that replaced it are the filter
+            story.** It read "Showing 38 of 38 matching · 4,812 total" in 13px under the
+            table. The figure above the table is the gym's member count and the grid states
+            what it is listing, so a filtered list already shows both ends of the comparison
+            the footer existed to make -- and an unfiltered one no longer says the same
+            number three times. */}
       </section>
 
-      <section className="page-section">
-        <h2 style={{ margin: 0 }}>{text("members.cannotYet")}</h2>
-        <p className="muted" style={{ margin: 0 }}>{text("members.cannotLead")}</p>
-        <dl className="facts">
-          {/* **The server's own sentence is in the data and the reader gets the catalogue's.**
-              `search_is_not_available_because` is the authority for *what* the gap is, and it
-              is English by construction -- rendering it put an English paragraph under an
-              Arabic heading. The key says the same thing in the reader's language. */}
-          <Gap locale={locale} label="members.noSearch" why={UNANSWERABLE.search} />
-          <Gap locale={locale} label="members.noQuickFilters" why={UNANSWERABLE.quickFilters} />
-          <Gap locale={locale} label="members.missingColumns" why={UNANSWERABLE.columns} />
-          <Gap locale={locale} label="members.noSavedViews" why={UNANSWERABLE.savedViews} />
-          <Gap locale={locale} label="members.noBulk" why={UNANSWERABLE.bulkActions} />
-          <Gap locale={locale} label="members.noExport" why={UNANSWERABLE.export} />
-        </dl>
-      </section>
+      <NotYet locale={locale} items={["members.noSearch", "members.noQuickFilters", "members.missingColumns", "members.noSavedViews", "members.noBulk", "members.noExport"]} />
     </Shell>
   );
 }
 
-function Gap({
-  locale,
-  label,
-  why,
-}: {
-  locale: "en" | "ar";
-  label: MessageKey;
-  why: MessageKey;
-}) {
-  return (
-    <>
-      <dt className="muted">{t(locale, label)}</dt>
-      <dd style={{ margin: 0 }}>{t(locale, why)}</dd>
-    </>
-  );
-}
 
 /**
  * A stored membership word, in the reader's language, or as stored when it is unknown.
@@ -427,6 +391,7 @@ function Shell({
   locale,
   children,
   action,
+  lead,
 }: {
   locale: "en" | "ar";
   children: React.ReactNode;
@@ -437,6 +402,8 @@ function Shell({
    * and this is the only way to reach it.
    */
   action?: React.ReactNode;
+  /** The count this screen is about, already formatted in the reader's numerals. */
+  lead?: string;
 }) {
   // **Compact density, which the design states for this screen.** `data-density` redefines
   // the row height, the spacing step and the body type step and nothing else -- colour,
@@ -448,12 +415,23 @@ function Shell({
   // question rather than delaying one.
   return (
     <div className="stack" data-density="compact">
-      <div className="ds-page-head">
-        <div className="ds-page-head-text">
-          <h1 style={{ margin: 0 }}>{t(locale, "members.title")}</h1>
-        </div>
-        {action === undefined ? null : <div className="ds-page-head-end">{action}</div>}
-      </div>
+      {/* **`PageHeader`, not a copy of it.** This hand-rolled the component's own markup,
+          which §8 forbids outright -- and a copy drifts: the real one carries a figures slot
+          this one did not have, so the member count ended up in a footer line at the bottom
+          of the page instead. */}
+      <PageHeader
+        title={t(locale, "members.title")}
+        {...(action === undefined ? {} : { actions: action })}
+      />
+      {lead === undefined ? null : (
+        /* **The screen's own subject, at the screen's own scale.** The count lived in a
+            14px footer under the table -- the number a reader opens the members list to see,
+            set smaller than the rows. The design publishes a 13-to-88px scale and the
+            product was rendering the bottom of it. */
+        <MetricRow label={t(locale, "members.title")}>
+          <MetricCell label={t(locale, "members.title")} value={lead} />
+        </MetricRow>
+      )}
       {children}
     </div>
   );

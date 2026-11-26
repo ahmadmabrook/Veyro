@@ -27,10 +27,15 @@ test("the Latin scale is the thirteen tokens the design system publishes", () =>
   // The figure registers lead the scale, because the signature move is the numeral: a
   // quantity is the largest thing on the page, not a label above a heading.
   assert.deepEqual(TOKEN_NAMES.slice(0, 3), ["type.figure", "type.figureSm", "type.display"]);
-  assert.equal(LATIN_SCALE["type.body"].sizePx, 14.5);
-  assert.equal(LATIN_SCALE["type.body"].lineHeight, 1.6);
-  assert.equal(LATIN_SCALE["type.data"].sizePx, 13.5);
-  assert.equal(LATIN_SCALE["type.figure"].sizePx, 72);
+  assert.equal(LATIN_SCALE["type.body"].sizePx, 16);
+  assert.equal(LATIN_SCALE["type.body"].lineHeight, 1.45);
+  assert.equal(LATIN_SCALE["type.data"].sizePx, 15);
+  assert.equal(LATIN_SCALE["type.figure"].sizePx, 88);
+  // **The scale runs 6.8x from the smallest token to the largest**, which is where the
+  // hierarchy comes from in a flat world with no ornament to spend. A scale that ran 3x
+  // would need something else to tell a figure from a footnote.
+  const sizes = TOKEN_NAMES.map((n) => LATIN_SCALE[n].sizePx);
+  assert.ok(Math.max(...sizes) / Math.min(...sizes) >= 6, "the scale has lost its range");
   // There is no eyebrow register. It was a 10px tracked token whose only use was the kicker
   // the craft floor bans, and which Arabic could never set because tracking breaks the joins.
   assert.ok(!TOKEN_NAMES.includes("type.eyebrow"));
@@ -59,8 +64,8 @@ test("Arabic gains 0.15 line-height at every size", () => {
     );
   }
   // The foundations' own worked example: body is 1.60 Latin and 1.75 Arabic.
-  assert.equal(resolveType("type.body", "latin").lineHeight, 1.6);
-  assert.equal(resolveType("type.body", "arabic").lineHeight, 1.75);
+  assert.equal(resolveType("type.body", "latin").lineHeight, 1.45);
+  assert.equal(resolveType("type.body", "arabic").lineHeight, 1.6);
 });
 
 // --- rule 2: size floor 13px --------------------------------------------------------------
@@ -74,16 +79,17 @@ test("no Arabic token renders below the 13px floor", () => {
   }
 });
 
-test("the one token under the floor is Latin-only and is raised, not shrunk", () => {
-  // type.caption is 11.5 and has no Arabic substitute: it resolves up to the floor. It is the
-  // only token under 13 now, because the 10px eyebrow register is gone.
-  assert.equal(LATIN_SCALE["type.caption"].sizePx, 11.5);
-  assert.equal(resolveType("type.caption", "arabic").sizePx, 13);
-  // Two tokens sit under the floor and they are handled differently, which is the
-  // distinction worth pinning: `type.label` is raised to 13 and keeps its own identity,
-  // while `type.caption` is declared Latin-only and has no Arabic form at all.
+test("no Latin token sits under the floor the system sets for Arabic", () => {
+  // **This used to assert that one did, and raising the scale is why it does not.**
+  // `type.caption` was 11.5 and `type.label` 12, both under the 13px minimum this system
+  // enforces for Arabic -- so the same screen set Latin under a bar it had set for itself,
+  // and the test pinned the mechanism that rescued the Arabic half. The finding was never
+  // "a token is under the floor"; it was that a floor applies to both scripts or it is not
+  // a floor. Both are 13 now and the rescue has nothing to rescue.
   const under = TOKEN_NAMES.filter((n) => LATIN_SCALE[n].sizePx < ARABIC_SIZE_FLOOR);
-  assert.deepEqual(under, ["type.label", "type.caption"]);
+  assert.deepEqual(under, [], `these set Latin below the Arabic floor: ${under.join(", ")}`);
+  // The raise still works, and is still what would happen: asserted on the token that was
+  // rescued, which now needs no rescuing and must therefore keep its own size.
   assert.equal(resolveType("type.label", "arabic").sizePx, 13);
   assert.equal(resolveType("type.label", "arabic").name, "type.label");
 });
@@ -188,11 +194,16 @@ test("the four rules this module cannot enforce are the ones a component must", 
 test("the four density modes carry a minimum target size", () => {
   assert.equal(DENSITY.length, 4);
   assert.deepEqual(DENSITY.map((d) => d.name), ["Compact", "Default", "Touch", "Spacious"]);
-  // Touch and Spacious are the hand-operated ones and both reach 44px, which is the floor a
-  // tap target needs. Compact is a mouse-and-keyboard grid at 32.
-  assert.equal(DENSITY.find((d) => d.name === "Touch").minTargetPx, 44);
-  assert.equal(DENSITY.find((d) => d.name === "Spacious").minTargetPx, 44);
-  assert.equal(DENSITY.find((d) => d.name === "Compact").minTargetPx, 32);
+  // Touch and Spacious are the hand-operated ones and both clear 44px, which is the floor a
+  // tap target needs. **The floor is asserted rather than the value**: the targets rose with
+  // the type scale, and a test pinning 44 exactly would fail the next time they are
+  // generous rather than the next time they are too small.
+  for (const name of ["Touch", "Spacious"]) {
+    assert.ok(DENSITY.find((d) => d.name === name).minTargetPx >= 44, name);
+  }
+  // Compact is a mouse-and-keyboard grid and is the one mode allowed under the tap floor.
+  assert.ok(DENSITY.find((d) => d.name === "Compact").minTargetPx >= 32);
+  assert.ok(DENSITY.find((d) => d.name === "Compact").minTargetPx < 44);
 });
 
 test("Front Desk and Kiosk density is not user-selectable, and the data says so", () => {

@@ -3,10 +3,10 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 
 import { Banner } from "@/components/ds/banner";
+import { NotYet } from "@/components/not-yet";
 import { DataGrid } from "@/components/ds/data-grid";
 import { MoneyValue } from "@/components/ds/money-value";
 import { PageHeader } from "@/components/ds/page-header";
-import { Prose } from "@/components/prose";
 import { RecordHeader } from "@/components/ds/record-header";
 import { Timeline, TimelineItem } from "@/components/ds/timeline";
 import { fill, formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
@@ -360,15 +360,7 @@ export default async function InvoicePage({
 
         {/* The canvas's own immutability note, as a product fact rather than a caption --
             and the two actions it draws that this build does not have. */}
-        <section className="page-section">
-          <h2 style={{ margin: 0 }}>{text("invoice.notYet")}</h2>
-          <dl className="facts">
-            <Fact label={text("invoice.noTakePaymentTitle")}>
-              <Prose>{text("invoice.noTakePaymentWhy")}</Prose>
-            </Fact>
-            <Fact label={text("invoice.noEditTitle")}>{text("invoice.noEditWhy")}</Fact>
-          </dl>
-        </section>
+        <NotYet locale={locale} items={["invoice.noTakePaymentTitle", "invoice.noEditTitle"]} />
       </div>
     </div>
   );

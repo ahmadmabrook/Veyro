@@ -1,9 +1,17 @@
 import { redirect } from "next/navigation";
 
 import { Banner } from "@/components/ds/banner";
+import { MetricCell, MetricRow } from "@/components/ds/metric-cell";
 import { PageHeader } from "@/components/ds/page-header";
 import { DataGrid } from "@/components/ds/data-grid";
-import { fill, formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
+import {
+  fill,
+  formatInteger,
+  t,
+  type Locale,
+  type MessageKey,
+  type Numbering,
+} from "@/i18n/locale";
 import {
   ApiError,
   currentSession,
@@ -92,17 +100,31 @@ export default async function OperationsPage() {
   return (
     <div className="stack">
       <PageHeader title={text("ops.title")}
-        figures={
-          <>
-            {fill(locale, "ops.pendingCounted", { count: health?.pending_events ?? 0 }, numbering)}
-            {" \u00b7 "}
-            {fill(locale, "ops.deliveriesCounted",
-              { count: health?.pending_deliveries ?? 0 }, numbering)}
-            {" \u00b7 "}
-            {fill(locale, "ops.deadCounted", { count: health?.dead_letters ?? 0 }, numbering)}
-          </>
-        }
+        figures={fill(locale, "ops.deliveriesCounted",
+          { count: health?.pending_deliveries ?? 0 }, numbering)}
        />
+
+      {/* **The two figures that are faults, out of a line of three.** A pending delivery is
+          expected here -- no name in this build has a handler -- so it stays on the figures
+          line; a pending *event* that persists is a relay that is down, and a dead letter is
+          a fault whatever else is true. Both were rendered at `type.bodySm` beside the one
+          clause that means nothing is wrong.
+
+          **A refused read is not a zero**, which matters more here than anywhere: the
+          figures line coalesces an absent health read to `0`, and a *large* zero over
+          "events waiting to be dispatched" would read as an empty outbox -- the one reading
+          that is always wrong. The cells make the same distinction `Gated` makes below, from
+          the same gate answer and the same two keys. */}
+      <MetricRow label={text("ops.outbox")}>
+        <MetricCell
+          label={text("ops.pendingEvents")}
+          {...outboxFigure(mayEvents, health?.pending_events, locale, numbering)}
+        />
+        <MetricCell
+          label={text("ops.deadLetters")}
+          {...outboxFigure(mayEvents, health?.dead_letters, locale, numbering)}
+        />
+      </MetricRow>
 
       <section className="page-section">
         <h2 style={{ margin: 0 }}>{text("ops.outbox")}</h2>
@@ -379,6 +401,41 @@ export default async function OperationsPage() {
  * dead-letter table and is shown an empty one concludes nothing is quarantined, which is a
  * different fact from "you may not see what is".
  */
+/**
+ * One outbox figure for the metric row, and the distinction it carries.
+ *
+ * The figures line reads `health?.pending_events ?? 0`, which is honest enough at
+ * `type.bodySm` beside two other clauses and is not at figure size: a large zero over "events
+ * waiting to be dispatched" says the outbox is clear, which is the one reading that is always
+ * wrong. So the three states stay apart, using the same gate answer and the same two message
+ * keys `Gated` uses for the sections below -- a refusal names what the session may not see,
+ * and a failed read says so rather than reporting a measurement nobody made.
+ */
+function outboxFigure(
+  gate: GateAnswer,
+  value: number | undefined,
+  locale: Locale,
+  numbering: Numbering,
+) {
+  if (!gate.allowed) {
+    return {
+      freshness: "unavailable" as const,
+      unavailableBecause: t(locale, gateMessage(gate)),
+    };
+  }
+  if (value === undefined) {
+    return {
+      freshness: "unavailable" as const,
+      unavailableBecause: t(locale, "error.unexpected"),
+    };
+  }
+  return {
+    value: (
+      <span className="data" dir="ltr">{formatInteger(value, numbering)}</span>
+    ),
+  };
+}
+
 function Gated<T>({
   gate,
   value,

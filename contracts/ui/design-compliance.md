@@ -3546,3 +3546,160 @@ holds one pending row, and the row that separates them is an *expired* invitatio
 can write: `expires_at` is `now() + make_interval(days => N)` with a one-day floor, so the
 window's two ends come from one clock. Its case is a hand-built row in the component suite,
 which is the only place that distinction exists.
+
+## The redesign's second pass — what rendering the screens found that no check could
+
+The first pass rebuilt the palette, the type scale and the density from the owner's two
+colours. This one is what came of opening the result and reading it, which is the instrument
+this project already records as the only one that catches a whole class of defect: the
+schedule board's wrong timezone, seven surfaces scrolling sideways at phone width, and the
+duplicated priority-collapse cells were all found that way and none of them by an assertion.
+
+Four findings, each a measurement rather than a preference.
+
+**A green badge above "4 classes have no coach".** `color.category.staffing` held `turf`, the
+success green. Every structural check passed — the contrast table rates the pairing, the token
+sits in the `category` namespace rather than the semantic one, and the hue is 148 degrees from
+the primary as guardrail G2 wants. What no check can rate is that green means *fine* to every
+reader who has ever used software, so the field was contradicting the row it labelled. It is
+`ai-600` now. The reasoning is on the token: indigo is the one remaining hue with no status
+reading, and sharing it with the AI role is not a collision because AI is a wash with a border
+and never a solid field. The other three categories were safe throughout, because their
+semantic readings agree with their contents.
+
+**A navigation label at 13px.** `type.label` is the step this system reserves for a figure's
+caption and a column header — read once to orient, then ignored. A rail item is a target
+somebody hits twenty times a shift, often standing at a counter rather than sitting at a desk.
+Measured before changing anything: an inactive item is 5.94:1 against the plum field and the
+current one 15.35:1, so contrast was never the problem. It is `type.h4` (15px).
+
+**A seven-word apology under the largest figure on the product.** The Command Center's money
+cell read "no figure for last month to compare against · pace JOD 83.31", which put the one
+number a manager can act on at the end of the line behind a statement of what is missing. The
+pace leads where there is no baseline; with a baseline the comparison leads, because the delta
+arrow above it is its subject. `cc.noBaseline` and `cc.noUsual` are "first month on record"
+and "first {weekday} on record" — the same fact, framed as a record rather than an absence.
+
+**Three ways of saying "nothing here" in one table row.** The members list rendered "No member
+profile", "None found" and an em dash in adjacent cells. Each is defensible alone — the first
+distinguishes a lead from a member, the second is a bounded read saying it *looked* rather
+than claiming nothing exists — and together they made a column of sentences competing at body
+weight with the rows that carry a figure. `.ds-absent` is the one treatment, and the rule it
+encodes is not "use one phrase": it is **an absent value never reads as loudly as a present
+one**, which the em-dash cells already did by construction and the worded ones did not.
+
+### And the prose, which was the largest single change
+
+Thirty-five `ProseNote` blocks came off eighteen screens — and clearing the keys behind them
+took **189 message keys out of the catalogue, 21,015 characters of English and the same again
+in Arabic** — explanation that a gym operator could not act on: why a column shows an id, why a figure is
+derived the way it is, which module owns a fact, what this build waits on. Three independent
+passes judged them against one test — *does a reader do something different because of this
+sentence?* — and the ones that survived are the ones where the answer is yes: that every share
+on the attendance chart is of the busiest hour and never of capacity; that the revenue
+breakdown is net while the header figure is gross; that a space with no stated capacity does
+not bind rather than binding at zero.
+
+Six more were reworded rather than removed, because the fact was needed and the wording was
+written for whoever maintains Veyro: a claim about what "the design" breaks down by, a trial
+card naming three modules and their read permissions, a dispute note explaining its own
+derivation. And three `dl.facts` gap lists became one `NotYet` line each — the acts a screen
+does not perform are a fact an operator needs; which provider each waits on, and that the
+owner reserves real expenditure, are governance.
+
+**What that cost, and what it is worth knowing for the next pass.** Removing a sentence
+breaks every test that asserted it, and each one is the question this repository already
+asks of a closed gap: *was this asserting the finding, or a consequence of the prose being
+there?* `lost.spec` asserted "the stage does not move" beside the stage itself — the stage is
+the assertion, so it now reads the metric where a reader reads it, and asserts the sentence's
+*absence* so a revert is noticed. `trial.spec` asserted a clause disclaiming a prediction;
+the refusal to predict is carried by the cell's label, so it asserts that the word
+"likelihood" is nowhere on the page. One mutation anchor in `mutate.mjs` pointed at a deleted
+line and was re-pointed at the live protection rather than deleted with it.
+
+### A message key with no reader
+
+Clearing the prose left orphaned declarations behind it — strings nobody could reach, in two
+catalogues. `MESSAGE_KEYS` cannot see them, because it compares the two catalogues *against
+each other* and a key missing from neither is a key it is happy with. That is this project's
+most-repeated finding (a declared value nothing writes) in the one file that holds 2,700 of
+them, and it matters past dead weight: a leftover key is the only trace that a screen used to
+say something, so a reader greps the catalogue, finds the sentence, and concludes the product
+says it.
+
+`tests/unit/message-keys-have-readers.test.mjs` is the sweep, and **the bug it was written
+after is the reason it walks the tree rather than matching a pattern.** The first sweep used
+a git pathspec — and a pathspec is a glob, so `[zoneId]` in a dynamic route's path is a
+*character class*: every file under `src/app/access/[zoneId]/`, `src/app/people/[personId]/`
+and nine more directories was silently excluded, sixty-two live keys were reported as orphans,
+and `tsc` is what caught it. A recursive `readdirSync` has no glob semantics at all. The test
+asserts that the walk reaches a bracketed directory, so it cannot pass by having looked at
+nothing.
+
+### Two navigation controls found by their keys going orphan
+
+The sweep's real value showed up immediately: `staff.openRecord` came back unreferenced, which
+meant the staff record had **no link to the person record** — the cross-link had been sitting
+inside the gap section that was replaced, which is where a navigation control goes to be lost.
+It is a `RecordHeader` action now, beside the name, which is where a reader looks for it. And
+the lost-lead panel rendered an `h2` reading "Mark lost" directly above a link reading "Mark
+lost"; the heading is drawn only in the states that have something to name.
+
+### What the two new sweeps found, including about themselves
+
+**The orphan sweep's first version had a substring trap aimed at exactly the keys it was
+for.** It asked `body.includes(key)`, and `attendanceReport.gapClassFill` is a prefix of
+`attendanceReport.gapClassFillLabel` — the label renders, the body does not, and the body read
+as referenced. Every `…Title`/`…Why` and `…Label`/`…Body` pair in this app has that shape,
+which is most of the gap notes, so the trap covered the population the sweep exists to find.
+Matching the key as a whole quoted token found **26 more**, and those 26 were the long ones:
+before the fix the longest string a screen rendered measured 1,815 characters, and after it
+461. The walls of text were not on any screen; they were in the catalogue being counted as
+though they were.
+
+**A screen writing a component's class is the §8 deviation, and nothing could see it.** The
+reports index rendered "Not here yet" twice with a rule between the two, because the export
+gate kept a hand-rolled copy of `NotYet`'s own markup beside the component — which also
+rendered the component's heading `id` twice, so the second region was unreachable by name.
+The class is defined, so the undefined-class sweep passes; both copies render, so every
+assertion about text passes. `ds-usage.test.mjs` now refuses a screen that writes a class its
+component owns, and it found **five more on its first run**: three screens hand-rolling
+`ds-page-head`, one hand-rolling `ds-metric-row`, and the revenue report reaching into
+`ds-metric-delta` for a table column.
+
+Fixing those five was the useful part. `PageHeader`'s `title` was typed `string`, which is
+why three screens hand-rolled the whole component rather than widen it — a record's name
+beside a withheld marker is a composed title, and the type was making the deviation
+unavoidable. It takes a `ReactNode`. And the delta is its own component now, because
+`MetricCell` and the revenue table were drawing the same signed change from two copies of the
+same markup; the second was written on a day they agreed and nothing kept them agreeing.
+
+**A second filter-chip component, under a second name.** `.ds-segmented` and
+`.ds-filter-chip` both drew "pick one of these and the page changes", on two screens against
+ten — and they were not even consistent, because a segmented link carried
+`border: 1px solid transparent` so an unselected option read as plain text while an unselected
+chip carries a visible edge and reads as a control. The tell was a reader not seeing that
+"Needs action · 5" on the payments ledger was pressable. `.ds-segmented` is gone.
+
+**And a bordered, rounded, button-shaped element nobody could press.** The Command Center drew
+the one period it can answer as `.ds-segment-current` — the shape of every pressable thing in
+this system — at the end of its header row. A false affordance is worse than an absent
+control: a reader reaches for it, nothing happens, and what they learn is that this product's
+controls are unreliable. The period is a scope statement in the header's own line now, beside
+"all locations" and the as-of, which is where a reader is already looking for what they are
+looking at.
+
+### The gap list that said two built things were missing
+
+Converting the titled gap sections to one line each kept the *titles*, and a title whose
+retired body read "this works, that does not" became a false claim on its own. The staff board
+listed "Invite someone" as something it does not do, directly beneath the control in its own
+header that does it, and "A club manager seeing only their own club", which ADR-0014 made true
+for that exact route. Both bodies had carried the distinction; the titles alone could not.
+
+The remedy is one item naming the half that is genuinely absent — the invitation and its
+seven-day link are written and nothing sends them — and a sweep over every `NotYet` item key
+against its retired body, looking for a body that says the thing is partly built. **Two more
+flagged and both were correct as they stood**, which is the outcome that makes the sweep worth
+having run: the conversion was sound everywhere else, and this is the evidence rather than the
+hope.

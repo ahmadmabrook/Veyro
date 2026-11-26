@@ -2,12 +2,13 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { Banner } from "@/components/ds/banner";
+import { NotYet } from "@/components/not-yet";
 import { DataGrid } from "@/components/ds/data-grid";
+import { MetricCell, MetricRow } from "@/components/ds/metric-cell";
 import { MoneyValue } from "@/components/ds/money-value";
 import { PageHeader } from "@/components/ds/page-header";
-import { Prose, ProseNote } from "@/components/prose";
 import { Withheld } from "@/components/withheld";
-import { fill, t, type Locale, type MessageKey } from "@/i18n/locale";
+import { fill, formatInteger, t, type Locale, type MessageKey } from "@/i18n/locale";
 import { currentSession, failureMessage, gateAll, gateMessage, gateVerdict } from "@/lib/api";
 import { numerals } from "@/lib/display";
 import { presentation } from "@/lib/preferences";
@@ -176,25 +177,43 @@ export default async function RecoveryPage({
   return (
     <Shell
       locale={locale}
+      // **The two figures the workspace is about are promoted out of the figures line.** This
+      // screen's argument is that a batch of failed payments is one decision, and the two
+      // quantities that decision is made on — how many, and how much — were rendered at
+      // `type.bodySm` beside the scope clauses, which made the amount the tenant is chasing
+      // the same size as "no access blocked". The two derived clauses stay on the line: they
+      // are statements about the set rather than measurements of it.
+      metrics={
+        workspace.count === 0 ? undefined : (
+          <MetricRow label={text("recovery.heading")}>
+            <MetricCell
+              label={text("recovery.listTitle")}
+              value={<span className="data" dir="ltr">
+                {formatInteger(workspace.count, numbering)}
+              </span>}
+            />
+            {/* `owed` — money the tenant is chasing, which is the kind this figure is and
+                the reason it is red in the canvas. */}
+            {atRisk === null ? null : (
+              <MetricCell
+                label={text("recovery.amount")}
+                value={
+                  <MoneyValue
+                    kind="owed"
+                    amountMinor={atRisk.amount_minor}
+                    currency={atRisk.currency}
+                  />
+                }
+              />
+            )}
+          </MetricRow>
+        )
+      }
       figures={
         workspace.count === 0 ? (
           text("recovery.noneOpen")
         ) : (
           <>
-            {fill(locale, "recovery.failedCount", { count: workspace.count }, numbering)}
-            {atRisk === null ? null : (
-              <>
-                {" · "}
-                {/* `owed` — money the tenant is chasing, which is the kind this figure is
-                    and the reason it is red in the canvas. */}
-                <MoneyValue
-                  kind="owed"
-                  amountMinor={atRisk.amount_minor}
-                  currency={atRisk.currency}
-                />
-              </>
-            )}
-            {" · "}
             {/* **Both clauses are derived on the server, not typed here.** "All retries
                 exhausted" is true when no case is still waiting on an automatic attempt,
                 and "no access blocked" when every stage recommends `none`. A header that
@@ -394,7 +413,10 @@ export default async function RecoveryPage({
                 />
               ))
             )}
-            <ProseNote>{text("recovery.serviceMessage")}</ProseNote>
+            {/* Removed: a paragraph explaining that the preview is an unfilled template,
+                that a dispatcher would pick the member's language, and which categories a
+                preference may mute. Nothing on this screen sends, so no reader action
+                turns on it. */}
           </section>
         </>
       )}
@@ -408,19 +430,7 @@ export default async function RecoveryPage({
       </p>
 
       {/* What this screen cannot do. */}
-      <section className="page-section">
-        <h2 style={{ margin: 0 }}>{text("recovery.notYet")}</h2>
-        <dl className="facts">
-          <dt className="muted">{text("recovery.sendTitle")}</dt>
-          <dd style={{ margin: 0 }}><Prose>{text("recovery.sendWhy")}</Prose></dd>
-          <dt className="muted">{text("recovery.linkTitle")}</dt>
-          <dd style={{ margin: 0 }}><Prose>{text("recovery.linkWhy")}</Prose></dd>
-          <dt className="muted">{text("recovery.cardTitle")}</dt>
-          <dd style={{ margin: 0 }}><Prose>{text("recovery.cardWhy")}</Prose></dd>
-          <dt className="muted">{text("recovery.consentTitle")}</dt>
-          <dd style={{ margin: 0 }}><Prose>{text("recovery.consentWhy")}</Prose></dd>
-        </dl>
-      </section>
+      <NotYet locale={locale} items={["recovery.sendTitle", "recovery.linkTitle", "recovery.cardTitle", "recovery.consentTitle"]} />
     </Shell>
   );
 }
@@ -505,10 +515,17 @@ function Shell({
   locale,
   children,
   figures,
+  metrics,
 }: {
   locale: Locale;
   children: React.ReactNode;
   figures?: React.ReactNode;
+  /**
+   * The metric row, immediately under the header. A slot rather than the first child, because
+   * the refusal and read-failure returns on this page have a header and nothing to measure,
+   * and an empty set already has a banner that says so in a sentence.
+   */
+  metrics?: React.ReactNode;
 }) {
   return (
     <div className="stack">
@@ -516,6 +533,7 @@ function Shell({
         title={t(locale, "recovery.heading")}
         {...(figures ? { figures } : {})}
       />
+      {metrics}
       {children}
     </div>
   );

@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { Banner } from "@/components/ds/banner";
 import { DataGrid } from "@/components/ds/data-grid";
 import { fill, formatInteger, t, type MessageKey } from "@/i18n/locale";
+import { MetricCell, MetricRow } from "@/components/ds/metric-cell";
 import { PageHeader } from "@/components/ds/page-header";
 import { currentSession, gate, failureMessage, gateMessage } from "@/lib/api";
 import { listDuplicateCandidates, type DuplicateCandidate } from "@/lib/people";
@@ -53,16 +54,20 @@ export default async function PeoplePage() {
           file's comments; what it cannot do is at the foot. See `PageHeader`. */}
       <PageHeader
         title={text("people.title")}
-        figures={
-          may.allowed && failed === null ? (
-            <>
-              {fill(locale, "people.pairsWaiting", { count: candidates.length }, numbering)}
-              {" \u00b7 "}
-              {text("members.scope")}
-            </>
-          ) : undefined
-        }
+        figures={may.allowed && failed === null ? text("members.scope") : undefined}
       />
+      {/* **The queue's depth is the figure, at the figure's size.** It was a 14px clause in
+          the figures line beside the scope, which is the defect the type scale exists to
+          stop: the number a reader opens this page to see was set at the size of a footnote.
+          The scope stays above, because it is a qualifier rather than a quantity. */}
+      {may.allowed && failed === null ? (
+        <MetricRow label={text("people.title")}>
+          <MetricCell
+            label={text("people.duplicates")}
+            value={formatInteger(candidates.length, numbering)}
+          />
+        </MetricRow>
+      ) : null}
       <section className="page-section">
         <h2 id="duplicates-heading" style={{ margin: 0 }}>
           {text("people.duplicates")}

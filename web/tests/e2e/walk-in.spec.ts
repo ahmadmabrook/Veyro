@@ -125,11 +125,9 @@ test.describe("the walk-in form at an ordinary sign-in", () => {
 
   test("names the three parts of the design it does not do, and why", async ({ page }) => {
     const gaps = page.locator(".ds-walk-in-gaps");
-    await expect(gaps.getByRole("term").filter({ hasText: "Selling the membership" }))
-      .toBeVisible();
-    await expect(gaps.getByRole("term").filter({ hasText: "An emergency contact" }))
-      .toBeVisible();
-    await expect(gaps.getByRole("term").filter({ hasText: "The waiver" })).toBeVisible();
+    await expect(gaps).toContainText("Selling the membership");
+    await expect(gaps).toContainText("An emergency contact");
+    await expect(gaps).toContainText("The waiver");
   });
 
   test("states the mechanism the canvas's own footnote states", async ({ page }) => {

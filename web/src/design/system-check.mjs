@@ -157,6 +157,37 @@ for (const [name, where] of [...asked].sort()) {
   );
 }
 
+// --- 4. no raw font-size outside the token layer ----------------------------------------
+
+/**
+ * **Seventeen declarations bypassed the scale, three of them at 9.5px.** A person's name was
+ * 12.5px on their own record, the whole member timeline sat between 9.5 and 12.5, and the
+ * tabs were 11.5 -- all below `type.caption`, which is itself the floor this system enforces
+ * for Arabic. 9.5px is under Apple's 10pt macOS minimum and under the smallest token in any
+ * design system surveyed.
+ *
+ * `tokens:check` guards hand-edits to the *generated* file and saw none of this, because a
+ * raw `font-size` in a component rule is not an edit to the generated file. That is the gap:
+ * a scale is only a scale if everything reads it.
+ */
+for (const [file, text] of read) {
+  if (!file.endsWith(".css") || file.includes("tokens.generated")) continue;
+  // **`em` is allowed and `px`/`rem` are not.** An `em` size is a ratio of the element it
+  // sits inside, so it follows whatever token the parent reads -- the fils beside a figure
+  // are 0.34em precisely so they stay subordinate as the figure grows. An absolute size
+  // follows nothing.
+  for (const m of text.matchAll(/font-size:\s*([\d.]+)(px|rem)\b/g)) {
+    const before = text.slice(Math.max(0, m.index - 200), m.index);
+    const line = before.slice(before.lastIndexOf("\n") + 1);
+    // A `--type-*` custom property being *defined* is the token layer itself.
+    if (/^\s*--type-/.test(line)) continue;
+    failures.push(
+      `${rel(file)} sets a raw ${m[1]}${m[2]} font-size\n` +
+        `    every size reads a --type-* token, or the scale is decoration`,
+    );
+  }
+}
+
 // --- 4. no monospace --------------------------------------------------------------------------
 
 for (const [file, text] of read) {

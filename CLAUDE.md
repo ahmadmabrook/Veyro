@@ -6096,6 +6096,52 @@ identity and a paid invoice in the brand colour reads as a highlight rather than
 error moved to a true red and AI to an indigo, because at 37 and 57 degrees from the new
 primary a refusal and an inference would both have read as the brand.
 
+**And "green survives in exactly one job" was false for a week, which is what rendering a
+screen and reading it is for.** The staffing *category* field held the success green, and the
+Command Center draws that badge directly above "4 classes have no coach" -- so the colour every
+reader has learned to mean "fine" sat on top of the thing needing them. Nothing structural
+could see it: the contrast table passes either way, the token is in its own `category`
+namespace rather than the semantic one, and both halves were individually defensible. It is
+the AI indigo now, which is the one remaining hue with no status reading and is not a collision
+because AI is a wash with a border and never a solid field. The other three categories were
+safe throughout, because their semantic readings agree with their contents -- money is money, a
+compliance item is a filing at risk, a retention item is a loss. **A palette rule is a claim
+about what is on screen, so it is checked the way every other claim here is: by looking.**
+
+**Three other things came out of the same look, and all three were measurements rather than
+opinions.** A navigation label was set at `type.label` (13px), the step the system reserves for
+a figure's caption and a column header -- things read once to orient and then ignored -- while
+a rail item is a target somebody hits twenty times a shift, often standing at a counter; its
+contrast was never the problem (5.94:1 inactive, 15.35:1 current) and its size was, so it is
+`type.h4` at 15px. The Command Center's hero figures carried a seven-word apology directly
+beneath them -- "no figure for last month to compare against · pace JOD 83.31" -- which put the
+one number a manager can act on at the end of the line; the pace leads now, and the absence is
+"first month on record" rather than a sentence about comparison. And the members list said
+"nothing here" three ways in one row -- "No member profile", "None found" and an em dash, each
+defensible alone and together a column competing at body weight with the rows that carry a
+figure. `.ds-absent` is the one treatment: **an absent value never reads as loudly as a present
+one**, which is what the em-dash cells already did by construction.
+
+**And the two sweeps that pass went in because of what they found about themselves.**
+`tests/unit/message-keys-have-readers.test.mjs` refuses a message key nothing renders -- this
+build's "declared value nothing writes" in the one file holding 2,700 of them, and it matters
+past dead weight because a leftover key is the only trace that a screen used to say something,
+so a reader greps the catalogue, finds the sentence, and concludes the product says it. Its
+first version used a git pathspec to list the files, and a pathspec is a glob: `[zoneId]` in a
+dynamic route is a *character class*, so eleven directories were silently excluded and
+sixty-two live keys were reported as orphans. Its second used `includes`, and
+`attendanceReport.gapClassFill` is a prefix of `…gapClassFillLabel` -- the shape of every
+`…Title`/`…Why` pair in the app, so the trap was aimed at the population the sweep exists to
+find. Matching a whole quoted token found 26 more, and those were the long ones: the longest
+string a screen rendered went from 1,815 characters to 461. **The walls of text were not on
+any screen; they were in the catalogue being counted as though they were.** And
+`ds-usage.test.mjs` refuses a screen that writes a class its component owns -- the §8
+deviation -- which found a page rendering "Not here yet" twice with the component's heading
+id duplicated, three screens hand-rolling `ds-page-head` because `PageHeader`'s `title` was
+typed `string` and a composed title could not go in it, and a table reaching into
+`ds-metric-delta`. A sweep whose first two versions were wrong in opposite directions is the
+argument for mutating a checker before believing it.
+
 What that means for anybody reading the rest of this section: **the per-screen fidelity
 arguments below are a record of how each screen was reasoned about, not a specification to
 restore.** Where one of them cites a canvas in

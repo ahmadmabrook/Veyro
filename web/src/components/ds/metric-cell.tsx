@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 
+import { Delta } from "./delta";
+
 /**
  * MetricCell — and its `freshness` variant, which is `DS-CL-01` in the design's own change log.
  *
@@ -112,11 +114,7 @@ export function MetricCell({
               // The canvas: `display:flex;gap:7px;align-items:baseline;margin-top:5px`, the
               // delta in mono and the sentence beside it in sans.
               <div className="ds-metric-comparison">
-                {delta ? (
-                  <span className="ds-metric-delta data" data-tone={delta.tone}>
-                    {delta.text}
-                  </span>
-                ) : null}
+{delta ? <Delta text={delta.text} tone={delta.tone} /> : null}
                 {comparison !== undefined ? <span>{comparison}</span> : null}
               </div>
             ) : null

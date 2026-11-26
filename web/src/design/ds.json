@@ -216,7 +216,7 @@
     [
       "turf.light",
       "#7fc9a9",
-      "Dark success and the staffing category field."
+      "Dark success. Success is the whole of what green does in this palette -- the staffing category took this token until a green badge was found sitting above \"4 classes have no coach\"."
     ],
     [
       "ai.light",
@@ -467,9 +467,9 @@
     ],
     [
       "color.category.staffing",
-      "turf.600",
-      "turf.light",
-      "Staffing and delivery: rotas, unstaffed classes, devices."
+      "ai.600",
+      "ai.light",
+      "Staffing and delivery: rotas, unstaffed classes, devices. **Not green, and that is the one category colour this palette had to move.** Green means success everywhere a reader has ever seen it, and the rows under this badge are classes with no coach -- so a green field above \"4 classes have no coach\" tells somebody the thing needing them is fine. The other three categories are safe because their semantic readings agree with their contents: money is money, a compliance item is a filing at risk, a retention item is a loss. Indigo is the AI hue and carries no collision here, because AI is a wash with a border and never a solid field -- the two are different components, not two uses of one badge."
     ],
     [
       "color.category.money.text",
@@ -493,98 +493,98 @@
       "color.category.staffing.text",
       "bone.0",
       "ink.900",
-      "Text on the staffing field. Turf flips the same way: bone 6.81:1, then ink 9.94:1."
+      "Text on the staffing field. Indigo flips the same way as the other three: bone 7.93:1 on ai.600, then ink 8.46:1 on ai.light."
     ]
   ],
   "DARK_GAPS": [],
   "TYPE_SCALE": [
     [
       "type.figure",
-      "72 / 0.90",
+      "88 / 0.92",
       "700",
-      "-0.035em",
-      "The signature move. One quantity the operator reads first, set on a baseline with its unit and provenance beneath. Never inside a bordered tile, and never more than one register of it per region."
+      "-0.055em",
+      "The signature move. One quantity the operator reads first, set on a baseline with its unit and provenance beneath. Never inside a bordered tile, and never more than one register of it per region. At 88 against a 13px caption the scale runs 6.8x, which is where the hierarchy comes from rather than from ornament."
     ],
     [
       "type.figureSm",
-      "44 / 0.95",
+      "52 / 0.96",
       "700",
-      "-0.03em",
+      "-0.045em",
       "A secondary quantity in the same baseline, and the figure a phone collapses to."
     ],
     [
       "type.display",
-      "40 / 1.05",
+      "46 / 1.04",
       "700",
-      "-0.025em",
+      "-0.035em",
       "The opening sentence of a surface that leads with a verdict."
     ],
     [
       "type.h1",
-      "28 / 1.14",
+      "32 / 1.15",
       "700",
       "-0.02em",
       "Page title. One per screen."
     ],
     [
       "type.h2",
-      "20 / 1.25",
+      "23 / 1.26",
       "600",
       "-0.012em",
       "Section heading, sheet title, member name in a record header."
     ],
     [
       "type.h3",
-      "16 / 1.32",
+      "18 / 1.34",
       "600",
       "-0.008em",
       "Card title, subsection, exception headline."
     ],
     [
       "type.h4",
-      "14 / 1.36",
+      "15 / 1.38",
       "600",
       "0",
       "The smallest heading. Table group headers."
     ],
     [
       "type.bodyLg",
-      "15.5 / 1.60",
+      "17 / 1.50",
       "400",
       "0",
       "Reading copy on a surface at Spacious density."
     ],
     [
       "type.body",
-      "14.5 / 1.60",
+      "16 / 1.45",
       "400",
       "0",
-      "Body copy and table cells."
+      "Body copy and table cells. 16px: this is a tool somebody reads for hours, and the dominant reading size on a page is the size the product feels like."
     ],
     [
       "type.bodySm",
-      "13 / 1.55",
+      "14 / 1.43",
       "400",
       "0",
       "Dense tables and secondary copy."
     ],
     [
       "type.label",
-      "12 / 1.30",
+      "13 / 1.25",
       "600",
       "0.02em",
       "Field labels, column headers, the unit under a figure. Never a kicker above a heading."
     ],
     [
       "type.caption",
-      "11.5 / 1.40",
+      "13 / 1.38",
       "400",
       "0",
-      "Provenance and footnotes. Latin only; Arabic resolves to 13px."
+      "Provenance and footnotes. **13px, which is the floor rather than the smallest thing that fits.** It was 11.5 -- below the 13px minimum this system already enforces for Arabic, so the same screen set Latin under a bar it had set for itself. A size that is legible in one script and not the other is one script being served."
     ],
     [
       "type.data",
-      "13.5 / 1.20",
+      "15 / 1.20",
       "500",
       "0",
       "Tabular figures inside a grid. Archivo's tabular set, not a monospace costume."
@@ -876,34 +876,34 @@
   "DENSITY": [
     [
       "Compact",
-      "34 / 40px",
+      "40 / 44px",
       "−1 step",
-      "13px",
-      "32px",
+      "14px",
+      "36px",
       "Admin data grids, Console tenant lists, financial ledgers. Maximum rows per screen where scanning is the job."
     ],
     [
       "Default",
-      "40 / 48px",
+      "48 / 52px",
       "base",
-      "14.5px",
-      "36px",
+      "16px",
+      "40px",
       "Admin detail views, record inspectors, CRM, settings, forms."
     ],
     [
       "Touch",
-      "48 / 52px",
+      "56 / 60px",
       "+1 step",
-      "15.5px",
+      "17px",
       "44px",
       "Coach app, Front Desk, Kiosk, POS register. Never user-selectable on Front Desk or Kiosk."
     ],
     [
       "Spacious",
-      "56 / 64px",
+      "64 / 68px",
       "+2 steps",
-      "15.5px",
-      "44px",
+      "17px",
+      "48px",
       "Member app. Plus type.display and space.16 for first-run, milestones and progress moments."
     ]
   ],

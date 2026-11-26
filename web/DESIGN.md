@@ -218,7 +218,7 @@ decoration.
 | Money category | `gold-400` | `gold-light` |
 | Compliance category | `steel-600` | `steel-light` |
 | Retention category | `crimson-500` | `crimson-light` |
-| Staffing category | `turf-600` | `turf-light` |
+| Staffing category | `ai-600` | `ai-light` |
 
 **The action colour is the primary, and guardrail G2 is what makes that possible.** G2
 requires the action to sit a perceptual distance from success, warning and error. The retired
@@ -229,9 +229,17 @@ here: 51 degrees from error, 73 from AI, 97 from warning, 108 from info, 148 fro
 the shell field and the one pressable thing on the page are the same colour, which is what the
 brief asked for and what the old palette could not have given. A disabled action loses it.
 
-**Green survives in exactly one job: success.** It is a status rather than an identity -- a
-paid invoice rendered in the brand colour would be a state the eye reads as a highlight -- so
-`turf` carries success and the staffing category and nothing else.
+**Green survives in exactly one job: success**, and that sentence was false for as long as it
+took to look at a screen against it. It is a status rather than an identity -- a paid invoice
+rendered in the brand colour would be a state the eye reads as a highlight -- so `turf` carries
+success and nothing else. The staffing category held `turf` until the Command Center was
+rendered and a green badge was found sitting directly above **"4 classes have no coach"**:
+green means success everywhere a reader has ever seen it, so the field was telling somebody the
+thing needing them was fine. It is `ai-600` now, the one remaining hue with no status reading.
+That is not a collision with the AI role, because AI is a wash with a border and never a solid
+field -- two components rather than two uses of one badge. The other three categories were safe
+throughout, because their semantic readings agree with their contents: money is money, a
+compliance item is a filing at risk, a retention item is a loss.
 
 **Every text token clears AA on all three light grounds**, including the darkest — the CONTRAST
 table in `ds.json` publishes the measured ratio per token per surface and
@@ -283,13 +291,22 @@ and 56 collapsed; an inspector is 380 at bp.lg and 480 at bp.xl. Split view is l
 inspector, never three columns.
 
 Five breakpoints. At bp.xs the surface collapses to the single next decision with its figure
-monumental: the metric row stacks, figures drop to the 44px register, tables become
+monumental: the metric row stacks, figures drop to `type.figureSm` (52px), tables become
 drill-down lists rather than shrunken grids, and the rail becomes one bottom strip that
-scrolls inside itself rather than widening the page.
+scrolls inside itself rather than widening the page. The strip takes over at bp.md rather than
+bp.xs, because the intermediate state -- icons with no labels -- was a rail nobody could read
+between 600 and 1199.
 
 Four density modes change three things and nothing else — row height, spacing step and type
-step. Compact (34px rows) is for grids where scanning is the job; Touch (48px, 44px targets)
-is the front desk and is never user-selectable there.
+step. Compact (40/44px rows, 14px) is for grids where scanning is the job; Touch (56/60px,
+44px targets) is the front desk and is never user-selectable there.
+
+**A rail item is set at `type.h4`, not at the bottom of the scale.** It was `type.label`
+(13px), which the system reserves for a figure's caption and a column header -- things read
+once to orient and then ignored. A navigation label is a target somebody hits twenty times a
+shift, often standing at a counter rather than sitting at a desk, and 13px is where a reader
+starts leaning in. Contrast was never the problem: an inactive item measures 5.94:1 on the
+plum field and the current one 15.35:1. Size was.
 
 **Columns never move.** Data changes inside a stable grid, a row that reranks keeps its
 identity, and a row that changed holds its marker until it has been seen. A layout that

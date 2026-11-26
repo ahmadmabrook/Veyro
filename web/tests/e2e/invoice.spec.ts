@@ -101,10 +101,16 @@ test.describe("one invoice", () => {
   test("offers no edit and no take-payment, and says why", async ({ page }) => {
     // The canvas's own immutability note, which is a property of the schema here: the five
     // ledger tables are insert-only for both runtime roles.
-    const notYet = page.locator("section").filter({ hasText: "What this screen does not do" });
-    await expect(notYet).toContainText("insert-only for both runtime roles");
-    await expect(notYet.locator(".data").filter({ hasText: "finance.payment.take" }))
-      .toBeVisible();
+    const notYet = page.locator("section").filter({ hasText: "What this screen does not do yet" });
+    // The sentence that explained *why* this gap exists has gone with the section that
+    // held it: the names above are what a reader needs, and the reasoning is in
+    // `contracts/ui/design-compliance.md`.
+    // **The permission id has gone with the section.** It was rendered as `.data` in the
+    // retired definition list -- a dotted backend identifier on an operator's screen -- and
+    // what a reader needs is that neither act is offered here, which the names say and the
+    // two absent buttons below prove.
+    await expect(notYet).toContainText("Take payment");
+    await expect(notYet).toContainText("No edit, at any permission");
     await expect(page.getByRole("button", { name: /take payment/i })).toHaveCount(0);
     await expect(page.getByRole("button", { name: /edit/i })).toHaveCount(0);
   });

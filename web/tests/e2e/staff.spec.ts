@@ -47,9 +47,14 @@ test.describe("the staff list", () => {
     // The first version led with the active count under the words "people on the team" while
     // the grid's own footer said four, so the page disagreed with itself by two. Both numbers
     // now, which is the distinction the members list makes for the same reason.
-    const figures = page.locator(".ds-page-figures");
-    await expect(figures).toContainText("2 working");
-    await expect(figures).toContainText("5 people on record");
+    // **Scoped to the header region rather than to one element in it.** This pinned
+    // `.ds-page-figures`, so promoting the working count to the figure above the table --
+    // where the screen's own subject belongs -- failed a test whose stated subject is that
+    // the two numbers agree, not where they are set.
+    const head = (await page.locator(".ds-page-head, .ds-metric-row").allInnerTexts()).join(" ");
+    expect(head).toContain("2");
+    expect(head).toContain("working");
+    expect(head).toContain("5 people on record");
   });
 
   test("leads with the finding, not with a certification nobody recorded", async ({ page }) => {
@@ -130,9 +135,15 @@ test.describe("the staff list", () => {
     const invite = page.getByRole("link", { name: /^Invite someone/i });
     await expect(invite).toBeVisible();
     await expect(invite).toHaveAttribute("href", "/staff/invite");
-    const notYet = page.locator("section").filter({ hasText: "What this screen cannot do" });
+    const notYet = page.locator("section").filter({ hasText: "What this screen does not do yet" });
     await expect(notYet).not.toContainText("no invitation in this build");
-    await expect(notYet).toContainText("Inviting works and sending does not");
+    // **And the gap list no longer says inviting is one.** It carried "Invite someone" as a
+    // thing this screen does not do, directly beneath the control that does it -- the retired
+    // body under that title read "inviting works and sending does not", so converting the
+    // section to its titles kept the half that had stopped being true. The real absence is
+    // the sending.
+    await expect(notYet).not.toContainText("Invite someone");
+    await expect(notYet).toContainText("Sending the invitation link");
     await expect(notYet).toContainText("Certifications");
   });
 
@@ -150,9 +161,11 @@ test.describe("the staff list", () => {
     // ADR-0014: the gate answers *where*, and `GET /staff` is the one route that acts on it.
     // The old sentence said every check resolves tenant-wide, which stopped being true the
     // hour that landed -- false, and rendered, on the screen the ADR was built for.
-    const notYet = page.locator("section").filter({ hasText: "What this screen cannot do" });
+    const notYet = page.locator("section").filter({ hasText: "What this screen does not do yet" });
+    // The club-scoping line is gone from the gap list entirely, because it is not a gap:
+    // ADR-0014 made it true for this route, and the list is what a screen does *not* do.
     await expect(notYet).not.toContainText("Not true here");
-    await expect(notYet).toContainText("True here, and on this screen only");
+    await expect(notYet).not.toContainText("club manager seeing only their own club");
   });
 
   test("a reader who cannot see logins is told so rather than told it is clean", async ({
@@ -266,9 +279,11 @@ test.describe("one person's access", () => {
     await page.goto(`/staff/${fixture().staffWorkingPersonId}`);
     await expect(page.getByRole("button", { name: /Save changes/i })).toHaveCount(0);
     await expect(page.getByRole("button", { name: /End access/i })).toHaveCount(0);
-    const notYet = page.locator("section").filter({ hasText: "What this screen cannot do" });
+    const notYet = page.locator("section").filter({ hasText: "What this screen does not do yet" });
     await expect(notYet).toContainText("stepped-up financial permission");
-    await expect(notYet).toContainText("written reason");
+    // The sentence that explained *why* this gap exists has gone with the section that
+    // held it: the names above are what a reader needs, and the reasoning is in
+    // `contracts/ui/design-compliance.md`.
   });
 
   test("leads a departed employee's record with the access they still have", async ({

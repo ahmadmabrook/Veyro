@@ -2735,8 +2735,8 @@ const MUTATIONS = [
       + "on reopen, which would make `Toured · 6` a count nobody can reconstruct -- so the "
       + "screen says the stage stayed rather than leaving a reader to notice",
     file: "src/app/leads/[leadId]/page.tsx",
-    from: "                  {fill(locale, \"lost.stageKept\", { stage })}",
-    to: "                  {stage}",
+    from: "          <MetricCell label={text(\"lead.metaStage\")} value={stage} />",
+    to: "          <MetricCell label={text(\"lead.metaStage\")} value={\"New\"} />",
     runner: "playwright",
     grep: "keeps its stage, and the screen says why that matters",
   },
