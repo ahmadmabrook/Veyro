@@ -48,7 +48,18 @@ export type RotaDay = {
 
 export type RotaSession = {
   session_id: string;
-  label: string;
+  /**
+   * A class or a personal-training session. ADR-0019 — and until `0036` this was one state
+   * where the canvas draws two, which the gap note under this grid said out loud.
+   */
+  session_kind: "class" | "personal";
+  /**
+   * The template's display name, and **null for a personal session** — because ADR-0019 D3
+   * stores no name on the row: a label holding "PT · Hala Barakat" would be a copy of a
+   * member's name in a scheduling table. The grid words the kind from its own catalogue
+   * instead, which is also what keeps it translated.
+   */
+  label: string | null;
   local_date: string;
   starts_at_local: string;
   ends_at_local: string;
@@ -80,7 +91,7 @@ export type ResourceWeek = {
   a_booking_is_never_dropped: string;
   times_are_the_resources_own_zone: string;
   a_time_off_reason_is_masked: string;
-  a_session_kind_is_not_recorded: string;
+  a_personal_session_has_no_label: string;
 };
 
 export function readResourceWeek(
@@ -92,14 +103,24 @@ export function readResourceWeek(
   return api<ResourceWeek>(`/scheduling/availability?${query.toString()}`);
 }
 
-/** The five states the canvas's legend names, less the one this build cannot tell apart. */
-export type CellState = "closed" | "open" | "exception" | "booked" | "bookedConflict";
+/**
+ * The six states the canvas's legend names. **All six, as of ADR-0019.**
+ *
+ * It was five, with a note saying a class and a personal session were one state "because
+ * nothing records a session kind" — which `0036` made false, so the note went and the sixth
+ * state arrived with it. The canvas draws `PT` and `CLS` as different marks, so a reader
+ * scanning a coach's week can tell the hour somebody is teaching from the hour somebody is
+ * training one person.
+ */
+export type CellState =
+  | "closed" | "open" | "exception" | "booked" | "bookedPersonal" | "bookedConflict";
 
 export const CELL_LABEL: Record<CellState, MessageKey> = {
   closed: "rota.cellClosed",
   open: "rota.cellOpen",
   exception: "rota.cellException",
   booked: "rota.cellBooked",
+  bookedPersonal: "rota.cellPersonal",
   bookedConflict: "rota.cellConflict",
 };
 
@@ -116,15 +137,22 @@ export const CELL_LABEL: Record<CellState, MessageKey> = {
  * cell's accessible name, because "Booked" does not say that the rota now refuses it -- the
  * one distinction this screen exists for.
  *
- * The two tones the canvas draws are one here: nothing in this build distinguishes a class
- * from a personal-training session, and `rota.gapKind` says so rather than colouring a guess.
+ * **The two marks the canvas draws are two here**, as of ADR-0019: `CLS` for a class and `PT`
+ * for a personal session. This comment used to say they were one "because nothing in this
+ * build distinguishes" them, which was true until `0036` and is the shape of gap note that
+ * outlives its gap -- the one this repository keeps finding.
+ *
+ * A refused booking keeps the mark of whatever it is, because what the cell's border says is
+ * that the rota refuses it: a reader needs both facts, and overwriting the kind with a third
+ * mark would lose the one they can act on.
  */
 export const CELL_MARK: Record<CellState, MessageKey | null> = {
   closed: null,
   open: null,
   exception: "rota.markOff",
-  booked: "rota.markBooked",
-  bookedConflict: "rota.markBooked",
+  booked: "rota.markClass",
+  bookedPersonal: "rota.markPersonal",
+  bookedConflict: "rota.markClass",
 };
 
 /** `"09:30"` as minutes from midnight, so two wall-clock times can be compared. */
@@ -193,8 +221,13 @@ export function cellState(
     (one) => one.local_date === day.date
       && overlaps(from, to, minutesOf(one.starts_at_local), minutesOf(one.ends_at_local)));
   if (here.length > 0) {
-    return here.some((one) => one.conflicts_with_availability)
-      ? "bookedConflict"
+    // **A refusal outranks the kind**, because the kind is what a reader *is* and the refusal
+    // is what somebody has to resolve: an hour the rota now says no to is the one thing this
+    // screen exists to surface. Where nothing is refused, a personal session is drawn as one
+    // -- the canvas's own `PT` against `CLS`.
+    if (here.some((one) => one.conflicts_with_availability)) return "bookedConflict";
+    return here.every((one) => one.session_kind === "personal")
+      ? "bookedPersonal"
       : "booked";
   }
   const removed = day.windows.some(

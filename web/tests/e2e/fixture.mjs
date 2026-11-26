@@ -1543,6 +1543,39 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
             idempotency_key: randomUUID(), correlation_id: cid() },
   });
 
+  // **ADM-SCH-05 needs a member whose PT credits a browser suite can spend on every run.**
+  // The member above holds two, from the plan's own mapping -- which is the figure the
+  // consequence panel is asserted against ("uses 1 of the member's 2 remaining credits") and
+  // is exactly two runs' worth if the spec presses the button. That is this repository's own
+  // most-repeated harness finding: a test that consumes a product budget is green on a fresh
+  // fixture and red on the second run, and the spec cannot create a grant of its own because
+  // `membership.entitlement.grant` is financial class and a browser session is AAL 1.
+  //
+  // So one more member with an **uncounted** PT entitlement. That is a real product state --
+  // a plan that includes unlimited personal training -- and nothing is deducted, so the
+  // booking can be pressed for ever. The spec still books a distinct hour per run, because the
+  // coach's time is the one thing a booking does consume.
+  const unlimitedPt = await call("/member-entitlements/policies", {
+    method: "POST", ...as(token),
+    body: { policy_key: `ptany${Date.now().toString(36)}`,
+            display_name: "Unlimited personal training",
+            entitlement_type: "service_credit", is_counted: false,
+            correlation_id: cid() },
+  });
+  const ptPerson = await call("/people", {
+    method: "POST", ...as(token),
+    body: { legal_name: "Hala Barakat", date_of_birth: "1990-03-14",
+            correlation_id: cid() },
+  });
+  await call("/member-entitlements/grants", {
+    method: "POST", ...as(token),
+    body: { person_id: ptPerson.person_id, policy_id: unlimitedPt.policy_id,
+            source_kind: "goodwill",
+            valid_from: new Date(Date.now() - 86_400_000).toISOString(),
+            reason: "the package they bought covers personal training",
+            correlation_id: cid() },
+  });
+
   // **ADM-MSH-06 needs a member *inside* their billing period**, and the member above is not
   // one. `MEMBERSHIP_START` is ninety days back and nothing in this build rolls a period
   // forward, so `lifecycle.plan_change` correctly refuses every change on them with
@@ -3293,6 +3326,10 @@ async function seedAccess(tenantId, token, ownerEmail, ownerIdentityId) {
     staffNoLoginPersonId: dana.person_id,
     staffNeverSignedInPersonId: rami.person_id,
     locationId: location.location_id,
+    // ADM-SCH-05's two members: the one with a counted pair of credits (the figure the
+    // consequence panel states) and the one whose entitlement is uncounted (so a booking can
+    // be pressed on every run without spending a budget the fixture cannot replace).
+    ptPersonId: ptPerson.person_id,
     // **FD-07's two drawer states, by account rather than by session.** A drawer is a cash
     // account that has had a session, which is the only thing MOD-018 knows about tills --
     // there is no drawer table, because a drawer is a physical object and what the ledger
@@ -3404,6 +3441,7 @@ if (invokedDirectly) {
       `VEYRO_E2E_CLUB_PASSWORD=${fixture.clubPassword}`,
       `VEYRO_E2E_DESK_PASSWORD=${fixture.deskPassword}`,
       `VEYRO_E2E_LOCATION_ID=${fixture.locationId}`,
+      `VEYRO_E2E_PT_PERSON_ID=${fixture.ptPersonId}`,
       `VEYRO_E2E_LOOKUP_PREFIX=${fixture.lookupPrefix}`,
       `VEYRO_E2E_TILL_ACCOUNT_ID=${fixture.tillAccountId}`,
       `VEYRO_E2E_SHOP_TILL_ACCOUNT_ID=${fixture.shopTillAccountId}`,

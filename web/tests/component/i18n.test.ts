@@ -76,6 +76,38 @@ describe("the message catalogue", () => {
     expect(copied, `untranslated: ${copied.join(", ")}`).toEqual([]);
   });
 
+  it("has no plural message written as a string", () => {
+    // **A plural message here is an object of CLDR forms**, and written as ICU's brace-pipe
+    // string -- `{one=...|other=...}` -- it is a *plain* message whose text happens to
+    // contain braces. `fill` substitutes the `{of}` inside it and returns the rest verbatim,
+    // so the page renders the template: the reader sees every form at once, separated by
+    // pipes. ADM-SCH-05 shipped two of them.
+    //
+    // **Four layers could not see it and the fifth was a person looking at the page.** Both
+    // catalogues had the key, so the parity check passed. The per-form sweep read the entry
+    // as a string with one placeholder, which is exactly what the call site supplied, so it
+    // passed. The numerals sweep filters on plural keys and this was not one, so it passed.
+    // And the browser assertion was `toContainText("Uses 1 of the member's 2 remaining
+    // credits")`, which the raw template *contains* -- a substring assertion cannot tell a
+    // rendered plural from its own unrendered template, because the template holds every
+    // form's text. An independent tester reading the screen is what found it.
+    //
+    // The syntax never occurs in prose, so the ban is exact rather than a heuristic.
+    const offenders: string[] = [];
+    for (const locale of LOCALES) {
+      const catalogue = MESSAGES[locale] as Record<string, string | Record<string, string>>;
+      for (const key of MESSAGE_KEYS) {
+        const entry = catalogue[key];
+        const texts = typeof entry === "string" ? [entry] : Object.values(entry ?? {});
+        for (const text of texts) {
+          if (/\{\w+=/.test(text)) offenders.push(`${locale}:${key}`);
+        }
+      }
+    }
+    expect(offenders, "a plural message is an object of forms, not a brace-pipe string")
+      .toEqual([]);
+  });
+
   it("throws for a missing key rather than falling back to English", () => {
     // "Quietly sending English to somebody who asked for Arabic is worse than refusing" --
     // MOD-013's rule for notifications, and the same holds on a screen. A fallback makes a gap
@@ -381,6 +413,20 @@ describe("a placeholder is a contract", () => {
             }
           }
         }
+      }
+      // **And the inverse: a `count` that reaches nothing.** `fill` exempts `count` from the
+      // unexpected-value throw, because a plural form may legitimately drop the numeral --
+      // so a count passed to a message that is neither plural nor spells `{count}` is
+      // silently discarded, and the author believes a form is being selected when one
+      // sentence is being rendered for every number. That is the brace-pipe defect's other
+      // half: the catalogue sweep catches the plural written with pipes, this catches the
+      // one written as plain prose. A plain message that *does* name `{count}` is ordinary
+      // and is seven of this catalogue's own.
+      if (!plural && site.names.includes("count")
+          && !(entry as string).includes("{count}")) {
+        offenders.push(
+          `${site.where}: ${site.key} is not plural and names no {count}, `
+          + "so the count it is passed reaches nothing");
       }
       // A plural message picks its form from `count`, so a site that omits it throws at the
       // first render whatever the text says.

@@ -3069,12 +3069,24 @@ a {
   border-color: transparent;
 }
 
-/* Booked. The canvas draws a class and a personal-training session in two tones; nothing in
-   this build distinguishes them, and the screen says so rather than colouring a guess. */
+/* Booked: a class. The canvas draws a class and a personal-training session in two tones and
+   this comment used to say nothing in the build could tell them apart, which `0036` made
+   false -- ADR-0019. */
 .ds-rota-mark[data-state="booked"] {
   background: var(--color-semantic-info);
   border-color: transparent;
   color: var(--color-text-inverse);
+}
+
+/* Booked: one member. **A second tone of the same hue rather than a second semantic colour**,
+   because both cells mean "this hour is taken" and a reader is not being told one is worse
+   than the other: the canvas's PT tone is a lighter wash of the same blue. The mark's own two
+   letters are what distinguishes them to anybody who cannot see the difference, which is why
+   `CELL_MARK` carries both -- colour is never the only channel here. */
+.ds-rota-mark[data-state="bookedPersonal"] {
+  background: var(--color-surface-selected);
+  border-color: var(--color-semantic-info);
+  color: var(--color-text-secondary);
 }
 
 .ds-rota-mark[data-state="bookedConflict"] {
@@ -3093,6 +3105,50 @@ a {
 }
 
 /* ADM-MSH-03's freeze: two dates, a reason, and the consequence above the button. */
+/* ADM-SCH-05's booking: a coach, two fields for the hour, and the consequence above the
+   button. The canvas draws `WHEN` and `LENGTH` as a flex row of two 110px-minimum fields,
+   which is `auto-fit` here so the third (the length in minutes, which this build asks for
+   rather than offering a fixed set) wraps rather than squeezing at phone width. */
+.ds-pt-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  align-items: flex-start;
+  margin-block-start: var(--space-3);
+  inline-size: 100%;
+  max-inline-size: 34rem;
+}
+
+.ds-pt-when {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+  gap: var(--space-3);
+  inline-size: 100%;
+}
+
+/* The canvas's own panel: the quiet surface a step above the card, with the figures in it.
+   A fill rather than a border, because it is a statement rather than a severity -- the two
+   severities on this screen are the Banners inside it. */
+.ds-pt-consequence {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  inline-size: 100%;
+  padding: var(--space-3);
+  border-radius: var(--radius-card);
+  background: var(--color-surface-canvas);
+}
+
+.ds-pt-consequence p {
+  margin: 0;
+}
+
+.ds-pt-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
 .ds-freeze-form {
   display: flex;
   flex-direction: column;

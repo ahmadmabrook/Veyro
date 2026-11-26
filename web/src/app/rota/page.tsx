@@ -324,7 +324,8 @@ export default async function RotaPage({
             />
 
             <ul className="ds-rota-legend" aria-label={text("rota.legend")}>
-              {(["open", "booked", "bookedConflict", "exception", "closed"] as const).map(
+              {(["open", "booked", "bookedPersonal", "bookedConflict", "exception",
+                "closed"] as const).map(
                 (state) => (
                   <li key={state}>
                     <span className="ds-rota-mark" data-state={state} aria-hidden="true" />
@@ -347,7 +348,12 @@ export default async function RotaPage({
               {clashing.map((one) => (
                 <div key={one.session_id} style={{ display: "contents" }}>
                   <dt>
-                    <Link href={`/schedule/${one.session_id}`}>{one.label}</Link>
+                    <Link href={`/schedule/${one.session_id}`}>
+                      {/* **The kind where there is no name**, which is ADR-0019 D3:
+                          a personal session stores none, so the catalogue words it
+                          rather than the row carrying a copy of a member's name. */}
+                      {one.label ?? text("rota.personalSession")}
+                    </Link>
                     {" "}
                     <span className="muted data" dir="ltr">
                       {one.local_date} {one.starts_at_local}–{one.ends_at_local}

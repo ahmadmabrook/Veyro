@@ -59,6 +59,16 @@ export type Fixture = {
   blockedTaskId: string;
   /** ADM-SCH-04's subject: the coach with a weekly rota and one exception. */
   coachResourceId: string;
+  /**
+   * ADM-SCH-05's second member: an **uncounted** personal-training entitlement.
+   *
+   * The ordinary member holds two counted credits from their plan, which is the figure the
+   * consequence panel states -- and pressing the button spends one, so a spec that booked on
+   * them would be green on a fresh fixture and red on the third run. This one's entitlement
+   * deducts nothing, which is a real product state and is what makes the booking pressable
+   * for ever.
+   */
+  ptPersonId: string;
   /** The substitute coach: holds a booking and has no rota at all, which is the
    *  unconstrained case -- a room, a court and a bike have none either. */
   standInResourceId: string;
@@ -200,6 +210,9 @@ export function fixture(): Fixture {
     "VEYRO_E2E_ROTA_EXCEPTION_DAY",
     "VEYRO_E2E_POINT_ID",
     "VEYRO_E2E_PERSON_ID",
+    // ADM-SCH-05's uncounted-credit member. Required rather than optional, for the reason
+    // below: a spec that skipped on a missing id would go green against a stale fixture.
+    "VEYRO_E2E_PT_PERSON_ID",
     // ADM-MSH-07's commitment sentences, one member each. Required rather than optional,
     // because a spec that skipped on a missing id would go green against a stale fixture --
     // which is how a branch nobody renders stays unrendered.
@@ -293,6 +306,7 @@ export function fixture(): Fixture {
     bookedSessionId: env.VEYRO_E2E_BOOKED_SESSION_ID!,
     deskSessionId: env.VEYRO_E2E_DESK_SESSION_ID!,
     personId: env.VEYRO_E2E_PERSON_ID!,
+    ptPersonId: env.VEYRO_E2E_PT_PERSON_ID!,
     recentPersonId: env.VEYRO_E2E_RECENT_PERSON_ID!,
     buyOutPersonId: env.VEYRO_E2E_BUY_OUT_PERSON_ID!,
     heldToTermPersonId: env.VEYRO_E2E_HELD_TO_TERM_PERSON_ID!,

@@ -16,7 +16,6 @@ in this module would be MOD-018's cached balance applied to seats.
 
 from __future__ import annotations
 
-import hashlib
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
@@ -238,17 +237,12 @@ def _live_policy(conn: Connection[Any], policy_key: str) -> dict[str, Any]:
 
 # ------------------------------------------------------------------ the booking
 
-def _short(value: str) -> str:
-    """A caller's key, folded to a fixed-width digest for use inside a derived key.
-
-    **Truncation is what this replaces.** The hold key was `f"bkg-{key}"[:200]` against a body
-    field bounded at 200, so two keys differing only in their last four characters produced one
-    hold key: a reviewer booked member A with a 200-character counter and watched member B's
-    booking refused as a duplicate request in a class with nine free places. A digest is the
-    same length whatever goes in, and `sha256` here is a collision-free label rather than a
-    security claim -- nothing authenticates on it.
-    """
-    return hashlib.sha256(value.strip().encode("utf-8")).hexdigest()[:32]
+#: A caller's key, folded to a fixed-width digest for use inside a derived one. **It moved to
+#: MOD-019** when ADM-SCH-05 needed the same fold for a personal session's hold key: two
+#: copies of one expression is this build's most-repeated finding, and this module already
+#: imports that one while the reverse would be a cycle. The reasoning -- that truncation let
+#: one member's booking refuse another's -- is where the function is.
+_short = scheduling.short_key
 
 
 def _session(
@@ -262,18 +256,25 @@ def _session(
     """
     row = conn.execute(
         "SELECT status, starts_at, ends_at, capacity, overbook_places, local_date,"
-        " timezone, template_id, location_id, cancelled_at, cancellation_reason"
+        " timezone, template_id, location_id, cancelled_at, cancellation_reason,"
+        " session_kind"
         " FROM plt01.sch_sessions WHERE session_id = %s"
         + (" FOR UPDATE" if for_update else ""),
         (session_id,),
     ).fetchone()
     if row is None:
         raise NotFound("scheduling_session_not_found")
+    # **`template_id` is `None` for a personal session** (`0036`), and `str(None)` is the
+    # string "None" -- which is not a uuid and is not the absence either. Nothing in this
+    # module reads the field today, which is why it was never wrong; `session_kind` is read,
+    # by the one refusal below.
     return {"status": str(row[0]), "starts_at": row[1], "ends_at": row[2],
             "capacity": int(row[3]), "overbook_places": int(row[4]),
             "local_date": row[5], "timezone": str(row[6]),
-            "template_id": str(row[7]), "location_id": str(row[8]),
-            "cancelled_at": row[9], "cancellation_reason": row[10]}
+            "template_id": None if row[7] is None else str(row[7]),
+            "location_id": str(row[8]),
+            "cancelled_at": row[9], "cancellation_reason": row[10],
+            "session_kind": str(row[11])}
 
 
 def _live_bookings(conn: Connection[Any], person_id: str, *, at: datetime) -> int:
@@ -378,6 +379,23 @@ def _evaluate(
     `ineligible` and `no_entitlement` were declared and never produced.
     """
     live = rules["policy"]
+    # **A personal session is not booked through this module, and it is refused here rather
+    # than at the command** -- ADR-0019 D8. Three callers reach this function (the command,
+    # the eligibility read and the waitlist) and a guard in one of them is "a control
+    # consulted on one path and not its sibling", which four modules in this build have paid
+    # for. Here the read is the one that matters: a surface asking whether a member may book
+    # gets the reason rather than a `Conflict` it has to parse.
+    #
+    # Every decision below is about a *class*: the window and the restrictions come from
+    # `sch_capacity_policies`, which a personal session cites none of, and the quota, the
+    # waitlist and the no-show consequence are all about a roster. Its single place is taken
+    # by `book_personal_session` through MOD-019's own `take_hold_on`, in the transaction
+    # that drew the credit -- so a caller reaching this path would otherwise be refused
+    # `full`, which is a true answer to the wrong question.
+    if session["session_kind"] != "class":
+        return Denial(
+            reason="session_not_bookable",
+            detail="a personal session holds its member when it is scheduled")
     if session["status"] != "scheduled":
         return Denial(
             reason="session_not_bookable",

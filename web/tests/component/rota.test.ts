@@ -43,6 +43,7 @@ function day(overrides: Partial<RotaDay> = {}): RotaDay {
 function session(overrides: Partial<RotaSession> = {}): RotaSession {
   return {
     session_id: "s-1",
+    session_kind: "class",
     label: "Evening yoga flow",
     local_date: "2026-08-20",
     starts_at_local: "17:30",
@@ -67,7 +68,7 @@ function week(overrides: Partial<ResourceWeek> = {}): ResourceWeek {
     a_booking_is_never_dropped: "x",
     times_are_the_resources_own_zone: "x",
     a_time_off_reason_is_masked: "x",
-    a_session_kind_is_not_recorded: "x",
+    a_personal_session_has_no_label: "x",
     ...overrides,
   };
 }
@@ -197,6 +198,26 @@ describe("what a cell is", () => {
     expect(state(day({ open_spans: [{ starts_at: "09:00", ends_at: "21:00" }] }), 17, both))
       .toBe("bookedConflict");
   });
+
+  it("tells a personal session from a class, which the canvas marks PT against CLS", () => {
+    // **The sixth state, and the reason it exists.** This build had one `booked` state for
+    // both until `0036`, with a gap note under the grid saying so; the canvas draws two
+    // marks, so a coach's week says which hours are teaching and which are one member. A
+    // refused booking keeps the mark of whatever it is, because the border is what says the
+    // rota refuses it and a reader needs both facts.
+    const aClass = session({ session_kind: "class" });
+    const personal = session({
+      session_id: "s-2", session_kind: "personal", label: null,
+    });
+    expect(state(day(), 17, [aClass])).toBe("booked");
+    expect(state(day(), 17, [personal])).toBe("bookedPersonal");
+    // One of each in the hour: a class is being taught, which is the stronger statement.
+    expect(state(day(), 17, [personal, aClass])).toBe("booked");
+    // And a refusal outranks the kind, because it is the thing somebody has to resolve.
+    expect(state(day(), 17, [
+      { ...personal, conflicts_with_availability: true },
+    ])).toBe("bookedConflict");
+  });
 });
 
 describe("the week-of label", () => {
@@ -316,8 +337,12 @@ describe("the catalogue", () => {
   });
 
   it("every cell state has a label, so no fill is unexplained", () => {
+    // **Six, as of ADR-0019.** It was five with a gap note saying a class and a personal
+    // session were one state "because nothing records a session kind", which `0036` made
+    // false -- so the sixth arrived with the note's deletion. The list is written out rather
+    // than derived from `CELL_LABEL` so that adding a state without a label fails here.
     const states: CellState[] =
-      ["closed", "open", "exception", "booked", "bookedConflict"];
+      ["closed", "open", "exception", "booked", "bookedPersonal", "bookedConflict"];
     for (const state of states) {
       expect(CELL_LABEL[state]).toBeTruthy();
     }

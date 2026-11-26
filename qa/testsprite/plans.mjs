@@ -881,6 +881,106 @@ const PLANS = [
       },
     ],
   },
+  {
+    // **ADM-SCH-05, and the two refusals a screen must not merge.** "Sell a package first"
+    // and "pick another hour" have different remedies, and an independent reader is the
+    // right check for that: the in-repo assertions were written by the same hand that chose
+    // the wording, and the defect would be a desk sent to the wrong one of the two.
+    //
+    // It deliberately does not press the button. A booking spends a coach's hour and is not
+    // reversible from any screen, so a stored test that completed one would be green on its
+    // first run and would then be competing with itself for the slot.
+    name: "A personal session says what it costs, and names which of two things is in the way",
+    description:
+      "Booking a coach with a member draws one of that member's personal-training credits, " +
+      "so the screen has to say which credit it would spend and what is left after it — and " +
+      "where it cannot go ahead, it has to say whether the obstacle is the member's credits " +
+      "or the coach's time, because those have different remedies. This signs in as the " +
+      "owner and does not complete a booking.",
+    priority: "p1",
+    planSteps: [
+      ...signIn,
+      {
+        // **A plan may not name a member by a name the product withholds**, and this one did
+        // until a run proved it: every name on the members list is marked rather than printed
+        // on an ordinary sign-in, because a legal name is an identity field and
+        // `member.identity.read` is financial class. The tester looked for "Dana Khalil",
+        // found nothing, clicked the step-up the row correctly offers, and was stopped by a
+        // recovery code it does not have -- nine steps green and the tenth unreachable. That
+        // is the masked-field journey's finding for the second time.
+        //
+        // **The membership number did not fix it either, and the second run is the more
+        // interesting one.** Told to find GOLD-00043, the tester scrolled the list once and
+        // then reached for "Find a member" -- FD-02's lookup, which searches phone digits
+        // over `ppl_contact_points_by_value` and finds no membership number, so it typed the
+        // number into a search that cannot answer it. The row was on the page: the list is
+        // bounded at fifty and the fixture has thirty-five. So this is not a dead end in the
+        // product, and it is a real observation about it -- there is no way to find a member
+        // by their membership number anywhere in this build, which is a scroll at
+        // thirty-five rows and is not one at the 4,812 ADM-RPT-05 draws.
+        //
+        // The journey's subject is the booking screen rather than how somebody arrives at a
+        // member, so it navigates by id as four other journeys here already do, and keeps
+        // the step that matters: the link is *on the entitlements table*, because that is
+        // where the credits are.
+        type: "action",
+        description:
+          `Navigate to /people/${env.VEYRO_E2E_RECENT_PERSON_ID}?tab=membership , which is ` +
+          "a member's record open at their membership and what they are entitled to. Their " +
+          "name is hidden and that is correct on an ordinary sign-in; do not try to reveal " +
+          "it. Find the table of entitlements.",
+      },
+      {
+        type: "assertion",
+        description:
+          "Verify that beneath the entitlements table there is a link offering to book a " +
+          "personal session with a coach. Follow it.",
+      },
+      {
+        type: "assertion",
+        description:
+          "Verify the page is for booking a personal session, offers a choice of coach, a " +
+          "day, a time and a length in minutes, and that before a day and a time are chosen " +
+          "it says so rather than showing any figure about credits. Verify the booking " +
+          "button is not usable yet.",
+      },
+      {
+        type: "action",
+        description:
+          "Choose the first coach offered. Set the day to four days from today and the time " +
+          "to 09:00. Leave the length as it is.",
+      },
+      {
+        type: "assertion",
+        description:
+          "Verify the page now states how many of this member's remaining credits the " +
+          "session would use, how many would be left afterwards, and a date the credits " +
+          "expire. Verify the booking button is now usable and that its wording says it " +
+          "uses one credit. Do NOT press it.",
+      },
+      {
+        type: "action",
+        description:
+          "Change the day to three days from today and the time to 18:30, which is when a " +
+          "class is already running.",
+      },
+      {
+        type: "assertion",
+        description:
+          "Verify the page now says the coach is not free at that hour, that it does NOT " +
+          "say anything about a missing or insufficient credit, and that the booking button " +
+          "is no longer usable. The two are different problems and the page must name only " +
+          "the one that applies.",
+      },
+      {
+        type: "assertion",
+        description:
+          "Verify the page also lists what it cannot do, and that the list names selling a " +
+          "package (because there is no point of sale in this build), a standing weekly " +
+          "slot, and telling the member — each with a reason rather than as a bare absence.",
+      },
+    ],
+  },
 
 ];
 

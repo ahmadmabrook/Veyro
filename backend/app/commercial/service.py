@@ -2343,6 +2343,79 @@ def _grant_locked(conn: Connection[Any], grant_id: str) -> tuple[entitlements.Gr
     return grant, entitlements.balance_of(movements)
 
 
+def drawable_credits_on(
+    conn: Connection[Any], tenant_id: str, *, person_id: str, entitlement_type: str,
+    at: datetime, location_id: str | None = None,
+) -> list[dict[str, Any]]:
+    """The grants this member could draw on now, soonest-expiring first.
+
+    **The grant is derived from the member and never accepted from a caller**, which is the
+    control this function exists to be. `reserve_entitlement` takes a `grant_id` and reserves
+    against `g.person_id` -- the *grant's* owner -- so a command that took both a member and a
+    grant id would let a caller train one person on another's credit, with the reservation
+    recorded against the payer. That is this build's most-repeated finding, and the only answer
+    is for the command to pick the grant.
+
+    **Soonest-expiring first, which is the member's interest rather than the tenant's.**
+    MOD-018's wallet spend order makes the same argument: spending the value that would
+    otherwise lapse is what a member would choose, and spending the open-ended one first
+    quietly destroys the dated one. A grant with no expiry sorts last.
+
+    **`entitlements.usable` decides, not a `WHERE` clause.** The window, the scope, the hours
+    and the balance are one function, and a second expression here would be a list offering a
+    grant the draw then refuses -- the one-module-two-definitions shape, on the figure a screen
+    puts in front of somebody. The lock is deliberately *not* taken: this is a read, and the
+    number that settles a draw is the one `reserve_entitlement_on` computes under the grant's
+    own lock.
+
+    Takes a connection because its two callers are both inside one: ADM-SCH-05's quote reads it
+    beside a scheduling answer, and `book_personal_session` draws on it in the transaction that
+    creates the session.
+    """
+    brand_id: str | None = None
+    local_minute: int | None = None
+    if location_id is not None:
+        brand_id, local_minute = _scope_of_location(conn, location_id, at)
+    rows = conn.execute(
+        "SELECT g.grant_id, g.is_counted, g.granted_quantity, g.valid_from, g.valid_to,"
+        " g.status, g.brand_id, g.location_id, g.usable_from_minute, g.usable_to_minute,"
+        " p.policy_key, p.display_name"
+        " FROM plt01.mem_entitlement_grants g"
+        " JOIN plt01.mem_entitlement_policies p ON p.policy_id = g.policy_id"
+        " WHERE g.person_id = %s AND p.entitlement_type = %s AND g.status = 'active'"
+        " ORDER BY g.valid_to NULLS LAST, g.grant_id",
+        (person_id, entitlement_type),
+    ).fetchall()
+    out: list[dict[str, Any]] = []
+    for r in rows:
+        grant = entitlements.Grant(
+            grant_id=str(r[0]), is_counted=bool(r[1]),
+            granted_quantity=int(r[2]) if r[2] is not None else None,
+            valid_from=r[3], valid_to=r[4], status=str(r[5]),
+            brand_id=str(r[6]) if r[6] else None,
+            location_id=str(r[7]) if r[7] else None,
+            usable_from_minute=int(r[8]) if r[8] is not None else None,
+            usable_to_minute=int(r[9]) if r[9] is not None else None)
+        movements = [
+            entitlements.Movement(str(m[0]), int(m[1]))
+            for m in conn.execute(
+                "SELECT movement_kind, delta FROM plt01.mem_entitlement_ledger"
+                " WHERE grant_id = %s", (grant.grant_id,)).fetchall()]
+        balance = entitlements.balance_of(movements)
+        verdict = entitlements.usable(
+            grant, at=at, quantity=1,
+            balance=balance if grant.is_counted else None,
+            location_id=location_id, brand_id=brand_id, local_minute=local_minute)
+        if not verdict.ok:
+            continue
+        out.append({
+            "grant_id": grant.grant_id, "policy_key": str(r[10]),
+            "display_name": str(r[11]), "is_counted": grant.is_counted,
+            "balance": balance if grant.is_counted else None,
+            "expires_at": grant.valid_to.isoformat() if grant.valid_to else None})
+    return out
+
+
 def _scope_of_location(
     conn: Connection[Any], location_id: str, moment: datetime,
 ) -> tuple[str, int]:
@@ -2409,66 +2482,122 @@ def reserve_entitlement(
         _expire_lapsed_holds(conn, tenant_id, grant_id, moment=moment, actor_id=actor_id,
                              correlation_id=correlation_id)
     with tenant_scope(pool, tenant_id) as conn:
-        brand_id: str | None = None
-        local_minute: int | None = None
-        if location_id is not None:
-            brand_id, local_minute = _scope_of_location(conn, location_id, moment)
-        grant, balance = _grant_locked(conn, grant_id)
-        ttl = conn.execute(
-            "SELECT p.reservation_ttl_seconds FROM plt01.mem_entitlement_grants g"
-            " JOIN plt01.mem_entitlement_policies p ON p.policy_id = g.policy_id"
-            " WHERE g.grant_id = %s",
-            (grant_id,),
+        return reserve_entitlement_on(
+            conn, tenant_id, grant_id=grant_id, purpose_kind=purpose_kind,
+            quantity=quantity, idempotency_key=idempotency_key, actor_id=actor_id,
+            correlation_id=correlation_id, purpose_ref=purpose_ref,
+            location_id=location_id, at=moment)
+
+
+def reserve_entitlement_on(
+    conn: Connection[Any], tenant_id: str, *, grant_id: str, purpose_kind: str,
+    quantity: int, idempotency_key: str, actor_id: str, correlation_id: str,
+    purpose_ref: str | None = None, location_id: str | None = None,
+    at: datetime | None = None, usable_at: datetime | None = None,
+) -> dict[str, Any]:
+    """The draw itself, in the caller's transaction.
+
+    **This exists because a personal-training session and the credit it spends have to commit
+    together** (ADR-0019 D5): a session with no credit drawn is a free PT session, and a credit
+    drawn with no session is a member charged for nothing. MOD-010's `append_event` argument,
+    applied to a booking.
+
+    **It does not sweep, and the caller must.** `reserve_entitlement`'s own docstring argues at
+    length why the lapsed-hold sweep commits in a transaction of its own -- it is independent
+    work, correct whether or not the draw succeeds, and in the same transaction as a refused
+    draw it is rolled back, which left a member with three lapsed holds refused for ever. So
+    the two halves cannot be folded into one connection and a caller that wants the draw
+    inside its own transaction sweeps first, as `reserve_entitlement` does above.
+
+    **`usable_at` is when the entitlement is *spent*, which is not always when it is
+    held.** For every caller until ADM-SCH-05 the two were the same instant and the
+    parameter defaults to that, so nothing already written moves -- ADR-0011's reasoning
+    about the billing anchor, applied to a moment. A personal session is the case that
+    separates them: the reservation is taken now and the session is next Tuesday at half
+    past eight in the evening, so judging an off-peak package against *now* makes
+    "off-peak" a statement about when the receptionist typed. **Found by a time-of-day
+    flake**, which is the only way it could have been: the test ran at 07:40 local, inside
+    the 06:00-12:00 window it was written to be outside, and had passed every earlier run.
+    The same split applies to the validity window -- a credit that expires before the
+    session cannot pay for it. `held_at` and the reservation's own TTL stay on `moment`,
+    because those are about the hold rather than the spend.
+    """
+    moment = at or _now()
+    spent_at = usable_at or moment
+    if not idempotency_key.strip():
+        raise InvalidRequest("an_idempotency_key_cannot_be_blank")
+    brand_id: str | None = None
+    local_minute: int | None = None
+    if location_id is not None:
+        brand_id, local_minute = _scope_of_location(conn, location_id, spent_at)
+    grant, balance = _grant_locked(conn, grant_id)
+    ttl = conn.execute(
+        "SELECT p.reservation_ttl_seconds FROM plt01.mem_entitlement_grants g"
+        " JOIN plt01.mem_entitlement_policies p ON p.policy_id = g.policy_id"
+        " WHERE g.grant_id = %s",
+        (grant_id,),
+    ).fetchone()
+    assert ttl is not None
+    verdict = entitlements.usable(
+        grant, at=spent_at, quantity=quantity,
+        balance=balance if grant.is_counted else None,
+        location_id=location_id, brand_id=brand_id, local_minute=local_minute)
+    if not verdict.ok:
+        raise Conflict(verdict.reason)
+    expires_at = entitlements.reservation_expiry(
+        held_at=moment, ttl_seconds=int(ttl[0]))
+    row = conn.execute(
+        """
+        INSERT INTO plt01.mem_entitlement_reservations
+            (tenant_id, grant_id, person_id, quantity, purpose_kind, purpose_ref,
+             held_at, expires_at, idempotency_key, held_by, correlation_id)
+        SELECT %s, g.grant_id, g.person_id, %s, %s, %s, %s, %s, %s, %s, %s
+        FROM plt01.mem_entitlement_grants g WHERE g.grant_id = %s
+        ON CONFLICT (tenant_id, idempotency_key) DO NOTHING
+        RETURNING reservation_id
+        """,
+        (tenant_id, quantity, purpose_kind, purpose_ref, moment, expires_at,
+         idempotency_key.strip(), actor_id, correlation_id, grant_id),
+    ).fetchone()
+    if row is None:
+        existing = conn.execute(
+            "SELECT reservation_id, grant_id, status FROM"
+            " plt01.mem_entitlement_reservations WHERE idempotency_key = %s",
+            (idempotency_key.strip(),),
         ).fetchone()
-        assert ttl is not None
-        verdict = entitlements.usable(
-            grant, at=moment, quantity=quantity,
-            balance=balance if grant.is_counted else None,
-            location_id=location_id, brand_id=brand_id, local_minute=local_minute)
-        if not verdict.ok:
-            raise Conflict(verdict.reason)
-        expires_at = entitlements.reservation_expiry(
-            held_at=moment, ttl_seconds=int(ttl[0]))
-        row = conn.execute(
-            """
-            INSERT INTO plt01.mem_entitlement_reservations
-                (tenant_id, grant_id, person_id, quantity, purpose_kind, purpose_ref,
-                 held_at, expires_at, idempotency_key, held_by, correlation_id)
-            SELECT %s, g.grant_id, g.person_id, %s, %s, %s, %s, %s, %s, %s, %s
-            FROM plt01.mem_entitlement_grants g WHERE g.grant_id = %s
-            ON CONFLICT (tenant_id, idempotency_key) DO NOTHING
-            RETURNING reservation_id
-            """,
-            (tenant_id, quantity, purpose_kind, purpose_ref, moment, expires_at,
-             idempotency_key.strip(), actor_id, correlation_id, grant_id),
-        ).fetchone()
-        if row is None:
-            existing = conn.execute(
-                "SELECT reservation_id, grant_id, status FROM"
-                " plt01.mem_entitlement_reservations WHERE idempotency_key = %s",
-                (idempotency_key.strip(),),
-            ).fetchone()
-            assert existing is not None
-            if str(existing[1]) != grant_id:
-                raise Conflict("this_idempotency_key_belongs_to_another_grant")
-            return {"reservation_id": str(existing[0]), "grant_id": grant_id,
-                    "status": str(existing[2]), "balance_after": balance,
-                    "repeated": True}
-        reservation_id = str(row[0])
-        if grant.is_counted:
-            _movement(conn, tenant_id, grant_id=grant_id, movement_kind="reserve",
-                      delta=-quantity, reason=f"held for {purpose_kind}",
-                      actor_id=actor_id, correlation_id=correlation_id,
-                      reservation_id=reservation_id)
-            balance -= quantity
-        _append(conn, tenant_id, "entitlement.reserved", "entitlement", grant_id,
-                {"grant_id": grant_id, "reservation_id": reservation_id,
-                 "quantity": quantity, "purpose_kind": purpose_kind,
-                 "expires_at": expires_at.isoformat()},
-                correlation_id=correlation_id, actor_id=actor_id)
+        assert existing is not None
+        if str(existing[1]) != grant_id:
+            raise Conflict("this_idempotency_key_belongs_to_another_grant")
+        return {"reservation_id": str(existing[0]), "grant_id": grant_id,
+                "status": str(existing[2]), "balance_after": balance,
+                "repeated": True}
+    reservation_id = str(row[0])
+    if grant.is_counted:
+        _movement(conn, tenant_id, grant_id=grant_id, movement_kind="reserve",
+                  delta=-quantity, reason=f"held for {purpose_kind}",
+                  actor_id=actor_id, correlation_id=correlation_id,
+                  reservation_id=reservation_id)
+        balance -= quantity
+    _append(conn, tenant_id, "entitlement.reserved", "entitlement", grant_id,
+            {"grant_id": grant_id, "reservation_id": reservation_id,
+             "quantity": quantity, "purpose_kind": purpose_kind,
+             "expires_at": expires_at.isoformat()},
+            correlation_id=correlation_id, actor_id=actor_id)
     return {"reservation_id": reservation_id, "grant_id": grant_id, "status": "held",
             "expires_at": expires_at.isoformat(), "balance_after": balance,
             "repeated": False}
+
+
+#: The lapsed-hold sweep, under its public name. **A caller that wants the draw inside its own
+#: transaction has to sweep first** -- `reserve_entitlement_on` says why in full -- and it
+#: cannot call a private, so the name is exported rather than the body copied. ADR-0019 D5.
+def expire_lapsed_holds_on(
+    conn: Connection[Any], tenant_id: str, grant_id: str, *, moment: datetime,
+    actor_id: str, correlation_id: str,
+) -> int:
+    return _expire_lapsed_holds(
+        conn, tenant_id, grant_id, moment=moment, actor_id=actor_id,
+        correlation_id=correlation_id)
 
 
 def _expire_lapsed_holds(

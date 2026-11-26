@@ -2552,3 +2552,536 @@ class ResourceCapacityTests(SchedulingApiTestCase):
             "restrictions": [], **self.correlation()},
             headers=self.headers(gym["tenant_id"]))
         self.assertEqual(refused.status_code, 422, refused.text)
+
+
+class PersonalSessionTests(SchedulingApiTestCase):
+    """ADM-SCH-05: one coach, one member, one credit. ADR-0019.
+
+    **The five facts the canvas needs already existed and nothing exercised four of them.** A
+    coach is a `staff` resource, a member is a `ppl_persons` row, the credits and their expiry
+    are MOD-017's `mem_entitlement_grants`, and drawing one is `reserve_entitlement` -- which
+    had never been called from a surface. What the module did not have is a session that is one
+    member rather than a roster, and these drive it through the routes.
+    """
+
+    def credit_policy(self, gym: dict[str, Any], *, key: str | None = None) -> str:
+        created = self.client.post("/member-entitlements/policies", json={
+            "policy_key": key or f"pt-{uuid.uuid4().hex[:8]}",
+            "display_name": "Personal training", "entitlement_type": "service_credit",
+            "is_counted": True, **self.correlation()},
+            headers=self.headers(gym["tenant_id"]))
+        self.assertEqual(created.status_code, 201, created.text)
+        return str(created.json()["policy_id"])
+
+    def credits(self, gym: dict[str, Any], person_id: str, *, quantity: int = 3,
+                policy_id: str | None = None, valid_to: str | None = None,
+                **over: Any) -> str:
+        """`quantity` personal-training credits for this member."""
+        created = self.client.post("/member-entitlements/grants", json={
+            "person_id": person_id,
+            "policy_id": policy_id or self.credit_policy(gym),
+            "source_kind": "goodwill",
+            "valid_from": datetime.now(UTC).isoformat(),
+            "valid_to": valid_to or (datetime.now(UTC) + timedelta(days=90)).isoformat(),
+            "quantity": quantity, "reason": "a package they bought",
+            **over, **self.correlation()}, headers=self.headers(gym["tenant_id"]))
+        self.assertEqual(created.status_code, 201, created.text)
+        return str(created.json()["grant_id"])
+
+    def slot(self, *, days: int = 3, hour: int = 17, minute: int = 30) -> str:
+        """An instant three days out, in UTC.
+
+        **Derived from one reference moment**, which is the fourth shape of this repository's
+        date-frame flake: a window anchored on `now` with rows at an offset straddles the
+        club's own midnight, and two tests turned `main` red for it. Everything here is the
+        same instant plus a fixed offset.
+        """
+        base = datetime.now(UTC) + timedelta(days=days)
+        at = base.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        # **`Z`, not `+00:00`.** An unencoded `+` in a query string decodes to a space, so a
+        # `datetime.isoformat()` dropped into a URL answers 422 -- every quote test here did,
+        # until this line. A real client encodes the value; the suffix is what a reader of the
+        # fixture needs to see, because the query-string form is the one the screen sends.
+        return at.isoformat().replace("+00:00", "Z")
+
+    def book(self, gym: dict[str, Any], person_id: str, **over: Any) -> Any:
+        body: dict[str, Any] = {
+            "coach_resource_id": gym["coach"], "person_id": person_id,
+            "location_id": gym["location_id"], "starts_at": self.slot(),
+            "minutes": 55, "idempotency_key": uuid.uuid4().hex,
+            **self.correlation()}
+        body.update(over)
+        return self.client.post("/scheduling/personal-sessions", json=body,
+                                headers=self.headers(gym["tenant_id"]))
+
+    # ---------------------------------------------------------------- the booking
+
+    def test_a_coach_and_a_member_are_booked_and_the_credit_is_drawn(self) -> None:
+        gym = self.gym()
+        person_id = self.person(gym["tenant_id"], "Hala Barakat")
+        self.credits(gym, person_id, quantity=3)
+        booked = self.book(gym, person_id)
+        self.assertEqual(booked.status_code, 200, booked.text)
+        body = booked.json()
+        self.assertFalse(body["repeated"])
+        self.assertEqual(body["minutes"], 55)
+        self.assertEqual(body["coach_resource_id"], gym["coach"])
+        # The canvas: "uses 1 of her 3 remaining credits. Two left after this."
+        self.assertEqual(body["credits_remaining"], 2)
+        self.assertIsNotNone(body["reservation_id"])
+
+    def test_the_session_is_personal_and_cites_no_template(self) -> None:
+        gym = self.gym()
+        person_id = self.person(gym["tenant_id"])
+        self.credits(gym, person_id)
+        session_id = self.book(gym, person_id).json()["session_id"]
+        read = self.client.get(f"/scheduling/sessions/{session_id}",
+                               headers=self.headers(gym["tenant_id"]))
+        self.assertEqual(read.status_code, 200, read.text)
+        body = read.json()
+        self.assertEqual(body["session_kind"], "personal")
+        # **Null rather than the word "None"**, which is what `str(row[0])` produces for a
+        # nullable column and is the quieter half of ADR-0019 D2's defect.
+        self.assertIsNone(body["template_id"])
+        self.assertIsNone(body["template_code"])
+        self.assertIsNone(body["display_name"])
+        self.assertEqual(body["capacity"], 1)
+        self.assertEqual(body["held"], 1)
+        self.assertEqual(body["free"], 0)
+
+    def test_a_personal_session_is_on_the_calendar_beside_a_class(self) -> None:
+        """ADR-0019 D2: an inner join on `template_id` silently drops the row."""
+        gym = self.gym()
+        class_session = self.a_session(gym)
+        person_id = self.person(gym["tenant_id"])
+        self.credits(gym, person_id)
+        personal = self.book(gym, person_id).json()["session_id"]
+        read = self.client.get(
+            f"/scheduling/calendar?location_id={gym['location_id']}"
+            f"&from_date={day(0)}&to_date={day(30)}",
+            headers=self.headers(gym["tenant_id"]))
+        self.assertEqual(read.status_code, 200, read.text)
+        ids = {one["session_id"] for one in read.json()["sessions"]}
+        self.assertIn(class_session, ids)
+        self.assertIn(personal, ids, "a personal session vanished from the calendar")
+        mine = next(one for one in read.json()["sessions"]
+                    if one["session_id"] == personal)
+        self.assertEqual(mine["session_kind"], "personal")
+        self.assertIsNone(mine["display_name"])
+
+    def test_a_personal_session_is_on_the_coach_s_week(self) -> None:
+        """The other half of D2: the rota grid reads its held sessions the same way."""
+        gym = self.gym()
+        person_id = self.person(gym["tenant_id"])
+        self.credits(gym, person_id)
+        personal = self.book(gym, person_id).json()["session_id"]
+        read = self.client.get(
+            f"/scheduling/availability?resource_id={gym['coach']}&from_date={day(0)}"
+            f"&weeks=2", headers=self.headers(gym["tenant_id"]))
+        self.assertEqual(read.status_code, 200, read.text)
+        held = [one for one in read.json()["sessions"]
+                if one["session_id"] == personal]
+        self.assertEqual(len(held), 1, "the coach's own PT is not on their week")
+        self.assertEqual(held[0]["session_kind"], "personal")
+        self.assertIsNone(held[0]["label"])
+
+    def test_the_coach_cannot_be_booked_twice_at_one_instant(self) -> None:
+        """The reason a PT session is a `sch_sessions` row at all: `_held_over` sees it."""
+        gym = self.gym()
+        first = self.person(gym["tenant_id"], "First")
+        second = self.person(gym["tenant_id"], "Second")
+        self.credits(gym, first)
+        self.credits(gym, second)
+        when = self.slot()
+        self.assertEqual(self.book(gym, first, starts_at=when).status_code, 200)
+        clash = self.book(gym, second, starts_at=when)
+        self.assertEqual(clash.status_code, 409, clash.text)
+        self.assertIn("coach", clash.json()["error"])
+
+    def test_a_class_at_the_same_hour_blocks_the_coach(self) -> None:
+        """And the direction that matters more: the class generator holds the coach too."""
+        gym = self.gym()
+        session_id = self.a_session(gym)
+        read = self.client.get(f"/scheduling/sessions/{session_id}",
+                               headers=self.headers(gym["tenant_id"]))
+        person_id = self.person(gym["tenant_id"])
+        self.credits(gym, person_id)
+        clash = self.book(gym, person_id, starts_at=read.json()["starts_at"])
+        self.assertEqual(clash.status_code, 409, clash.text)
+
+    def test_a_member_with_no_credit_is_refused_rather_than_booked(self) -> None:
+        gym = self.gym()
+        person_id = self.person(gym["tenant_id"])
+        refused = self.book(gym, person_id)
+        self.assertEqual(refused.status_code, 409, refused.text)
+        self.assertEqual(refused.json()["error"],
+                         "this_member_has_no_personal_training_credit")
+
+    def test_nothing_is_written_when_the_credit_is_missing(self) -> None:
+        """**Refused before anything is written**, which is this build's oldest rule."""
+        gym = self.gym()
+        person_id = self.person(gym["tenant_id"])
+        self.assertEqual(self.book(gym, person_id).status_code, 409)
+        read = self.client.get(
+            f"/scheduling/calendar?location_id={gym['location_id']}"
+            f"&from_date={day(0)}&to_date={day(30)}",
+            headers=self.headers(gym["tenant_id"]))
+        self.assertEqual(read.json()["count"], 0, "a refused booking left a session")
+
+    def test_a_retry_returns_the_same_session_rather_than_a_second_one(self) -> None:
+        gym = self.gym()
+        person_id = self.person(gym["tenant_id"])
+        self.credits(gym, person_id, quantity=3)
+        key = uuid.uuid4().hex
+        first = self.book(gym, person_id, idempotency_key=key)
+        self.assertEqual(first.status_code, 200, first.text)
+        again = self.book(gym, person_id, idempotency_key=key)
+        self.assertEqual(again.status_code, 200, again.text)
+        self.assertTrue(again.json()["repeated"])
+        self.assertEqual(again.json()["session_id"], first.json()["session_id"])
+        # One credit, not two: the retry drew nothing.
+        read = self.client.get(
+            f"/member-entitlements?person_id={person_id}",
+            headers=self.headers(gym["tenant_id"]))
+        self.assertEqual(read.json()["grants"][0]["balance"], 2)
+
+    def test_a_reused_key_for_a_different_member_is_refused(self) -> None:
+        """Every field of the request is compared, which is MOD-020's own finding."""
+        gym = self.gym()
+        first = self.person(gym["tenant_id"], "First")
+        second = self.person(gym["tenant_id"], "Second")
+        self.credits(gym, first)
+        self.credits(gym, second)
+        key = uuid.uuid4().hex
+        self.assertEqual(self.book(gym, first, idempotency_key=key).status_code, 200)
+        refused = self.book(gym, second, idempotency_key=key,
+                            starts_at=self.slot(days=5))
+        self.assertEqual(refused.status_code, 409, refused.text)
+        self.assertEqual(refused.json()["error"],
+                         "this_idempotency_key_was_used_for_a_different_request")
+
+    def test_a_personal_session_is_with_a_coach_and_not_a_room(self) -> None:
+        gym = self.gym()
+        person_id = self.person(gym["tenant_id"])
+        self.credits(gym, person_id)
+        refused = self.book(gym, person_id, coach_resource_id=gym["studio"])
+        self.assertEqual(refused.status_code, 422, refused.text)
+
+    def test_the_length_is_bounded_at_the_boundary(self) -> None:
+        gym = self.gym()
+        person_id = self.person(gym["tenant_id"])
+        self.credits(gym, person_id)
+        for minutes in (5, 300):
+            refused = self.book(gym, person_id, minutes=minutes)
+            self.assertEqual(refused.status_code, 422, refused.text)
+
+    def test_a_malformed_id_is_refused_rather_than_crashing(self) -> None:
+        gym = self.gym()
+        person_id = self.person(gym["tenant_id"])
+        self.credits(gym, person_id)
+        refused = self.book(gym, person_id, coach_resource_id="not-a-uuid")
+        self.assertEqual(refused.status_code, 422, refused.text)
+
+    # ---------------------------------------------------------------- the quote
+
+    def test_the_quote_names_the_credit_and_what_is_left_after_it(self) -> None:
+        """The canvas's consequence panel, figure for figure."""
+        gym = self.gym()
+        person_id = self.person(gym["tenant_id"])
+        self.credits(gym, person_id, quantity=3)
+        quote = self.client.get(
+            f"/scheduling/personal-session-quote?coach_resource_id={gym['coach']}"
+            f"&person_id={person_id}&location_id={gym['location_id']}"
+            f"&starts_at={self.slot()}&minutes=55",
+            headers=self.headers(gym["tenant_id"]))
+        self.assertEqual(quote.status_code, 200, quote.text)
+        body = quote.json()
+        self.assertTrue(body["coach_is_free"])
+        self.assertTrue(body["may_book"])
+        self.assertFalse(body["needs_a_package"])
+        self.assertEqual(body["credits_remaining"], 3)
+        self.assertEqual(body["credits_remaining_after"], 2)
+        self.assertIsNotNone(body["credits_expire_at"])
+        self.assertEqual(body["minutes"], 55)
+
+    def test_the_quote_writes_nothing(self) -> None:
+        """MOD-016's `resolve_price` finding from the other side: a read is not the sale."""
+        gym = self.gym()
+        person_id = self.person(gym["tenant_id"])
+        self.credits(gym, person_id, quantity=3)
+        for _ in range(3):
+            self.client.get(
+                f"/scheduling/personal-session-quote?coach_resource_id={gym['coach']}"
+                f"&person_id={person_id}&location_id={gym['location_id']}"
+                f"&starts_at={self.slot()}&minutes=55",
+                headers=self.headers(gym["tenant_id"]))
+        read = self.client.get(f"/member-entitlements?person_id={person_id}",
+                               headers=self.headers(gym["tenant_id"]))
+        self.assertEqual(read.json()["grants"][0]["balance"], 3)
+
+    def test_at_zero_credits_the_quote_says_a_package_is_needed(self) -> None:
+        """ADR-0019 D6: "never a blocked state with no way out", as a fact rather than a
+        sentence."""
+        gym = self.gym()
+        person_id = self.person(gym["tenant_id"])
+        quote = self.client.get(
+            f"/scheduling/personal-session-quote?coach_resource_id={gym['coach']}"
+            f"&person_id={person_id}&location_id={gym['location_id']}"
+            f"&starts_at={self.slot()}&minutes=55",
+            headers=self.headers(gym["tenant_id"]))
+        self.assertEqual(quote.status_code, 200, quote.text)
+        body = quote.json()
+        self.assertTrue(body["needs_a_package"])
+        self.assertFalse(body["may_book"])
+        self.assertIsNone(body["grant_id"])
+        self.assertIsNone(body["credits_remaining"])
+        # The coach is still free: the two refusals are separate facts, and a screen that
+        # conflated them would tell somebody the coach was busy.
+        self.assertTrue(body["coach_is_free"])
+
+    def test_the_quote_and_the_command_name_the_same_grant(self) -> None:
+        """One definition, so a screen cannot quote a credit the draw would not take."""
+        gym = self.gym()
+        person_id = self.person(gym["tenant_id"])
+        soon = self.credit_policy(gym)
+        later = self.credit_policy(gym)
+        # Two packages, the second expiring first. ADR-0019 D9: the soonest-expiring is spent.
+        self.credits(gym, person_id, quantity=5, policy_id=soon,
+                     valid_to=(datetime.now(UTC) + timedelta(days=200)).isoformat())
+        expiring = self.credits(
+            gym, person_id, quantity=2, policy_id=later,
+            valid_to=(datetime.now(UTC) + timedelta(days=20)).isoformat())
+        quote = self.client.get(
+            f"/scheduling/personal-session-quote?coach_resource_id={gym['coach']}"
+            f"&person_id={person_id}&location_id={gym['location_id']}"
+            f"&starts_at={self.slot()}&minutes=55",
+            headers=self.headers(gym["tenant_id"]))
+        self.assertEqual(quote.json()["grant_id"], expiring)
+        self.assertEqual(quote.json()["drawable_grants"], 2)
+        booked = self.book(gym, person_id)
+        self.assertEqual(booked.status_code, 200, booked.text)
+        self.assertEqual(booked.json()["grant_id"], expiring,
+                         "the draw took a different grant from the one quoted")
+        self.assertEqual(booked.json()["credits_remaining"], 1)
+
+    def test_the_quote_reports_the_clash_rather_than_refusing(self) -> None:
+        gym = self.gym()
+        first = self.person(gym["tenant_id"], "First")
+        second = self.person(gym["tenant_id"], "Second")
+        self.credits(gym, first)
+        self.credits(gym, second)
+        when = self.slot()
+        self.assertEqual(self.book(gym, first, starts_at=when).status_code, 200)
+        quote = self.client.get(
+            f"/scheduling/personal-session-quote?coach_resource_id={gym['coach']}"
+            f"&person_id={second}&location_id={gym['location_id']}"
+            f"&starts_at={when}&minutes=55",
+            headers=self.headers(gym["tenant_id"]))
+        self.assertEqual(quote.status_code, 200, quote.text)
+        self.assertFalse(quote.json()["coach_is_free"])
+        self.assertFalse(quote.json()["may_book"])
+        self.assertTrue(quote.json()["clashes"])
+        # The credit is still drawable: the screen says which of the two is in the way.
+        self.assertFalse(quote.json()["needs_a_package"])
+
+    # ---------------------------------------------------------------- who may do it
+
+    def test_the_booking_needs_all_three_permissions(self) -> None:
+        """Creating the session, taking the place and spending the credit are three acts."""
+        gym = self.gym()
+        person_id = self.person(gym["tenant_id"])
+        self.credits(gym, person_id)
+        body = {
+            "coach_resource_id": gym["coach"], "person_id": person_id,
+            "location_id": gym["location_id"], "starts_at": self.slot(),
+            "minutes": 55, "idempotency_key": uuid.uuid4().hex, **self.correlation()}
+        for held in (["scheduling.personal_session.book"],
+                     ["scheduling.personal_session.book", "scheduling.place.hold"],
+                     ["scheduling.place.hold", "membership.entitlement.draw"]):
+            token = self.grant(gym["tenant_id"], held)
+            refused = self.client.post(
+                "/scheduling/personal-sessions", json=body,
+                headers=self.headers(gym["tenant_id"], token))
+            self.assertEqual(refused.status_code, 403, f"{held}: {refused.text}")
+
+    def test_the_quote_needs_the_entitlement_read_as_well(self) -> None:
+        """A reader holding only the schedule read would get a balance out of this route."""
+        gym = self.gym()
+        person_id = self.person(gym["tenant_id"])
+        self.credits(gym, person_id)
+        token = self.grant(gym["tenant_id"], ["scheduling.schedule.read"])
+        refused = self.client.get(
+            f"/scheduling/personal-session-quote?coach_resource_id={gym['coach']}"
+            f"&person_id={person_id}&location_id={gym['location_id']}"
+            f"&starts_at={self.slot()}&minutes=55",
+            headers=self.headers(gym["tenant_id"], token))
+        self.assertEqual(refused.status_code, 403, refused.text)
+
+    # ---------------------------------------------------------------- MOD-020's refusal
+
+    def test_a_personal_session_cannot_be_booked_through_mod020(self) -> None:
+        """ADR-0019 D8, and the reason the refusal is in `_evaluate` rather than one command:
+        the eligibility read, the booking and the waitlist all reach it."""
+        gym = self.gym()
+        person_id = self.person(gym["tenant_id"])
+        self.credits(gym, person_id)
+        session_id = self.book(gym, person_id).json()["session_id"]
+        policy = self.client.post("/booking/policies", json={
+            "policy_key": f"pt-{uuid.uuid4().hex[:6]}", "display_name": "Standard",
+            **self.correlation()}, headers=self.headers(gym["tenant_id"]))
+        self.assertEqual(policy.status_code, 201, policy.text)
+        policy_key = policy.json()["policy_key"]
+        other = self.person(gym["tenant_id"], "Somebody else")
+        eligible = self.client.get(
+            f"/booking/sessions/{session_id}/eligibility?person_id={other}"
+            f"&policy_key={policy_key}", headers=self.headers(gym["tenant_id"]))
+        self.assertEqual(eligible.status_code, 200, eligible.text)
+        self.assertFalse(eligible.json()["may_book"])
+        self.assertEqual(eligible.json()["reason"], "session_not_bookable")
+        self.assertIn("personal", eligible.json()["detail"])
+        booked = self.client.post(f"/booking/sessions/{session_id}/bookings", json={
+            "person_id": other, "policy_key": policy_key,
+            "source_kind": "front_desk", "idempotency_key": uuid.uuid4().hex,
+            **self.correlation()}, headers=self.headers(gym["tenant_id"]))
+        self.assertEqual(booked.status_code, 409, booked.text)
+
+    # ------------------------------------------------- what the sweep asked for
+
+    def test_a_credit_that_is_not_usable_now_is_not_offered(self) -> None:
+        """`entitlements.usable` decides, not a `WHERE` clause.
+
+        **The mutation that skips it came back uncaught**, because every grant the other
+        fixtures make is usable: an expired one is the case that did not exist. A quote that
+        offered it would name a credit the draw refuses, which is the
+        one-module-two-definitions shape on the figure a screen puts in front of somebody.
+
+        **And it then found a real defect, by failing at 07:40 one morning.** The quote
+        derived the club's local minute from *now* rather than from the hour being booked, so
+        an off-peak package read as usable whenever the request happened to be made inside
+        its window -- which is "off-peak" meaning when the receptionist typed. The test had
+        passed every earlier run and is deterministic now, because the instant it asserts
+        against is the session's own.
+        """
+        gym = self.gym()
+        person_id = self.person(gym["tenant_id"])
+        # **An off-peak package, and the slot is in the evening.** Chosen over an expired one
+        # because it exercises the half `drawable_credits_on` derives rather than reads: the
+        # local minute comes from the location's own timezone through `AT TIME ZONE`, which is
+        # the `brand_id`/`local_minute` finding MOD-017's review made -- an off-peak grant was
+        # drawn on at seven in the evening by a caller sending `600`. The fixture's club is
+        # UTC+3 and the slot is 17:30Z, so 20:30 local is outside a morning window.
+        self.credits(gym, person_id, quantity=4,
+                     usable_from_minute=6 * 60, usable_to_minute=12 * 60)
+        quote = self.client.get(
+            f"/scheduling/personal-session-quote?coach_resource_id={gym['coach']}"
+            f"&person_id={person_id}&location_id={gym['location_id']}"
+            f"&starts_at={self.slot()}&minutes=55",
+            headers=self.headers(gym["tenant_id"]))
+        self.assertEqual(quote.status_code, 200, quote.text)
+        self.assertTrue(quote.json()["needs_a_package"])
+        self.assertEqual(quote.json()["drawable_grants"], 0)
+        refused = self.book(gym, person_id)
+        self.assertEqual(refused.status_code, 409, refused.text)
+
+    def test_a_credit_that_expires_before_the_session_cannot_pay_for_it(self) -> None:
+        """The other half of judging the credit at the hour it buys.
+
+        An off-peak window is one way a grant can be unusable *then* and usable *now*; the
+        validity window is the other, and it is the one a member would notice -- a credit
+        expiring on Friday cannot pay for a session the following Tuesday, because by then
+        there is nothing to spend. Judged at the moment of asking it would be accepted, and
+        the tenant would have given away a session.
+        """
+        gym = self.gym()
+        person_id = self.person(gym["tenant_id"])
+        # Valid from now, expiring a day before the slot this fixture books.
+        self.credits(gym, person_id, quantity=4,
+                     valid_to=(datetime.now(UTC) + timedelta(days=2)).isoformat())
+        quote = self.client.get(
+            f"/scheduling/personal-session-quote?coach_resource_id={gym['coach']}"
+            f"&person_id={person_id}&location_id={gym['location_id']}"
+            f"&starts_at={self.slot()}&minutes=55",
+            headers=self.headers(gym["tenant_id"]))
+        self.assertEqual(quote.status_code, 200, quote.text)
+        self.assertTrue(quote.json()["needs_a_package"])
+        self.assertEqual(quote.json()["drawable_grants"], 0)
+        refused = self.book(gym, person_id)
+        self.assertEqual(refused.status_code, 409, refused.text)
+        self.assertIn("no_personal_training_credit", refused.text)
+
+    def test_the_draw_itself_judges_the_credit_at_the_session_not_at_the_hold(self) -> None:
+        """The authoritative check, asked directly, because the command cannot reach it.
+
+        **`drawable_credits_on` refuses first on every path this build has**, so removing
+        `usable_at` from the draw changes no answer through a route: the list has already
+        excluded the grant. That made the mutation uncaught, which is the "a guard that exists
+        for input the current producer cannot emit" reading -- and the guard is not redundant,
+        because the draw is the check taken *under the grant's lock* and the two have to ask
+        the same question or the module has two definitions of when a credit may be spent.
+
+        So the case is one layer down: the draw called directly with a grant the selecting
+        read would never have offered. Without `usable_at` it accepts an off-peak package for
+        an evening session.
+        """
+        from app.commercial import service as commercial
+        from app.db import tenant_scope
+        from app.errors import Conflict
+
+        gym = self.gym()
+        person_id = self.person(gym["tenant_id"])
+        grant_id = self.credits(gym, person_id, quantity=4,
+                                usable_from_minute=6 * 60, usable_to_minute=12 * 60)
+        # 17:30Z is 20:30 at this club, outside the morning window; `at` is now, which is
+        # the moment the hold is taken and is deliberately not what the window is judged by.
+        evening = datetime.fromisoformat(self.slot().replace("Z", "+00:00"))
+        with tenant_scope(self._tenant_pool, gym["tenant_id"]) as conn:
+            with self.assertRaises(Conflict) as refused:
+                commercial.reserve_entitlement_on(
+                    conn, gym["tenant_id"], grant_id=grant_id, purpose_kind="booking",
+                    quantity=1, idempotency_key=uuid.uuid4().hex,
+                    actor_id=str(uuid.uuid4()), correlation_id=str(uuid.uuid4()),
+                    location_id=gym["location_id"], usable_at=evening)
+        self.assertIn("usable between 06:00 and 12:00", str(refused.exception))
+
+    def test_another_member_s_credit_is_not_drawable(self) -> None:
+        """The grant is derived from *this* member. ADR-0019 D9.
+
+        **The mutation that drops the `person_id` filter came back uncaught** until this test:
+        every other fixture either has one member with credits or two who both have them, so
+        widening the filter changed no answer. The harm needs a member with none beside a
+        member with some -- then the filter is the only thing stopping somebody being trained
+        on a stranger's package, with the reservation recorded against the stranger.
+        """
+        gym = self.gym()
+        has = self.person(gym["tenant_id"], "Paid up")
+        has_not = self.person(gym["tenant_id"], "Paid nothing")
+        self.credits(gym, has, quantity=5)
+        quote = self.client.get(
+            f"/scheduling/personal-session-quote?coach_resource_id={gym['coach']}"
+            f"&person_id={has_not}&location_id={gym['location_id']}"
+            f"&starts_at={self.slot()}&minutes=55",
+            headers=self.headers(gym["tenant_id"]))
+        self.assertTrue(quote.json()["needs_a_package"])
+        refused = self.book(gym, has_not)
+        self.assertEqual(refused.status_code, 409, refused.text)
+        # And the other member's package is untouched.
+        read = self.client.get(f"/member-entitlements?person_id={has}",
+                               headers=self.headers(gym["tenant_id"]))
+        self.assertEqual(read.json()["grants"][0]["balance"], 5)
+
+    def test_the_quote_bounds_the_length_as_well(self) -> None:
+        """**The quote's `minutes` is a query parameter with no `Field` bound**, so the
+        service's own band is what refuses it -- and the POST body's bound meant no test could
+        reach that guard. The mutation that removed it came back uncaught against a suite
+        testing only the command: the layer was wrong rather than the guard redundant.
+        """
+        gym = self.gym()
+        person_id = self.person(gym["tenant_id"])
+        self.credits(gym, person_id)
+        for minutes in (5, 300):
+            refused = self.client.get(
+                f"/scheduling/personal-session-quote?coach_resource_id={gym['coach']}"
+                f"&person_id={person_id}&location_id={gym['location_id']}"
+                f"&starts_at={self.slot()}&minutes={minutes}",
+                headers=self.headers(gym["tenant_id"]))
+            self.assertEqual(refused.status_code, 422, refused.text)

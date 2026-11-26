@@ -317,6 +317,7 @@ corresponds to them. The others map loosely:
 | `/plans` | ADM-MSH-09 Plans & pricing · owner only | **built from the canvas, and the count it is for needed a server read and the names needed another** — the blast radius is stated before the save, the typed confirmation is re-checked in the action, and the `deadBook` state refuses a write `create_price` would accept. Rendering it found that `sellable_plans` returned the *variant's* name, so six of eight rows read "Monthly" |
 | `/schedule` | ADM-SCH-01 Class schedule · week grid | **built from the canvas** |
 | `/rota` | ADM-SCH-04 Coach availability · week grid | **built from the canvas** — the schedule board's own missing third view, over a read that did not exist |
+| `/schedule/pt?person=` | ADM-SCH-05 Schedule PT | **built from the canvas** — the title, the two fields, the consequence panel and "Book · use 1 credit"; the credit it would spend, what is left after it and whether the coach is free are all the server's, re-read whenever the choice changes, and the canvas's two refusals are kept apart because "sell a package" and "pick another hour" have different remedies. The zero-credit button opens a Point of Sale this build does not have, so the screen names selling a package rather than offering a dead control |
 | `/schedule/resources` | ADM-SCH-06 Rooms and resources | **built from the canvas, and it closes ADM-SCH-03's own named gap** — the three columns are three different numbers and this build had one of them, so `0035` adds a space's capacity and the relation that puts equipment *in* a room; the ceiling they impose is one function the capacity-policy write refuses by and the live clash check reports |
 | `/desk/*` (layout) | FD-08 Device strip | **built from the canvas** — always visible above the Front Desk surface, worst row first, and every degraded row names what to do instead; the canvas's own "type the name instead" is replaced because this product has no member search, and the receipt printer and card terminal it draws are not kinds of device this build registers |
 | `/schedule/new` | ADM-SCH-03 Create a class | **built from the canvas** — type, coach, room, capacity, time, the weekday chips and the waitlist, with the clash reported as the fields change rather than on save and the two answers the canvas draws (use somebody free, or keep them with the written reason paragraph 1842 requires); the capacity ceiling, the waitlist's other two settings and editing a class that already has bookings are each named as absent with what they need |
@@ -3304,6 +3305,84 @@ nothing: MOD-013 authors a message and has no dispatcher, and before that the me
 is `member.contact.read`'s question rather than a scheduling caller's. The canvas calls the
 notification the action, and that half is named on the confirmation rather than implied.
 
+
+## ADM-SCH-05 — a personal session, and the inner join that would have hidden it
+
+`/schedule/pt?person=…`, from the member's own entitlements table. ADR-0019.
+
+> **Book Yousef with Hala** · `WHEN Thu 17:30` · `LENGTH 55 min`
+> Uses **1 of her 3 remaining credits**. Two left after this, expiring 30 November.
+> `[Book · use 1 credit]`
+> At zero credits the button becomes **Sell a package first** and opens POS-05 with Hala and
+> Yousef pre-filled. Never a blocked state with no way out.
+
+**Five of the canvas's facts already existed and four of them had never been exercised from a
+surface.** A coach is a `staff` resource; a member is a `ppl_persons` row; the credits and their
+expiry are MOD-017's grants, read by `balance_of` and `expiring_before`; and drawing one is
+`reserve_entitlement`, atomic under a lock on the grant. The fifth is the one the module did not
+have — a session that is one member rather than a roster — and ADM-SCH-04's own gap note said so
+in as many words: *"a class and a personal-training session are one state because nothing records
+a session kind"*.
+
+**What is drawn, as drawn.** The title names both once both are chosen; `WHEN` and `LENGTH` are
+the canvas's two fields side by side (three here, because this build asks for the length in
+minutes rather than offering a fixed set); the consequence panel is the quiet surface a step
+above the card with the figures in it; and the primary says what it costs.
+
+**Four decisions on the surface are worth reading.**
+
+- **The consequence is the server's and is re-read whenever the choice changes.** Which credit
+  would be spent and whether the coach is free are both answers about *one* proposal, so a panel
+  left over from a previous coach or hour is a figure a desk would act on. The answer carries the
+  proposal it was about, so a reply about an edited choice is simply not the one on screen —
+  ADM-SCH-07's derivation, and the browser case that proves it clears the Day field and watches
+  the panel go back to "pick a day".
+- **The canvas's two refusals are never merged.** "Sell a package first" and "pick another hour"
+  have different remedies, and a screen that said one for both would send a desk to the wrong
+  one. Both are said where both are in the way, and the member's missing credit never blames the
+  coach.
+- **The member comes from the link and the coach is picked here.** The title names both because
+  both are chosen upstream, and the one a desk knows first is the member — they are standing
+  there, and their credits are the table this screen is reached from. A member picker would be a
+  select of every person in the tenant, which the canvas does not draw and which does not
+  survive a second club.
+- **The length field stays ASCII.** Every rendered figure follows `localization.numerals`; a form
+  field is typed back rather than read, and on an `arab` tenant a shaped figure in the box would
+  be refused by the number input itself. ADM-PAY-06's own finding.
+
+**And the rota gained the sixth cell state this closed.** The canvas draws `PT` against `CLS` on
+a coach's week and this build had one `booked` state for both, with a gap note under the grid
+saying why — which `0036` made false. The note is deleted, `bookedPersonal` is the sixth state,
+and a refused booking keeps the mark of whatever it is because the border is what says the rota
+refuses it.
+
+**What it cannot do**, each named on the screen rather than drawn as a dead control: the
+zero-credit button opens a Point of Sale this build has no implementation of at all (and taking
+money is the payment provider besides); a standing weekly slot is a template with a rule, which
+the class machinery already is; and nothing tells the member, because MOD-013 authors a message
+and has no dispatcher.
+
+**And three defects survived all of that until a person opened the page.** The independent
+TestSprite journey is what put a reader in front of it, and none of the three is subtle:
+
+- **The consequence line printed its own template.** Both plural messages shipped as ICU
+  brace-pipe strings where this catalogue's plural form is an object, so the panel read
+  `{one=Uses 1 of the member's 1 remaining credit.|other=Uses 1 of the member's 2 remaining
+  credits.}`. The browser assertion passed because `toContainText` is a substring test and a
+  template contains every form's text — the strongest available assertion was always the one
+  that *rejects* the template, and it costs the same to write.
+- **The busy-coach banner rendered the server's diagnostic**, uuid and all. ADM-SCH-03 words
+  the conflict's *kind* through `conflictWord`; this screen reads the same function now.
+- **The credit was judged at the moment of asking rather than at the hour it buys**, so
+  "off-peak" meant when the receptionist typed. ADR-0019 D10.
+
+**Proven:** 26 HTTP tests and 16 Python mutations (all caught — four came back uncaught on the
+first run and three of those were cases that did not exist: an off-peak credit the clock refuses,
+a member with none beside a member with some, and the quote's own unbounded `minutes`); 13
+component tests plus three new catalogue guards, each mutation-proven; 16 browser tests, run
+twice in a row because the booking consumes the coach's hour, with the ready state now asserting
+the *absence* of a template and the refusal the absence of a uuid; 6 browser mutations, all
+caught.
 
 ## ADM-SCH-06 — a room has a capacity, and three numbers stay three
 

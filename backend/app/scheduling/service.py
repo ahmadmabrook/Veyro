@@ -26,11 +26,13 @@ a row behind it.
 
 from __future__ import annotations
 
+import hashlib
 from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
 
 from psycopg import Connection, errors
 
+from app.commercial import service as commercial
 from app.db import Pool, tenant_scope
 from app.errors import Conflict, InvalidRequest, NotFound
 from app.events import service as events
@@ -91,6 +93,23 @@ def _append(
         conn, tenant_id, event_type=name, aggregate_type=aggregate_type,
         aggregate_id=aggregate_id, payload=payload, correlation_id=correlation_id,
         actor_id=actor_id)
+
+
+def short_key(value: str) -> str:
+    """A caller's key, folded to a fixed-width digest for use inside a derived one.
+
+    **Truncation is what this replaces.** MOD-020's hold key was `f"bkg-{key}"[:200]` against
+    a body field bounded at 200, so two keys differing only in their last four characters
+    produced one hold key: a reviewer booked member A with a 200-character counter and watched
+    member B's booking refused as a duplicate in a class with nine free places. A digest is
+    the same length whatever goes in, and `sha256` here is a collision-free label rather than
+    a security claim -- nothing authenticates on it.
+
+    **It lives here rather than in MOD-020 because both modules derive a hold key**, and two
+    copies of one expression is the shape this build finds most often. MOD-020 already imports
+    this module; the reverse would be a cycle, so this is the only direction available.
+    """
+    return hashlib.sha256(value.strip().encode("utf-8")).hexdigest()[:32]
 
 
 def _location(conn: Connection[Any], location_id: str) -> dict[str, Any]:
@@ -814,12 +833,20 @@ def _held_over(
     was substituted out is not teaching, and leaving them held made them unschedulable
     everywhere else at that time.
     """
+    # **A LEFT JOIN, and this is the one of the five where an inner one is a defect rather
+    # than an omission.** A personal session cites no template (`0036`), and this is the
+    # reader every conflict decision is made from -- so an inner join here would make a
+    # coach's PT invisible to the class generator and the coach double-bookable with nothing
+    # objecting. The label falls back to the kind, because ADR-0019 D3 stores no name on the
+    # session: a conflict about a PT booking says "personal training" rather than naming the
+    # member, which `conflicts.detail` would otherwise put in front of a reader holding only
+    # the schedule read.
     rows = conn.execute(
         "SELECT r.resource_id, r.resource_kind, r.quantity, r.holds_from, r.holds_until,"
-        " r.session_id, t.display_name"
+        " r.session_id, t.display_name, s.session_kind"
         " FROM plt01.sch_session_resources r"
         " JOIN plt01.sch_sessions s ON s.session_id = r.session_id"
-        " JOIN plt01.sch_templates t ON t.template_id = s.template_id"
+        " LEFT JOIN plt01.sch_templates t ON t.template_id = s.template_id"
         " WHERE s.status = 'scheduled' AND r.superseded_at IS NULL"
         "   AND r.holds_from < %s AND %s < r.holds_until",
         (holds_until, holds_from),
@@ -827,7 +854,8 @@ def _held_over(
     return [conflicts.Held(
         resource_id=str(r[0]), kind=str(r[1]), quantity=int(r[2]),
         placement=availability.Placement(starts_at=r[3], ends_at=r[4]),
-        session_id=str(r[5]), session_label=str(r[6])) for r in rows]
+        session_id=str(r[5]),
+        session_label=str(r[6]) if r[6] is not None else str(r[7])) for r in rows]
 
 
 def _assign(
@@ -1557,17 +1585,24 @@ def _session(
     """
     row = conn.execute(
         "SELECT template_id, location_id, starts_at, ends_at, status, capacity,"
-        " overbook_places, timezone, policy_id"
+        " overbook_places, timezone, policy_id, session_kind"
         " FROM plt01.sch_sessions WHERE session_id = %s"
         + (" FOR UPDATE" if for_update else ""),
         (session_id,),
     ).fetchone()
     if row is None:
         raise NotFound("session_not_found")
-    return {"template_id": str(row[0]), "location_id": str(row[1]), "starts_at": row[2],
+    # **`template_id` and `policy_id` are `None` for a personal session** (`0036`), and
+    # `str(None)` is the string "None" -- which reaches `WHERE policy_id = %s` as a value
+    # PostgreSQL cannot cast to a uuid, so every caller would answer 500 rather than finding
+    # no policy. The two readers that look a policy up already handle its absence, because
+    # both were written to fall back when no row comes back.
+    return {"template_id": None if row[0] is None else str(row[0]),
+            "location_id": str(row[1]), "starts_at": row[2],
             "ends_at": row[3], "status": str(row[4]), "capacity": int(row[5]),
             "overbook_places": int(row[6]), "timezone": str(row[7]),
-            "policy_id": str(row[8])}
+            "policy_id": None if row[8] is None else str(row[8]),
+            "session_kind": str(row[9])}
 
 
 def substitute_instructor(
@@ -2039,7 +2074,10 @@ def take_hold_on(
     session = _session(conn, session_id)
     if session["status"] != "scheduled":
         raise Conflict(f"this_session_is_{session['status']}")
-    policy = conn.execute(
+    # A personal session cites no policy, so there is no booking window to be inside: the
+    # coach agreed to the time, which is the window. `None` here takes the same path as a
+    # class whose policy row has gone, which this lookup already handled.
+    policy = None if session["policy_id"] is None else conn.execute(
         "SELECT opens_hours_before, closes_minutes_before"
         " FROM plt01.sch_capacity_policies WHERE policy_id = %s",
         (session["policy_id"],),
@@ -2185,12 +2223,12 @@ def check_eligibility_on(
     """
     moment = at or _now()
     session = _session(conn, session_id, for_update=False)
-    rows = conn.execute(
+    rows = [] if session["policy_id"] is None else conn.execute(
         "SELECT restriction_kind, restriction_value FROM plt01.sch_restrictions"
         " WHERE policy_id = %s ORDER BY restriction_kind",
         (session["policy_id"],),
     ).fetchall()
-    policy = conn.execute(
+    policy = None if session["policy_id"] is None else conn.execute(
         "SELECT opens_hours_before, closes_minutes_before"
         " FROM plt01.sch_capacity_policies WHERE policy_id = %s",
         (session["policy_id"],),
@@ -2395,9 +2433,10 @@ def session_detail(
         row = conn.execute(
             "SELECT s.template_id, t.template_code, t.display_name, s.location_id,"
             " s.starts_at, s.ends_at, s.local_date, s.timezone, s.dst_adjusted,"
-            " s.capacity, s.overbook_places, s.status, s.cancellation_reason, s.rule_id"
+            " s.capacity, s.overbook_places, s.status, s.cancellation_reason, s.rule_id,"
+            " s.session_kind"
             " FROM plt01.sch_sessions s"
-            " JOIN plt01.sch_templates t ON t.template_id = s.template_id"
+            " LEFT JOIN plt01.sch_templates t ON t.template_id = s.template_id"
             " WHERE s.session_id = %s",
             (session_id,),
         ).fetchone()
@@ -2459,8 +2498,16 @@ def session_detail(
     places = int(row[9]) + int(row[10])
     taken = int(held[0]) if held else 0
     return {
-        "session_id": session_id, "template_id": str(row[0]),
-        "template_code": str(row[1]), "display_name": str(row[2]),
+        # **Three of these are null for a personal session** (`0036`), and the surface says
+        # which rather than being handed the word "None": a class's name is its template's,
+        # and a personal session has none because ADR-0019 D3 stores no name on the row --
+        # the label is the kind, worded by the reader's own catalogue, and who it is with is
+        # MOD-020's roster read through its own gate.
+        "session_id": session_id,
+        "session_kind": str(row[14]),
+        "template_id": None if row[0] is None else str(row[0]),
+        "template_code": None if row[1] is None else str(row[1]),
+        "display_name": None if row[2] is None else str(row[2]),
         "location_id": str(row[3]), "starts_at": row[4].isoformat(),
         "ends_at": row[5].isoformat(), "local_date": row[6].isoformat(),
         "timezone": str(row[7]), "dst_adjusted": bool(row[8]),
@@ -2525,6 +2572,7 @@ def schedule_for(
         rows = conn.execute(
             "SELECT s.session_id, s.template_id, t.display_name, s.starts_at, s.ends_at,"
             " s.local_date, s.capacity, s.overbook_places, s.status, s.dst_adjusted,"
+            " s.session_kind,"
             " coalesce((SELECT sum(h.places) FROM plt01.sch_capacity_holds h"
             "            WHERE h.session_id = s.session_id"
             "              AND h.status IN ('held', 'attended')), 0),"
@@ -2539,7 +2587,7 @@ def schedule_for(
             "   WHERE a.session_id = s.session_id AND a.resource_kind = 'staff'"
             "     AND a.superseded_at IS NULL)"
             " FROM plt01.sch_sessions s"
-            " JOIN plt01.sch_templates t ON t.template_id = s.template_id"
+            " LEFT JOIN plt01.sch_templates t ON t.template_id = s.template_id"
             " WHERE s.location_id = %s AND s.local_date >= %s AND s.local_date <= %s"
             "   AND (%s OR s.status = 'scheduled')"
             " ORDER BY s.starts_at",
@@ -2550,15 +2598,21 @@ def schedule_for(
         "timezone": where["timezone"], "from_date": from_date.isoformat(),
         "to_date": to_date.isoformat(), "count": len(rows),
         "sessions": [
-            {"session_id": str(r[0]), "template_id": str(r[1]),
-             "display_name": str(r[2]), "starts_at": r[3].isoformat(),
+            # **Both nullable, because a personal session came from no template** (`0036`).
+            # An inner join here would have dropped the row entirely -- ADR-0019 D2 -- and a
+            # `str(None)` renders the word "None" on a board, which is the quieter half of
+            # the same defect.
+            {"session_id": str(r[0]), "session_kind": str(r[10]),
+             "template_id": None if r[1] is None else str(r[1]),
+             "display_name": None if r[2] is None else str(r[2]),
+             "starts_at": r[3].isoformat(),
              "ends_at": r[4].isoformat(), "local_date": r[5].isoformat(),
              "capacity": int(r[6]), "places": int(r[6]) + int(r[7]),
-             "held": int(r[10]), "free": max(0, int(r[6]) + int(r[7]) - int(r[10])),
+             "held": int(r[11]), "free": max(0, int(r[6]) + int(r[7]) - int(r[11])),
              "status": str(r[8]), "dst_adjusted": bool(r[9]),
              # `None` rather than an empty string: a class with no coach is a gap somebody
              # has to fill, and a blank cell reads as a name nobody typed.
-             "staff": str(r[11]) if r[11] else None}
+             "staff": str(r[12]) if r[12] else None}
             for r in rows],
         "staff_is_the_live_assignment":
             "A substitution supersedes the outgoing assignment and leaves the row, so staff "
@@ -2645,11 +2699,12 @@ def sessions_without_staff(
             "SELECT s.session_id, s.template_id, t.display_name, s.starts_at, s.ends_at,"
             " s.local_date, (s.starts_at AT TIME ZONE s.timezone), s.location_id,"
             " l.location_name, s.timezone, s.capacity, s.overbook_places,"
+            " s.session_kind,"
             " coalesce((SELECT sum(h.places) FROM plt01.sch_capacity_holds h"
             "            WHERE h.session_id = s.session_id"
             "              AND h.status IN ('held', 'attended')), 0)"
             " FROM plt01.sch_sessions s"
-            " JOIN plt01.sch_templates t ON t.template_id = s.template_id"
+            " LEFT JOIN plt01.sch_templates t ON t.template_id = s.template_id"
             " JOIN plt01.locations l ON l.location_id = s.location_id"
             " WHERE s.status = 'scheduled'"
             "   AND s.local_date >= %s AND s.local_date <= %s"
@@ -2663,7 +2718,9 @@ def sessions_without_staff(
             (from_date, to_date),
         ).fetchall()
     sessions = [
-        {"session_id": str(r[0]), "template_id": str(r[1]), "display_name": str(r[2]),
+        {"session_id": str(r[0]), "session_kind": str(r[12]),
+         "template_id": None if r[1] is None else str(r[1]),
+         "display_name": None if r[2] is None else str(r[2]),
          "starts_at": r[3].isoformat(), "ends_at": r[4].isoformat(),
          "local_date": r[5].isoformat(),
          # The local wall-clock the class is advertised at, converted in the session's **own**
@@ -2672,7 +2729,7 @@ def sessions_without_staff(
          # from the other, and a location that changed zone must not move a past class.
          "local_starts_at": r[6].isoformat(),
          "location_id": str(r[7]), "location_name": str(r[8]), "timezone": str(r[9]),
-         "capacity": int(r[10]), "places": int(r[10]) + int(r[11]), "held": int(r[12])}
+         "capacity": int(r[10]), "places": int(r[10]) + int(r[11]), "held": int(r[13])}
         for r in rows]
     return {
         "from_date": from_date.isoformat(), "to_date": to_date.isoformat(),
@@ -2800,10 +2857,10 @@ def resource_week(
             "       (a.holds_from AT TIME ZONE %s)::date,"
             "       (a.holds_from AT TIME ZONE %s)::time,"
             "       (a.holds_until AT TIME ZONE %s)::time,"
-            "       s.location_id, s.status, a.quantity"
+            "       s.location_id, s.status, a.quantity, s.session_kind"
             " FROM plt01.sch_session_resources a"
             " JOIN plt01.sch_sessions s ON s.session_id = a.session_id"
-            " JOIN plt01.sch_templates t ON t.template_id = s.template_id"
+            " LEFT JOIN plt01.sch_templates t ON t.template_id = s.template_id"
             " WHERE a.resource_id = %s"
             "   AND a.superseded_at IS NULL"
             "   AND s.status = 'scheduled'"
@@ -2825,7 +2882,12 @@ def resource_week(
             # It is still a booking and still drawn, so the refusal becomes the reason.
             refusal = str(e)
         sessions.append({
-            "session_id": str(b[0]), "label": str(b[1]),
+            # **`label` is null for a personal session and the kind says why** (ADR-0019 D3):
+            # a class's label is its template's name, and a PT booking stores none, because a
+            # name on the row would be a copy of a person's name in MOD-019. The grid renders
+            # "Personal training" from its own catalogue -- which also keeps it translated.
+            "session_id": str(b[0]), "session_kind": str(b[10]),
+            "label": None if b[1] is None else str(b[1]),
             "local_date": b[4].isoformat(),
             "starts_at_local": b[5].strftime("%H:%M"),
             "ends_at_local": b[6].strftime("%H:%M"),
@@ -2909,7 +2971,376 @@ def resource_week(
             "Only a time-off window carries a reason and it is prose about why a person is "
             "away, so it needs scheduling.availability.write -- whoever may set a rota may "
             "read why somebody is off it. The exception itself is always shown.",
-        "a_session_kind_is_not_recorded":
-            "Nothing distinguishes a class from a personal-training session in this build, so "
-            "a booked hour is one state rather than two. The design draws them apart.",
+        # **This note said the opposite until `0036`**, and it was returned on every read of
+        # this grid rather than sitting in a comment -- which is the gap note this repository
+        # keeps finding, in the form that reaches a person. `session_kind` is on every session
+        # here and `label` is null for a personal one, because ADR-0019 D3 stores no name on
+        # the row: the grid words the kind from its own catalogue, which also keeps it
+        # translated.
+        "a_personal_session_has_no_label":
+            "A class's label is its template's name and a personal session has none, because "
+            "a name on the row would be a copy of a member's name in a scheduling table. "
+            "`session_kind` says which it is and the surface words it.",
+    }
+
+
+# ------------------------------------------------ a personal-training session (ADM-SCH-05)
+#
+# **ADR-0019.** One coach, one member, one credit, at an instant somebody picked. The session
+# is a `sch_sessions` row with `session_kind = 'personal'` and no template, rule or policy,
+# because a PT booking came from none of them -- and it has to be a session rather than a
+# table beside one, since `_held_over` is the reader every conflict decision is made from and
+# a booking it cannot see is a coach this module will double-book with nothing objecting.
+
+#: How long a personal session may be. The floor is a figure somebody would actually sell and
+#: the ceiling is four hours, which is longer than any session a gym runs and short enough
+#: that a mistyped `5500` is refused rather than holding a coach for three days.
+PERSONAL_MINUTES = (15, 240)
+
+#: The entitlement a personal session is drawn against. COM-01-R03's own word for "a credit
+#: for a service somebody delivers", as against `class_credit`, which is a place in a class.
+PERSONAL_ENTITLEMENT = "service_credit"
+
+
+def _coach(conn: Connection[Any], resource_id: str, *, for_update: bool) -> dict[str, Any]:
+    """The coach's resource row, locked where the caller is about to hold their time.
+
+    **The lock is on `sch_resources` and not on an index**, which is ADR-0019 D4: a partial
+    unique index cannot express "one coach, one slot", because the coach is named in
+    `sch_session_resources` and the instant in `sch_sessions` -- two tables. So the command
+    serialises on the row that identifies the coach and counts what they hold inside that.
+
+    **`SELECT ... FOR UPDATE` works under a column-scoped UPDATE grant**, measured rather than
+    assumed: `has_table_privilege(..., 'UPDATE')` reads false for this role on this table and
+    the lock is taken all the same. Deriving the answer from the privilege would have been
+    wrong, and this module's own `take_hold_on` depends on the same fact.
+    """
+    row = conn.execute(
+        "SELECT resource_id, resource_kind, status, display_name, location_id, person_id"
+        " FROM plt01.sch_resources WHERE resource_id = %s"
+        + (" FOR UPDATE" if for_update else ""),
+        (resource_id,),
+    ).fetchone()
+    if row is None:
+        raise NotFound("resource_not_found")
+    if str(row[1]) != "staff":
+        raise InvalidRequest("a_personal_session_is_with_a_staff_resource")
+    if str(row[2]) != "active":
+        raise Conflict(f"this_resource_is_{row[2]}")
+    return {"resource_id": str(row[0]), "display_name": str(row[3]),
+            "location_id": str(row[4]) if row[4] else None,
+            "person_id": str(row[5]) if row[5] else None}
+
+
+def _personal_window(
+    starts_at: datetime, minutes: int,
+) -> availability.Placement:
+    """The window a personal session holds, with the length checked at the boundary."""
+    low, high = PERSONAL_MINUTES
+    if minutes < low or minutes > high:
+        raise InvalidRequest("a_personal_session_is_15_to_240_minutes")
+    if starts_at.tzinfo is None:
+        raise InvalidRequest("an_instant_carries_a_timezone")
+    return availability.Placement(
+        starts_at=starts_at, ends_at=starts_at + timedelta(minutes=minutes))
+
+
+def _personal_clashes(
+    conn: Connection[Any], *, coach: dict[str, Any], window: availability.Placement,
+    location_id: str, timezone: str,
+) -> list[dict[str, Any]]:
+    """Why this coach cannot take this hour, from the generator's own two questions.
+
+    **The same functions the class path asks**, not a second set: `conflicts.detect` over
+    `_held_over` for what the coach already holds, and `availability.unavailable_reason` for
+    whether their rota admits the hour. A quote that computed its own answer would be a screen
+    offering a slot the command then refuses, which is the one-module-two-definitions shape
+    this build finds most often.
+    """
+    held = _held_over(
+        conn, holds_from=window.starts_at, holds_until=window.ends_at)
+    # The placement carries the site, which is what makes `elsewhere` reachable: a coach based
+    # at one club taking a PT booking at another is the conflict a reviewer found the class
+    # generator missing, and `detect` compares the two.
+    placed = availability.Placement(
+        starts_at=window.starts_at, ends_at=window.ends_at, location_id=location_id)
+    found = list(conflicts.detect(
+        placed,
+        [resources.Requirement(
+            kind="staff", quantity=1, resource_id=coach["resource_id"])],
+        _resource_chart(conn), held))
+    reason = availability.unavailable_reason(
+        window, _windows(conn, coach["resource_id"]), timezone=timezone)
+    if reason is not None:
+        found.append(conflicts.Conflict(
+            kind="unavailable", resource_id=coach["resource_id"], detail=reason))
+    return [{"kind": c.kind, "resource_id": c.resource_id, "detail": c.detail,
+             "with_session_id": c.with_session_id} for c in found]
+
+
+def personal_session_quote(
+    pool: Pool, tenant_id: str, *, coach_resource_id: str, person_id: str,
+    location_id: str, starts_at: datetime, minutes: int,
+) -> dict[str, Any]:
+    """ADM-SCH-05's consequence panel, before the button.
+
+    The canvas states it: *"Uses 1 of her 3 remaining credits. Two left after this, expiring
+    30 November"*, and *"at zero credits the button becomes Sell a package first"*. So the
+    read answers three things -- whether the coach can take the hour, which credit would be
+    spent, and what is left after it -- and the screen renders the sentence.
+
+    **It writes nothing, which is why it is not the command.** MOD-016's `resolve_price` is
+    the precedent from the other side: a read that drew the credit to tell somebody what it
+    would cost would be the sale. The balances here are unswept for the same reason
+    `list_entitlement_grants` says so: a quote that settled lapsed holds would write a ledger
+    row per page view, and the number that settles a draw is the one the command computes
+    under the grant's own lock.
+    """
+    # **Nothing here is judged at "now", which is why there is no clock seam.** Every
+    # question this read asks is about the hour being booked: whether the coach is free
+    # then, and whether a credit may be spent then. An `at` parameter was here and its
+    # only reader was the credit lookup, which judged an off-peak package against the
+    # moment somebody asked rather than the hour they asked about.
+    window = _personal_window(starts_at, minutes)
+    with tenant_scope(pool, tenant_id) as conn:
+        where = _location(conn, location_id)
+        coach = _coach(conn, coach_resource_id, for_update=False)
+        if coach["location_id"] is not None and coach["location_id"] != location_id:
+            raise Conflict("this_resource_belongs_to_another_location")
+        clashes = _personal_clashes(
+            conn, coach=coach, window=window, location_id=location_id,
+            timezone=where["timezone"])
+        # **The credit is judged at the hour it buys, not at the moment somebody asks.**
+        # `drawable_credits_on`'s `at` is when the entitlement is spent: it derives the
+        # club's local minute from it, and an off-peak package judged against *now*
+        # makes "off-peak" a statement about when the receptionist typed. The validity
+        # window goes the same way -- a credit that expires before the session cannot
+        # pay for it.
+        credits = commercial.drawable_credits_on(
+            conn, tenant_id, person_id=person_id,
+            entitlement_type=PERSONAL_ENTITLEMENT, at=window.starts_at,
+            location_id=location_id)
+    chosen = credits[0] if credits else None
+    return {
+        "coach_resource_id": coach["resource_id"],
+        "coach_name": coach["display_name"],
+        "person_id": person_id,
+        "location_id": location_id, "timezone": where["timezone"],
+        "starts_at": window.starts_at.isoformat(),
+        "ends_at": window.ends_at.isoformat(),
+        "minutes": minutes,
+        "clashes": clashes, "coach_is_free": not clashes,
+        # **The grant the command would spend, derived here as it is there.** The screen shows
+        # one figure and the command draws on one grant, and both come from
+        # `drawable_credits_on` -- soonest-expiring first -- so a quote cannot name a credit
+        # the draw would not take.
+        "grant_id": None if chosen is None else chosen["grant_id"],
+        "credits_remaining": None if chosen is None else chosen["balance"],
+        "credits_remaining_after": (
+            None if chosen is None or chosen["balance"] is None
+            else chosen["balance"] - 1),
+        "credits_expire_at": None if chosen is None else chosen["expires_at"],
+        "credit_name": None if chosen is None else chosen["display_name"],
+        "drawable_grants": len(credits),
+        "may_book": bool(credits) and not clashes,
+        # The canvas's zero-credit state, as a fact rather than a sentence: "never a blocked
+        # state with no way out" is the screen's job and POS-05, which would sell the package,
+        # is not built -- so the read says there is nothing to draw on and the surface says
+        # where selling one would happen.
+        "needs_a_package": not credits,
+        "balance_is_unswept": True,
+        "soonest_expiring_is_spent_first": (
+            "The grant drawn on is the one that expires first, which is the member's "
+            "interest: spending an open-ended credit ahead of a dated one quietly destroys "
+            "the dated one. A grant with no expiry is spent last."
+        ),
+    }
+
+
+def book_personal_session(
+    pool: Pool, tenant_id: str, *, coach_resource_id: str, person_id: str,
+    location_id: str, starts_at: datetime, minutes: int, idempotency_key: str,
+    actor_id: str, correlation_id: str, at: datetime | None = None,
+) -> dict[str, Any]:
+    """Book a coach with a member for an hour, and draw the credit it costs. ADM-SCH-05.
+
+    **One transaction, and that is the whole command** (ADR-0019 D5). The session, the coach's
+    hold, the member's place and the credit all commit together: a session with no credit
+    drawn is a free PT session, and a credit drawn with no session is a member charged for
+    nothing. MOD-010's `append_event` argument, applied to a booking -- and the reason
+    `take_hold_on` and `reserve_entitlement_on` both take a connection.
+
+    **The grant is derived, never accepted.** `reserve_entitlement` reserves against the
+    *grant's* own `person_id`, so a command taking both a member and a grant id would let a
+    caller train one person on another's credit. `drawable_credits_on` picks it from the
+    member, soonest-expiring first, and the quote names the same one.
+
+    **The lapsed-hold sweep runs first, in its own transaction**, which is not tidiness:
+    `reserve_entitlement`'s own docstring records that sweeping inside the draw's transaction
+    left a member with three lapsed holds refused for ever, because `tenant_scope` rolls back
+    on a raise and each refusal threw away the freeing it had just done.
+
+    **No booking policy, and MOD-020 refuses this session by name.** A personal session cites
+    no `sch_capacity_policies` row, so there is no booking window and no restriction set; its
+    single place is taken here, which is why `_evaluate` in MOD-020 turns a personal session
+    away rather than letting a second caller be told the class is full.
+    """
+    moment = at or _now()
+    if not idempotency_key.strip():
+        raise InvalidRequest("an_idempotency_key_cannot_be_blank")
+    window = _personal_window(starts_at, minutes)
+    # **Two prefixes, for legibility rather than as a control.** The hold's key lives in
+    # `sch_capacity_holds` and the reservation's in `mem_entitlement_reservations`, under two
+    # unique indexes, and this command is the only writer of both -- so one string in both
+    # would be just as correct, which is what the mutation sweep established by coming back
+    # uncaught. What the prefixes buy is that a row in either table says what made it. The
+    # namespace MOD-018's finding is about is the one a *caller* can write into, and both of
+    # these are still that: a caller holding `membership.entitlement.draw` can reserve with
+    # any key, so neither prefix is reserved to this command.
+    folded = short_key(idempotency_key)
+    hold_key = f"pt-hold-{folded}"
+    credit_key = f"pt-credit-{folded}"
+
+    # **The retry is answered before anything is derived**, which is this build's
+    # most-repeated idempotency defect read the other way: `take_hold_on` compares every field
+    # of the request, and by the time it runs the session has already been inserted -- so a
+    # retry would leave a second session behind before discovering the hold is a repeat. The
+    # hold is the command's handle because it is the one row here with a unique key.
+    with tenant_scope(pool, tenant_id) as conn:
+        prior = conn.execute(
+            "SELECT h.hold_id, h.session_id, h.person_id, h.source_ref, s.starts_at,"
+            " s.ends_at FROM plt01.sch_capacity_holds h"
+            " JOIN plt01.sch_sessions s ON s.session_id = h.session_id"
+            " WHERE h.idempotency_key = %s",
+            (hold_key,),
+        ).fetchone()
+        if prior is not None:
+            if (str(prior[2]) != person_id or str(prior[3]) != coach_resource_id
+                    or prior[4] != window.starts_at or prior[5] != window.ends_at):
+                raise Conflict("this_idempotency_key_was_used_for_a_different_request")
+            return {"session_id": str(prior[1]), "hold_id": str(prior[0]),
+                    "person_id": person_id, "coach_resource_id": coach_resource_id,
+                    "starts_at": prior[4].isoformat(), "ends_at": prior[5].isoformat(),
+                    "reservation_id": None, "credits_remaining": None,
+                    "repeated": True,
+                    "a_retry_reports_what_was_recorded": (
+                        "This booking already exists. The reservation and the balance are "
+                        "not re-derived, because a figure computed now is not the figure "
+                        "the member was shown when it was made."
+                    )}
+
+    # The sweep, in its own transaction, for the reason above. It needs a grant, and which
+    # grant is itself a read -- so the member's drawable list is taken first and every one of
+    # them is swept, since a hold that lapsed on the second grant is quantity the first
+    # refusal would have hidden.
+    with tenant_scope(pool, tenant_id) as conn:
+        for one in commercial.drawable_credits_on(
+                conn, tenant_id, person_id=person_id,
+                entitlement_type=PERSONAL_ENTITLEMENT, at=moment,
+                location_id=location_id):
+            commercial.expire_lapsed_holds_on(
+                conn, tenant_id, one["grant_id"], moment=moment, actor_id=actor_id,
+                correlation_id=correlation_id)
+
+    with tenant_scope(pool, tenant_id) as conn:
+        where = _location(conn, location_id)
+        coach = _coach(conn, coach_resource_id, for_update=True)
+        if coach["location_id"] is not None and coach["location_id"] != location_id:
+            raise Conflict("this_resource_belongs_to_another_location")
+        clashes = _personal_clashes(
+            conn, coach=coach, window=window, location_id=location_id,
+            timezone=where["timezone"])
+        if clashes:
+            # **Refused, where ADM-SCH-03's class check only warns.** The difference is who is
+            # deciding: a manager publishing a term of classes may know a clash is about to be
+            # resolved, and `scheduling.conflict.override` plus a written reason is how they
+            # say so. A single booking at a desk has no such story -- a coach held twice at
+            # one instant is two members told the same hour.
+            raise Conflict(f"the_coach_is_not_free: {clashes[0]['detail']}")
+        # **The credit is judged at the hour it buys, not at the moment somebody asks.**
+        # `drawable_credits_on`'s `at` is when the entitlement is spent: it derives the
+        # club's local minute from it, and an off-peak package judged against *now*
+        # makes "off-peak" a statement about when the receptionist typed. The validity
+        # window goes the same way -- a credit that expires before the session cannot
+        # pay for it.
+        credits = commercial.drawable_credits_on(
+            conn, tenant_id, person_id=person_id,
+            entitlement_type=PERSONAL_ENTITLEMENT, at=window.starts_at,
+            location_id=location_id)
+        if not credits:
+            raise Conflict("this_member_has_no_personal_training_credit")
+        grant_id = credits[0]["grant_id"]
+
+        local = conn.execute(
+            "SELECT (%s AT TIME ZONE %s)::date", (window.starts_at, where["timezone"]),
+        ).fetchone()
+        assert local is not None
+        try:
+            row = conn.execute(
+                """
+                INSERT INTO plt01.sch_sessions
+                    (tenant_id, session_kind, location_id, starts_at, ends_at, local_date,
+                     timezone, dst_adjusted, capacity, overbook_places, created_by,
+                     correlation_id)
+                VALUES (%s, 'personal', %s, %s, %s, %s, %s, false, 1, 0, %s, %s)
+                RETURNING session_id
+                """,
+                (tenant_id, location_id, window.starts_at, window.ends_at, local[0],
+                 where["timezone"], actor_id, correlation_id),
+            ).fetchone()
+        except errors.ForeignKeyViolation as e:
+            raise NotFound(_fk_subject(e)) from None
+        except errors.CheckViolation as e:
+            raise InvalidRequest(_check_name(e)) from None
+        assert row is not None
+        session_id = str(row[0])
+
+        conn.execute(
+            """
+            INSERT INTO plt01.sch_session_resources
+                (tenant_id, session_id, resource_id, resource_kind, quantity,
+                 holds_from, holds_until, assigned_by, correlation_id)
+            VALUES (%s, %s, %s, 'staff', 1, %s, %s, %s, %s)
+            """,
+            (tenant_id, session_id, coach["resource_id"], window.starts_at,
+             window.ends_at, actor_id, correlation_id))
+
+        hold = take_hold_on(
+            conn, tenant_id, session_id, person_id=person_id, source_kind="booking",
+            source_ref=coach["resource_id"], idempotency_key=hold_key,
+            actor_id=actor_id, correlation_id=correlation_id, places=1, at=moment)
+
+        drawn = commercial.reserve_entitlement_on(
+            conn, tenant_id, grant_id=grant_id, purpose_kind="booking",
+            purpose_ref=session_id, quantity=1, idempotency_key=credit_key,
+            actor_id=actor_id, correlation_id=correlation_id,
+            # The hold is taken now and the credit is spent at the session's hour, so
+            # the two moments are not the same one. `at` keeps the reservation's own
+            # `held_at` and TTL; `usable_at` is what the off-peak window and the
+            # validity window are judged against, as the quote beside it judges them.
+            location_id=location_id, at=moment, usable_at=window.starts_at)
+
+        # `template_id` is null, which is what "came from no template" means and is therefore
+        # the kind -- so no catalogue field is added for it. The outbox is the one store no
+        # erasure reaches, and a payload field nothing needs is one more thing in it.
+        _append(conn, tenant_id, "session.created", "session", session_id,
+                {"session_id": session_id, "template_id": None,
+                 "starts_at": window.starts_at.isoformat(),
+                 "location_id": location_id, "capacity": 1},
+                correlation_id=correlation_id, actor_id=actor_id)
+    return {
+        "session_id": session_id, "hold_id": hold["hold_id"],
+        "person_id": person_id, "coach_resource_id": coach["resource_id"],
+        "coach_name": coach["display_name"],
+        "starts_at": window.starts_at.isoformat(),
+        "ends_at": window.ends_at.isoformat(), "minutes": minutes,
+        "local_date": local[0].isoformat(), "timezone": where["timezone"],
+        "grant_id": grant_id, "reservation_id": drawn["reservation_id"],
+        "credits_remaining": drawn["balance_after"],
+        "repeated": False,
+        "nobody_has_been_told": (
+            "MOD-013 authors a notification and sends nothing, and this command does not "
+            "resolve a member's address -- which is member.contact.read's question rather "
+            "than a scheduling caller's."
+        ),
     }

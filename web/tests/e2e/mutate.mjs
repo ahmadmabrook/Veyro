@@ -42,6 +42,77 @@ const web = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
  * does not collect those files and so reported no failure rather than no test.
  */
 const MUTATIONS = [
+  // ------------------------------------------------- ADM-SCH-05, schedule PT (ADR-0019)
+  {
+    id: "pt-the-two-refusals-are-not-merged",
+    why: "\"sell a package first\" and \"pick another hour\" are different remedies, so a"
+      + " screen that said one for both would send a desk to the wrong one. The canvas draws"
+      + " the zero-credit state explicitly and the busy coach is a separate fact",
+    file: "src/lib/personal-session.ts",
+    from: "  if (quote.needs_a_package && !quote.coach_is_free) return \"bothInTheWay\";\n"
+      + "  if (quote.needs_a_package) return \"needsPackage\";",
+    to: "  if (quote.needs_a_package) return \"coachBusy\";",
+    // **The component runner, because the browser cannot see this one.** The two banners are
+    // rendered from `needs_a_package` and `coach_is_free` directly -- deliberately, since a
+    // screen deriving them from the summary state would lose the case where both are in the
+    // way -- so the derived state's only reader is the button, whose own mutation is caught
+    // below. A browser mutation against it came back uncaught, which is "the case exists and
+    // the layer is wrong" rather than a redundant guard.
+    runner: "vitest",
+    grep: "the canvas's two refusals",
+  },
+  {
+    id: "pt-the-answer-carries-the-proposal-it-was-about",
+    why: "a quote is an answer about one coach at one hour, so an answer left over from a"
+      + " previous choice is a figure a desk would act on -- ADM-SCH-07's own derivation,"
+      + " and the reason the state carries its key rather than a separate 'have we asked'",
+    file: "src/app/schedule/pt/book-form.tsx",
+    from: "  const live = quote !== null && quote.for === proposal ? quote.answer : null;",
+    to: "  const live = quote !== null ? quote.answer : null;",
+    grep: "forgets an answer once the choice is no longer complete",
+  },
+  {
+    id: "pt-the-button-is-held-until-both-halves-answer",
+    why: "the canvas's button says what it costs, and offering it over a refusal the command"
+      + " would make by name is worse than its absence -- FD-06's rule",
+    file: "src/app/schedule/pt/book-form.tsx",
+    from: "          state={pending || !mayBook || where !== \"ready\" ? \"disabled\" : \"default\"}",
+    to: "          state={pending ? \"disabled\" : \"default\"}",
+    grep: "a busy coach is a different sentence from a missing credit",
+  },
+  {
+    id: "pt-a-personal-session-is-marked-apart-from-a-class",
+    why: "the canvas draws PT against CLS on the coach's week and this build had one state"
+      + " for both until 0036 -- the gap note that said so is deleted, and the sixth cell"
+      + " state is what replaced it",
+    file: "src/lib/rota.ts",
+    from: "    return here.every((one) => one.session_kind === \"personal\")\n"
+      + "      ? \"bookedPersonal\"\n      : \"booked\";",
+    to: "    return \"booked\";",
+    runner: "vitest",
+    grep: "tells a personal session from a class",
+  },
+  {
+    id: "pt-an-hour-is-read-in-the-clubs-own-zone",
+    why: "the schedule board showed 15:00 under a heading promising Asia/Amman and four"
+      + " layers of tests did not notice; a confirmation naming the wrong hour is the same"
+      + " defect on the screen that books it",
+    file: "src/lib/personal-session.ts",
+    from: "    timeZone: timezone, numberingSystem: \"latn\",",
+    to: "    numberingSystem: \"latn\",",
+    runner: "vitest",
+    grep: "renders the local wall clock rather than the instant",
+  },
+  {
+    id: "pt-the-way-in-is-on-the-members-own-credits",
+    why: "a route nothing links to is a route nobody finds, which ADM-MEM-05's missing Add"
+      + " member and /rota's stale gap note each cost this app once -- and the credits table"
+      + " is where a desk already is",
+    file: "src/components/membership-panels.tsx",
+    from: "      {page.grants.some((grant) => grant.entitlement_type === \"service_credit\") ? (",
+    to: "      {false ? (",
+    grep: "is reached from the member's own credits",
+  },
   // ------------------------------------------------- ADM-SCH-06, rooms and resources
   {
     id: "rooms-an-unstated-capacity-is-not-zero",
@@ -1225,8 +1296,8 @@ const MUTATIONS = [
     why: "a substituted instructor's hold is kept rather than deleted, and one list with a "
       + "flag puts a coach who was sent home back on the roster",
     file: "src/app/schedule/[sessionId]/page.tsx",
-    from: "          <Resources list={session.former_resources} timezone={session.timezone} />",
-    to: "          <Resources list={[]} timezone={session.timezone} />",
+    from: "            <Resources list={session.former_resources} timezone={session.timezone}",
+    to: "            <Resources list={[]} timezone={session.timezone}",
     grep: "shows what a session used to hold",
   },
   {

@@ -630,6 +630,21 @@ PERMISSIONS: dict[str, Permission] = dict([
     # will do it for every booking. What bounds it is that the session's own capacity is
     # counted under a lock and the trigger beside the table refuses an overbooking.
     _p("scheduling.place.hold", "Take or settle a place on a session", "data_access"),
+    # **Booking a coach with a member is routine, and that is a different act from publishing
+    # a schedule.** ADR-0019 and ADM-SCH-05. A publication affects everybody's week and is a
+    # configuration change somebody signs off; a personal session affects one member and one
+    # coach for one hour, which is the ordinary work of a shift -- the same argument the
+    # catalogue already makes for `scheduling.place.hold` and MOD-020 makes for
+    # `booking.booking.write`.
+    #
+    # **What bounds it is that it cannot give anything away.** The coach's own holds and rota
+    # refuse a clash, the capacity is one by constraint, and the member must already hold a
+    # drawable credit -- so the cheapest permission here cannot create a right nobody bought.
+    # Drawing that credit costs `membership.entitlement.draw` as well, which is the permission
+    # that governs spending one, and taking the place costs `scheduling.place.hold`.
+    _p("scheduling.personal_session.book",
+       "Book a personal-training session with a coach, drawing the member's credit",
+       "data_access"),
 
     # ---------------------------------------------------------------- MOD-020, OPS-02
     #

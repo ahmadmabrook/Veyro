@@ -2715,6 +2715,24 @@ class ScheduleTemplateBody(BaseModel):
     correlation_id: str
 
 
+class BookPersonalSessionBody(BaseModel):
+    """ADM-SCH-05's four fields and its idempotency key.
+
+    **No grant id**, and that is the control rather than a convenience: `reserve_entitlement`
+    reserves against the *grant's* own owner, so a body carrying both a member and a grant
+    would let a caller train one person on another's credit. ADR-0019 D9 -- the command picks
+    the grant from the member, soonest-expiring first.
+    """
+
+    coach_resource_id: str
+    person_id: str
+    location_id: str
+    starts_at: datetime
+    minutes: int = Field(ge=15, le=240)
+    idempotency_key: str = Field(min_length=1, max_length=200)
+    correlation_id: str
+
+
 class ConflictCheckBody(BaseModel):
     """ADM-SCH-03's live check: a class that does not exist yet, asked about.
 
@@ -9142,6 +9160,62 @@ def create_app(
                 for r in body.requirements],
             restrictions=[{"kind": r.kind, "value": r.value} for r in body.restrictions],
             actor_id=session["identity_id"], correlation_id=body.correlation_id)
+
+    @app.get("/scheduling/personal-session-quote")
+    def read_personal_session_quote(
+        tenant_id: TenantId, session: Session, coach_resource_id: str, person_id: str,
+        location_id: str, starts_at: datetime, minutes: int = 55,
+    ) -> dict[str, Any]:
+        """ADM-SCH-05's consequence panel, before the button. ADR-0019.
+
+        **Two permissions, because the panel carries two modules' facts.** Whether the coach
+        is free is MOD-019's and what credit it would spend is MOD-017's, so a reader holding
+        only the schedule read would get a member's entitlement balance and its expiry out of
+        a scheduling route -- MOD-010's `events.event.read` finding. Both rather than a partial
+        panel, because the canvas draws the slot and the credit together and one without the
+        other is not the screen.
+
+        **It writes nothing**, which is why it is not the command: a read that drew the credit
+        to say what it would cost would be the sale, which is MOD-016's `resolve_price`
+        finding from the other side.
+        """
+        permit(session, "scheduling.schedule.read")
+        permit(session, "membership.entitlement.read")
+        return scheduling.personal_session_quote(
+            tenant_pool, tenant_id,
+            coach_resource_id=require_uuid(coach_resource_id, "coach_resource_id"),
+            person_id=require_uuid(person_id, "person_id"),
+            location_id=require_uuid(location_id, "location_id"),
+            starts_at=starts_at, minutes=minutes)
+
+    @app.post("/scheduling/personal-sessions")
+    def book_personal_session(
+        tenant_id: TenantId, session: Session, body: BookPersonalSessionBody,
+    ) -> dict[str, Any]:
+        """Book a coach with a member and draw the credit. ADM-SCH-05, ADR-0019.
+
+        **Three permissions for three acts.** Creating the session is
+        `scheduling.personal_session.book`, taking the member's place is
+        `scheduling.place.hold` and spending their credit is `membership.entitlement.draw` --
+        each the permission that already governs that act, rather than one new one standing
+        for all three. A role holding the booking permission alone can do none of it, which is
+        the point: whoever books a PT session is spending somebody's paid-for credit.
+
+        **One transaction**, which is the command's whole shape: the session, the coach's
+        hold, the member's place and the credit commit together or none of them does.
+        """
+        permit(session, "scheduling.personal_session.book")
+        permit(session, "scheduling.place.hold")
+        permit(session, "membership.entitlement.draw")
+        return scheduling.book_personal_session(
+            tenant_pool, tenant_id,
+            coach_resource_id=require_uuid(body.coach_resource_id, "coach_resource_id"),
+            person_id=require_uuid(body.person_id, "person_id"),
+            location_id=require_uuid(body.location_id, "location_id"),
+            starts_at=body.starts_at, minutes=body.minutes,
+            idempotency_key=body.idempotency_key,
+            actor_id=session["identity_id"],
+            correlation_id=require_uuid(body.correlation_id, "correlation_id"))
 
     @app.post("/scheduling/conflict-check")
     def check_schedule_conflicts(

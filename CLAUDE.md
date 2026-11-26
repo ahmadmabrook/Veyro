@@ -4207,6 +4207,107 @@ Known gaps from this slice, deliberate:
   template ran on a fixed weekday, so on one day in seven its first occurrence fell outside
   that fixed week and twelve tests failed asking to book a session nobody could book. The
   harness picks a day two out now; the missing fields are the product gap.
+**A personal-training session is a session now, and the five inner joins that would have
+hidden it are the defect this slice was most likely to ship.** ADR-0019, ADM-SCH-05. `0036`
+adds `sch_sessions.session_kind` over `('class', 'personal')` and makes `template_id`,
+`rule_id` and `policy_id` nullable under a biconditional against it: a class names all three
+and a personal session names none, because a PT booking came from somebody picking an instant.
+`book_personal_session` creates the session, holds the coach, takes the member's place and
+draws their credit **in one transaction**; `personal_session_quote` is the disclosure before
+the button. Proven: isolation check 90d with six cases of which one is a *permission*, 18
+schema mutations and 16 behaviour mutations (all caught), 26 HTTP tests, 13 component tests,
+16 browser tests and 6 browser mutations.
+
+**It has to be a `sch_sessions` row, and the reasoning is not aesthetic.** `_held_over` is the
+reader every conflict decision is made from and it joins `sch_session_resources` to
+`sch_sessions`: a PT booking in a table beside this one would be **invisible to the class
+generator**, so a coach teaching at 17:30 would be assigned a class at 17:30 with nothing
+objecting. Extending that reader to a second source is two definitions of "is this coach
+free", which `conflicts.py` exists to have one of. Two other shapes were rejected first --
+a template per coach with a one-off rule per booking abuses `live_rule_id`, and a template per
+booking leaves one dead template per session for ever, since template codes are unique and
+insert-only.
+
+Six decisions carry it, and two correct something that was already there:
+
+- **An inner join on a nullable column silently drops the row**, so all five are LEFT joins
+  now -- the calendar, the session read, the rota grid's held sessions, the unstaffed list and
+  `_held_over`. The last of those is the one where it is a defect rather than an omission, and
+  each is mutated separately because a test of one proves nothing about the others.
+- **`str(row[0])` on a nullable column is the string "None"**, which is the quieter half of the
+  same defect: a board renders the word, and `_session`'s `policy_id` reaches
+  `WHERE policy_id = %s` as a value PostgreSQL cannot cast -- a 500 rather than "no policy".
+  Every reader answers `None` instead, and the two policy lookups skip rather than query.
+- **No name is stored on the session** (D3). A PT session's label is its kind plus its
+  attendee, and the attendee is already the single `sch_capacity_holds.person_id` MOD-020's
+  roster read returns through its own gate; a `display_name` holding "PT · Hala Barakat" would
+  be a copy of a person's name in MOD-019, which is ADR-0017 D11's finding about
+  `iam.invitations` the same week. The surface words the kind from its own catalogue.
+- **The grant is derived from the member, soonest-expiring first** (D9).
+  `reserve_entitlement` reserves against the *grant's* own `person_id`, so a command taking
+  both a member and a grant id would let a desk train one person on another's credit, with the
+  reservation recorded against the payer. `commercial.drawable_credits_on` picks it and
+  `entitlements.usable` decides, so the quote cannot name a credit the draw would refuse.
+  Soonest-expiring is the member's interest, which is MOD-018's wallet spend order.
+- **`reserve_entitlement` did not already take a connection**, and ADR-0019 D5 said it did --
+  a claim three greps away, which is this build's own rule about a citation being a claim met
+  by the record that states it. `reserve_entitlement_on` is the extraction and the pool-taking
+  form delegates to it. **The lapsed-hold sweep could not be folded in**: in the draw's own
+  transaction it is rolled back by a refusal, and the usual reason a member is short *is* holds
+  that lapsed -- so the command sweeps first, in its own transaction.
+- **A personal session is refused by MOD-020's `_evaluate`**, which all three of its callers
+  reach (D8). Every decision there is about a class -- the window and the restrictions come
+  from `sch_capacity_policies`, which a personal session cites none of -- and its single place
+  is taken here, so a second caller would otherwise be refused `full`, a true answer to the
+  wrong question. In `_evaluate` rather than the command because a guard in one of three is "a
+  control consulted on one path and not its sibling", and because the *read* is the one that
+  matters: a surface gets the reason rather than a `Conflict` to parse.
+
+**And the gap note that said this was impossible was being returned to every caller.**
+`GET /scheduling/availability` carried `a_session_kind_is_not_recorded` -- "nothing
+distinguishes a class from a personal-training session in this build" -- on every read of a
+coach's week, and the rota screen rendered it. That is the gap-note-outliving-its-gap shape in
+the form that reaches a person, for the third time in this build. Deleted in the same change,
+along with the rota's single `booked` cell state: the canvas draws `PT` against `CLS` and there
+are six states now.
+
+**And three more defects came out of an independent tester opening the page, each invisible to
+a green suite.** The TestSprite journey is what put a reader in front of the screen, and what
+it found was not what it was looking for:
+
+- **The consequence line rendered its own template.** `pt.usesOne` and `pt.leftAfter` shipped
+  as ICU brace-pipe *strings* where this catalogue's plural form is an object, so the page
+  printed `{one=Uses 1 of the member's 1 remaining credit.|other=Uses 1 of the member's 2
+  remaining credits.}` to a receptionist. Four checks were structurally blind -- including the
+  browser assertion, because `toContainText` is a substring test and a template *contains*
+  every form's text. Three guards now, each mutation-proven; the general one is that where a
+  renderer can emit its own template, an assertion on the output has to reject the template
+  explicitly.
+- **The busy-coach banner rendered the server's own diagnostic**: `staff 86807d78-62ea-... is
+  already held by Evening yoga flow`, which is a uuid and English prose composed on the server
+  (ADR-0019 D11). ADM-SCH-03 had already solved it -- `conflictWord` words the *kind* -- so the
+  fix was to read the sibling rather than invent a second wording.
+- **The credit was judged at the moment of asking rather than at the hour it buys** (D10),
+  which made "off-peak" a statement about when the receptionist typed and let a credit
+  expiring on Friday pay for a session the following Tuesday. `reserve_entitlement_on` takes
+  `usable_at` beside `at`, because the hold is taken now and the credit is spent then. **Found
+  by a time-of-day flake** -- the off-peak test ran at 07:40 local, inside the window it was
+  written to be outside, and had passed every earlier run.
+
+Known gaps from this slice, deliberate:
+
+- **Nothing sells the package.** The canvas's zero-credit button opens POS-05, which has no
+  implementation at all, and taking money is the payment provider besides. The screen names
+  selling one as the next step rather than offering a control that answers nothing.
+- **A standing weekly PT slot is not expressible as one act.** It is a template with a rule,
+  which the class machinery already is; whether a tenant wants personal training expressed
+  that way is a product question nobody has asked.
+- **Nothing prices it.** What a PT credit is worth is MOD-016's and MOD-017's, and a session
+  drawn against a grant has already been paid for -- which is the whole point of the credit.
+- **Nobody is told.** MOD-013 authors a message and sends nothing.
+- **A personal session is not completed, cancelled or relocated by anything.** The lifecycle
+  commands take it as an ordinary session and nothing has been taught the difference: a
+  relocation moves what belongs to a building, and a PT booking's "building" is one coach.
 - **No travel buffer is enforced.** `availability.check_travel` decides and nothing calls it:
   the buffer is a per-tenant figure the sources do not state, and paragraph 1835's
   cross-location case needs a resource scheduled at two sites in one day, which the location
@@ -4228,6 +4329,10 @@ Known gaps from this slice, deliberate:
   is a person's own name and *is* cleared, because the row says which person it is.
 - **The timeline does not know about any of this.** MOD-014 projects nine event types and none
   of MOD-019's five is among them, so a member's timeline shows no class they were booked into.
+- **A personal session is on every reader now, and is bookable from one screen** --
+  `/schedule/pt`, ADM-SCH-05. What is still absent is a way to *cancel* one as a personal
+  session rather than as a class: `cancel_session` takes it, and the remedy machinery
+  ADM-SCH-07 built is about a roster.
 - **The surface writes now, and twice this bullet was wrong about why it did not.** `web/`
   renders the calendar, one session and a resource's rota, and **`/schedule/new` creates a
   class** -- the template, its publication and its sessions, in three writes with a live clash
@@ -7696,7 +7801,24 @@ list were both dead ends and not one row on either could be opened. It went look
 another way through, found the step-up, and was blocked by a recovery code it had none of.
 `WithheldLink` puts the marker inside the link with an accessible name built from what is not
 withheld. Twice now, the same reader behaviour against the same cell, and neither time by a
-test written here. Two bounds: a run signs in with the fixture's synthetic
+test written here.
+
+**And a third time, against a plan rather than the product.** ADM-SCH-05's journey said "open
+the record of the member called Dana Khalil"; every name on that list is marked at AAL 1, so
+the tester found nothing, clicked the step-up the row correctly offers and was stopped by a
+recovery code it does not have -- nine steps green and the tenth unreachable. **A plan may not
+name a member by a name the product withholds**, which is the masked-field finding written
+from the other side. The membership number did not fix it either, and the second run is the
+more interesting one: told to find `GOLD-00043`, the tester scrolled once and then reached for
+"Find a member", which is FD-02's lookup over phone digits and cannot answer a membership
+number. The row was on the page -- the list is bounded at fifty and the fixture has
+thirty-five -- so this is not a dead end, and it is a real observation about the product:
+**nothing in this build finds a member by their membership number**, which is a scroll at
+thirty-five rows and is not one at the 4,812 ADM-RPT-05 draws. The journey navigates by id, as
+four others here already do, and keeps the step that is its own subject: the link is on the
+entitlements table.
+
+Two bounds: a run signs in with the fixture's synthetic
 credentials through a tunnel, and **a created test carries that tenant's id for ever**, so
 re-running the fixture invalidates every test already created.
 
@@ -7705,6 +7827,7 @@ MOD-007, MOD-008, MOD-009, MOD-010, MOD-011, MOD-012, MOD-013, MOD-014, MOD-016,
 MOD-018, MOD-019, MOD-021, MOD-022, MOD-026 and MOD-027's board, table, profile and add form, plus
 MOD-020's roster on a session,
 ADM-SCH-03's create-a-class form at `/schedule/new`, ADM-SCH-04's availability grid at `/rota`,
+ADM-SCH-05's personal session at `/schedule/pt`,
 ADM-SET-07's localization at `/localization`, ADM-SCH-06's rooms and resources at
 `/schedule/resources`, ADM-SCH-07's cancellation sheet at
 `/schedule/{id}?cancel=1`, FD-07's shift open and close at `/desk/shift`,

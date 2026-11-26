@@ -148,6 +148,10 @@ READ_ROUTES = [
     # ADM-SCH-04's week grid. `sch_availability_windows` had a writer and no reader until
     # this route; the rota is behind the module's own routine read.
     ("get", f"/scheduling/availability?resource_id={_ID}", None),
+    # ADM-SCH-05. Two permissions, so a session holding only the schedule read is
+    # refused this one as well -- which is the assertion the sweep makes either way.
+    ("get", f"/scheduling/personal-session-quote?coach_resource_id={_ID}"
+            f"&person_id={_ID}&location_id={_ID}&starts_at=2026-12-01T17:30:00Z", None),
     ("get", f"/scheduling/sessions/{_ID}", None),
     ("get", f"/scheduling/sessions/{_ID}/conflicts", None),
     ("get", f"/scheduling/sessions/{_ID}/eligibility?person_id={_ID}", None),
@@ -606,6 +610,10 @@ WRITE_ROUTES = [
                "starts_on": "2026-09-01", "until": "2026-10-01", "weekdays": [3]},
       "policy": {"capacity": 20},
       "requirements": [{"kind": "room", "quantity": 1}]}),
+    ("post", "/scheduling/personal-sessions",
+     {"coach_resource_id": _ID, "person_id": _ID, "location_id": _ID,
+      "starts_at": "2026-12-01T17:30:00Z", "minutes": 55,
+      "idempotency_key": "sweep", **_CORR}),
     ("post", f"/scheduling/templates/{_ID}/publish", {**_CORR}),
     ("post", f"/scheduling/templates/{_ID}/publish",
      {"acknowledged_impact": True, **_CORR}),

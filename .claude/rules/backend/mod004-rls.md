@@ -3820,3 +3820,157 @@ cleared it **and was the better shape anyway** (a module per screen, as `rota.ts
 which is the resolution to prefer: a stale cache is a reason to look at the structure, not a
 reason to restart somebody's server. The decisive diagnostic was a one-line probe rendering the
 caught error's own message, which took one request where reading the error class took three.
+
+
+**An inner join on a nullable column silently drops the row, and making a column nullable is
+therefore a change to every reader of it.** `0036` made `sch_sessions.template_id` nullable so
+a personal-training session could cite no template, and five reads joined `sch_templates` on it
+to get a label. Four would have hidden a PT booking from a board; the fifth is `_held_over`, the
+reader every conflict decision is made from, so a PT booking would have been **invisible to the
+class generator** -- a coach teaching at 17:30 assigned a class at 17:30 with nothing objecting.
+That is the `LEFT JOIN` finding MOD-018 paid for pointed the other way: there a predicate in an
+`ON` clause failed to *filter*, here an `ON` clause filters something out. **The quieter half is
+`str(row[0])`**, which on a nullable column is the string `"None"`: a board renders the word, and
+where the value reaches `WHERE policy_id = %s` it is a 500 from a uuid cast rather than "no
+policy found". So the checklist for relaxing a NOT NULL is: every `JOIN` on that column, every
+`str()` of it, and every `WHERE` it is passed into -- and each gets its own mutation, because a
+test of one proves nothing about the others.
+
+**And the direction nobody mutates is putting the NOT NULL back.** Dropping one is the usual
+mutation and is caught by the nullability pin; *adding* one is caught by the same pin and is the
+one a reader would not think to try, because it reads as making the schema stricter rather than
+as removing a feature. With `template_id SET NOT NULL` no personal session can be written at all,
+and only the *permission* case in the behavioural block sees that -- every refusal probe still
+passes.
+
+**A seed that cannot hold a mutation's row reports MUTERR for a rule it never tested.** The
+tightening "every session holds one place" is refused by the committed seed, which carries a
+class of ten thousand places, so the `ALTER TABLE` never applies: the sweep reports an error from
+the seed rather than a gap or a catch. The usable form is a tightening the seed *admits* and the
+permission case refuses -- here "a personal session holds exactly two", since the seed holds no
+personal session and the canvas's one-coach-one-member hour then stops being writable. **Ask of
+any tightening which committed rows it has to coexist with.**
+
+**`reserve_entitlement` did not take a connection, and the design record said it did.** ADR-0019
+D5 asserted the connection-taking form existed because the module's own prose describes the draw
+as atomic -- which it is, within its own transaction. The claim was three greps away. This
+repository's rule that a citation is a claim applies to a decision record's own premises, and the
+cost of not checking is a slice built on a function that has to be written first. **And the
+extraction had a half that could not be folded in**: the lapsed-hold sweep commits separately on
+purpose, because in the draw's transaction a refusal rolls it back and the usual reason a member
+is short *is* holds that lapsed -- so a connection-taking draw leaves the sweep to its caller,
+and says so where the caller would look.
+
+**A grant id on a request body is a caller choosing whose credit is spent.** `reserve_entitlement`
+reserves against the *grant's* own `person_id`, so a command taking both a member and a grant
+would train one person on another's package with the reservation recorded against the payer --
+this build's most-repeated finding, in the one place where the wrong answer is somebody else's
+money. The command derives the grant from the member, and the *disclosure read* derives it the
+same way through the same function, so a screen cannot quote a credit the draw would refuse.
+
+**A client component importing a pure name from an impure module is still impure to a bundler,
+and this is the fifth instance.** `@/lib/personal-session.ts` held three pure functions beside
+`import { api } from "@/lib/api"`, and the form imported the three: `tsc` and the linter were
+green and every page in the app answered a build error. **The tell is a chain of
+`[Client Component Browser]` imports that never mentions `next/headers`.** The fix was also the
+better shape -- the read was a duplicate of the server action the form already calls, so deleting
+it made the module pure and removed a second definition. Read the *top* of any file a client
+component reaches, not its exports.
+
+**A spec reading `process.env` for a fixture id gets an empty string.** `fixture.mjs` writes
+`web/.env.e2e.local` at mode 600 and nothing exports it; the specs read it through
+`fixture-env.ts`, which parses the file. A spec that used `process.env` rendered the screen's
+"which member is this for?" state and failed eight assertions about a page that was working
+correctly. And the ids are *required* rather than optional in that loader for a stated reason: a
+spec that skipped on a missing id would go green against a stale fixture, which is how a branch
+nobody renders stays unrendered.
+
+**A fixture's own grants expire, and that is the product being right.** The browser fixture's
+main member has a membership ninety days old, and `grant_entitlement` dates a counted right to
+the billing period it was granted in -- so their credits lapsed at the end of that first period,
+because nothing in this build rolls a period forward. A spec asserting a credit figure against
+them failed, correctly. The member to assert against is the one whose membership is days old, so
+the window is always a few days out whenever the fixture ran; and the failure is worth reading
+rather than working around, because it is the no-period-rollover gap showing through a screen.
+
+**A test that books an hour spends the coach's time whatever the credit says.** Two ways round a
+consumable budget were needed here and only one is obvious: an *uncounted* entitlement makes the
+credit inexhaustible, which is a real product state rather than a test hook -- and the coach's
+hour is still consumed, so a slot keyed on the clock's minute collided with the previous run and
+failed on the second pass. The fix is a slot derived from the millisecond clock across a space
+larger than a fixture's life. **Running the suite twice in a row is the only thing that finds
+this**, and it has now found it in five suites.
+
+**A browser mutation against a derived summary state is uncaught when the screen renders the
+parts.** ADM-SCH-05's two refusals are rendered from `needs_a_package` and `coach_is_free`
+directly -- deliberately, because a screen deriving them from the summary would lose the case
+where both are in the way -- so `bookingState`'s only reader is the button, whose own mutation is
+caught. The summary's mutation belongs on the component runner. That is the "the case exists and
+the layer is wrong" reading, which is now the fifth distinct thing an uncaught mutation can mean.
+
+**And a stale browser-mutation anchor is found by running the sweep, not by reading it.**
+`schedule-former-resources-kept-apart` matched nothing because the JSX it names was reformatted
+onto two lines after the mutation was written -- so a live protection read as NOT RUN on every
+sweep since. The harness reports it, which is the whole value of classifying "did not apply"
+separately from "not caught": a sweep that counted it as either would have buried it.
+
+
+**A plural message written as a string renders its own template, and a substring assertion
+cannot tell the two apart.** This catalogue's plural form is an *object* of CLDR forms;
+ADM-SCH-05 shipped two messages in ICU's brace-pipe string instead -- `{one=...|other=...}` --
+which `fill` reads as plain text with a `{of}` in it, so the page printed every form at once,
+pipes and all, to a receptionist. **Four checks were structurally blind and the fifth was a
+person looking at the page.** The catalogue-parity check passed, because both locales had the
+key. The per-form sweep read the entry as a plain message whose one placeholder was exactly
+what the call site supplied, so it passed. The numerals sweep filters on plural keys and this
+was not one, so it passed -- and the call sites therefore never passed the `numbering`
+argument either. And the browser assertion was
+`toContainText("Uses 1 of the member's 2 remaining credits")`, **which the raw template
+contains**: a template holds every form's text, so a substring assertion is satisfied by the
+thing it is meant to reject. An independent tester reading the rendered screen is what found
+it.
+
+Three guards, each mutation-proven: no message value in either catalogue may contain `{\w+=`,
+which is exact because the syntax never occurs in prose; a call site passing `count` to a
+message that is neither plural nor names `{count}` is a count that reaches nothing (seven of
+this catalogue's own messages legitimately name it, so the check is about the placeholder
+rather than the plurality); and the browser spec asserts the *absence* of `|other=` and of a
+brace beside the sentence it wants. **The general rule: where a renderer can emit its own
+template, an assertion on the output must reject the template explicitly**, because every
+positive assertion about the content passes either way.
+
+**A server-composed `detail` is a diagnostic, and a surface that renders one puts an id in
+front of a reader.** MOD-019's conflict detail reads
+`staff 86807d78-62ea-... is already held by Evening yoga flow` -- written for the generator,
+where its reader is a developer. ADM-SCH-05's busy-coach banner rendered it. Two things are
+wrong with it and only one is cosmetic: a uuid is not a sentence, and the string is English
+prose composed on the server, which an Arabic reader can never be shown (ADR-0015's finding
+from the writing side). The *kind* is the fact and the catalogue words it -- which ADM-SCH-03
+already did through `conflictWord`, so the fix was to read the sibling rather than invent a
+second wording. **The check is cheap and general: a screen asserting a refusal should assert
+that no `[0-9a-f]{8}-[0-9a-f]{4}-` reaches the page.**
+
+**A fifth shape of the date-frame flake: the moment a rule is judged at is not always "now".**
+`entitlements.usable` decides an off-peak window from the club's local minute, and
+ADM-SCH-05's quote and draw both derived that minute from the instant of *asking* rather than
+from the hour being booked -- so an off-peak package was usable whenever the receptionist
+happened to type inside its window, and a credit expiring on Friday could pay for a session
+the following Tuesday. The off-peak test ran at 07:40 local, inside the 06:00-12:00 window it
+was written to be outside, and had passed every earlier run; it is deterministic now because
+the instant it asserts against is the session's own. `reserve_entitlement_on` takes
+`usable_at` beside `at`, because the two are genuinely different facts -- the hold is taken
+now and the credit is spent then, so `held_at` and the reservation TTL stay on the first. The
+default is the old behaviour, so no existing caller moves. **Ask of any time-dependent rule
+which event it is about, not which clock is nearest**: "off-peak" is a statement about the
+session, and the previous four shapes of this flake were all about the *zone* rather than the
+instant.
+
+**And the draw's half of that is a guard the selecting read makes unreachable, which is not
+the same as a redundant one.** `drawable_credits_on` refuses first on every path a route can
+take, so removing `usable_at` from `reserve_entitlement_on` changed no answer through the
+command and the mutation came back uncaught. The guard stays, because the draw is the check
+taken *under the grant's own lock* and the two have to ask the same question or the module has
+two definitions of when a credit may be spent -- and the case is one layer down, calling the
+draw directly with a grant the list would never have offered. That is the fifth reading of an
+uncaught mutation, "the case exists and the layer is wrong", met from the service side rather
+than the surface's.

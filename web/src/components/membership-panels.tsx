@@ -397,6 +397,19 @@ async function Grants({ personId, locale }: { personId: string; locale: Locale }
           {text("membership.unswept")}
         </p>
       ) : null}
+      {/* **ADM-SCH-05's way in, and this is where a desk already is.** The canvas names the
+          coach and the member in its title because both are chosen upstream, and the member
+          is the one somebody knows first -- they are standing there, and their
+          personal-training credits are this table. Shown only where there is a service credit
+          to spend, because the screen's whole subject is drawing one: a link over a member
+          with none would lead to a page whose only answer is "sell a package first". */}
+      {page.grants.some((grant) => grant.entitlement_type === "service_credit") ? (
+        <p style={{ margin: 0 }}>
+          <Link href={`/schedule/pt?person=${encodeURIComponent(personId)}`}>
+            {text("membership.bookPersonal")}
+          </Link>
+        </p>
+      ) : null}
     </>
   );
 }

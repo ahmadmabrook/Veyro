@@ -31684,12 +31684,14 @@ BEGIN
          'holds_from,holds_until,quantity,resource_id,resource_kind,'
          'session_id,supersede_correlation_id,superseded_at,'
          'superseded_by,tenant_id'),
+        -- `0036` adds `session_kind`: a class came from a template and its rule, a
+        -- personal session from somebody picking an instant. ADM-SCH-04 named the absence.
         ('plt01.sch_sessions',
          'cancel_correlation_id,cancellation_reason,cancelled_at,'
          'cancelled_by,capacity,completed_at,correlation_id,'
          'created_at,created_by,dst_adjusted,ends_at,local_date,'
          'location_id,overbook_places,policy_id,rule_id,session_id,'
-         'starts_at,status,template_id,tenant_id,timezone'),
+         'session_kind,starts_at,status,template_id,tenant_id,timezone'),
         ('plt01.sch_template_requirements',
          'correlation_id,created_at,created_by,per_attendee,quantity,'
          'requirement_id,requirement_kind,resource_id,template_id,'
@@ -31754,10 +31756,13 @@ BEGIN
          'assigned_at,assigned_by,assignment_id,correlation_id,'
          'holds_from,holds_until,quantity,resource_id,resource_kind,'
          'session_id,tenant_id'),
+        -- `0036`: the three a class cites are nullable now, because a personal session
+        -- cites none of them. The biconditional CHECK is what keeps either half from
+        -- drifting, and CHECK 91 pins its text.
         ('plt01.sch_sessions',
          'capacity,correlation_id,created_at,created_by,dst_adjusted,'
-         'ends_at,local_date,location_id,overbook_places,policy_id,'
-         'rule_id,session_id,starts_at,status,template_id,tenant_id,'
+         'ends_at,local_date,location_id,overbook_places,'
+         'session_id,session_kind,starts_at,status,tenant_id,'
          'timezone'),
         ('plt01.sch_template_requirements',
          'correlation_id,created_at,created_by,per_attendee,quantity,'
@@ -35969,6 +35974,158 @@ END $$;
 ROLLBACK;
 
 
+-- -------------------------------------------- 90d. a personal-training session (ADR-0019)
+-- **`0036`'s three rules, one case per direction, and one of them is a permission.** A pin
+-- says a rule is still written down -- check 91 carries the text of all three and of the
+-- partial index -- and only a case says it still bites.
+--
+-- **The permission is the half no refusal can see.** A personal session with no template, no
+-- rule and no policy is the ordinary row this slice exists to make writable; tighten the
+-- biconditional until it is not -- "every session names a template" -- and every refusal
+-- probe below still passes while ADM-SCH-05 can book nobody. Four of the five cases here are
+-- `check_violation` and name the constraint that refused them, so a sibling answering fails
+-- on a clean database rather than at the next sweep.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+DECLARE
+    probe integer := 0;
+    offender text;
+    state text;
+    confused text[] := ARRAY[]::text[];
+    tenant constant uuid := '11111111-1111-4111-8111-111111111111';
+    actor constant uuid := '33333333-3333-4333-8333-333333333333';
+    khalda constant uuid := 'eeeeeeee-1000-4000-8000-000000000001';
+    template constant uuid := 'eeeeeeee-2000-4000-8000-000000000001';
+    rule constant uuid := 'eeeeeeee-2000-4000-8000-000000000003';
+    policy constant uuid := 'eeeeeeee-2000-4000-8000-000000000004';
+BEGIN
+    -- 1. The permission: one coach, one member, one hour, citing nothing.
+    BEGIN
+        INSERT INTO plt01.sch_sessions
+            (tenant_id, session_kind, location_id, starts_at, ends_at, local_date,
+             timezone, capacity, overbook_places, created_by, correlation_id)
+        VALUES (tenant, 'personal', khalda,
+                TIMESTAMPTZ '2026-12-10 14:30+00', TIMESTAMPTZ '2026-12-10 15:25+00',
+                DATE '2026-12-10', 'Asia/Amman', 1, 0, actor, actor);
+        probe := probe + 1;
+    EXCEPTION
+        WHEN others THEN
+            GET STACKED DIAGNOSTICS state = RETURNED_SQLSTATE;
+            RAISE EXCEPTION
+                'CHECK 90 FAILED: a personal session could not be written (%): %',
+                state, SQLERRM;
+    END;
+
+    -- 2. A kind outside the two. The vocabulary is what every reader switches on, and a third
+    -- value would be a session neither the class path nor the personal one can account for.
+    BEGIN
+        INSERT INTO plt01.sch_sessions
+            (tenant_id, session_kind, location_id, starts_at, ends_at, local_date,
+             timezone, capacity, overbook_places, created_by, correlation_id)
+        VALUES (tenant, 'workshop', khalda,
+                TIMESTAMPTZ '2026-12-11 14:30+00', TIMESTAMPTZ '2026-12-11 15:25+00',
+                DATE '2026-12-11', 'Asia/Amman', 1, 0, actor, actor);
+        RAISE EXCEPTION 'CHECK 90 FAILED: a session kind that is not a kind';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'sch_sessions_kind' THEN probe := probe + 1;
+            ELSE confused := array_append(
+                confused, 'an unknown session kind answered by ' || offender); END IF;
+    END;
+
+    -- 3. A class with no template. Paragraph 4149's whole point is that a session says which
+    -- rule version it came from, and a class that cites none cannot answer it.
+    BEGIN
+        INSERT INTO plt01.sch_sessions
+            (tenant_id, session_kind, location_id, starts_at, ends_at, local_date,
+             timezone, capacity, overbook_places, created_by, correlation_id)
+        VALUES (tenant, 'class', khalda,
+                TIMESTAMPTZ '2026-12-12 14:30+00', TIMESTAMPTZ '2026-12-12 15:25+00',
+                DATE '2026-12-12', 'Asia/Amman', 12, 0, actor, actor);
+        RAISE EXCEPTION 'CHECK 90 FAILED: a class that came from no template';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'sch_sessions_class_came_from_a_template'
+            THEN probe := probe + 1;
+            ELSE confused := array_append(
+                confused, 'a class with no template answered by ' || offender); END IF;
+    END;
+
+    -- 4. The other direction, which is the one a drop-only case cannot see: a personal
+    -- session citing a rule would claim an origin it does not have -- and `(rule_id,
+    -- starts_at)` is the generation idempotency, so two coaches'' PT at one instant would
+    -- then collide on an index neither of them belongs in.
+    BEGIN
+        INSERT INTO plt01.sch_sessions
+            (tenant_id, session_kind, template_id, rule_id, policy_id, location_id,
+             starts_at, ends_at, local_date, timezone, capacity, overbook_places,
+             created_by, correlation_id)
+        VALUES (tenant, 'personal', template, rule, policy, khalda,
+                TIMESTAMPTZ '2026-12-13 14:30+00', TIMESTAMPTZ '2026-12-13 15:25+00',
+                DATE '2026-12-13', 'Asia/Amman', 1, 0, actor, actor);
+        RAISE EXCEPTION 'CHECK 90 FAILED: a personal session claiming a rule';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'sch_sessions_class_came_from_a_template'
+            THEN probe := probe + 1;
+            ELSE confused := array_append(
+                confused, 'a personal session with a rule answered by ' || offender); END IF;
+    END;
+
+    -- 5. A personal session holding twelve. That is a class of twelve with no roster
+    -- machinery behind it: no booking policy, no waitlist, no quota -- so the one place is
+    -- what makes it personal rather than a class nobody can book through.
+    BEGIN
+        INSERT INTO plt01.sch_sessions
+            (tenant_id, session_kind, location_id, starts_at, ends_at, local_date,
+             timezone, capacity, overbook_places, created_by, correlation_id)
+        VALUES (tenant, 'personal', khalda,
+                TIMESTAMPTZ '2026-12-14 14:30+00', TIMESTAMPTZ '2026-12-14 15:25+00',
+                DATE '2026-12-14', 'Asia/Amman', 12, 0, actor, actor);
+        RAISE EXCEPTION 'CHECK 90 FAILED: a personal session with twelve places';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'sch_sessions_personal_holds_one' THEN probe := probe + 1;
+            ELSE confused := array_append(
+                confused, 'a personal session of twelve answered by ' || offender); END IF;
+    END;
+
+    -- 6. And the other half of that conjunct, which the capacity case cannot see: one place
+    -- plus an overbooking is two people in a session with one coach.
+    BEGIN
+        INSERT INTO plt01.sch_sessions
+            (tenant_id, session_kind, location_id, starts_at, ends_at, local_date,
+             timezone, capacity, overbook_places, created_by, correlation_id)
+        VALUES (tenant, 'personal', khalda,
+                TIMESTAMPTZ '2026-12-15 14:30+00', TIMESTAMPTZ '2026-12-15 15:25+00',
+                DATE '2026-12-15', 'Asia/Amman', 1, 1, actor, actor);
+        RAISE EXCEPTION 'CHECK 90 FAILED: a personal session with an overbooking';
+    EXCEPTION
+        WHEN check_violation THEN
+            GET STACKED DIAGNOSTICS offender = CONSTRAINT_NAME;
+            IF offender = 'sch_sessions_personal_holds_one' THEN probe := probe + 1;
+            ELSE confused := array_append(
+                confused, 'an overbooked personal session answered by ' || offender); END IF;
+    END;
+
+    IF array_length(confused, 1) IS NOT NULL THEN
+        RAISE EXCEPTION 'CHECK 90 FAILED: %', array_to_string(confused, '; ');
+    END IF;
+    IF probe <> 6 THEN
+        RAISE EXCEPTION
+            'CHECK 90 FAILED: % of 6 personal-session cases ran -- a rule with no isolating '
+            'case is a rule nobody has tested', probe;
+    END IF;
+END $$;
+ROLLBACK;
+
+
 -- ------------------------------------- 90c. the session identity the grant already refuses
 -- **A session's instant, its rule and its capacity carry no UPDATE grant for any runtime
 -- role**, so check 89 already proves that this service cannot move them and these four probes
@@ -36311,6 +36468,12 @@ BEGIN
         ('sch_sessions_cancellation_reason CHECK (((cancellation_reason IS NULL) OR (cancellation_reason = ANY (ARRAY[''instructor_unavailable''::text, ''resource_unavailable''::text, ''insufficient_bookings''::text, ''facility_closed''::text, ''weather''::text, ''other''::text]))))'),
         ('sch_sessions_cancelled_is_cancelled CHECK (((status <> ''cancelled''::text) OR (cancelled_at IS NOT NULL)))'),
         ('sch_sessions_capacity_sane CHECK (((capacity >= 1) AND (capacity <= 10000)))'),
+        -- `0036`'s three. The biconditional is the load-bearing one: a class with no rule
+        -- could not say what it came from, and a personal session citing one would make
+        -- `(rule_id, starts_at)` collide for two coaches at one instant.
+        ('sch_sessions_class_came_from_a_template CHECK (((session_kind = ''class''::text) = ((template_id IS NOT NULL) AND (rule_id IS NOT NULL) AND (policy_id IS NOT NULL))))'),
+        ('sch_sessions_kind CHECK ((session_kind = ANY (ARRAY[''class''::text, ''personal''::text])))'),
+        ('sch_sessions_personal_holds_one CHECK (((session_kind <> ''personal''::text) OR ((capacity = 1) AND (overbook_places = 0))))'),
         ('sch_sessions_completed_is_completed CHECK (((status <> ''completed''::text) OR (completed_at IS NOT NULL)))'),
         ('sch_sessions_ordered CHECK ((ends_at > starts_at))'),
         ('sch_sessions_overbook_sane CHECK (((overbook_places >= 0) AND (overbook_places <= capacity)))'),
@@ -36384,6 +36547,9 @@ BEGIN
         ('sch_sessions_by_template CREATE INDEX sch_sessions_by_template ON plt01.sch_sessions USING btree (tenant_id, template_id, starts_at)'),
         ('sch_sessions_by_window CREATE INDEX sch_sessions_by_window ON plt01.sch_sessions USING btree (tenant_id, location_id, starts_at)'),
         ('sch_sessions_live CREATE INDEX sch_sessions_live ON plt01.sch_sessions USING btree (tenant_id, starts_at) WHERE (status = ''scheduled''::text)'),
+        -- `0036`: ADM-SCH-05 asks what a coach already has at an instant, and a personal
+        -- session cites no rule, so `(rule_id, starts_at)` cannot answer for it.
+        ('sch_sessions_personal_by_start CREATE INDEX sch_sessions_personal_by_start ON plt01.sch_sessions USING btree (tenant_id, starts_at) WHERE (session_kind = ''personal''::text)'),
         ('sch_sessions_pkey CREATE UNIQUE INDEX sch_sessions_pkey ON plt01.sch_sessions USING btree (tenant_id, session_id)'),
         ('sch_sessions_tenant_id_rule_id_starts_at_key CREATE UNIQUE INDEX sch_sessions_tenant_id_rule_id_starts_at_key ON plt01.sch_sessions USING btree (tenant_id, rule_id, starts_at)'),
         ('sch_template_requirements_one_per_kind CREATE UNIQUE INDEX sch_template_requirements_one_per_kind ON plt01.sch_template_requirements USING btree (tenant_id, template_id, requirement_kind) WHERE (resource_id IS NULL)'),

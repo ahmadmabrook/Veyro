@@ -287,9 +287,12 @@ const BACKLOG = {
   // template id, so the screen where there is no template yet had nothing to ask.
   // `POST /scheduling/conflict-check` is that read and `/schedule/new` is the screen; the
   // qualification half is answered as *free* and says which half it cannot answer.
-  "ADM-SCH-05": "work: MOD-019 does not distinguish a personal-training session from a class "
-    + "-- a session comes from a template, and a template is a service and a place. A PT "
-    + "kind, and a booking that is one member rather than a roster, is what this needs",
+  // **ADM-SCH-05 was here and is built.** `/schedule/pt?person=...` is the screen. The entry
+  // said MOD-019 could not distinguish a personal session from a class, which `0036` closed:
+  // a session states its kind and a personal one cites no template, rule or policy, so the
+  // five inner joins that would have hidden it are LEFT joins and the booking draws the
+  // member's credit in the transaction that creates the session. ADR-0019. What it cannot do
+  // is the canvas's zero-credit button, which opens a Point of Sale this build does not have.
   // **ADM-SCH-07 was here and is built.** `/schedule/{id}?cancel=1` is the sheet: the remedy
   // is required, the consequence is the server's and re-read whenever the choice changes, and
   // the message is one preview of a message each member gets in their own language. What it
