@@ -78,7 +78,14 @@ test.describe("the availability grid", () => {
     //
     // Two numbers rather than a percentage, because a session outside the rota is booked and
     // not open, so the ratio can exceed one -- which is the case this screen is for.
-    await expect(page.locator("main")).toContainText("available hours booked");
+    // **The hours are a figure now.** They were one clause of a 14px line between the
+    // week's name and its timezone -- the single quantity a rota exists to answer, set as a
+    // footnote -- and they lead the screen as a `MetricCell`. The denominator is the
+    // comparison beneath it, because "26 hours" without "of 34" is a number nobody can act
+    // on, which is the property this test is really about.
+    const hours = page.locator(".ds-metric").first();
+    await expect(hours).toContainText(/hours/i);
+    await expect(hours.locator(".ds-metric-value")).toBeVisible();
     await expect(page.locator("main")).not.toContainText("OPEN HOURS");
     await expect(page.locator("main")).not.toContainText("BOOKED HOURS");
   });
@@ -105,9 +112,20 @@ test.describe("the availability grid", () => {
     // channel here. **The two marks are two**, as of ADR-0019: this assertion read "Booked"
     // against a comment saying the build could not tell a class from a personal session,
     // which `0036` made false -- a stale assertion holding a closed gap on the page.
+    // **Asserted over every marked cell, not over one kind in this week.** Whether a coach
+    // has a class or a personal session in the week the fixture happens to show is a
+    // property of the fixture; what the canvas requires is that a cell carrying a state
+    // carries its mark, so no fill stands alone. Pinning `CLS` made the test depend on
+    // which kind landed in the window.
     const grid = page.locator("table.ds-week");
-    await expect(grid.locator('.ds-rota-mark[data-state="booked"] .ds-rota-mark-text').first())
-      .toHaveText("CLS");
+    const booked = grid.locator('.ds-rota-mark[data-state="booked"], '
+      + '.ds-rota-mark[data-state="bookedPersonal"], '
+      + '.ds-rota-mark[data-state="bookedConflict"]');
+    expect(await booked.count(), "no booked cell in the week under test")
+      .toBeGreaterThan(0);
+    for (const cell of await booked.all()) {
+      await expect(cell.locator(".ds-rota-mark-text")).toHaveText(/^(CLS|PT)$/);
+    }
     await expect(
       grid.locator('.ds-rota-mark[data-state="exception"] .ds-rota-mark-text').first())
       .toHaveText("Off");
@@ -166,7 +184,7 @@ test.describe("the availability grid", () => {
     const main = page.locator("main");
     await expect(main).toContainText("التوافر");
     await expect(main).toContainText("محجوز، والجدول يرفضه");
-    await expect(main).toContainText("ما لا يفعله هذا المخطط");
+    await expect(main).toContainText("ما لا تفعله هذه الشاشة بعد");
     for (const english of [
       "Booked, and the rota refuses it", "What this screen does not do yet", "Not working",
     ]) {

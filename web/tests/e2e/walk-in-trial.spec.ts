@@ -110,8 +110,7 @@ test.describe("the walk-in form at an ordinary sign-in", () => {
     await expect(main).toContainText("starts the trial with the clock running");
     await expect(main).toContainText("Issuing a credential");
     await expect(main).toContainText("app invitation by text");
-    await expect(main.getByRole("term")
-      .filter({ hasText: "A membership number the club chose" })).toBeVisible();
+    await expect(main).toContainText("A membership number the club chose");
   });
 });
 

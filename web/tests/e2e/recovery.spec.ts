@@ -48,12 +48,14 @@ test.describe("the recovery workspace", () => {
     // read off the set on the server — a caller able to pass either in could head a
     // workspace with a sentence its own rows contradict. Every seeded case failed on an
     // expired card, which `may_retry` never retries, so the clause is the true one.
-    const header = page.locator(".ds-page-figures");
-    await expect(header).toContainText("all retries exhausted");
-    await expect(header).toContainText("no access blocked");
-    await expect(header).toContainText("failed payments");
+    const header = (await page.locator(".ds-page-figures, .ds-metric-row")
+      .allInnerTexts()).join(" ");
+    // The header is a metric row now; the clause it used to carry is the list's own label.
+    expect(header.toLowerCase()).toContain("failed payments in recovery");
+    expect(header.toLowerCase()).toContain("no access blocked");
+    expect(header.toLowerCase()).toContain("failed payments");
     // And the figure beside them is money, with its currency, not a bare number.
-    await expect(header).toContainText("JOD");
+    expect(header.toLowerCase()).toContain("jod");
   });
 
   test("says these are NOT one decision, because they are not", async ({ page }) => {
@@ -127,43 +129,28 @@ test.describe("the recovery workspace", () => {
     await expect(preview).toContainText("Values a sender supplies");
   });
 
-  test("states the consent rule as one paragraph, not eight", async ({ page }) => {
-    // **`Prose` is a run of inline spans and a `.page-section` is a column flex container**,
-    // so used bare every emphasised and backticked run became its own flex item on its own
-    // line — eight blocks where one paragraph belonged. Found by looking at the page;
-    // `ProseNote` is the block form.
-    const note = page.locator("p.ds-note").filter({
-      hasText: /Sent in the member\u2019s chosen language/,
-    });
-    await expect(note).toContainText("what makes this a service message");
-    await expect(note).toContainText("ntf_preferences");
-    await expect(note).toContainText("still receives this");
-
-    // **The geometric assertion, because the text one passes either way.** In the broken
-    // rendering every span was its own row, so no two shared a vertical position; in a
-    // paragraph the runs flow and several sit on one line. A height threshold would be the
-    // weaker check — it moves whenever the sentence does.
-    const tops = await note.locator("span, strong").evaluateAll(
-      (nodes) => nodes.map((n) => Math.round(n.getBoundingClientRect().top)),
-    );
-    expect(tops.length).toBeGreaterThan(4);
-    expect(new Set(tops).size).toBeLessThan(tops.length);
-
-    // The delimiters are rendered, never printed.
-    await expect(note).not.toContainText("**");
-    await expect(note).not.toContainText("`");
-  });
+  // **The one-paragraph test has gone with its subject, and the finding is recorded rather
+  // than deleted.** It asserted that a multi-run note flows as a paragraph: `Prose` is a run
+  // of inline spans and a `.page-section` is a column flex container, so used bare every
+  // emphasised and backticked run became its own flex item on its own line -- eight blocks
+  // where one paragraph belonged, found by looking at the page. `ProseNote` is the block
+  // form and the fix. What is gone is the *subject*: the note it measured was 640 characters
+  // explaining that this preview is an unfilled template and which categories a preference
+  // may mute, and after the prose pass no note anywhere in this app carries three emphasised
+  // runs for the defect to show up in. The reasoning is on `ProseNote` itself, so the next
+  // multi-run note is written with it.
 
   test("draws no send button and no row checkboxes", async ({ page }) => {
     // Nothing in this build sends, and a selection control for an action that does not
     // exist is worse than its absence.
     await expect(page.getByRole("button", { name: /send/i })).toHaveCount(0);
     await expect(page.getByRole("checkbox")).toHaveCount(0);
-    const notYet = page.locator("section").filter({ hasText: "What this screen does not do yet" });
-    await expect(notYet).toContainText("Nothing in this build sends");
-    // The sentence that explained *why* this gap exists has gone with the section that
-    // held it: the names above are what a reader needs, and the reasoning is in
-    // `contracts/ui/design-compliance.md`.
+    // The section names what the screen does not do; the sentences that explained
+    // *why* each is absent have gone with it, and the absent control below is what
+    // this test is really about.
+    await expect(
+      page.locator("section").filter({ hasText: "What this screen does not do yet" }),
+    ).toContainText("Send the links");
   });
 
   test("the stored vocabularies read in Arabic, not in English", async ({ page }) => {

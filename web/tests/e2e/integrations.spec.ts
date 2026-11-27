@@ -49,7 +49,10 @@ test.describe("the integrations board", () => {
     const critical = installs
       .getByRole("row")
       .filter({ has: page.getByText("critical", { exact: true }) });
-    await expect(critical).toContainText("missing: exit_plan");
+    // **`exit_plan` is this app's own field name**, and the row words the obligation
+    // instead -- the stored-vocabulary-as-a-label defect, in a money-adjacent column.
+    await expect(critical).toContainText("An exit plan");
+    await expect(critical).not.toContainText("exit_plan");
   });
 
   test("says the obligations do not bind an install below that criticality", async ({

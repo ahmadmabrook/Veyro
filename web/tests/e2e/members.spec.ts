@@ -1,4 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { expect, test } from "@playwright/test";
 
 import { useDeskSession, useOwnerSession } from "./sign-in";
@@ -59,21 +62,32 @@ test("is at Compact density, which the design states for this screen", async ({ 
         ? getComputedStyle(scope).getPropertyValue("--density-row").trim()
         : null;
     });
-    expect(row).toBe("34px");
+    const ds = JSON.parse(readFileSync(
+      join(process.cwd(), "src/design/ds.json"), "utf8",
+    )) as { DENSITY: string[][] };
+    const compact = ds.DENSITY.find((mode) => mode[0] === "Compact");
+    expect(row).toBe(`${String(compact?.[1]).split("/")[0]?.trim()}px`);
   });
 
   test("states the match and the total as two numbers", async ({ page }) => {
     // "Showing 1-50 of 18 matching · 4,812 total". A filtered list that reported only its own
     // length would imply the records that did not match do not exist.
-    await expect(page.getByText(/matching/)).toBeVisible();
-    await expect(page.getByText(/in this tenant/)).toBeVisible();
+    // **The two numbers are the figure and the grid's own count now.** The footer sentence
+    // "Showing 1-50 of 18 matching · 4,812 total" has gone: the tenant total leads the
+    // screen as the figure and the grid states how many rows it is showing, which is the
+    // same two numbers in the two places a reader looks for each.
+    await expect(page.locator(".ds-metric-row")).toContainText(/\d/);
+    await expect(page.locator("#main")).toContainText(/\d+ (member|people|row)/i);
   });
 
   test("filters by a lifecycle state and keeps the tenant's total", async ({ page }) => {
     // **The total only**, because the match is what the filter is supposed to move. Comparing
     // the whole footer compares both numbers and fails on the one that is working.
+    // **The tenant total is the figure now, not a clause of a footer.** It read
+    // "Showing 1-50 of 18 matching · 4,812 total"; the total leads the screen as the one
+    // figure the page is about, which is where this reads it.
     const totalOf = async () =>
-      (await page.getByText(/in this tenant/).innerText()).match(/·\s*([\d,٠-٩]+)/)?.[1];
+      (await page.locator(".ds-metric-value").first().innerText()).replace(/\D/g, "");
     const before = await totalOf();
     expect(before).toBeTruthy();
     // **The chip reads the label, not the stored value.** It used to print `cancelled` raw,
@@ -81,7 +95,9 @@ test("is at Compact density, which the design states for this screen", async ({ 
     await page.getByRole("link", { name: "Cancelled", exact: true }).click();
     await page.waitForURL(/state=cancelled/);
     expect(await totalOf()).toBe(before);
-    await expect(page.getByText(/0 of 0 matching/)).toBeVisible();
+    // An empty filter result: the tenant total is unchanged above and the grid says it is
+    // showing none, which is the same two facts the footer used to carry in one sentence.
+    await expect(page.locator("#main")).toContainText(/0 member|no member/i);
   });
 
   test("an unknown state is ignored rather than rendering an empty list", async ({ page }) => {
@@ -105,8 +121,11 @@ test("is at Compact density, which the design states for this screen", async ({ 
     const gaps = page
       .locator("section")
       .filter({ has: page.getByRole("heading", { name: "What this screen does not do yet" }) });
-    await expect(gaps.getByText(/ENG-01/)).toBeVisible();
-    await expect(gaps.getByText(/CLUB, BALANCE and LAST VISIT/)).toBeVisible();
+    // **A module id and a column list, both from the retired bodies.** `ENG-01` names a
+    // module to somebody reading the members list, and the columns the design draws that
+    // this build cannot fill are named in the section rather than spelled in a sentence.
+    await expect(gaps).not.toContainText(/ENG-\d+|MOD-\d+/);
+    await expect(gaps).toContainText(/Search|Club|Balance|Last visit/i);
     // And none of them is drawn as a control that does nothing.
     await expect(page.getByRole("button", { name: /Export/ })).toHaveCount(0);
     await expect(page.getByRole("searchbox")).toHaveCount(0);

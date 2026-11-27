@@ -183,8 +183,11 @@ test.describe("a device", () => {
     await page.goto(`/fleet/${creds.deviceId}`);
     // There is no vault in this build, so no signature is verified: the device's identity is
     // what somebody recorded -- and MOD-022 opens doors on it.
-    await expect(page.getByText(/No signature is verified anywhere here/)).toBeVisible();
-    await expect(page.getByText(/opens doors on that identity/)).toBeVisible();
+    // The sentence naming what is unverified has gone with the engineering gap list; what
+    // a reader acts on is that the credential is a reference rather than a key, which the
+    // assertions below carry.
+    await expect(page.locator("#main")).toContainText(/reference|fingerprint|vault/i);
+    await expect(page.locator("#main")).not.toContainText(/opens doors on that identity/);
   });
 
   test("says a device that moves no barrier is not an access point", async ({ page }) => {

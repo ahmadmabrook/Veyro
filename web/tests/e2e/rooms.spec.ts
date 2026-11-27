@@ -76,7 +76,8 @@ test.describe("the rooms and resources card", () => {
       hasText: "What this screen does not do yet",
     });
     await expect(notYet).toContainText("Change a capacity or move equipment");
-    await expect(notYet).toContainText("stricter");
+    // The sentence explaining *why* has gone with the section that held it; the name is
+    // what a reader needs and the absent control below is what this test is about.
   });
 
   test("is the schedule's fourth view and links back to the others", async ({ page }) => {

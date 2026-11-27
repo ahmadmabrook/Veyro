@@ -73,7 +73,14 @@ test.describe("the schedule board", () => {
       getComputedStyle(el).borderInlineStartWidth,
       getComputedStyle(el).backgroundColor,
     ]);
-    expect(edge).toBe("3px");
+    // **The width is the shell's own rule, read rather than copied.** This pinned "3px",
+    // which stopped being the mark's width when `--shell-rule` was generated from the
+    // design source -- so it failed for the rule having a value rather than for the mark
+    // having gone, which is what it is for.
+    const rule = await page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue("--shell-rule").trim());
+    expect(rule, "--shell-rule has no value").toMatch(/^\d+px$/);
+    expect(edge).toBe(rule);
     const plain = page.locator(".ds-class-cell").filter({ hasText: "Evening yoga flow" })
       .first();
     const ordinary = await plain.evaluate((el) => getComputedStyle(el).backgroundColor);
@@ -184,7 +191,10 @@ test.describe("the schedule board", () => {
     const changes = page
       .locator("section")
       .filter({ has: page.getByRole("heading", { name: "What changed" }) });
-    await expect(changes).toContainText("substitution");
+    // **The stored kind is worded now.** `substitution` is MOD-019's enum and this pinned
+    // it, so the test asserted the defect -- stored vocabulary where a sentence belongs.
+    await expect(changes).toContainText("Someone else took it");
+    await expect(changes).not.toContainText("substitution");
     await expect(changes).toContainText("Reason withheld");
     const offer = page.getByRole("link", { name: "Sign in more strongly to read it" });
     await expect(offer).toBeVisible();
@@ -223,9 +233,13 @@ test.describe("the schedule board", () => {
     const roster = page
       .locator("section")
       .filter({ has: page.getByRole("heading", { name: "Who is booked" }) });
-    await expect(roster).toContainText("front_desk");
+    await expect(roster).toContainText("Booked at the desk");
+    await expect(roster).not.toContainText("front_desk");
+    // The sentence explaining which module owns the seat count has gone with the prose
+    // pass; the fact a coach needs -- that the seats above are the schedule's and the rows
+    // are the bookings -- is carried by the two being separately labelled.
     await expect(roster).toContainText("not yet");
-    await expect(roster).toContainText(/belong to the schedule, not to the booking module/);
+    await expect(roster).not.toContainText(/booking module/);
   });
 
   test("says nobody is waiting rather than showing an empty queue", async ({ page }) => {
@@ -315,7 +329,10 @@ test.describe("a session that may read the schedule and may not change one", () 
     const changes = page
       .locator("section")
       .filter({ has: page.getByRole("heading", { name: "What changed" }) });
-    await expect(changes).toContainText("substitution");
+    // **The stored kind is worded now.** `substitution` is MOD-019's enum and this pinned
+    // it, so the test asserted the defect -- stored vocabulary where a sentence belongs.
+    await expect(changes).toContainText("Someone else took it");
+    await expect(changes).not.toContainText("substitution");
     await expect(changes).toContainText("Reason withheld");
     await expect(changes).not.toContainText("the usual instructor is away");
     // And the marker says why, because a reader who cannot tell a withholding from an empty

@@ -30,7 +30,7 @@ test.describe("the staff list", () => {
 
   test("lists the team, which nothing could do before", async ({ page }) => {
     await expect(
-      page.getByRole("heading", { name: /The team/, level: 1 }),
+      page.getByRole("heading", { name: "Staff & coaches", level: 1 }),
     ).toBeVisible();
     // **Located by job title, because every name here is withheld.** `legal_name` is an
     // identity field and the fixture's browser session is level 1, which is the useful level
@@ -52,8 +52,10 @@ test.describe("the staff list", () => {
     // where the screen's own subject belongs -- failed a test whose stated subject is that
     // the two numbers agree, not where they are set.
     const head = (await page.locator(".ds-page-head, .ds-metric-row").allInnerTexts()).join(" ");
+    // The labels render uppercase, so the comparison is case-insensitive -- 
+    // returns what is drawn rather than what the catalogue holds.
     expect(head).toContain("2");
-    expect(head).toContain("working");
+    expect(head.toLowerCase()).toContain("working");
     expect(head).toContain("5 people on record");
   });
 
@@ -161,9 +163,8 @@ test.describe("the staff list", () => {
     // ADR-0014: the gate answers *where*, and `GET /staff` is the one route that acts on it.
     // The old sentence said every check resolves tenant-wide, which stopped being true the
     // hour that landed -- false, and rendered, on the screen the ADR was built for.
-    const notYet = page.locator("section").filter({ hasText: "What this screen does not do yet" });
-    // The club-scoping line is gone from the gap list entirely, because it is not a gap:
-    // ADR-0014 made it true for this route, and the list is what a screen does *not* do.
+    const notYet = page.locator("section")
+      .filter({ hasText: "What this screen does not do yet" });
     await expect(notYet).not.toContainText("Not true here");
     await expect(notYet).not.toContainText("club manager seeing only their own club");
   });
@@ -223,7 +224,12 @@ test.describe("one person's access", () => {
     const beyond = page.locator("section").filter({ hasText: "Beyond their role" });
     await expect(beyond).toContainText("Till refunds");
     // The canvas's attribution line, which `granted_by` had never been read for.
-    await expect(beyond).toContainText(/granted by [0-9a-f]{8} on \d{4}-\d{2}-\d{2}/);
+    // **The grantor's id has gone and the date has not.** This asserted eight hex
+    // characters of a uuid on the page -- the grantor degraded to a fragment nobody can
+    // look up, which is a backend identifier in product UI. When the grant was made is a
+    // fact a reader can act on; who made it needs a name this read cannot fetch.
+    await expect(beyond).toContainText(/granted on \d{4}-\d{2}-\d{2}/);
+    await expect(beyond).not.toContainText(/[0-9a-f]{8}-[0-9a-f]{4}/);
     // And the role is its display name, not the stored key beside it: the first version put
     // `publisher_1795251559775` on screen next to the word "Publisher".
     await expect(page.getByText(/publisher_\d+/)).toHaveCount(0);
@@ -259,8 +265,10 @@ test.describe("one person's access", () => {
   test("says why there are no unticked rows rather than inventing two", async ({ page }) => {
     await useOwnerSession(page);
     await page.goto(`/staff/${fixture().staffWorkingPersonId}`);
-    await expect(page.getByText(/no unticked rows/)).toBeVisible();
-    await expect(page.getByText(/inventing the product/)).toBeVisible();
+    // The sentence explaining why no row is unticked was design rationale: a permission
+    // exists here if a role carries it, so there is no candidate set to show unticked.
+    await expect(page.locator("#main")).not.toContainText(/no unticked rows/);
+    await expect(page.locator("#main")).not.toContainText(/inventing the product/);
   });
 
   test("renders the tier-four notice, because all three of its claims are true", async ({
@@ -279,11 +287,11 @@ test.describe("one person's access", () => {
     await page.goto(`/staff/${fixture().staffWorkingPersonId}`);
     await expect(page.getByRole("button", { name: /Save changes/i })).toHaveCount(0);
     await expect(page.getByRole("button", { name: /End access/i })).toHaveCount(0);
-    const notYet = page.locator("section").filter({ hasText: "What this screen does not do yet" });
-    await expect(notYet).toContainText("stepped-up financial permission");
-    // The sentence that explained *why* this gap exists has gone with the section that
-    // held it: the names above are what a reader needs, and the reasoning is in
-    // `contracts/ui/design-compliance.md`.
+    // The section names both acts; the sentences explaining what each would need have
+    // gone with it, and the two absent buttons are what this test is really about.
+    await expect(
+      page.locator("section").filter({ hasText: "What this screen does not do yet" }),
+    ).toContainText("Save changes");
   });
 
   test("leads a departed employee's record with the access they still have", async ({

@@ -29,7 +29,9 @@ test.describe("the payments ledger", () => {
     // the noun on the rail. "Payments" over a table of payments is the one sentence on the
     // screen that tells a reader nothing.
     await expect(
-      page.getByRole("heading", { name: /friction is correct/, level: 1 }),
+      // The h1 is the page's name now rather than the canvas's sentence about it, which is
+      // `PageHeader`'s own rule: a title is a name, not a summary.
+      page.getByRole("heading", { name: "Payments", level: 1 }),
     ).toBeVisible();
   });
 
@@ -53,7 +55,12 @@ test.describe("the payments ledger", () => {
     // The canvas's "parenthetical original": a negative figure with no story is a figure
     // nobody can check.
     const refund = page.getByRole("row").filter({ hasText: "refund" }).first();
-    await expect(refund).toContainText(/\(\w{8}\)/);
+    // **The parenthetical was eight characters of a provider reference**, which is a
+    // backend identifier fragment on an operator's screen and unlookupable besides. What
+    // the canvas asks for is that a negative figure carries its story, and the row's own
+    // state and next step are that story.
+    await expect(refund).not.toContainText(/\([0-9a-f]{8}\)/);
+    await expect(refund).toContainText(/Waiting on the provider|Settle it/);
   });
 
   test("shows a failed charge as a row, not as an absence", async ({ page }) => {
@@ -65,20 +72,21 @@ test.describe("the payments ledger", () => {
   });
 
   test("counts the exceptions in the header and nothing that is zero", async ({ page }) => {
-    const header = page.locator(".ds-page-figures");
+    const header = (await page.locator(".ds-page-figures, .ds-metric-row")
+      .allInnerTexts()).join(" ");
     // **Two failed, because ADM-PAY-05 needs two.** That workspace's argument is that a set
     // of failed payments is one decision, which one case cannot demonstrate — so the fixture
     // carries a debt with a membership behind it and one without. This count follows the
     // fixture rather than the other way round.
-    await expect(header).toContainText("2 failed");
-    await expect(header).toContainText("1 refunded");
+    expect(header.toLowerCase()).toContain("2 failed");
+    expect(header.toLowerCase()).toContain("1 refunded");
     // Two, because ADM-PAY-10's deadline box has an urgent state and a calm one and a
     // single dispute renders only one of them.
-    await expect(header).toContainText("2 disputed");
+    expect(header.toLowerCase()).toContain("2 disputed");
     // "0 failed, 0 refunded, 0 disputed" is three facts nobody needs stated, so a clean
     // period says nothing here. With all three seeded this asserts the formatting rather
     // than the suppression; the component test asserts the suppression.
-    await expect(header).toContainText("collected");
+    expect(header.toLowerCase()).toContain("collected");
   });
 
   test("filters to the rows that need somebody, and the filter is in the URL", async ({
@@ -117,8 +125,11 @@ test.describe("the payments ledger", () => {
     // And the permission name is set as data rather than printed with its backticks --
     // `Prose` renders a backticked run as `.data`, which is this app's mono treatment for
     // an identifier.
-    await expect(notYet.locator(".data").filter({ hasText: "finance.refund.request" }))
-      .toBeVisible();
+    // **The permission id has gone with the section.** It was `.data` in the retired
+    // definition list -- a dotted backend identifier on a money screen -- and what a reader
+    // needs is that the act is not offered here, which the name says and the absent button
+    // proves.
+    await expect(notYet).not.toContainText(/finance\.[a-z_.]+/);
     await expect(notYet).not.toContainText("`");
     // No button offers any of it.
     await expect(page.getByRole("button", { name: /refund/i })).toHaveCount(0);

@@ -315,9 +315,9 @@ export default async function RotaPage({
                     // not be the only channel.** ADM-SCH-04 writes PT or CLS in a booked cell
                     // and OFF in an exception, and leaves the quiet states blank -- which is
                     // the same sentence as "working hours are the background": a reader scans
-                    // for the marks, not for the absence of them. This build cannot tell a
-                    // class from a personal-training session, so the two the canvas draws are
-                    // one here and the gaps below say so. The full state stays in the
+                    // for the marks, not for the absence of them. This said the build could not
+                    // tell a class from a personal session, which `0036` made false -- the two
+                    // the canvas draws are two. The full state stays in the
                     // accessible name, because "Booked" alone does not say refused.
                     <span key={day.date} className="ds-rota-mark" data-state={state}>
                       <span className="ds-visually-hidden">{text(CELL_LABEL[state])}</span>

@@ -31,16 +31,21 @@ test.describe("the people index", () => {
   });
 
   test("shows a duplicate pair with its score and the signals behind it", async ({ page }) => {
-    const row = page.getByRole("row").filter({ hasText: "email_match" });
+    // **`email_match` and `legal_name_match` are stored signal names the queue now words.**
+    // They were rendered raw to an operator being asked to merge two people -- the one
+    // decision this build refuses to automate -- so the row said `email_match,
+    // legal_name_match` where it should say what matched.
+    const row = page.getByRole("row").filter({ hasText: "Email matches" });
     await expect(row).toBeVisible();
+    await expect(row).not.toContainText(/email_match|legal_name_match/);
     // **Never the score alone.** An operator asked to merge is being asked to destroy a
     // record, and `dedup.WEIGHTS` is the whole table: every signal is a named exact match.
-    await expect(row).toContainText("legal_name_match");
+    await expect(row).toContainText("Name matches");
     await expect(row).toContainText("50");
   });
 
   test("links to both sides of the pair rather than picking one", async ({ page }) => {
-    const row = page.getByRole("row").filter({ hasText: "email_match" });
+    const row = page.getByRole("row").filter({ hasText: "Email matches" });
     await expect(row.getByRole("link")).toHaveCount(2);
   });
 });
@@ -148,7 +153,12 @@ test.describe("the member record", () => {
     // Seven of the twelve areas PPL-01-R02 lists are not answered here. Rendering them as
     // empty lists would read as "none".
     await expect(sections.getByRole("heading", { name: "Not answered here" })).toBeVisible();
-    await expect(sections).toContainText("CCH-02 is not built in this repository");
+    // **A module id on an operator's screen is the one thing the directive bars.** This
+    // pinned "CCH-02 is not built in this repository", which names a module and a
+    // repository to somebody looking at a member's record. The section says which parts of
+    // the 360 cannot be answered and why in their own terms; that is the finding.
+    await expect(sections).not.toContainText(/CCH-\d+|MOD-\d+|this repository/);
+    await expect(sections).toContainText(/belong to modules|not answered/i);
   });
 
   test("does not call a module that exists one that was never built", async ({ page }) => {
@@ -163,11 +173,13 @@ test.describe("the member record", () => {
     // as gaps would say the product does not have what the tab beside it shows -- the same
     // stale-list defect this test was written for, in the other direction. They are named
     // in the panel's own footer as answered elsewhere, which is asserted below.
-    for (const built of ["MOD-019", "MOD-020"]) {
-      await expect(sections).toContainText(built);
-    }
-    await expect(sections).toContainText("this page asks those modules directly");
-    await expect(sections).toContainText("nothing here reads it");
+    // **The module ids have gone from an operator's screen.** Naming MOD-019 and MOD-020
+    // to somebody reading a member's record is the implementation detail the directive
+    // bars; what the panel says is that those parts are answered on their own tabs, which
+    // is the fact and is asserted below.
+    await expect(sections).not.toContainText(/MOD-\d+|COM-\d+|OPS-\d+/);
+    await expect(sections).toContainText("are not shown on this page");
+    await expect(sections).toContainText("parts of Veyro that do not exist yet");
     await expect(sections).not.toContainText("COM-01 is not built");
     await expect(sections).not.toContainText("OPS-01 is not built");
     // And the line that tells the two reasons apart, without which they read as one.

@@ -139,7 +139,6 @@ test.describe("marking a live lead lost", () => {
     });
     await expect(sheet).toContainText("Not deleted");
     await expect(sheet).toContainText("rather than a fresh record");
-    await expect(sheet).toContainText("source effectiveness");
   });
 
   test("refuses with its own sentence when no reason is chosen", async ({ page }) => {

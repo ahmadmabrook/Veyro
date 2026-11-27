@@ -57,12 +57,11 @@ test.describe("the create form at an ordinary sign-in", () => {
 
   test("says what it cannot do, including the capacity the canvas caps", async ({ page }) => {
     const main = page.locator("#main");
-    await expect(main.getByRole("term")
-      .filter({ hasText: "Capping the capacity at what the room holds" })).toBeVisible();
-    await expect(main.getByRole("term")
-      .filter({ hasText: "Whether a coach can teach this class" })).toBeVisible();
-    await expect(main.getByRole("term")
-      .filter({ hasText: "Editing a class that already has bookings" })).toBeVisible();
+    // The gap list is one line of names rather than a definition list, so these are text
+    // in it rather than `<dt>` elements.
+    await expect(main).toContainText("Capping the capacity at what the room holds");
+    await expect(main).toContainText("Whether a coach can teach this class");
+    await expect(main).toContainText("Editing a class that already has bookings");
   });
 
   test("is reachable from the calendar, which is the only route to it", async ({ page }) => {

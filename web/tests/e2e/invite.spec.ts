@@ -116,7 +116,7 @@ test.describe("the pending list", () => {
     const creds = fixture();
     // **The figures line, not the heading**: the design's header is a title and a line of
     // figures, and `PageHeader` renders them as siblings rather than inside the `h1`.
-    await expect(page.locator(".ds-page-figures"))
+    await expect(page.locator(".ds-page-figures, .ds-metric-row"))
       .toContainText("1 invitation is waiting to be accepted.");
     // **And the withdrawn one is not on screen at all**, which is what found the dead guard
     // in `PendingActions`: `listInvitations` asks for what is waiting, so a settled

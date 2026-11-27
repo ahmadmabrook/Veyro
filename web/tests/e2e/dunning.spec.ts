@@ -97,13 +97,16 @@ test.describe("the dunning rules", () => {
   test("names the three settings it cannot honour, with what each waits on", async ({
     page,
   }) => {
-    await expect(page.getByRole("heading", { name: "What these rules cannot set yet" }))
+    await expect(page.getByRole("heading", { name: "What this screen does not do yet" }))
       .toBeVisible();
-    await expect(page.getByText(/Nothing retries a card on a schedule in this build/))
-      .toBeVisible();
-    await expect(page.getByText(/there is no approval queue for a drafted message/))
-      .toBeVisible();
-    await expect(page.getByText(/nothing in collections writes one/)).toBeVisible();
+    // The clause naming what each setting waits on -- a sweep, a dispatcher, a case path --
+    // has gone with the bodies. The names are the fact: a tenant needs to know the setting
+    // is not theirs to change, not which component is missing.
+    await expect(page.locator("#main"))
+      .not.toContainText(/Nothing retries a card on a schedule in this build/);
+    await expect(page.locator("#main"))
+      .not.toContainText(/there is no approval queue for a drafted message/);
+    await expect(page.locator("#main")).not.toContainText(/nothing in collections writes one/);
   });
 
   test("keeps the account's own payment terms apart from the policy", async ({ page }) => {

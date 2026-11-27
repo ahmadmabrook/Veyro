@@ -42,11 +42,16 @@ test.describe("the reports index", () => {
     // **A module that does not exist is a different absence from a permission you lack.** If
     // these four were simply missing they would read as four more grants to go and ask for,
     // which is a false thing to teach somebody.
-    const section = page.locator("section").filter({ hasText: "cannot report" });
+    // The section is the one gap line, named by the component's own heading rather than by
+    // a phrase from a retired title, and the three are names in it rather than `<dt>`s.
+    const section = page.locator("#main");
     for (const name of ["Coaching", "Leads and conversion", "Tax and e-invoicing"]) {
-      await expect(section.getByRole("term").filter({ hasText: name })).toBeVisible();
+      await expect(section).toContainText(name);
     }
-    await expect(section).toContainText("Coach Workspace is not built");
+    // The module names that used to sit beside each have gone: a reader cannot act on
+    // which module is missing, and the distinction that matters -- absent rather than
+    // unpermitted -- is what the section's own wording carries.
+    await expect(section).not.toContainText(/Coach Workspace is not built|MOD-\d+/);
     // **Attendance moved out of this list when it was built**, and the assertion has to
     // move with it or the page would be telling a reader that a report they can open does
     // not exist -- which is the Member 360's stale "not built in this repository" defect,
@@ -59,8 +64,11 @@ test.describe("the reports index", () => {
     page,
   }) => {
     await expect(page.getByRole("button", { name: /export/i })).toHaveCount(0);
-    await expect(page.locator("section").filter({ hasText: "Exporting is not built" }))
-      .toContainText("control removed rather than the feature added");
+    // The export gap is a name in the one gap line now, and the sentence arguing that the
+    // gate *is* the feature was design rationale.
+    await expect(page.locator("#main")).toContainText("Exporting");
+    await expect(page.locator("#main"))
+      .not.toContainText("control removed rather than the feature added");
   });
 
   test("no accessibility violations", async ({ page }) => {
@@ -84,7 +92,8 @@ test.describe("the revenue report", () => {
     for (const label of ["COLLECTED", "INVOICED", "OUTSTANDING", "REFUNDED"]) {
       await expect(cell(page, label)).toBeVisible();
     }
-    await expect(page.locator("main")).toContainText("separate facts");
+    // The sentence explaining *why* has gone with the section that held it; the name is
+    // what a reader needs and the absent control below is what this test is about.
   });
 
   test("outstanding carries no comparison, because it is a position", async ({ page }) => {
@@ -154,7 +163,10 @@ test.describe("the revenue report", () => {
   test("says the columns are legal entities and the design asked for clubs", async ({
     page,
   }) => {
-    await expect(page.locator("main")).toContainText("breaks this down by club");
+    // The note was reworded to drop its reference to "the design", which is a claim about
+    // an internal document said to an operator. The fact it carries is unchanged and is
+    // what this asserts.
+    await expect(page.locator("main")).toContainText("legal entities, not clubs");
   });
 
   test("no accessibility violations", async ({ page }) => {

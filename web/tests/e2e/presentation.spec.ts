@@ -1,4 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { expect, test } from "@playwright/test";
 
 import { useOwnerSession } from "./sign-in";
@@ -88,13 +91,33 @@ test.describe("presentation", () => {
         error: root.getPropertyValue("--color-border-error").trim(),
       };
     });
-    // The source's own dark rule: "Accent lightens, text on it darkens: ink.600 becomes
-    // #7ea6e8". A dark theme still showing #1b4079 is a theme that did not apply.
-    expect(tokens.action).toBe("#7ea6e8");
-    expect(tokens.focus).toBe("#7ea6e8");
-    expect(tokens.input).toBe("#141311");
-    expect(tokens.error).toBe("#e0836a");
-    expect(tokens.canvas).toBe("#1a1917");
+    // **Read from the design source, never copied.** This pinned five hexes from the
+    // retired palette -- `#7ea6e8` for the action and the focus ring, `#1a1917` for the
+    // canvas -- so it failed for the design having been replaced rather than for the theme
+    // having failed to apply, which is what it is for. The property is that dark *remaps*
+    // every one of these rather than inheriting it, and the values come from the file that
+    // decides them.
+    for (const [name, value] of Object.entries(tokens)) {
+      expect(value, `${name} has no dark value`).toMatch(/^#[0-9a-f]{3,8}$/i);
+    }
+    // Dark remaps rather than inheriting: every one differs from its light value.
+    // **Read the root in each theme, not a nested probe.** The tokens are declared on
+    // `:root[data-theme]`, so a `<div data-theme="light">` inside a dark document inherits
+    // the dark values and the comparison reports every token as unchanged.
+    await page.getByRole("button", { name: "Light" }).click();
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+    const light = await page.evaluate(() => {
+      const root = getComputedStyle(document.documentElement);
+      const read = (n: string) => root.getPropertyValue(n).trim();
+      return {
+        canvas: read("--color-surface-canvas"), input: read("--color-surface-input"),
+        action: read("--color-action-primary"), focus: read("--color-border-focus"),
+        error: read("--color-border-error"),
+      };
+    });
+    for (const key of ["canvas", "input", "action", "focus", "error"] as const) {
+      expect(tokens[key], `${key} is the same in both themes`).not.toBe(light[key]);
+    }
   });
 
   for (const theme of ["light", "dark"] as const) {
@@ -118,16 +141,40 @@ test.describe("presentation", () => {
       const ring = await field.evaluate((element) => {
         const box = element.closest(".ds-field-control") ?? element;
         const style = getComputedStyle(box);
-        return { color: style.outlineColor, style: style.outlineStyle, width: style.outlineWidth };
+        // The ground the ring is drawn against, walked up until something paints.
+        let ground = "rgba(0, 0, 0, 0)";
+        for (let node: Element | null = box; node; node = node.parentElement) {
+          const bg = getComputedStyle(node).backgroundColor;
+          if (bg && !/rgba\(0, 0, 0, 0\)|transparent/.test(bg)) { ground = bg; break; }
+        }
+        return {
+          color: style.outlineColor, style: style.outlineStyle,
+          width: style.outlineWidth, ground,
+        };
       });
       // Guardrail G4: the focus ring is system-owned so "a tenant cannot ship an unnavigable
       // product". A ring that resolves to the light accent on a dark field is one a keyboard
       // user cannot see, which is the same failure with the rule still formally satisfied.
       expect(ring.style, `${theme} focus ring style`).not.toBe("none");
       expect(parseFloat(ring.width), `${theme} focus ring width`).toBeGreaterThanOrEqual(2);
-      expect(ring.color, `${theme} focus ring colour`).toBe(
-        theme === "dark" ? "rgb(126, 166, 232)" : "rgb(27, 64, 121)",
-      );
+      // **Measured against the field, not compared to a hex.** This pinned the retired
+      // palette's blue in both themes, so it failed for the palette having been replaced
+      // rather than for a keyboard user being unable to see the ring -- which is what the
+      // comment above says the test is for. WCAG 2.1 asks 3:1 of a focus indicator against
+      // what it sits on, and that number holds whatever colour the brand turns out to be.
+      const luminance = (colour: string) => {
+        const [r, g, b] = colour.match(/\d+(\.\d+)?/g)!.slice(0, 3).map(Number)
+          .map((channel) => {
+            const v = channel / 255;
+            return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+          });
+        return 0.2126 * r! + 0.7152 * g! + 0.0722 * b!;
+      };
+      const [brighter, darker] = [luminance(ring.color), luminance(ring.ground)]
+        .sort((a, b) => b - a);
+      const contrast = (brighter! + 0.05) / (darker! + 0.05);
+      expect(contrast, `${theme} focus ring against ${ring.ground}`)
+        .toBeGreaterThanOrEqual(3);
     });
   }
 
@@ -195,7 +242,7 @@ test.describe("presentation", () => {
 });
 
 test.describe("the typeface", () => {
-  test("IBM Plex is actually loaded, not merely declared", async ({ page }) => {
+  test("the declared faces are actually loaded, not merely named", async ({ page }) => {
     // **The defect this exists for.** `globals.css` named `"IBM Plex Sans"` from the first
     // commit and nothing ever loaded it, so every screen in this product rendered in the
     // system face while the stylesheet said otherwise -- and no assertion could see it,
@@ -208,11 +255,27 @@ test.describe("the typeface", () => {
       [...document.fonts].map((face) => ({ family: face.family, status: face.status })));
     const families = new Set(
       loaded.filter((f) => f.status === "loaded").map((f) => f.family));
-    // The three faces the design's own preamble asks for.
-    expect([...families].some((f) => /Plex Sans/i.test(f)), `loaded: ${[...families]}`)
-      .toBe(true);
-    expect([...families].some((f) => /Plex Mono/i.test(f)), `loaded: ${[...families]}`)
-      .toBe(true);
+    // **The faces are read from `layout.tsx` rather than named here.** This pinned "IBM
+    // Plex Sans" and "IBM Plex Mono", which the redesign replaced -- so it failed for the
+    // typeface having changed rather than for a face not loading, which is what it is for.
+    // The three the app imports are what has to be loaded, whichever three those are.
+    const layout = readFileSync(join(process.cwd(), "src/app/layout.tsx"), "utf8");
+    const imported = [...layout.matchAll(/import \{([^}]+)\} from "next\/font\/google"/g)]
+      .flatMap((m) => m[1]!.split(",").map((n) => n.trim()))
+      .filter(Boolean);
+    expect(imported.length, "layout.tsx imports no font").toBeGreaterThan(0);
+    // **A face loads when a glyph needs it, so an English page loads the Latin ones.** The
+    // Arabic face is imported and never requested here, and asserting every import loads on
+    // every page would be asserting a browser does not lazy-load. What has to hold is that
+    // the faces this page *uses* are real: more than one imported face is loaded, and the
+    // ones the body and a figure resolve to are among them.
+    const loadedHere = imported.filter(
+      (face) => [...families].some((f) => f.toLowerCase().includes(face.toLowerCase())),
+    );
+    expect(
+      loadedHere.length,
+      `no imported face loaded on an English page; loaded: ${[...families]}`,
+    ).toBeGreaterThanOrEqual(2);
   });
 
   test("the body renders in the loaded face rather than falling back", async ({ page }) => {
@@ -237,19 +300,32 @@ test.describe("the typeface", () => {
           `${getComputedStyle(document.body).fontSize} ${first}`),
       };
     });
+    // The self-hosted name is generated, so the assertion is that the first family is a
+    // real face this app ships rather than a system fallback -- not which face it is.
     expect(usable.first, "the body's first family is the app's own variable")
-      .toMatch(/Plex|__/);
+      .not.toMatch(/^(system-ui|sans-serif|serif|-apple-system)$/);
     expect(usable.loaded, `the body's own face must be loaded: ${usable.first}`).toBe(true);
   });
 
-  test("a money figure and an id are set in the mono face", async ({ page }) => {
-    // `type.data` is "Mono tabular. Money, counts, sets, reps, macros, IDs. The reason
-    // columns align." A money figure in the proportional face is a column that does not.
+  test("a figure is set in the figure face and aligns as a column", async ({ page }) => {
+    // **There is no mono face any more, and that is the design rather than a regression.**
+    // This asserted `/Plex_Mono|mono/i` on a money figure, from a scale whose `type.data`
+    // read "Mono tabular" -- and the replacement sets every quantity in Archivo, which is
+    // the signature move: the numeral on the back of a shirt. `system-check.mjs` refuses a
+    // monospace family outright, so a test demanding one is asking for the thing the design
+    // system now bans.
+    //
+    // What the mono was *for* survives and is what this asserts: a column of figures has to
+    // align, which is `tabular-nums` rather than a particular face.
     await useOwnerSession(page);
     await page.goto("/");
     await page.evaluate(() => document.fonts.ready);
-    const family = await page.locator(".ds-metric-value").first()
-      .evaluate((el) => getComputedStyle(el).fontFamily);
-    expect(family).toMatch(/Plex_Mono|Plex Mono|mono/i);
+    const figure = await page.locator(".ds-metric-value").first().evaluate((el) => {
+      const style = getComputedStyle(el);
+      return { family: style.fontFamily, numeric: style.fontVariantNumeric };
+    });
+    expect(figure.family, "a figure falls back to a system face").not.toMatch(/^system-ui/);
+    expect(figure.family, "a figure is not set in a monospace face").not.toMatch(/mono/i);
+    expect(figure.numeric, "a column of figures must align").toMatch(/tabular-nums/);
   });
 });

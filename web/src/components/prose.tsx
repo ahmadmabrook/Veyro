@@ -37,6 +37,15 @@ export function Prose({ children }: { children: string }) {
  *
  * So the block form exists rather than a comment telling the next caller to remember a `<p>`.
  */
+/**
+ * **Why this is a block and `Prose` is not.** `Prose` renders a run of inline spans, and a
+ * `.page-section` is a column flex container -- so used bare, every emphasised and
+ * backticked run becomes its own flex item on its own line: eight blocks where one paragraph
+ * belongs. It was found by looking at a page rather than by any assertion, and the e2e test
+ * that measured it (several runs sharing a vertical position) has since lost its subject,
+ * because no note in this app carries three emphasised runs any more. Write a multi-run note
+ * with this, not with `Prose`.
+ */
 export function ProseNote({ children }: { children: string }) {
   return (
     <p className="ds-note">

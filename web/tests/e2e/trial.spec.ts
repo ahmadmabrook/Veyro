@@ -92,7 +92,7 @@ test.describe("the trial state of a lead profile", () => {
     // is labelled by what it measures. The prototype's own name for it was CONVERSION
     // LIKELIHOOD; asserting that word is absent is the property, where the removed clause was
     // one wording of it.
-    await expect(main).toContainText("engagement");
+    await expect(main).toContainText(/engagement/i);
     await expect(main.getByText(/likelihood/i)).toHaveCount(0);
   });
 

@@ -52,8 +52,9 @@ test.describe("the class a desk is checking people into", () => {
   test("counts who is here against the session's places", async ({ page }) => {
     // A class with free seats is "0 of 12 here", not "0 of 1": the denominator is MOD-019's
     // capacity and the roster has no cached total.
-    expect((await page.locator(".ds-page-head, .ds-metric-row").allInnerTexts()).join(" "))
-      .toContain("of 12 here");
+    const head = (await page.locator(".ds-page-head, .ds-metric-row").allInnerTexts())
+      .join(" ").toLowerCase();
+    expect(head).toContain("of 12 here");
   });
 
   test("identifies a member whose name is withheld, rather than showing only a marker",
@@ -243,7 +244,9 @@ test.describe("what a weaker credential is given", () => {
 async function presentCount(page: Page): Promise<number> {
   // The header region, not one element of it: the "here" count leads as a figure now.
     const text = (await page.locator(".ds-page-head, .ds-metric-row").allInnerTexts()).join(" ");
-  const found = text.match(/(\d+) of \d+ here/);
+  // The label renders uppercase, so the match is case-insensitive: `innerText` returns
+  // what is drawn rather than what the catalogue holds.
+  const found = text.match(/(\d+)\s*of\s*\d+\s*here/i);
   expect(found, `no "N of M here" in ${text}`).not.toBeNull();
   return Number(found![1]);
 }

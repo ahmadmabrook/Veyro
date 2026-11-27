@@ -2299,13 +2299,17 @@ table {
 /* **An edge-mark, never a fill.** The background here is the surface and nothing else sets
  * it: a grid of tinted blocks is a heat map, and a week with three marked classes would read
  * as a week three-quarters wrong. */
+/* **No radius, because this cell carries an edge-mark.** `edgeMark` puts a coloured bar on
+   the leading edge, and its own comment says that is a standard affordance in a dense grid
+   "and the rows here carry no radius" -- while this class set `radius-button`, which made
+   it exactly the one-sided bar on a rounded box the craft floor bans by name. The grid is a
+   week of slots rather than a row of cards; the separation is the grid's own gaps. */
 .ds-class-cell {
   display: flex;
   flex-direction: column;
   gap: 2px;
   padding-inline-start: var(--space-2);
   background: var(--color-surface-default);
-  border-radius: var(--radius-button);
 }
 
 .ds-class-name {

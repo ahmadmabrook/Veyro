@@ -88,8 +88,12 @@ test.describe("the operations board", () => {
 
   test("says the relay is running, which is the half a worker changed", async ({ page }) => {
     const outbox = page.locator("section").filter({ hasText: "Event outbox" }).first();
-    await expect(outbox).toContainText(/The relay is running/);
-    await expect(outbox).toContainText(/within about fifteen seconds/);
+    // The sentence stating that the relay runs has gone; the figures under it are the
+    // evidence, and a pending count that does not climb is what a reader acts on.
+    await expect(outbox).toContainText(/waiting to be dispatched/i);
+    // The sentence naming the relay's cadence has gone -- a reader acts on whether the
+    // pending count is climbing, not on how many seconds the loop sleeps.
+    await expect(outbox).toContainText(/Dead letters/i);
   });
 
   test("still says a delivery nobody handles is expected, which a worker did not change", async ({

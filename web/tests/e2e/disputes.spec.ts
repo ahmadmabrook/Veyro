@@ -30,7 +30,10 @@ test.describe("the dispute board", () => {
     // expires. The fixture's browser session is level 1, so reaching the board at all is
     // the assertion: behind `finance.dispute.manage` this page would be a refusal.
     await expect(
-      page.getByRole("heading", { name: /what the gym can prove/, level: 1 }),
+      // The h1 is the page's name now rather than a sentence about it, which is
+      // `PageHeader`'s own rule. What this test is for is that the board is *reachable* at
+      // level 1, so the assertion is that its heading is there at all.
+      page.getByRole("heading", { name: "Chargebacks", level: 1 }),
     ).toBeVisible();
     // **The board itself, not merely the heading.** A refusal renders the heading too, so
     // what proves the read went through is a dispute on the page. And the assertion is
@@ -44,10 +47,14 @@ test.describe("the dispute board", () => {
   test("leads with what is still at stake, not with every dispute ever recorded", async ({
     page,
   }) => {
-    const header = page.locator(".ds-page-figures");
-    await expect(header).toContainText("disputes");
-    await expect(header).toContainText("still undecided");
-    await expect(header).toContainText("JOD");
+    const header = (await page.locator(".ds-page-figures, .ds-metric-row")
+      .allInnerTexts()).join(" ");
+    // The header is a metric row now: the count and what is at stake, each with its own
+    // label, rather than one sentence at 14px. The property is unchanged -- what leads is
+    // what is still open, not everything ever recorded.
+    expect(header.toLowerCase()).toContain("chargebacks");
+    expect(header.toLowerCase()).toContain("still undecided");
+    expect(header.toLowerCase()).toContain("jod");
   });
 
   test("puts the deadline and what missing it costs together", async ({ page }) => {
@@ -107,11 +114,12 @@ test.describe("the dispute board", () => {
     // one action nobody can undo.
     await expect(page.getByRole("button", { name: /submit/i })).toHaveCount(0);
     await expect(page.getByRole("button", { name: /accept/i })).toHaveCount(0);
-    const notYet = page.locator("section").filter({ hasText: "What this screen does not do yet" });
-    await expect(notYet).toContainText("Nothing in this build sends anything to a scheme");
-    // The sentence that explained *why* this gap exists has gone with the section that
-    // held it: the names above are what a reader needs, and the reasoning is in
-    // `contracts/ui/design-compliance.md`.
+    // The section names what the screen does not do; the sentences that explained
+    // *why* each is absent have gone with it, and the absent control below is what
+    // this test is really about.
+    await expect(
+      page.locator("section").filter({ hasText: "What this screen does not do yet" }),
+    ).toContainText("Submit the evidence");
   });
 
   test("the payments ledger sends a chargeback here", async ({ page }) => {

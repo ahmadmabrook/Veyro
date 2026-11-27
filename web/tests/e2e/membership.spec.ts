@@ -65,7 +65,10 @@ test.describe("the membership blocks on a member's page", () => {
     // MOD-014's profile carries one and MOD-017's agreement carries another, nothing relates
     // them, and both are read out at a front desk. A page showing both without saying so is
     // the quiet kind of wrong answer.
-    await expect(page.getByText(/two human-facing numbers owned by two modules/)).toBeVisible();
+    // **The module names have gone and the fact has not.** A note saying two numbers are
+    // "owned by two modules" tells a receptionist nothing they can act on; that there are
+    // two and which is which is the thing that stops the wrong one being read out.
+    await expect(page.locator("#main")).not.toContainText(/owned by two modules|MOD-\d+/);
     await expect(page.getByRole("row").filter({ hasText: "GOLD-00042" })).toBeVisible();
   });
 
@@ -225,7 +228,10 @@ test.describe("the membership blocks on a member's page", () => {
   }) => {
     // Paragraph 1300 bars the cross-domain read, so the Member 360 says it does not do it.
     // The page does, through each module's own gate, and says which is which.
-    await expect(page.getByText(/paragraph 1300/).first()).toBeVisible();
+    // **A specification paragraph number on a member's record.** The rule it cites is real
+    // and the citation is this repository's, so what the page says now is which module
+    // answered each tab -- the fact -- without the paragraph.
+    await expect(page.locator("#main")).not.toContainText(/paragraph \d+/);
   });
 
   test("has no accessibility violation in these blocks", async ({ page }) => {

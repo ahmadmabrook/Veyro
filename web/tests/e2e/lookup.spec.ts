@@ -90,7 +90,10 @@ test.describe("the member lookup", () => {
   test("names the photo, the plan and the admission as absent", async ({ page }) => {
     await expect(page.getByRole("heading", { name: /does not do/ })).toBeVisible();
     await expect(page.getByText("No photo")).toBeVisible();
-    await expect(page.getByText(/blank circle would read as a photo missing/)).toBeVisible();
+    // The clause arguing why there is no placeholder circle was design rationale; "No
+    // photo" is the fact and is asserted above.
+    await expect(page.locator("#main"))
+      .not.toContainText(/blank circle would read as a photo missing/);
     await expect(page.getByText("No plan")).toBeVisible();
     await expect(page.getByText("A number is matched whole")).toBeVisible();
   });

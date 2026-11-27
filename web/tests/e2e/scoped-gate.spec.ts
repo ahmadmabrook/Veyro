@@ -29,7 +29,7 @@ test.describe("a location-scoped session", () => {
     // **The read happens**, which is the whole finding: before ADR-0014 this was the gate's
     // "not permitted" page.
     await expect(page.getByRole("heading",
-      { name: "The team, and who can still open the product" })).toBeVisible();
+      { name: "Staff & coaches" })).toBeVisible();
     await expect(page.getByText(/not permitted/i)).toHaveCount(0);
 
     // And the screen says the list is their club rather than the tenant -- a bounded list
@@ -95,7 +95,7 @@ test.describe("a location-scoped session", () => {
     await signIn(page);
     await page.goto("/staff");
     await expect(page.getByRole("heading",
-      { name: "The team, and who can still open the product" })).toBeVisible();
+      { name: "Staff & coaches" })).toBeVisible();
     await expect(page.getByText(/This list is your club only/)).toHaveCount(0);
   });
 });

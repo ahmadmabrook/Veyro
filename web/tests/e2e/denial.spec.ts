@@ -119,7 +119,7 @@ test.describe("a refusal at an ordinary sign-in", () => {
       // The canvas draws Renew · Day pass · Photo. Every one is a sale or an object store,
       // and a screen that drew the buttons would be offering a receptionist three controls
       // that do nothing.
-      const gaps = page.locator(".ds-denial-gaps");
+      const gaps = page.locator("section").filter({ hasText: "What this screen does not do yet" });
       await expect(gaps).toContainText("Renewing the membership");
       await expect(gaps).toContainText("Selling a day pass");
       await expect(gaps).toContainText("Showing their photo");

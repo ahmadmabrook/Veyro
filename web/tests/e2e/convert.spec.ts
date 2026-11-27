@@ -125,19 +125,33 @@ test.describe("the conversion quote", () => {
     // financial permission; these two need a payment provider and a messaging one, and a
     // reader told the wrong reason would go and get a credential for nothing.
     await page.goto(`/leads/${trialLeadId}/convert?variant=${clubVariantId}`);
-    const gaps = page.locator("#main").locator("section.page-section").filter({
+    const gaps = page.locator("#main").locator("section").filter({
       has: page.getByRole("heading", { name: "What this screen does not do yet" }),
     });
     await expect(gaps).toContainText("Taking the first payment");
     await expect(gaps).toContainText("Sending a payment link");
     await expect(gaps).toContainText("Writing the conversion itself");
-    await expect(gaps).toContainText("payment provider");
+    // The clause naming the provider each act waits on has gone with the bodies; the
+    // three acts are the fact and are asserted above.
+    await expect(gaps).not.toContainText(/payment provider|messaging provider/);
     await expect(gaps).not.toContainText("stronger sign-in");
   });
 
-  test("states the structural claim the canvas's footnote makes", async ({ page }) => {
+  test("converts on the lead's own record rather than creating a second one", async ({
+    page,
+  }) => {
+    // **The canvas's footnote is a structural claim, so this asserts the structure.** It
+    // read "The lead ID becomes the member ID. This is the duplicate-entry fix from the UX
+    // review, enforced structurally rather than by discipline" -- and a sentence on the
+    // screen saying so was the product explaining its own data model to a salesperson. What
+    // makes the claim true is that this route *is* the lead's: it is reached at the lead's
+    // id and it goes back to that same record, so there is no second one to create.
     await page.goto(`/leads/${trialLeadId}/convert?variant=${clubVariantId}`);
-    await expect(page.locator("#main")).toContainText("The lead ID becomes the member ID");
+    expect(page.url()).toContain(`/leads/${trialLeadId}/`);
+    await expect(page.locator("#main")).not.toContainText("lead ID becomes the member ID");
+    await expect(
+      page.locator("#main").getByRole("link", { name: /back to|lead/i }).first(),
+    ).toHaveAttribute("href", new RegExp(trialLeadId));
   });
 
   test("no accessibility violations, with a quote on screen", async ({ page }) => {

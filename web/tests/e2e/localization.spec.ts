@@ -56,7 +56,9 @@ test.describe("the localization screen", () => {
     await expect(numerals.locator('[data-on="true"]')).toContainText("0123");
     await expect(numerals.locator('[data-on="true"]')).toContainText("in use");
     // The figures line names the system in words, because the chips are only samples.
-    await expect(page.locator(".ds-page-figures")).toContainText("Latin digits");
+    // The numeral system is the fieldset's own legend, not a clause of the figures line:
+    // it is a setting rather than a quantity, and the figures line carries the one count.
+    await expect(page.locator("#main")).toContainText("Latin digits");
   });
 
   test("shapes its own count by the setting", async ({ page }) => {
@@ -65,8 +67,10 @@ test.describe("the localization screen", () => {
     // all and that it is not Arabic-Indic while the setting says Latin. The direction that
     // moves is the mutation's: flipping the reader to `arab` changes this and every other
     // count in the product, which is the property "never mixed" is about.
-    await expect(page.locator(".ds-page-figures")).toContainText("2 languages offered");
-    await expect(page.locator(".ds-page-figures")).not.toContainText("٢");
+    await expect(page.locator(".ds-metric-row")).toContainText("Languages offered");
+    await expect(page.locator(".ds-metric-row")).toContainText("2");
+    expect((await page.locator(".ds-page-figures, .ds-metric-row").allInnerTexts()).join(" "))
+      .not.toContain("٢");
   });
 
   test("offers no control, because the canvas draws none", async ({ page }) => {
@@ -87,11 +91,15 @@ test.describe("the localization screen", () => {
     const notYet = page.getByRole("heading", { name: "What this screen does not do yet" });
     await expect(notYet).toBeVisible();
     // The three absences, each a different kind: a design decision, work, and a dependency.
-    await expect(page.getByText(/Publishing a configuration value is a financial-class/))
+    await expect(page.locator("#main").getByText("Change either convention"))
       .toBeVisible();
-    await expect(page.getByText(/Seventeen call sites still pass Latin digits/)).toBeVisible();
-    await expect(page.getByText(/Python’s standard library carries no CLDR month names/))
-      .toBeVisible();
+    // The count of call sites still passing Latin digits was a statement about the state of
+    // this repository's own source, on a tenant's settings screen. The gap it describes is
+    // named in the section instead.
+    await expect(page.locator("#main"))
+      .toContainText("Apply the numerals to every figure");
+    // Python's standard library and CLDR are this repository's business, not a tenant's.
+    await expect(page.locator("#main")).toContainText("Render a month name on a receipt");
   });
 
   test("has no accessibility violation", async ({ page }) => {

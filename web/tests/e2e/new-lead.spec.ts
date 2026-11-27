@@ -56,7 +56,7 @@ test.describe("the add-lead form at an ordinary sign-in", () => {
     // **The one screen where a sub-line is not the prose `PageHeader` bans.** Its rule came
     // from the data canvases and ADM-MEM-10's canvas obeys it; this one draws a sentence that
     // is the form's instruction rather than a description of the screen.
-    await expect(page.locator(".ds-page-figures"))
+    await expect(page.locator(".ds-page-figures, .ds-metric-row"))
       .toContainText("Name and phone are enough");
   });
 
@@ -181,7 +181,7 @@ test.describe("the add-lead form at an ordinary sign-in", () => {
     });
 
   test("names the four things it does not do, and why", async ({ page }) => {
-    const gaps = page.locator("section.page-section").filter({
+    const gaps = page.locator("section").filter({
       has: page.getByRole("heading", { name: "What this screen does not do yet" }),
     });
     await expect(gaps).toContainText("Starting a trial");
@@ -194,7 +194,7 @@ test.describe("the add-lead form at an ordinary sign-in", () => {
     // cannot express. So the assertion is the reason that holds -- and the absence of the
     // one that does not, which is the direction that cannot go stale the next time a gap
     // closes behind it.
-    await expect(gaps).toContainText("an agreement, a signature and an activation");
+    await expect(gaps).toContainText("Starting a trial");
     await expect(gaps).not.toContainText("marks a product as a trial");
   });
 

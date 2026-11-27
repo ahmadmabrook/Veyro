@@ -124,7 +124,7 @@ test.describe("the walk-in form at an ordinary sign-in", () => {
   });
 
   test("names the three parts of the design it does not do, and why", async ({ page }) => {
-    const gaps = page.locator(".ds-walk-in-gaps");
+    const gaps = page.locator("section").filter({ hasText: "What this screen does not do yet" });
     await expect(gaps).toContainText("Selling the membership");
     await expect(gaps).toContainText("An emergency contact");
     await expect(gaps).toContainText("The waiver");

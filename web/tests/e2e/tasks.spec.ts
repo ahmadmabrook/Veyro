@@ -64,7 +64,10 @@ test.describe("the task list", () => {
     // The fixture settles one that is also five days past its due date, so a list showing
     // every status would carry it *and* the overdue filter would return it.
     await expect(page.getByText("Order the replacement turnstile board")).toHaveCount(0);
-    await expect(page.getByText(/This list is work in hand/)).toBeVisible();
+    // The sentence describing the list's own filter has gone -- the settled task is
+    // absent, which is the assertion above, and the chips state the figures. GOV.UK's
+    // test settles it: explaining how the interface works means something went wrong.
+    await expect(page.locator("#main")).not.toContainText(/This list is work in hand/);
   });
 
   test("offers no checkbox on a blocked task, because it is unblocked first",
@@ -171,9 +174,9 @@ test.describe("the attention item", () => {
     // Each is a control the canvas draws and this build does not have, with the product's own
     // reason beside it -- a control absent with no reason reads as a permission the reader
     // lacks, and they go and ask for a grant that does not exist.
-    await expect(page.getByText(/Send 6 payment links/)).toBeVisible();
-    await expect(page.getByText(/30-second undo/)).toBeVisible();
-    await expect(page.getByText(/offers Reopen on a resolved item/)).toBeVisible();
+    await expect(page.locator("#main")).toContainText(/payment links/i);
+    await expect(page.locator("#main")).not.toContainText(/30-second undo/);
+    await expect(page.locator("#main")).not.toContainText(/offers Reopen on a resolved item/);
     await expect(page.getByRole("button", { name: "Reopen" })).toHaveCount(0);
   });
 
@@ -246,20 +249,32 @@ test.describe("resolved today", () => {
     // times here are all under a minute, which is a property of the fixture rather than of
     // the screen -- `opened_at` is `now()` and no route backdates it -- so the *format* is
     // proven against the canvas's own `12m` / `1h 20m` / `2h 04m` in the component tests.
-    await expect(page.getByText(/2 resolved today · Median/)).toBeVisible();
+    // The count and the median are the two figures leading the board now, each with its
+    // own label, rather than one 14px line.
+    const figures = (await page.locator(".ds-metric-row").allInnerTexts()).join(" ")
+      .toLowerCase();
+    expect(figures).toContain("resolved today");
+    expect(figures).toMatch(/median|nothing resolved/);
     await expect(page.locator("tbody tr")).toHaveCount(2);
   });
 
   test("is a record with no un-resolve anywhere on it", async ({ page }) => {
     // "Read-only for every role, including Owner" -- and this session holds every permission
     // in the catalogue, so its absence here is the canvas's rule rather than a refusal.
-    await expect(page.getByText(/There is no un-resolve/)).toBeVisible();
+    // The sentence stating there is no un-resolve has gone; its own test asserts the
+    // *absence* of any such control, which is the finding and is below.
+    await expect(page.locator("#main")).not.toContainText(/There is no un-resolve/);
     // **Scoped to the page, not the document.** The chrome's language and theme switches are
     // buttons on every screen in this app, so a document-wide count asserts the shell rather
     // than the board -- and a spec that asserted four would then break the day the shell grew
     // a fifth control, for a reason that has nothing to do with this screen.
     await expect(page.locator("main").getByRole("button")).toHaveCount(0);
-    await expect(page.getByText(/names the resolver/)).toBeVisible();
+    // **The RESOLVER column has gone, and with it the note explaining its id.** A
+    // resolver is an identity this read cannot name, so the only thing the cell could
+    // hold was a uuid -- forty identical ones taking a quarter of the table. The absence
+    // is named in the gap line; the sentence about it is not.
+    await expect(page.locator("#main")).not.toContainText(/names the resolver/);
+    await expect(page.locator("#main")).toContainText(/who resolved each one/);
   });
 
   test("links each row back to the item it resolved", async ({ page }) => {

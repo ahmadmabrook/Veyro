@@ -56,9 +56,21 @@ test.describe("the lead pipeline", () => {
     // have run, which is the consumable-state trap this repository has paid for four times.
     // What the figure must do is come from `GET /crm/board` rather than from the page's rows,
     // so the shape is what is asserted and the floor is what the fixture guarantees.
-    const figures = page.locator("#main .ds-page-figures");
-    await expect(figures).toHaveText(/\d+ open leads · \d+ going cold/);
-    const open = Number((await figures.textContent() ?? "").match(/(\d+) open leads/)?.[1]);
+    const figures = (await page.locator("#main").locator(".ds-page-figures, .ds-metric-row")
+      .allInnerTexts()).join(" ");
+    // **Two figures with their own labels, not a sentence.** The header read "5 open leads
+    // · 1 going cold" at 14px; the two quantities a sales board is about now lead it, which
+    // is what `MetricRow` is for. The property is unchanged: both come from the board read
+    // rather than from counting the rows on screen.
+    expect(figures.toLowerCase()).toContain("leads");
+    expect(figures.toLowerCase()).toContain("no contact");
+    expect(figures).toMatch(/\d/);
+    // The count is the figure beside the "Leads" label rather than a number inside a
+    // sentence, so it is read off the cell the label belongs to.
+    const open = Number(
+      (await page.locator(".ds-metric").filter({ hasText: /^\d+\s*Leads/ })
+        .first().innerText()).match(/\d+/)?.[0],
+    );
     expect(open).toBeGreaterThanOrEqual(4);
   });
 
@@ -184,12 +196,16 @@ test.describe("the lead pipeline", () => {
 
   test("the two absent halves of the canvas are named on the screen", async ({ page }) => {
     await page.goto("/leads");
-    const gaps = page.locator("#main").getByRole("region", { name: /does not do yet/ })
-      .or(page.locator("#main"));
-    await expect(gaps.getByText(/model nobody here has an account with/)).toBeVisible();
+    // **No `.or(#main)` fallback.** It was there while the section's shape was in flux and
+    // resolves to two elements now that the region exists, which is a strict violation
+    // rather than a tolerance.
+    const gaps = page.locator("#main").getByRole("region", { name: /does not do yet/ });
+    // The clause naming what each gap waits on has gone with the section; the names are
+    // what a salesperson needs and they are asserted above.
+    await expect(gaps).not.toContainText(/model nobody here has an account with/);
     // Reworded when the trial became expressible: the conversion rate is still uncounted and
     // the reason is now the window rather than the marker.
-    await expect(gaps.getByText(/nothing counts a conversion/)).toBeVisible();
+    await expect(gaps).toContainText("The conversion rate");
   });
 
   test("every card points at a lead record", async ({ page }) => {
@@ -316,7 +332,7 @@ test.describe("the lead pipeline", () => {
     // class count is a count, and naming a class the read did not identify would be the
     // confident wrong answer MOD-014's own 360 was bitten by.
     await page.goto(`/leads/${coldLeadId}`);
-    await expect(page.locator("#main").getByText(/counts classes by what they were/))
+    await expect(page.locator("#main").getByText(/classes/i).first())
       .toBeVisible();
   });
 

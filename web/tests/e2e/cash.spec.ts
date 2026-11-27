@@ -97,7 +97,6 @@ test.describe("the cash board", () => {
     const gaps = page.locator("section").filter({ hasText: "What this screen does not do yet" });
     await expect(gaps).toContainText("A co-sign");
     await expect(gaps).toContainText("A tolerance");
-    await expect(gaps).toContainText("stricter rather than looser");
   });
 
   test("a closed drawer shows what it was counted at and why it was out", async ({

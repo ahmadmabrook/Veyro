@@ -146,9 +146,11 @@ test.describe("the booking screen", () => {
       const notYet = page.locator("section").filter({
         has: page.getByRole("heading", { name: "What this screen does not do yet" }),
       });
-      await expect(notYet).toContainText("Point of Sale");
+      // The sentence explaining *why* has gone with the section that held it; the name is
+      // what a reader needs and the absent control below is what this test is about.
       await expect(notYet).toContainText("weekly");
-      await expect(notYet).toContainText("Nothing is sent");
+      // The clause naming the dispatcher has gone; "Telling the member" is the name.
+      await expect(notYet).toContainText("Telling the member");
     });
 
   test("is reached from the member's own credits", async ({ page }) => {
